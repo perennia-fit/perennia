@@ -314,6 +314,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async batchWriteAgentProfile(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/profile/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
   async batchWriteAgentMetrics(body, options = {}) {
     return this.request({
       method: "POST",
@@ -794,6 +804,15 @@ export class PortableOwlAgentClient {
         "from",
         "to"
       ]),
+      signal: options.signal
+    });
+  }
+
+  async readAgentProfile(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/profile",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

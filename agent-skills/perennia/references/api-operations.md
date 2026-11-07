@@ -74,11 +74,13 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `probe` | GET | `/agent/probe` |
 | `progress-new-bests` | GET | `/agent/progress/new-bests` |
 | `progress-training-days` | GET | `/agent/progress/training-days` |
+| `read-profile` | GET | `/agent/profile` |
 | `read-settings` | GET | `/agent/settings` |
 | `resolve-exercise` | GET | `/agent/exercises/resolve` |
 | `search-platform-foods` | GET | `/agent/foods/platform-search` |
 | `training-day-nutrition` | GET | `/agent/cross-domain/training-day-nutrition` |
 | `undo-activity-batch` | POST | `/agent/activity/undo-batch` |
+| `update-profile` | POST | `/agent/profile/batch-write` |
 | `update-settings` | POST | `/agent/settings/batch-write` |
 | `update-workout-template-from-workout` | POST | `/agent/workout-templates/update-from-workout` |
 | `validate-dose` | POST | `/agent/validate-dose` |

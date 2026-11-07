@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DrizzleQueryError } from "drizzle-orm";
+
 import { createApp } from "../src/app.ts";
 import {
   createPrivacyLogger,
@@ -310,6 +312,173 @@ test("privacy logger strips the Skips of a logged Skip write", () => {
   }
 });
 
+test("privacy logger strips the User Profile values of a logged agent write and read", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged write body spread as it arrives, then a read section: none of these
+  // field names is denied on its own, so `sections` and `values` keep them out.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/profile/batch-write",
+      idempotencyKey: "profile-1",
+      sections: {
+        aboutYou: { birthYear: 1984 },
+        healthLimitations: { text: "Left knee surgery", none: false },
+        generalNotes: { text: "Private note" }
+      }
+    },
+    "synthetic User Profile write"
+  );
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/profile",
+      healthLimitations: { values: { text: "Right wrist" } }
+    },
+    "synthetic User Profile read"
+  );
+
+  assert.equal(logEvents.length, 2);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  assert.equal(logEvents[0].payload.path, "/agent/profile/batch-write");
+  assert.doesNotMatch(serialized, /"sections":(?!"\[Filtered\]")/);
+  assert.doesNotMatch(serialized, /"values":(?!"\[Filtered\]")/);
+  for (const value of ["1984", "Left knee", "Private note", "Right wrist"]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
+function profileQueryError() {
+  const cause = Object.assign(new Error("Key (text)=(Left knee) is invalid"), {
+    code: "23514",
+    constraint_name: "user_profile_sections_check",
+    detail: "Failing row contains (Left knee)",
+    where: "JSON data, line 1: Left knee"
+  });
+  return new DrizzleQueryError(
+    'insert into "user_profile_sections" values ($1)',
+    [
+      JSON.stringify({
+        section: "health_limitations",
+        values: { text: "Left knee" }
+      })
+    ],
+    cause
+  );
+}
+
+function assertNoQueryData(serialized) {
+  for (const value of ["Left knee", "Failed query", "health_limitations", "insert into"]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+}
+
+test("privacy logger keeps only codes of a failed query, never its params", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info() {},
+    error(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  logger.error({ userId: "user-1", error: profileQueryError() }, "request failed");
+
+  assert.deepEqual(logEvents[0].payload.error, {
+    type: "DrizzleQueryError",
+    message: "Database query failed.",
+    cause: {
+      type: "Error",
+      code: "23514",
+      constraint: "user_profile_sections_check"
+    }
+  });
+  assertNoQueryData(JSON.stringify(logEvents[0].payload));
+});
+
+test("a postgres.js error is treated as a failed query, with its hidden query", () => {
+  const error = Object.assign(new Error("Failing row contains (Left knee)"), {
+    code: "23514",
+    constraint_name: "user_profile_sections_check"
+  });
+  Object.defineProperty(error, "query", { value: "insert into x", enumerable: false });
+
+  const serialized = scrubObservabilityData({ error }).error;
+  assert.equal(serialized.message, "Database query failed.");
+  assert.equal(serialized.code, "23514");
+  assert.equal(serialized.constraint, "user_profile_sections_check");
+  assertNoQueryData(JSON.stringify(serialized));
+});
+
+test("a crash report of a failed query carries no query data", () => {
+  const sdk = createFakeSentrySdk();
+  const reporter = createSentryCrashReporterFromEnv(
+    {
+      SERVER_CRASH_REPORTING_ENABLED: "true",
+      SERVER_CRASH_REPORTING_DSN: "https://public@example.com/1"
+    },
+    { sdk }
+  );
+
+  reporter.captureException(profileQueryError(), {
+    correlationId: "corr-1",
+    method: "POST",
+    path: "/agent/profile/batch-write"
+  });
+
+  const { error } = sdk.capturedEvents[0].extra;
+  assert.equal(error.type, "DrizzleQueryError");
+  assert.equal(error.cause.code, "23514");
+  assertNoQueryData(JSON.stringify(error));
+});
+
+test("Sentry beforeSend keeps an event's exceptions, without their messages", () => {
+  const sdk = createFakeSentrySdk();
+  createSentryCrashReporterFromEnv(
+    {
+      SERVER_CRASH_REPORTING_ENABLED: "true",
+      SERVER_CRASH_REPORTING_DSN: "https://public@example.com/1"
+    },
+    { sdk }
+  );
+
+  const frames = [{ filename: "app.js", lineno: 3 }];
+  const event = sdk.initCalls[0].beforeSend({
+    exception: {
+      values: [
+        {
+          type: "DrizzleQueryError",
+          value: "Failed query: params: Left knee",
+          stacktrace: { frames }
+        }
+      ]
+    },
+    extra: { values: { text: "Right wrist" } }
+  });
+
+  assert.deepEqual(event.exception.values, [
+    {
+      type: "DrizzleQueryError",
+      value: "[Filtered]",
+      stacktrace: { frames }
+    }
+  ]);
+  assert.equal(event.extra.values, "[Filtered]");
+
+  // The exemption is the event's own path: `values` stays filtered elsewhere.
+  assert.equal(
+    scrubObservabilityData({ exception: { values: ["Left knee"] } }).exception.values,
+    "[Filtered]"
+  );
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 
@@ -350,6 +519,10 @@ test("Sentry crash reporting is opt-in and requires a DSN", () => {
   assert.equal(sdk.initCalls[0].environment, "test");
   assert.equal(sdk.initCalls[0].release, "0.0.0-test");
   assert.equal(sdk.initCalls[0].sendDefaultPii, false);
+  assert.deepEqual(
+    sdk.initCalls[0].integrations.map((integration) => integration.name),
+    ["Http"]
+  );
 });
 
 test("Sentry beforeSend scrubs event payloads structurally", () => {
@@ -381,9 +554,13 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
         authorization: "Bearer secret-token",
         cookie: "session=secret"
       },
-      data: {
-        comment: "private request note"
-      }
+      // The SDK parses the Cookie header into this field as well.
+      cookies: { "better-auth.session_token": "session-cookie-secret" },
+      // The SDK sends the raw body as a string, which filtering by key can't reach.
+      data: JSON.stringify({
+        sections: { healthLimitations: { text: "HIVSECRET meds" } },
+        note: "private request note"
+      })
     }
   });
 
@@ -395,7 +572,10 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
   assert.doesNotMatch(serialized, /private note/);
   assert.doesNotMatch(serialized, /90 kg/);
   assert.doesNotMatch(serialized, /secret-token/);
+  assert.doesNotMatch(serialized, /session-cookie-secret/);
   assert.doesNotMatch(serialized, /private request note/);
+  assert.doesNotMatch(serialized, /HIVSECRET/);
+  assert.equal("data" in event.request, false);
 });
 
 test("Sentry beforeSend removes automatic request query strings", () => {

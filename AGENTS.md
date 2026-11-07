@@ -126,9 +126,9 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   Prescriptions, groups + rounds) and Routine editor (membership + Cadence slot
   layout) as separate surfaces; capture
   ("save workout as template") and the Finish summary's Update row.
-- **Workout Tools (interval/rest timer, 1RM/set/plate calculators) and Settings** —
-  secondary surfaces reached contextually or through **Account & app**, not extra
-  root destinations.
+- **Workout Tools (interval/rest timer, 1RM/set/plate calculators), Profile and
+  Settings** — secondary surfaces reached contextually or through **Account & app**,
+  not extra root destinations.
 
 ### UX rules of thumb
 
@@ -141,8 +141,11 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   distance — any combination, including completion-only).
 - Color is never the sole signal (category colors are always paired with text);
   WCAG AA contrast in both themes.
-- No onboarding wizards, no sample data; the empty Home Screen's CTA is the
-  onboarding.
+- Onboarding is optional: one first-open flow of at most three screens,
+  skippable from its first screen, shown at most once per install, never with
+  sample data, and never asking for an OS permission, importing data or
+  creating a Routine. The empty Home Screen's CTA is still how a new user starts
+  logging.
 
 ## Working conventions
 

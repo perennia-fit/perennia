@@ -236,6 +236,49 @@ void main() {
     expect(syncState.pullCursor, isNull);
   });
 
+  test(
+      'v66 to v67 adds an empty User Profile table, keeps every other row and '
+      'clears the pull cursor', () async {
+    final schema = await verifier.schemaAt(66);
+    addTearDown(schema.close);
+    const updatedAt = 1_767_254_400;
+    for (final (sql, parameters) in <(String, List<Object?>)>[
+      (
+        'INSERT INTO compounds '
+            '(id, name, default_unit, default_route, updated_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+        ['compound-1', 'Creatine', 'gram', 'oral', updatedAt],
+      ),
+      (
+        'INSERT INTO nutrition_goals '
+            '(id, nutrient_id, target_value, target_entered, unit, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+        ['goal-1', 'energy', 2200.0, '2200', 'kcal', updatedAt],
+      ),
+      (
+        'INSERT INTO sync_states (id, pull_cursor, updated_at) '
+            'VALUES (?, ?, ?)',
+        ['sync-state', 'cursor-1', updatedAt],
+      ),
+    ]) {
+      schema.rawDatabase.execute(sql, parameters);
+    }
+
+    final database = AppDatabase(schema.newConnection());
+    addTearDown(database.close);
+    await verifier.migrateAndValidate(database, currentVersion);
+
+    expect(await database.select(database.userProfileSections).get(), isEmpty);
+    final compound = await database.select(database.compounds).getSingle();
+    expect(compound.id, 'compound-1');
+    expect(compound.name, 'Creatine');
+    final goal = await database.select(database.nutritionGoals).getSingle();
+    expect(goal.id, 'goal-1');
+    expect(goal.targetValue, 2200.0);
+    final syncState = await database.select(database.syncStates).getSingle();
+    expect(syncState.pullCursor, isNull);
+  });
+
   test('rows written at the first release survive to the current version',
       () async {
     final schema = await verifier.schemaAt(_firstReleasedSchemaVersion);

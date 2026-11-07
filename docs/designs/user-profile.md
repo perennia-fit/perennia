@@ -1,7 +1,7 @@
 # User Profile and First-Open Onboarding
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Current
 *   **Date:** 2026-11-04
 
 Read with: [AGENTS.md](../../AGENTS.md) (invariants and conventions),
@@ -361,8 +361,20 @@ Rules for the values:
     `date` in the device's local time. It is accurate to ±1 year. That is enough to place a user
     in an age band, which is how commonly published default ranges are given.
 *   **Health & limitations normalisation.** Setting non-null `text` sets `none` to `false`.
-    Setting `none: true` sets `text` to `null`. The device and the agent merge both apply this
-    before validating, so `none: true` with text cannot be stored.
+    Setting `none: true` sets `text` to `null`. When one save sets both, `none: true` wins and
+    `text` becomes `null`. An explicit `none: null` means `false`. The device and the agent merge
+    both apply this before validating, so `none: true` with text cannot be stored.
+*   **Tolerant reads.** Push does no domain validation, so a stored row can hold anything.
+    *   On the device, a field of the wrong JSON type reads as unset, and an unknown enum entry
+        is dropped from the typed getters. So is any list entry the rules reject, because the
+        user couldn't see or fix what blocked their Save: an Equipment id (empty, over 64
+        characters, or a duplicate), a duplicate goal, an Experience entry with an empty
+        `focus_id`, and a second entry for one Focus. An unknown Equipment id within the rules is
+        kept.
+    *   In the agent read, a field of the wrong JSON type reads as `null`, a non-string list
+        entry is dropped, and every string id is kept, including one the rules reject, so the
+        agent sees it and the merge keeps it (see Agent surface, Validation).
+    *   Neither read throws, and merges run over the tolerantly read values.
 
 **Save semantics.** One rule holds on the device and in the agent write:
 
@@ -370,6 +382,9 @@ Rules for the values:
     the whole list.
 *   A section with no row is *unset*. A save that would create a row with every field `null` (or
     `none: false` and `text: null`) creates nothing.
+*   A save that changes nothing on an existing row writes nothing: `updated_at` stays, and there
+    is no Activity Log entry or Sync Nudge. Otherwise a retry would make undo of the earlier
+    Batch read as changed since, although no value changed.
 *   Once a row exists, clearing every field keeps the row, with all fields unset. The user never
     deletes the record, only empties it.
 *   The **None** choice on the Profile screen writes `[]` or `none: true`. Selecting nothing
@@ -397,6 +412,13 @@ A newer app syncing to a Self-Hosted Deployment that has not been upgraded fails
 because the server's entity enum rejects the new entity, and Sync Runs fail until the server is
 upgraded. The release note tells self-hosters to upgrade the server first. This is recorded under
 Risks & Mitigations.
+
+A build from before this change skips the unknown `user_profile_sections` entity but still
+advances its pull cursor past those changes, so after upgrading it would never pull the rows it
+skipped. The `from < 67` migration step therefore also runs `UPDATE sync_states SET pull_cursor =
+NULL` (when that table exists), and the first Sync Run after the upgrade is a full pull. This is
+the same step as `from < 66` in `apps/mobile/lib/data/local/app_database.dart`
+(docs/designs/compound-purposes.md, "Older clients").
 
 ### Onboarding gate
 
@@ -437,10 +459,14 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     semantics. If nothing was entered, it writes nothing, like **Skip this**. Screens 2 and 3
     each save as one Activity Log Batch.
 *   **Back.** Screens 2 and 3 have a back arrow. Going back to a saved screen and saving again
-    writes another Batch.
+    with changed values writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
     `onboardingDone`, writes no section, and opens Today. The first Sync Run then runs in the
-    background as for any sign-in. When the user cancels, they return to screen 1.
+    background as for any sign-in. When the user cancels, they return to screen 1, and every
+    control there works at once, even if a sign-in request is still running. If that request
+    later succeeds, the session is real, so onboarding finishes the same way, but only when the
+    user is still on screen 1 with no action running and nothing open over it. Otherwise they
+    carry on in onboarding, signed in. Past screen 1 `onboardingDone` is already set.
 *   **Screen 1 save order.**
     1.  Save each changed setting (unit system, week start day) through the existing
         `SettingsController` setters. Each setter saves on its own, so this is one Activity Log
@@ -513,17 +539,32 @@ section values above.
     unknown sections or fields, wrong JSON types and non-integer counts return the route's 400
     validation response. At least one field is required.
 *   **Merge.** The server merges the given fields into the current values of each named section,
-    following Save semantics and the Health & limitations normalisation, and writes the whole
-    section row. That is one Activity Log Batch with `batchId` equal to `idempotencyKey`, as the
-    settings write does.
+    following Save semantics and the Health & limitations normalisation, and, for each section
+    whose values changed, writes the whole section row. That is one Activity Log Batch with
+    `batchId` equal to `idempotencyKey`, as the settings write does. The Batch exists only if a
+    section changed.
 *   **Validation** runs through the shared module on the merged values of each named section,
     with `referenceYear` set to the server's current UTC year.
     *   Any hard reject returns status 422 with `AgentProfileBatchWriteErrorResponseSchema`,
-        following `AgentSettingsBatchWriteErrorResponseSchema`, and nothing is written.
+        following `AgentSettingsBatchWriteErrorResponseSchema`, and nothing is written. Its
+        `code` is `agent_profile_batch_write_failed` and each error is `{ section, field, rule,
+        message }`.
+    *   A stored value the rules reject is part of the merged values, so it blocks a write of
+        its section, even one that doesn't name that field. The error names the field, and the
+        agent clears or corrects it in the same write. Only a push can store such a value. The
+        merge never drops it, because that would erase a value the write didn't name.
+    *   A section given with no fields names nothing: it is not merged, validated or written.
+    *   A section whose merged values equal its tolerantly read values is validated but not
+        written (see Save semantics). Its warnings are returned. If no section changed, there is
+        no Batch, so sending the same key again runs as a new write, not a replay.
     *   Otherwise the write applies, and the 200 response is `{ accepted: true, duplicate,
         idempotencyKey, batchId, serverClock, profile, warnings }`. `profile` is the read shape
-        after the write. Each warning is `{ section, field, rule, message }`. A replay of the
-        same `idempotencyKey` returns the original result with `duplicate: true`.
+        after the write. `batchId` names no Batch when nothing changed. Each warning is
+        `{ section, field, rule, message }`.
+    *   A replay of the same `idempotencyKey` returns the same envelope with `duplicate: true`.
+        On a replay, `profile` is the current read shape and `warnings` are recomputed by
+        validating the after-images of the Batch's Activity Log entries. Nothing stores the
+        original response, so a section the first write left unchanged returns no warnings.
     *   When the store is unavailable, the route returns 503 with code
         `agent_profile_unavailable`, following `agent_settings_unavailable`.
 *   **Contract diff:** two new operations and their schemas, and a new `user_profile_sections`
@@ -534,9 +575,14 @@ section values above.
     entities.
 *   **Activity redaction.** In `listAgentActivity` (REST and the MCP tool `agent_list_activity`),
     any change to a `user_profile_sections` row whose section is `health_limitations` or
-    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`. The
-    entity, section, actor and time are kept. The device's Activity Log is not redacted.
-    Redaction limits what agents read in history; it is not access control.
+    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`.
+    Redaction fails closed: an entry is shown only when every non-null image names
+    `about_you`, `training_goals`, `experience` or `training_setup`, because a push stores its
+    images without parsing them. A redacted image keeps only `values` and whichever of `id`,
+    `section`, `updated_at` and `deleted_at` are strings or null, so text under any other key
+    is dropped too. A null image stays null. The entity, section, actor and time are kept. The
+    device's Activity Log is not redacted. Redaction limits what agents read in history; it is
+    not access control.
 *   **Tool descriptions**, verbatim:
     *   `agent_read_profile`: "Read the user's User Profile: About you, Training Goals,
         Experience, Training setup, Health & limitations and General Notes. Every agent
@@ -546,6 +592,9 @@ section values above.
         you send change, null clears a field, and a list replaces the whole list. Improbable
         values are saved and returned as warnings to confirm with the user. Each call is one
         Activity Log Batch the user can undo."
+    *   That last sentence of `agent_batch_write_profile` describes the ordinary write: a write
+        that changes nothing appends no Batch (see the Validation bullet above). This
+        imprecision is accepted, because the text is fixed verbatim.
 
 ### Validation
 
@@ -617,7 +666,21 @@ is approved: if it needs a change, the change is made in this spec, in the same 
         `apps/server/src/observability.ts`, in a commented block like the Protocols one.
         `shouldFilterKey` replaces the whole subtree under a filtered key, and `payload`,
         `changes`, `beforeimage` and `afterimage` are already filtered, so sync payloads and
-        Activity Log images are covered today. The agent route bodies are the only new carriers.
+        Activity Log images are covered today.
+    *   The agent route bodies are one new carrier. A failed query is another: Drizzle's
+        `DrizzleQueryError` puts the bound params, and so the section values, into `message` and
+        `stack`, and the scrubber filters by key only. `serializeErrorForObservability`, which
+        the logger and Sentry both use, therefore reduces any error with `query`, `params` or
+        `parameters` to its type, a fixed message, and the `code` and constraint name of the
+        error and its `cause`.
+    *   The raw request body is the third, on any route, `/sync/push` included: by default the
+        Sentry SDK attaches it to an event as the string `request.data`, whatever
+        `sendDefaultPii` says, and the key filter can't read a string. So `sdk.init` sets
+        `httpIntegration({ maxIncomingRequestBodySize: "none" })`, and `beforeSend` always
+        removes `request.data` as the backstop.
+    *   Sentry keeps an event's exceptions under `exception.values`, so `beforeSend` exempts that
+        one path from the `values` filter and scrubs its items. An item's `value`, the message,
+        stays filtered.
     *   On the device, `client_crash_reporting.dart` already replaces every exception value with
         `filteredCrashValue` and keeps only allow-listed breadcrumb keys, so it needs no change.
     *   Logs record only ids and section names.
@@ -1025,7 +1088,7 @@ the AGENTS.md onboarding rule change.
 
 There are two pull requests, in merge order. Each lists every file it touches, numbered from 1
 within that PR. A schema version or golden-vector id below is "the next free one" at the time
-of writing: Drift schema 66, drizzle migration `0035`, golden vector `m40`. If another change
+of writing: Drift schema 67, drizzle migration `0037`, golden vector `m41`. If another change
 takes one first, the implementer takes the next one and corrects this spec in the same pull
 request.
 
@@ -1036,9 +1099,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 
 | # | File | Action | Why |
 |---|---|---|---|
-| 1 | `packages/golden-vectors/vectors/m40-user-profile-validation.json` | Create | Shared validation vectors |
-| 2 | `packages/golden-vectors/vectors/m40-user-profile-validation.schema.json` | Create | Schema for file 1 |
-| 3 | `packages/golden-vectors/vectors/README.md` | Modify | List m40 |
+| 1 | `packages/golden-vectors/vectors/m41-user-profile-validation.json` | Create | Shared validation vectors |
+| 2 | `packages/golden-vectors/vectors/m41-user-profile-validation.schema.json` | Create | Schema for file 1 |
+| 3 | `packages/golden-vectors/vectors/README.md` | Modify | List m41 |
 | 4 | `apps/mobile/lib/domain/profile/user_profile.dart` | Create | Dart domain types and `ageAt` |
 | 5 | `apps/mobile/lib/domain/profile/user_profile_validation.dart` | Create | Dart validation module |
 | 6 | `apps/mobile/test/domain/user_profile_validation_test.dart` | Create | Dart golden-vector runner |
@@ -1046,10 +1109,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 8 | `apps/server/src/agent-validation.ts` | Modify | TypeScript validation module |
 | 9 | `apps/server/test/agent-validation.golden.test.mjs` | Modify | TypeScript golden-vector runner |
 | 10 | `apps/mobile/lib/data/local/app_database.dart` | Modify | Drift table and migration |
-| 11 | `apps/mobile/drift_schemas/app_database/drift_schema_v65.json` | Create (generated) | Schema snapshot |
-| 12 | `apps/mobile/test/generated_migrations/app_database/schema_v65.dart` | Create (generated) | Migration test schema |
+| 11 | `apps/mobile/drift_schemas/app_database/drift_schema_v67.json` | Create (generated) | Schema snapshot |
+| 12 | `apps/mobile/test/generated_migrations/app_database/schema_v67.dart` | Create (generated) | Migration test schema |
 | 13 | `apps/mobile/test/generated_migrations/app_database/schema.dart` | Modify (generated) | Snapshot index |
-| 14 | `apps/mobile/test/data/schema_snapshot_migration_test.dart` | Modify | v64 to v65 step test |
+| 14 | `apps/mobile/test/data/schema_snapshot_migration_test.dart` | Modify | v66 to v67 step test |
 | 15 | `apps/mobile/lib/data/repositories/user_profile_repository.dart` | Create | Section reads and writes |
 | 16 | `apps/mobile/lib/data/repositories/training_repositories.dart` | Modify | Part directive, undo images, erase |
 | 17 | `apps/mobile/lib/features/sync/repositories/sync_repository.dart` | Modify | Push, pull and full re-sync |
@@ -1063,7 +1126,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 25 | `apps/mobile/lib/l10n/app_en.arb` | Modify | Copy |
 | 26 | `apps/mobile/lib/l10n/app_localizations*.dart` | Modify (generated) | `flutter gen-l10n` output |
 | 27 | `apps/server/src/db/schema.ts` | Modify | Postgres table |
-| 28 | `apps/server/drizzle/0035_user_profile.sql` | Create (generated) | Migration |
+| 28 | `apps/server/drizzle/0037_user_profile.sql` | Create (generated) | Migration |
 | 29 | `apps/server/drizzle/meta/` (journal and snapshot) | Modify (generated) | Drizzle metadata |
 | 30 | `apps/server/src/sync.ts` | Modify | Entity, store, pull and push |
 | 31 | `apps/server/src/app.ts` | Modify | Push dispatch and agent routes |
@@ -1071,18 +1134,18 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 33 | `apps/server/src/index.ts` | Modify | Store wiring and re-exports |
 | 34 | `apps/server/src/agent-mcp.ts` | Modify | MCP tools |
 | 35 | `apps/server/src/agent-activity.ts` | Modify | Undo registry and redaction |
-| 36 | `apps/server/src/observability.ts` | Modify | Log scrubbing |
+| 36 | `apps/server/src/observability.ts` | Modify | Log and crash report scrubbing |
 | 37 | `packages/contract/src/agent-skill-reference.ts` | Modify | Command and tool names |
 | 38 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | CLI commands |
 | 39 | `packages/contract/openapi.json` | Modify (generated) | Contract |
 | 40 | `packages/contract/src/agent-client.ts` | Modify (generated) | TypeScript client |
-| 41 | `apps/mobile/lib/api/perennia_api_client.dart` | Modify (generated) | Dart client |
+| 41 | `apps/mobile/lib/api/perennia_api_client.dart` | Regenerate (no diff) | The Dart client carries no agent operations and types `entity` as a string, so the regeneration leaves it unchanged |
 | 42 | `agent-skills/perennia/references/api-operations.md` | Modify (generated) | Skill reference |
 | 43 | `apps/server/test/agent-profile.test.mjs` | Create | Agent route tests |
 | 44 | `apps/server/test/user-profile-sync.test.mjs` | Create | Push and pull tests |
 | 45 | `apps/server/test/sync-convergence.test.mjs` | Modify | Two-device convergence |
 | 46 | `apps/server/test/agent-mcp.test.mjs` | Modify | Tool list and redaction through MCP |
-| 47 | `apps/server/test/observability.test.mjs` | Modify | Scrubbed keys |
+| 47 | `apps/server/test/observability.test.mjs`, `apps/server/test/observability-sentry-sdk.test.mjs` | Modify, Create | Scrubbed keys; the real SDK sends no request body |
 | 48 | `apps/server/test/account-deletion-purge.test.mjs` | Modify | Purge removes rows |
 | 49 | `apps/mobile/test/data/user_profile_repository_test.dart` | Create | Repository tests |
 | 50 | `apps/mobile/test/features/sync/sync_repository_test.dart` | Modify | Device push and pull |
@@ -1094,14 +1157,20 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 56 | `DESIGN.md` | Modify | Disclosure line component |
 | 57 | `AGENTS.md` | Modify | Screen map |
 | 58 | `CHANGELOG.md` | Modify | Release note |
+| 59 | `agent-skills/perennia/scripts/prn-code.mjs` | Modify | Portable client keeps identical method names |
+| 60 | `agent-skills/perennia/SKILL.md` | Modify | `read-profile` and `update-profile` examples |
+| 61 | `apps/mobile/test/app_shell_test.dart` | Modify | Profile tile position and route |
+| 62 | `apps/mobile/test/features/activity/activity_feed_repository_test.dart` | Modify | Feed labels |
+| 63 | `apps/mobile/lib/data/local/app_database.g.dart` | Modify (generated) | Generated Drift code |
 
 **Verifies:** Verification Plan items V1 to V7 and V9.
 
 #### Shared validation and golden vectors (files 1 to 9)
 
-*   **File 1.** Top level: `{ "name": "m40-user-profile-validation", "domain":
-    "user-profile-validation", "limits": {...}, "cases": [...] }`, following
-    `m35-settings-validation.json`.
+*   **File 1.** Top level: `{ "name": "m41-user-profile-validation", "domain":
+    "user-profile-validation", "schemaVersion": 1, "schema":
+    "m41-user-profile-validation.schema.json", "limits": {...}, "cases": [...] }`, following
+    `m39-meal-validation.json`.
     *   `limits` holds every number in the Validation table, `trainingGoalIds`, `sexes`,
         `experienceLevels` and `cmPerInch: 2.54`.
     *   Each case is `{ name, input: { referenceYear, section, values }, expected: { accepted,
@@ -1119,8 +1188,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
             duplicate equipment, an unknown equipment id that is accepted;
         *   an unknown level, an empty `focus_id`, two levels for one Focus;
         *   an unknown sex.
-*   **File 2.** JSON Schema for file 1, following the existing `*.schema.json` files.
-*   **File 3.** Add the m40 row.
+*   **File 2.** JSON Schema for file 1, following `m40-compound-purposes.schema.json`.
+*   **File 3.** Add the m41 section, in the style of the m39 and m40 sections.
 *   **File 4.**
     *   `enum UserProfileSection { aboutYou, trainingGoals, experience, trainingSetup,
         healthLimitations, generalNotes }`, with wire names as in the Data model.
@@ -1133,23 +1202,43 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         `height`, `goals`, `experienceLevels` (`List<ExperienceEntry>?`), `equipment`,
         `daysPerWeek`, `sessionMinutes`, `healthText`, `healthNone`, `generalNotesText`, and
         `int? ageAt(DateTime date)`, which returns `date.toLocal().year - birthYear`.
+    *   `mergeUserProfileSectionValues(UserProfileSection section, Map<String, Object?> current,
+        Map<String, Object?> changes)`, a pure function that implements Save semantics and the
+        Health & limitations normalisation over the tolerantly read `current`. A key in `current`
+        that this build doesn't know is kept, so saving on an older build doesn't erase a field a
+        newer one wrote. It is the only place that logic lives on the device; file 15 calls it.
+    *   `isUserProfileSectionUnset(UserProfileSection section, Map<String, Object?> values)`,
+        the test for *unset* under Save semantics.
 *   **File 5.**
     *   `UserProfileValidationResult validateUserProfileSection(UserProfileSection section,
         Map<String, Object?> values, {required int referenceYear})`.
     *   It reuses the shape of `settings_validation.dart`: a `UserProfileValidationIssue` with
-        `field`, `rule`, `message` and optional `limit`, and a result with `errors`,
-        `warnings`, `accepted` and `throwIfRejected()`.
+        `field`, `rule`, `message` and optional `limit` and `placeholder` (Dart only: the value
+        the message names, for translated copy), and a result with `errors`, `warnings`,
+        `accepted` and `throwIfRejected()`.
     *   Limits live in a `UserProfileValidationLimits` class, following
         `SettingsValidationLimits`. Messages are the strings in the Validation table.
     *   Equipment ids are checked for length and duplicates only.
+    *   Text length is String `.length` (UTF-16 code units). `{height}` formats as `<value>
+        <unit>` with no trailing `.0`, matching JavaScript number formatting (for example
+        `110 cm`, `47.2 in`). `{limit}` is plain digits and `{age}` is reference year minus birth
+        year.
+    *   A field of the wrong JSON type is skipped as unset, because the schema or the tolerant
+        read has already handled it. Each rule is reported at most once per field. Issues appear
+        in the order of the Data model's fields and, within a field, of the Validation table.
+    *   A bad height unit stops the other height checks, because a value in an unknown unit
+        can't be compared to the limits.
 *   **File 6.** Runs every case in file 1 and asserts `accepted`, `errorRules` and
-    `warningRules`.
+    `warningRules`, that `limits` equal `UserProfileValidationLimits`, and the exact message text
+    of `birth_year.improbable_age`, `height.improbable` and `text.too_long`. It also unit-tests
+    the merge helper, tolerant `fromJson` and `ageAt`.
 *   **File 7.** Add `'user-profile-validation': 'test/domain/user_profile_validation_test.dart'`.
 *   **File 8.** Add `validateUserProfileSection(section, values, { referenceYear })` with the same
     rules, rule names and messages, and `USER_PROFILE_VALIDATION_LIMITS`, next to
     `validateAgentSettings`. Export both through `apps/server/src/index.ts` (file 33).
 *   **File 9.** Add `["user-profile-validation", (vectorCase) =>
-    validateUserProfileSection(...)]` to `VALIDATORS_BY_DOMAIN`. This test is already in
+    validateUserProfileSection(...)]` to `VALIDATORS_BY_DOMAIN`, with a `limits` deepEqual and the
+    same three exact messages as file 6. This test is already in
     `test:golden-vectors` and in the golden path filters of `tools/ci-local.mjs` and
     `.github/workflows/ci.yml`, so neither file changes.
 
@@ -1158,37 +1247,45 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **File 10.**
     *   Add the `UserProfileSections` table (`id`, `section`, `valuesJson`, plus the standard
         sync columns) and add it to `tableNames`.
-    *   `schemaVersion` becomes 66. The migration from 65 creates the table behind the existing
-        `_tableExists` guard, and writes no rows.
+    *   `schemaVersion` becomes 67. The migration from 66 creates the table behind the existing
+        `_tableExists` guard, and writes no rows to it. The `from < 67` step also runs
+        `UPDATE sync_states SET pull_cursor = NULL` when that table exists, for the reason under
+        Sync › Rollout.
     *   The table docstring says why the User Profile is not on `UserSettings`, and gives the
         newest-per-section read rule.
 *   **Files 11 to 13.** Run `dart run tool/drift_schema_snapshots.dart` from `apps/mobile`.
-*   **File 14.** Add a v64 to v65 step: a populated v64 database upgrades with no data change
-    and gains an empty `user_profile_sections` table.
+*   **File 14.** Add a v66 to v67 step: a populated v66 database gains an empty
+    `user_profile_sections` table, keeps its other rows, and has its pull cursor cleared.
 *   **File 15.** `part of 'training_repositories.dart'`. Repositories are the only layer that
     touches this table; this one owns section reads and writes.
     *   `Stream<UserProfile> watch()` reads the newest live row per section.
     *   `Future<bool> hasAnySection()` is an existence query for any live row.
+    *   `Future<Map<String, Object?>?> mergedIfChanged(UserProfileSection section,
+        Map<String, Object?> changes)` returns the merged values, or null when saving would
+        change nothing, which includes empty `changes`. The caller validates them; nothing is
+        written.
     *   `Future<void> saveSection(UserProfileSection section, Map<String, Object?> changes,
         {String? batchId})`:
         1.  merges `changes` into the newest row's values, following Save semantics and the
             Health & limitations normalisation;
-        2.  validates the merged values through file 5 with the local calendar year, and throws
+        2.  returns without writing if the merged values equal the current ones;
+        3.  validates the merged values through file 5 with the local calendar year, and throws
             `UserProfileValidationException` on a hard error. Warnings are not checked here; the
             controller asks first (file 20);
-        3.  returns without writing if no row exists and every merged field is unset;
-        4.  updates the newest row in place, or creates one with a UUIDv7;
-        5.  appends the change to one Activity Log Batch, with actor `user`.
+        4.  returns without writing if no row exists and every merged field is unset;
+        5.  updates the newest row in place, or creates one with a UUIDv7;
+        6.  appends the change to one Activity Log Batch, with actor `user`.
     *   A clear is a `saveSection` call with `null` for the field.
 *   **File 16.**
     *   Add the `part` directive and expose `userProfile`.
     *   Add `user_profile_sections` to `_currentImageFor` and `_writeImageFor`, so device undo
         restores a section row from its before-image.
-    *   Add the table to `eraseAllData`. Erase keeps `settings.json`, so it does not affect the
-        onboarding setting that PR 2 adds.
+    *   Add the table to the `eraseTableNames` list that `eraseAllData` walks. Erase keeps
+        `settings.json`, so it does not affect the onboarding setting that PR 2 adds.
 *   **File 17.**
-    *   Add `_pushPendingUserProfileSectionsWithClient`, called in `pushPendingLoggedSets` right
-        after `_pushPendingNutritionGoalsWithClient`, following it line for line.
+    *   Add `_pushPendingUserProfileSectionsWithClient`, called right after
+        `_pushPendingNutritionGoalsWithClient` at both of its existing call sites
+        (`pushPendingLoggedSets` and `pullLoggedSetChanges`), following it line for line.
     *   Add the table to `_outboundSyncActivityTables`.
     *   Apply pulled rows on the `nutrition_goals` apply path.
     *   Add `_markPreviouslySyncedUserProfileSectionRowsAbsentFromSnapshotDeleted`, following the
@@ -1198,9 +1295,14 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     change's after-image (or before-image) and renders "Profile · {section label} updated". The
     six labels are About you, Training Goals, Experience, Training setup, Health & limitations
     and General Notes. A section row's first write uses the same verb, "updated", because the
-    user sees one record.
+    user sees one record. A Batch whose entries are all `user_profile_sections` renders
+    "Profile · {labels joined by ", "} updated", for example "Profile · Training Goals, Training
+    setup updated". With no readable section it renders "Profile updated". These labels are
+    English constants, like every other label in `activity_feed_repository.dart`, which has no
+    localization.
 *   **File 19.** Export the table. Import merge-only: a row is inserted if its id is new,
-    otherwise LWW by `updatedAt`.
+    otherwise LWW by `updatedAt`. An archive from before schema 67 has no such file and imports
+    with no rows, through `_mayBeAbsentFromArchive`; a schema 67 archive without it is refused.
 
 #### Profile screen (files 20 to 26)
 
@@ -1208,9 +1310,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   Watches `userProfile.watch()`, the current mode (Local-only Mode or Synced Mode) and the
         signed-in server URL from the auth state.
     *   Exposes `ProfileDisclosureMode { localOnly, synced }` and `host`, the URL's host name.
-    *   `save(section, changes)` validates first. If there are soft warnings, it returns them, and
-        the screen shows the confirm dialog from the Validation section. **Save anyway** calls
-        `saveSection`.
+    *   `save(section, changes)` asks the repository whether anything changes
+        (`mergedIfChanged`), and does nothing more if not. Otherwise it validates the merged
+        values first. If there are soft warnings, it returns them, and the screen shows the
+        confirm dialog from the Validation section. **Save anyway** calls `saveSection`.
 *   **File 21.** `ProfileScreen.routeName = '/profile'`.
     *   The disclosure line for the current mode sits under the title.
     *   Six section cards follow, each showing its values or "Not set". Unknown equipment ids
@@ -1246,14 +1349,14 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **Files 25 and 26.** Add the strings given verbatim in the Technical Plan:
     *   the two disclosure lines (with `{host}`) and the two editor lines;
     *   the level meanings and the Training Goal chip labels;
-    *   the validation messages and the confirm dialog's title and buttons;
-    *   the feed labels.
+    *   the validation messages and the confirm dialog's title and buttons.
 
-    Section and field labels are the names used in the Overview and Data model, in sentence
+    The feed labels are not in this list: they stay English constants in file 18. Section and
+    field labels are the names used in the Overview and Data model, in sentence
     case for field labels (for example "Birth year", "Days per week"). Any other string is
     written by the implementer and reviewed in the pull request. Then run `flutter gen-l10n`.
 
-#### Server (files 27 to 42)
+#### Server (files 27 to 42, 59 and 60)
 
 *   **Files 27 to 29.** Add `userProfileSections` with:
     *   `id` (primary key);
@@ -1286,8 +1389,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         (strict), `AgentProfileBatchWriteResponseSchema`,
         `AgentProfileBatchWriteErrorResponseSchema` (422, following the settings error schema),
         and the 503 `agent_profile_unavailable` schema.
-    *   `AgentProfileStore`, with `read(userId)` and `batchWrite(userId, request)`, and
-        `createDrizzleAgentProfileStore(db)`.
+    *   `AgentProfileStore`, with `read({ userId })` and `batchWrite({ userId, deviceId,
+        request })`, and `createDrizzleAgentProfileStore(db)`. `deviceId` is `agent:<keyId>`,
+        which only the route knows.
     *   `read` takes the newest live row per section, ordered by `updated_at` and then `id`,
         maps it to camelCase, and returns `null` for a missing or all-unset row.
     *   `batchWrite`:
@@ -1299,7 +1403,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
             reject;
         4.  in one transaction, updates the newest row in place or inserts a row with a random
             UUID, and appends one Activity Log Batch with before and after images and actor
-            `agent`;
+            `agent`, for each section whose merged values differ from its current values;
         5.  returns the applied response with `warnings`.
 *   **File 33.** Build the profile store next to the settings store, pass it to `createApp` and
     to `AgentMcpServerOptions`, and re-export `validateUserProfileSection` and
@@ -1312,12 +1416,19 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   Add `user_profile_sections` to `UNDOABLE_ENTITY_REGISTRY`. Undo restores the
         before-image and refuses the whole Batch when the current image differs from the
         recorded after-image, as the existing entries do.
-    *   In `listAgentActivity`, for changes whose entity is `user_profile_sections` and whose
-        image's section is `health_limitations` or `general_notes`, replace the before and after
-        `values` with `{ "redacted": true }`. The MCP tool `agent_list_activity` uses the same
-        read, so it is redacted too.
-*   **File 36.** Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like
-    the Protocols one, saying they carry User Profile values in agent route bodies.
+    *   In `listAgentActivity`, for changes whose entity is `user_profile_sections`, read the
+        section from either image. When it is `health_limitations` or `general_notes`, or when
+        no image gives a readable section, replace the before and after `values` with
+        `{ "redacted": true }`. A null image stays null. The MCP tool `agent_list_activity` uses
+        the same read, so it is redacted too.
+*   **File 36.** The changes are the ones under Lifecycle:
+    *   Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like the
+        Protocols one, saying they carry User Profile values in agent route bodies.
+    *   `sdk.init` sets `httpIntegration({ maxIncomingRequestBodySize: "none" })`.
+    *   `beforeSend` removes `request.data` and exempts `exception.values` from the `values`
+        filter.
+    *   `serializeErrorForObservability` reduces a query error to its type, a fixed message,
+        and the `code` and constraint name of the error and its `cause`.
 *   **File 37.** Add `readAgentProfile: "read-profile"` and `batchWriteAgentProfile:
     "update-profile"` to `AGENT_SKILL_COMMAND_NAMES`, and the two tool names to
     `AGENT_MCP_TOOL_NAMES`.
@@ -1326,8 +1437,12 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     `read-settings` and `update-settings`.
 *   **Files 39 to 42.** Run `corepack pnpm --filter @perennia/contract generate`. The diff shows
     only the additions listed under Agent surface › Contract diff.
+*   **File 59.** Add `readAgentProfile` and `batchWriteAgentProfile` to the portable client, with
+    the same method names as the generated client (file 40).
+*   **File 60.** Add `read-profile` and `update-profile` examples next to the `read-settings` and
+    `update-settings` examples.
 
-#### Tests (files 43 to 53)
+#### Tests (files 43 to 53, 61 and 62)
 
 *   **File 43** (`js` job, against Postgres):
     *   read when empty, and `null` for an all-unset row;
@@ -1337,6 +1452,11 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   a strict-schema 400 for an unknown field and for `birthYear: "1990"`;
     *   a hard reject returns 422 and writes nothing;
     *   a soft warning (birth year 1915) applies and returns the warning;
+    *   a stored Equipment id the rules reject reads back as stored, and blocks a write of its
+        section with a 422 naming `equipment`;
+    *   re-sending the same fields adds no Batch and no nudge, leaves `updated_at` alone, and
+        undo of the first Batch still applies;
+    *   a write the database refuses returns 500, and the logged error holds no value;
     *   an idempotent replay returns `duplicate: true` and appends no Batch;
     *   newest-per-section read when two rows exist;
     *   undo, and undo of the whole Batch refused after an intervening change;
@@ -1349,7 +1469,11 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     devices editing one section converge on the newer row (CUJ 5 shape).
 *   **File 46:** add the two tool names to the expected list, and assert that
     `agent_list_activity` returns redacted values for a Health & limitations change.
-*   **File 47:** assert that `sections` and `values` are scrubbed.
+*   **File 47:** assert that `sections` and `values` are scrubbed, that a real
+    `DrizzleQueryError` holding a profile payload reaches the logger and Sentry with no query
+    text or params, that `beforeSend` keeps `exception.values` with each message filtered and
+    removes `request.data`, and, on the real SDK with a stubbed transport and a real HTTP
+    request, that a 500 on `/agent/profile/batch-write` sends no request body.
 *   **File 48:** assert that `user_profile_sections` is empty for the user after purge.
 *   **File 49** (in-memory SQLite):
     *   save and watch; unset versus none; clear a field;
@@ -1371,6 +1495,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   every control meets the 48 dp target and has a semantics label;
     *   at 200% text scale nothing overflows and every control can be reached;
     *   a soft warning shows the confirm dialog, and **Save anyway** saves.
+*   **Files 61 and 62:** the Profile tile sits between the status tile and Settings under
+    Account & app and opens the Profile screen; the Activity feed labels a User Profile Batch
+    by its sections, and uses the generic summary for a mixed Batch.
 
 #### Docs (files 54 to 58)
 
@@ -1404,6 +1531,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 13 | `CHANGELOG.md` | Modify | Release note |
 | 14 | `docs/designs/user-profile.md` | Modify | Status to Current |
 | 15 | `docs/designs/SITEMAP.md` | Modify | Status to Current |
+| 16 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
+| 17 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
 
 **Verifies:** Verification Plan items V8 and V10.
 
@@ -1427,21 +1556,36 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         `userProfile.saveSection(aboutYou)`; screens 2 and 3 call `saveSection` once each, with
         one `batchId`). On screen 1 it then calls `setOnboardingDone()`.
     *   **Next** passes only the fields the user entered. A screen with nothing entered saves
-        nothing.
+        nothing. A section whose save would change nothing writes nothing, because `saveSection`
+        itself returns without writing for it.
+    *   `check()` validates every section with changes before any is saved, and writes nothing.
+        A section whose save would change nothing has no check, as under `ProfileController.save`.
     *   Soft warnings use the same confirm dialog as the Profile screen before saving.
     *   `skipThis()` saves nothing for the screen. On screen 1 it calls `setOnboardingDone()`.
     *   `skipAll()` calls `setOnboardingDone()` if it is not set, then goes to `done`.
     *   `back()` is available on screens 2 and 3.
-    *   `signIn()` opens the existing sign-in screen (`sign_in_screen.dart`) and awaits its
-        result. On success it calls `setOnboardingDone()` and goes to `done`, without waiting
-        for a Sync Run. On cancel it stays on `screen1`.
+    *   `signIn(openSignIn)` runs a function the widget passes, which pushes the existing
+        sign-in screen (`sign_in_screen.dart`) and completes when it is gone. That screen returns
+        no result and stays open on its Account view after a success, so the flow closes it when
+        a session appears and treats a session on return as success: the controller then reads
+        `authControllerProvider`. A session calls `setOnboardingDone()` and goes to `done`,
+        without waiting for a Sync Run. No session stays on `screen1`, and so does an attempt
+        still running on return: its future stays pending until the request ends, and no HTTP
+        timeout bounds that, so the controller does not wait for it. It waits only for the first
+        load, which has no previous value or error.
+    *   `finishLateSignIn()` does what a session on return does, for a session from an attempt
+        the user backed out of. It does nothing past `screen1`. The flow's auth listener calls it
+        when the sign-in route is gone, no action is running and the flow's route is in front.
 *   **File 4.**
     *   The three screens, reusing the field widgets from PR 1's editors
         (`profile_section_editors.dart`), plus the existing units and week start controls.
     *   Every screen has **Skip all** in the app bar, and **Skip this** and **Next** at the
         bottom. Screen 3's **Next** reads **Done**.
     *   Screen 1 has the **Already use Perennia? Sign in** link.
-    *   The disclosure line for the current mode sits in the footer.
+    *   The screen title sits at the top of the scrolling body, and the back arrow (screens 2
+        and 3) in the app bar.
+    *   The disclosure line for the current mode sits in the footer, at the end of the scrolling
+        content: pinned, it would squeeze the fields at 200% text.
     *   Nothing asks for an OS permission.
 *   **File 5.** `OnboardingLauncher` wraps `HomeScreen`. On its first frame it reads
     `onboardingGateProvider.future`. If the result is true, it pushes `OnboardingFlow` as a
@@ -1452,8 +1596,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **Files 7 and 8.** The onboarding strings, verbatim:
     *   screen titles: "About you", "Training Goals and Experience", "Training setup";
     *   buttons: "Skip all", "Skip this", "Next", "Done", "Back";
-    *   the sign-in link: "Already use Perennia? Sign in".
+    *   the sign-in link: "Already use Perennia? Sign in";
+    *   the control labels on screen 1, matching General settings: "Units", "Week starts".
 
+    Screen 2's subsection headings reuse the Profile screen's "Training Goals" and "Experience".
     Then run `flutter gen-l10n`.
 *   **File 9** (against in-memory SQLite, with `onboardingDone` false):
     *   CUJ 1, CUJ 2 and CUJ 4;
@@ -1470,8 +1616,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     false`; `AppSettings.defaults` is `true`; the value round-trips.
 *   **File 11.** Replace the "No onboarding wizards" bullet with the text given under Repository
     doc changes.
-*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the bottom
-    action row (**Skip this**, **Next**), and the footer disclosure line.
+*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the screen
+    title at the top of the scrolling body, the bottom action row (**Skip this**, **Next**, which
+    reads **Done** on the last screen), and the footer disclosure line at the end of the scrolling
+    content. Extend the disclosure line component with the footer placement on onboarding.
 *   **File 13.** Added: "Optional first-open onboarding, skippable from its first screen."
 *   **Files 14 and 15.** Set this spec's Status, and its SITEMAP row, to Current.
 
@@ -1479,7 +1627,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 
 *   **V1. Gate.** `pnpm ci:local mobile golden contract js sync release_version` passes for each
     PR. The `js` and `sync` jobs need Docker running.
-*   **V2. Golden vectors.** PR 1 files 6 and 9 run the same m40 cases in Dart and TypeScript.
+*   **V2. Golden vectors.** PR 1 files 6 and 9 run the same m41 cases in Dart and TypeScript.
 *   **V3. Repositories against in-memory SQLite.** PR 1 files 14, 49, 51 and 52.
 *   **V4. Server integration.** PR 1 files 43, 44, 46, 47 and 48 (`js` job).
 *   **V5. Sync simulation.** PR 1 file 45 (`sync` job) and file 50 (device).

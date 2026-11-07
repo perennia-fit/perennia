@@ -243,6 +243,34 @@ class NutritionGoals extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// One section of the User Profile (docs/designs/user-profile.md, Data model).
+/// `valuesJson` holds the section's values in their sync-payload shape.
+///
+/// The User Profile is not on [UserSettings] because that row syncs whole: two
+/// devices editing different sections offline must both survive, so each
+/// section is its own LWW row. It holds no fixed per-user id either, because a
+/// device in Local-only Mode has no user id and the server's primary key is
+/// global.
+///
+/// So a section can hold more than one row. Read the live row with the greatest
+/// `updatedAt`, ties broken by the greatest `id`, as the agent read does. Writes
+/// update that row in place, and an older row stays here, unread.
+@DataClassName('UserProfileSectionRow')
+class UserProfileSections extends Table {
+  TextColumn get id => text()();
+  TextColumn get section => text()();
+  TextColumn get valuesJson => text()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 /// The account-level half of `AppSettings` as a synced singleton
 /// row: one row per user, keyed by a stable well-known client id. Fields are
 /// stored as typed columns so the row is self-describing; the sync payload
@@ -1257,6 +1285,7 @@ class RoutineEntries extends Table {
     ProtocolTargetOutcomes,
     MonitoringSeriesCache,
     IntegrationDataClassConsents,
+    UserProfileSections,
     UserSettings,
     WorkoutTemplates,
     TemplateExercises,
@@ -1333,6 +1362,7 @@ class AppDatabase extends _$AppDatabase {
   static const syncStatesTable = 'sync_states';
   static const deferredSyncChangesTable = 'deferred_sync_changes';
   static const quarantinedSyncChangesTable = 'quarantined_sync_changes';
+  static const userProfileSectionsTable = 'user_profile_sections';
   static const userSettingsTable = 'user_settings';
 
   static const tableNames = <String>[
@@ -1371,6 +1401,7 @@ class AppDatabase extends _$AppDatabase {
     protocolCompoundsTable,
     schedulesTable,
     protocolTargetOutcomesTable,
+    userProfileSectionsTable,
     userSettingsTable,
     activityLogTable,
   ];
@@ -1385,7 +1416,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 66;
+  int get schemaVersion => 67;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2144,6 +2175,22 @@ class AppDatabase extends _$AppDatabase {
             // entity but still advances its pull cursor past those changes, so
             // the upgraded device would never pull them. Clearing the cursor
             // makes its next Sync Run a full pull.
+            if (await _tableExists(syncStates.actualTableName)) {
+              await customStatement(
+                'UPDATE sync_states SET pull_cursor = NULL',
+              );
+            }
+          }
+          if (from < 67) {
+            // The User Profile (docs/designs/user-profile.md, Data model). No
+            // rows are written: a section with no row is unset.
+            if (!await _tableExists(userProfileSections.actualTableName)) {
+              await migrator.createTable(userProfileSections);
+            }
+            // A build from before this change skips the unknown
+            // `user_profile_sections` entity but still advances its pull cursor
+            // past those changes, so the upgraded device would never pull them.
+            // Clearing the cursor makes its next Sync Run a full pull.
             if (await _tableExists(syncStates.actualTableName)) {
               await customStatement(
                 'UPDATE sync_states SET pull_cursor = NULL',

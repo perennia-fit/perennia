@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 
@@ -78,6 +79,68 @@ void main() {
           reason: tableName,
         );
       }
+    });
+
+    test('exports and restores User Profile sections as an entity', () async {
+      expect(
+        AppDatabase.tableNames,
+        contains(AppDatabase.userProfileSectionsTable),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        <String, Object?>{'text': 'Notes'},
+      );
+
+      final bytes = await repositories.portableArchives.exportPortableArchive();
+
+      final rows =
+          _archiveRowsByTable(bytes)[AppDatabase.userProfileSectionsTable]!;
+      expect(rows, hasLength(1));
+      expect(rows.single['section'], 'general_notes');
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restored = TrainingRepositories(restoredDatabase);
+      await restored.portableArchives.importPortableArchive(bytes);
+      expect(
+        (await restored.userProfile.watch().first).generalNotesText,
+        'Notes',
+      );
+    });
+
+    test(
+        'imports a schema-66 archive with no User Profile file, and refuses a '
+        'schema-67 archive that lacks one', () async {
+      await _seedWorkoutData(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restored = TrainingRepositories(restoredDatabase);
+      await restored.portableArchives.importPortableArchive(
+        _withoutEntity(
+          source,
+          AppDatabase.userProfileSectionsTable,
+          schemaVersion: 66,
+        ),
+      );
+      expect(
+        await restoredDatabase.select(restoredDatabase.userProfileSections).get(),
+        isEmpty,
+      );
+      expect(await restoredDatabase.select(restoredDatabase.loggedSets).get(),
+          isNotEmpty);
+
+      await expectLater(
+        restored.portableArchives.importPortableArchive(
+          _withoutEntity(
+            source,
+            AppDatabase.userProfileSectionsTable,
+            schemaVersion: 67,
+          ),
+        ),
+        throwsA(isA<PortableArchiveException>()),
+      );
     });
 
     test('fresh export contains only the current plan entities', () async {
@@ -2891,17 +2954,26 @@ Future<List<String>> _seedProtocolSkips(
 /// [bytes] as an archive at [schemaVersion] with no `protocol_skips` file
 /// or manifest entry, as every schema before 64 wrote it.
 List<int> _withoutProtocolSkips(List<int> bytes, {required int schemaVersion}) {
+  return _withoutEntity(
+    bytes,
+    AppDatabase.protocolSkipsTable,
+    schemaVersion: schemaVersion,
+  );
+}
+
+List<int> _withoutEntity(
+  List<int> bytes,
+  String table, {
+  required int schemaVersion,
+}) {
   final source = _decodeArchive(bytes);
   final manifest = _manifestFrom(source)..['schemaVersion'] = schemaVersion;
   manifest['entities'] = (manifest['entities']! as List<Object?>)
       .where(
-        (entry) =>
-            (entry! as Map<String, Object?>)['table'] !=
-            AppDatabase.protocolSkipsTable,
+        (entry) => (entry! as Map<String, Object?>)['table'] != table,
       )
       .toList(growable: false);
-  final skipsFileName =
-      PortableArchiveRepository.entityFileName(AppDatabase.protocolSkipsTable);
+  final entityFileName = PortableArchiveRepository.entityFileName(table);
   final archive = Archive()
     ..addFile(
       ArchiveFile.string(
@@ -2911,7 +2983,7 @@ List<int> _withoutProtocolSkips(List<int> bytes, {required int schemaVersion}) {
     );
   for (final file in source.files) {
     if (file.name == PortableArchiveRepository.manifestFileName ||
-        file.name == skipsFileName) {
+        file.name == entityFileName) {
       continue;
     }
     archive.addFile(ArchiveFile.bytes(file.name, file.content));

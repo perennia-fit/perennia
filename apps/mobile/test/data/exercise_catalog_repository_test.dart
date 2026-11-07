@@ -52,7 +52,7 @@ void main() {
       expect(seed.metadata.licenseSummary, contains('Workout.cool'));
       expect(seed.metadata.licenseSummary, contains('MIT'));
       expect(seed.metadata.licenseSummary, contains('provenance'));
-      expect(seed.exercises, hasLength(greaterThan(1500)));
+      expect(seed.exercises, hasLength(greaterThan(1400)));
       final categoriesById = <String, SeedExerciseCategory>{
         for (final category in seed.categories) category.id: category,
       };
@@ -78,8 +78,8 @@ void main() {
           everyElement(_isUuidV7));
       final exerciseIds = seed.exercises.map((exercise) => exercise.id).toSet();
       final retiredIds = seed.retired.map((exercise) => exercise.id).toSet();
-      expect(seed.retired, hasLength(309));
-      expect(retiredIds, hasLength(309));
+      expect(seed.retired, hasLength(405));
+      expect(retiredIds, hasLength(405));
       expect(retiredIds, everyElement(_isUuidV7));
       expect(retiredIds.intersection(exerciseIds), isEmpty);
       expect(

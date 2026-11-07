@@ -25,6 +25,7 @@ import '../../nutrition/controllers/meal_screen_controller.dart'
     show isFutureNutritionDay, mealScreenClockProvider;
 import '../../nutrition/widgets/meal_screen.dart';
 import '../../nutrition/widgets/nutrition_day_view.dart';
+import '../../profile/widgets/profile_screen.dart';
 import '../../progress/widgets/progress_overview.dart';
 import '../../../domain/protocols/protocols.dart';
 import '../../../domain/training/training_records.dart';
@@ -46,6 +47,7 @@ class HomeScreen extends ConsumerWidget {
   static const libraryDestinationKey = Key('home.destination.library');
   static const accountAndAppButtonKey = Key('home.accountAndApp');
   static const accountAndAppSignInKey = Key('home.accountAndApp.signIn');
+  static const accountAndAppProfileKey = Key('home.accountAndApp.profile');
   static const accountAndAppSettingsKey = Key('home.accountAndApp.settings');
   static const logButtonKey = Key('home.log');
   static const logWorkoutKey = Key('home.log.workout');
@@ -781,6 +783,16 @@ Future<void> _showAccountAndAppSheet(BuildContext context) {
 
       return [
         _AccountStatusTile(onTap: openAccount),
+        ListTile(
+          key: HomeScreen.accountAndAppProfileKey,
+          leading: const Icon(Icons.person_outline),
+          title: Text(l10n.navProfile),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.of(sheetContext).pop();
+            navigator.pushNamed(ProfileScreen.routeName);
+          },
+        ),
         ListTile(
           key: HomeScreen.accountAndAppSettingsKey,
           leading: const Icon(Icons.settings_outlined),

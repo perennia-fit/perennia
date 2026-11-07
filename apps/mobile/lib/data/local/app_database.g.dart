@@ -19398,6 +19398,418 @@ class IntegrationDataClassConsentsCompanion
   }
 }
 
+class $UserProfileSectionsTable extends UserProfileSections
+    with TableInfo<$UserProfileSectionsTable, UserProfileSectionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UserProfileSectionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _sectionMeta =
+      const VerificationMeta('section');
+  @override
+  late final GeneratedColumn<String> section = GeneratedColumn<String>(
+      'section', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _valuesJsonMeta =
+      const VerificationMeta('valuesJson');
+  @override
+  late final GeneratedColumn<String> valuesJson = GeneratedColumn<String>(
+      'values_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _syncDeviceIdMeta =
+      const VerificationMeta('syncDeviceId');
+  @override
+  late final GeneratedColumn<String> syncDeviceId = GeneratedColumn<String>(
+      'sync_device_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncPreviouslySyncedMeta =
+      const VerificationMeta('syncPreviouslySynced');
+  @override
+  late final GeneratedColumn<bool> syncPreviouslySynced = GeneratedColumn<bool>(
+      'sync_previously_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("sync_previously_synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        section,
+        valuesJson,
+        syncDeviceId,
+        syncPreviouslySynced,
+        updatedAt,
+        deletedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'user_profile_sections';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<UserProfileSectionRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('section')) {
+      context.handle(_sectionMeta,
+          section.isAcceptableOrUnknown(data['section']!, _sectionMeta));
+    } else if (isInserting) {
+      context.missing(_sectionMeta);
+    }
+    if (data.containsKey('values_json')) {
+      context.handle(
+          _valuesJsonMeta,
+          valuesJson.isAcceptableOrUnknown(
+              data['values_json']!, _valuesJsonMeta));
+    } else if (isInserting) {
+      context.missing(_valuesJsonMeta);
+    }
+    if (data.containsKey('sync_device_id')) {
+      context.handle(
+          _syncDeviceIdMeta,
+          syncDeviceId.isAcceptableOrUnknown(
+              data['sync_device_id']!, _syncDeviceIdMeta));
+    }
+    if (data.containsKey('sync_previously_synced')) {
+      context.handle(
+          _syncPreviouslySyncedMeta,
+          syncPreviouslySynced.isAcceptableOrUnknown(
+              data['sync_previously_synced']!, _syncPreviouslySyncedMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  UserProfileSectionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UserProfileSectionRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      section: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}section'])!,
+      valuesJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}values_json'])!,
+      syncDeviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
+      syncPreviouslySynced: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}sync_previously_synced'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+    );
+  }
+
+  @override
+  $UserProfileSectionsTable createAlias(String alias) {
+    return $UserProfileSectionsTable(attachedDatabase, alias);
+  }
+}
+
+class UserProfileSectionRow extends DataClass
+    implements Insertable<UserProfileSectionRow> {
+  final String id;
+  final String section;
+  final String valuesJson;
+  final String? syncDeviceId;
+  final bool syncPreviouslySynced;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const UserProfileSectionRow(
+      {required this.id,
+      required this.section,
+      required this.valuesJson,
+      this.syncDeviceId,
+      required this.syncPreviouslySynced,
+      required this.updatedAt,
+      this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['section'] = Variable<String>(section);
+    map['values_json'] = Variable<String>(valuesJson);
+    if (!nullToAbsent || syncDeviceId != null) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId);
+    }
+    map['sync_previously_synced'] = Variable<bool>(syncPreviouslySynced);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  UserProfileSectionsCompanion toCompanion(bool nullToAbsent) {
+    return UserProfileSectionsCompanion(
+      id: Value(id),
+      section: Value(section),
+      valuesJson: Value(valuesJson),
+      syncDeviceId: syncDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncDeviceId),
+      syncPreviouslySynced: Value(syncPreviouslySynced),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory UserProfileSectionRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UserProfileSectionRow(
+      id: serializer.fromJson<String>(json['id']),
+      section: serializer.fromJson<String>(json['section']),
+      valuesJson: serializer.fromJson<String>(json['valuesJson']),
+      syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
+      syncPreviouslySynced:
+          serializer.fromJson<bool>(json['syncPreviouslySynced']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'section': serializer.toJson<String>(section),
+      'valuesJson': serializer.toJson<String>(valuesJson),
+      'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
+      'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  UserProfileSectionRow copyWith(
+          {String? id,
+          String? section,
+          String? valuesJson,
+          Value<String?> syncDeviceId = const Value.absent(),
+          bool? syncPreviouslySynced,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
+      UserProfileSectionRow(
+        id: id ?? this.id,
+        section: section ?? this.section,
+        valuesJson: valuesJson ?? this.valuesJson,
+        syncDeviceId:
+            syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
+        syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+      );
+  UserProfileSectionRow copyWithCompanion(UserProfileSectionsCompanion data) {
+    return UserProfileSectionRow(
+      id: data.id.present ? data.id.value : this.id,
+      section: data.section.present ? data.section.value : this.section,
+      valuesJson:
+          data.valuesJson.present ? data.valuesJson.value : this.valuesJson,
+      syncDeviceId: data.syncDeviceId.present
+          ? data.syncDeviceId.value
+          : this.syncDeviceId,
+      syncPreviouslySynced: data.syncPreviouslySynced.present
+          ? data.syncPreviouslySynced.value
+          : this.syncPreviouslySynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserProfileSectionRow(')
+          ..write('id: $id, ')
+          ..write('section: $section, ')
+          ..write('valuesJson: $valuesJson, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, section, valuesJson, syncDeviceId,
+      syncPreviouslySynced, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UserProfileSectionRow &&
+          other.id == this.id &&
+          other.section == this.section &&
+          other.valuesJson == this.valuesJson &&
+          other.syncDeviceId == this.syncDeviceId &&
+          other.syncPreviouslySynced == this.syncPreviouslySynced &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class UserProfileSectionsCompanion
+    extends UpdateCompanion<UserProfileSectionRow> {
+  final Value<String> id;
+  final Value<String> section;
+  final Value<String> valuesJson;
+  final Value<String?> syncDeviceId;
+  final Value<bool> syncPreviouslySynced;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const UserProfileSectionsCompanion({
+    this.id = const Value.absent(),
+    this.section = const Value.absent(),
+    this.valuesJson = const Value.absent(),
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  UserProfileSectionsCompanion.insert({
+    required String id,
+    required String section,
+    required String valuesJson,
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        section = Value(section),
+        valuesJson = Value(valuesJson),
+        updatedAt = Value(updatedAt);
+  static Insertable<UserProfileSectionRow> custom({
+    Expression<String>? id,
+    Expression<String>? section,
+    Expression<String>? valuesJson,
+    Expression<String>? syncDeviceId,
+    Expression<bool>? syncPreviouslySynced,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (section != null) 'section': section,
+      if (valuesJson != null) 'values_json': valuesJson,
+      if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
+      if (syncPreviouslySynced != null)
+        'sync_previously_synced': syncPreviouslySynced,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  UserProfileSectionsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? section,
+      Value<String>? valuesJson,
+      Value<String?>? syncDeviceId,
+      Value<bool>? syncPreviouslySynced,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt,
+      Value<int>? rowid}) {
+    return UserProfileSectionsCompanion(
+      id: id ?? this.id,
+      section: section ?? this.section,
+      valuesJson: valuesJson ?? this.valuesJson,
+      syncDeviceId: syncDeviceId ?? this.syncDeviceId,
+      syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (section.present) {
+      map['section'] = Variable<String>(section.value);
+    }
+    if (valuesJson.present) {
+      map['values_json'] = Variable<String>(valuesJson.value);
+    }
+    if (syncDeviceId.present) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId.value);
+    }
+    if (syncPreviouslySynced.present) {
+      map['sync_previously_synced'] =
+          Variable<bool>(syncPreviouslySynced.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserProfileSectionsCompanion(')
+          ..write('id: $id, ')
+          ..write('section: $section, ')
+          ..write('valuesJson: $valuesJson, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $UserSettingsTable extends UserSettings
     with TableInfo<$UserSettingsTable, UserSettingsRow> {
   @override
@@ -24598,6 +25010,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $MonitoringSeriesCacheTable(this);
   late final $IntegrationDataClassConsentsTable integrationDataClassConsents =
       $IntegrationDataClassConsentsTable(this);
+  late final $UserProfileSectionsTable userProfileSections =
+      $UserProfileSectionsTable(this);
   late final $UserSettingsTable userSettings = $UserSettingsTable(this);
   late final $WorkoutTemplatesTable workoutTemplates =
       $WorkoutTemplatesTable(this);
@@ -24793,6 +25207,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         protocolTargetOutcomes,
         monitoringSeriesCache,
         integrationDataClassConsents,
+        userProfileSections,
         userSettings,
         workoutTemplates,
         templateExercises,
@@ -37232,6 +37647,217 @@ typedef $$IntegrationDataClassConsentsTableProcessedTableManager
         ),
         IntegrationDataClassConsentRow,
         PrefetchHooks Function()>;
+typedef $$UserProfileSectionsTableCreateCompanionBuilder
+    = UserProfileSectionsCompanion Function({
+  required String id,
+  required String section,
+  required String valuesJson,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+typedef $$UserProfileSectionsTableUpdateCompanionBuilder
+    = UserProfileSectionsCompanion Function({
+  Value<String> id,
+  Value<String> section,
+  Value<String> valuesJson,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+
+class $$UserProfileSectionsTableFilterComposer
+    extends Composer<_$AppDatabase, $UserProfileSectionsTable> {
+  $$UserProfileSectionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get section => $composableBuilder(
+      column: $table.section, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get valuesJson => $composableBuilder(
+      column: $table.valuesJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$UserProfileSectionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $UserProfileSectionsTable> {
+  $$UserProfileSectionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get section => $composableBuilder(
+      column: $table.section, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get valuesJson => $composableBuilder(
+      column: $table.valuesJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$UserProfileSectionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UserProfileSectionsTable> {
+  $$UserProfileSectionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get section =>
+      $composableBuilder(column: $table.section, builder: (column) => column);
+
+  GeneratedColumn<String> get valuesJson => $composableBuilder(
+      column: $table.valuesJson, builder: (column) => column);
+
+  GeneratedColumn<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => column);
+
+  GeneratedColumn<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$UserProfileSectionsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $UserProfileSectionsTable,
+    UserProfileSectionRow,
+    $$UserProfileSectionsTableFilterComposer,
+    $$UserProfileSectionsTableOrderingComposer,
+    $$UserProfileSectionsTableAnnotationComposer,
+    $$UserProfileSectionsTableCreateCompanionBuilder,
+    $$UserProfileSectionsTableUpdateCompanionBuilder,
+    (
+      UserProfileSectionRow,
+      BaseReferences<_$AppDatabase, $UserProfileSectionsTable,
+          UserProfileSectionRow>
+    ),
+    UserProfileSectionRow,
+    PrefetchHooks Function()> {
+  $$UserProfileSectionsTableTableManager(
+      _$AppDatabase db, $UserProfileSectionsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UserProfileSectionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UserProfileSectionsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UserProfileSectionsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> section = const Value.absent(),
+            Value<String> valuesJson = const Value.absent(),
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              UserProfileSectionsCompanion(
+            id: id,
+            section: section,
+            valuesJson: valuesJson,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String section,
+            required String valuesJson,
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              UserProfileSectionsCompanion.insert(
+            id: id,
+            section: section,
+            valuesJson: valuesJson,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$UserProfileSectionsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $UserProfileSectionsTable,
+    UserProfileSectionRow,
+    $$UserProfileSectionsTableFilterComposer,
+    $$UserProfileSectionsTableOrderingComposer,
+    $$UserProfileSectionsTableAnnotationComposer,
+    $$UserProfileSectionsTableCreateCompanionBuilder,
+    $$UserProfileSectionsTableUpdateCompanionBuilder,
+    (
+      UserProfileSectionRow,
+      BaseReferences<_$AppDatabase, $UserProfileSectionsTable,
+          UserProfileSectionRow>
+    ),
+    UserProfileSectionRow,
+    PrefetchHooks Function()>;
 typedef $$UserSettingsTableCreateCompanionBuilder = UserSettingsCompanion
     Function({
   required String id,
@@ -41442,6 +42068,8 @@ class $AppDatabaseManager {
       get integrationDataClassConsents =>
           $$IntegrationDataClassConsentsTableTableManager(
               _db, _db.integrationDataClassConsents);
+  $$UserProfileSectionsTableTableManager get userProfileSections =>
+      $$UserProfileSectionsTableTableManager(_db, _db.userProfileSections);
   $$UserSettingsTableTableManager get userSettings =>
       $$UserSettingsTableTableManager(_db, _db.userSettings);
   $$WorkoutTemplatesTableTableManager get workoutTemplates =>

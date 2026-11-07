@@ -4070,4 +4070,279 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocolEditorDiscard => 'Discard';
+
+  @override
+  String get navProfile => 'Profile';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileDisclosureLocalOnly =>
+      'Stored on this phone and in its backups. If you sign in, it syncs to your account, where the server\'s operator and any agent you connect can read it.';
+
+  @override
+  String profileDisclosureSynced(String host) {
+    return 'Synced to $host. The server\'s operator and any agent you connect can read it. Change history on the server is kept for up to 180 days.';
+  }
+
+  @override
+  String get profileAgentHistoryLine =>
+      'Agent activity history shows that this section changed, not the text.';
+
+  @override
+  String get profileHealthMedicationsLine =>
+      'Medications and supplements belong in Protocols.';
+
+  @override
+  String get profileNotSet => 'Not set';
+
+  @override
+  String get profileNone => 'None';
+
+  @override
+  String get profileSave => 'Save';
+
+  @override
+  String get profileSectionAboutYou => 'About you';
+
+  @override
+  String get profileSectionTrainingGoals => 'Training Goals';
+
+  @override
+  String get profileSectionExperience => 'Experience';
+
+  @override
+  String get profileSectionTrainingSetup => 'Training setup';
+
+  @override
+  String get profileSectionHealth => 'Health & limitations';
+
+  @override
+  String get profileSectionGeneralNotes => 'General Notes';
+
+  @override
+  String profileFieldValue(String label, String value) {
+    return '$label: $value';
+  }
+
+  @override
+  String get profileFieldSex => 'Sex used for default reference ranges';
+
+  @override
+  String get profileFieldBirthYear => 'Birth year';
+
+  @override
+  String get profileFieldHeight => 'Height';
+
+  @override
+  String get profileFieldHeightCentimetres => 'Height (cm)';
+
+  @override
+  String get profileFieldHeightFeet => 'Height (ft)';
+
+  @override
+  String get profileFieldHeightInches => 'Inches';
+
+  @override
+  String get profileFieldEquipment => 'Equipment';
+
+  @override
+  String get profileFieldDaysPerWeek => 'Days per week';
+
+  @override
+  String get profileFieldSessionLength => 'Session length';
+
+  @override
+  String get profileFieldSessionMinutes => 'Session length (minutes)';
+
+  @override
+  String profileHeightCentimetresValue(String value) {
+    return '$value cm';
+  }
+
+  @override
+  String profileHeightFeetInchesValue(String feet, String inches) {
+    return '$feet ft $inches in';
+  }
+
+  @override
+  String profileSessionMinutesValue(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get profileDaysPerWeekDecrease => 'Fewer days per week';
+
+  @override
+  String get profileDaysPerWeekIncrease => 'More days per week';
+
+  @override
+  String profileCharacterCount(int count, int limit) {
+    return '$count / $limit';
+  }
+
+  @override
+  String profileCharacterCountSemantics(int count, int limit) {
+    return '$count of $limit characters';
+  }
+
+  @override
+  String get profileSexFemale => 'Female';
+
+  @override
+  String get profileSexMale => 'Male';
+
+  @override
+  String get profileGoalLongevity => 'Longevity';
+
+  @override
+  String get profileGoalStrength => 'Strength';
+
+  @override
+  String get profileGoalMuscleGain => 'Muscle gain';
+
+  @override
+  String get profileGoalBodyComposition => 'Body composition';
+
+  @override
+  String get profileGoalEndurance => 'Endurance performance';
+
+  @override
+  String get profileGoalMobility => 'Mobility';
+
+  @override
+  String get profileGoalGeneralFitness => 'General fitness';
+
+  @override
+  String get profileLevelBeginner => 'Beginner';
+
+  @override
+  String get profileLevelIntermediate => 'Intermediate';
+
+  @override
+  String get profileLevelAdvanced => 'Advanced';
+
+  @override
+  String get profileLevelBeginnerMeaning =>
+      'Under a year of regular training in this Focus.';
+
+  @override
+  String get profileLevelIntermediateMeaning => 'One to three years.';
+
+  @override
+  String get profileLevelAdvancedMeaning => 'More than three years.';
+
+  @override
+  String get profileWarningTitle => 'Check this value';
+
+  @override
+  String get profileWarningEdit => 'Edit';
+
+  @override
+  String get profileWarningSaveAnyway => 'Save anyway';
+
+  @override
+  String get profileValidationBirthYearFuture =>
+      'Birth year can\'t be in the future.';
+
+  @override
+  String get profileValidationBirthYearTooOld =>
+      'Birth year can\'t be more than 130 years ago.';
+
+  @override
+  String profileValidationBirthYearImprobable(int age) {
+    return 'That makes you $age. Check the birth year.';
+  }
+
+  @override
+  String get profileValidationHeightNonPositive =>
+      'Height must be more than zero.';
+
+  @override
+  String get profileValidationHeightTooTall =>
+      'Height must be 300 cm (118.1 in) or less.';
+
+  @override
+  String get profileValidationHeightUnit => 'Height must be in cm or in.';
+
+  @override
+  String profileValidationHeightImprobable(String height) {
+    return 'A height of $height is unusual. Check it.';
+  }
+
+  @override
+  String get profileValidationDaysPerWeekRange =>
+      'Days per week must be 1 to 7.';
+
+  @override
+  String get profileValidationSessionMinutesRange =>
+      'Session length must be 1 to 600 minutes.';
+
+  @override
+  String get profileValidationSessionMinutesImprobable =>
+      'Sessions over 4 hours are unusual. Check the length.';
+
+  @override
+  String get profileValidationGoalsUnknown => 'Unknown Training Goal.';
+
+  @override
+  String get profileValidationDuplicate => 'Each item can appear once.';
+
+  @override
+  String get profileValidationEquipmentInvalid =>
+      'Equipment ids must be 1 to 64 characters.';
+
+  @override
+  String get profileValidationLevelsUnknownLevel =>
+      'Level must be Beginner, Intermediate or Advanced.';
+
+  @override
+  String get profileValidationLevelsInvalidFocus => 'Each level needs a Focus.';
+
+  @override
+  String get profileValidationLevelsDuplicateFocus =>
+      'Each Focus can have one level.';
+
+  @override
+  String profileValidationTextTooLong(int limit) {
+    return 'Keep this under $limit characters.';
+  }
+
+  @override
+  String get profileValidationSexUnknown =>
+      'Sex must be Female, Male or Not set.';
+
+  @override
+  String get onboardingTitleAboutYou => 'About you';
+
+  @override
+  String get onboardingTitleGoalsExperience => 'Training Goals and Experience';
+
+  @override
+  String get onboardingTitleTrainingSetup => 'Training setup';
+
+  @override
+  String get onboardingSkipAll => 'Skip all';
+
+  @override
+  String get onboardingSkipThis => 'Skip this';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingDone => 'Done';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingSignInLink => 'Already use Perennia? Sign in';
+
+  @override
+  String get onboardingUnitsLabel => 'Units';
+
+  @override
+  String get onboardingWeekStartLabel => 'Week starts';
 }

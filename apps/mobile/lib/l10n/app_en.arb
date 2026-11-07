@@ -2809,5 +2809,387 @@
   "protocolEditorDiscard": "Discard",
   "@protocolEditorDiscard": {
     "description": "Discard dialog button that closes the Protocol editor without saving."
+  },
+  "navProfile": "Profile",
+  "@navProfile": {
+    "description": "Account & app sheet tile that opens the User Profile."
+  },
+  "profileTitle": "Profile",
+  "@profileTitle": {
+    "description": "Profile screen title."
+  },
+  "profileDisclosureLocalOnly": "Stored on this phone and in its backups. If you sign in, it syncs to your account, where the server's operator and any agent you connect can read it.",
+  "@profileDisclosureLocalOnly": {
+    "description": "Disclosure line under the Profile title in Local-only Mode."
+  },
+  "profileDisclosureSynced": "Synced to {host}. The server's operator and any agent you connect can read it. Change history on the server is kept for up to 180 days.",
+  "@profileDisclosureSynced": {
+    "description": "Disclosure line under the Profile title in Synced Mode.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "profileAgentHistoryLine": "Agent activity history shows that this section changed, not the text.",
+  "@profileAgentHistoryLine": {
+    "description": "Extra line in the Health & limitations and General Notes editors."
+  },
+  "profileHealthMedicationsLine": "Medications and supplements belong in Protocols.",
+  "@profileHealthMedicationsLine": {
+    "description": "Extra line in the Health & limitations editor."
+  },
+  "profileNotSet": "Not set",
+  "@profileNotSet": {
+    "description": "A User Profile field or section with no value."
+  },
+  "profileNone": "None",
+  "@profileNone": {
+    "description": "The explicit none choice in a User Profile section."
+  },
+  "profileSave": "Save",
+  "@profileSave": {
+    "description": "Save button in a User Profile editor sheet."
+  },
+  "profileSectionAboutYou": "About you",
+  "@profileSectionAboutYou": {
+    "description": "User Profile section title."
+  },
+  "profileSectionTrainingGoals": "Training Goals",
+  "@profileSectionTrainingGoals": {
+    "description": "User Profile section title."
+  },
+  "profileSectionExperience": "Experience",
+  "@profileSectionExperience": {
+    "description": "User Profile section title."
+  },
+  "profileSectionTrainingSetup": "Training setup",
+  "@profileSectionTrainingSetup": {
+    "description": "User Profile section title."
+  },
+  "profileSectionHealth": "Health & limitations",
+  "@profileSectionHealth": {
+    "description": "User Profile section title."
+  },
+  "profileSectionGeneralNotes": "General Notes",
+  "@profileSectionGeneralNotes": {
+    "description": "User Profile section title."
+  },
+  "profileFieldValue": "{label}: {value}",
+  "@profileFieldValue": {
+    "description": "One field on a Profile card.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "profileFieldSex": "Sex used for default reference ranges",
+  "@profileFieldSex": {
+    "description": "User Profile field label. It names the field's purpose, which is why the choices are Female, Male and Not set."
+  },
+  "profileFieldBirthYear": "Birth year",
+  "@profileFieldBirthYear": {
+    "description": "User Profile field label."
+  },
+  "profileFieldHeight": "Height",
+  "@profileFieldHeight": {
+    "description": "User Profile field label on a card."
+  },
+  "profileFieldHeightCentimetres": "Height (cm)",
+  "@profileFieldHeightCentimetres": {
+    "description": "About you editor: height in centimetres."
+  },
+  "profileFieldHeightFeet": "Height (ft)",
+  "@profileFieldHeightFeet": {
+    "description": "About you editor: the feet part of a height."
+  },
+  "profileFieldHeightInches": "Inches",
+  "@profileFieldHeightInches": {
+    "description": "About you editor: the inches part of a height."
+  },
+  "profileFieldEquipment": "Equipment",
+  "@profileFieldEquipment": {
+    "description": "User Profile field label."
+  },
+  "profileFieldDaysPerWeek": "Days per week",
+  "@profileFieldDaysPerWeek": {
+    "description": "User Profile field label."
+  },
+  "profileFieldSessionLength": "Session length",
+  "@profileFieldSessionLength": {
+    "description": "User Profile field label on a card."
+  },
+  "profileFieldSessionMinutes": "Session length (minutes)",
+  "@profileFieldSessionMinutes": {
+    "description": "Training setup editor: usual session length."
+  },
+  "profileHeightCentimetresValue": "{value} cm",
+  "@profileHeightCentimetresValue": {
+    "description": "A height on a Profile card, metric.",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "profileHeightFeetInchesValue": "{feet} ft {inches} in",
+  "@profileHeightFeetInchesValue": {
+    "description": "A height on a Profile card, imperial.",
+    "placeholders": {
+      "feet": {
+        "type": "String"
+      },
+      "inches": {
+        "type": "String"
+      }
+    }
+  },
+  "profileSessionMinutesValue": "{minutes} min",
+  "@profileSessionMinutesValue": {
+    "description": "A session length on a Profile card.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "profileDaysPerWeekDecrease": "Fewer days per week",
+  "@profileDaysPerWeekDecrease": {
+    "description": "Tooltip on the days-per-week stepper's minus button."
+  },
+  "profileDaysPerWeekIncrease": "More days per week",
+  "@profileDaysPerWeekIncrease": {
+    "description": "Tooltip on the days-per-week stepper's plus button."
+  },
+  "profileCharacterCount": "{count} / {limit}",
+  "@profileCharacterCount": {
+    "description": "Counter under a User Profile free-text field. Counts UTF-16 code units, as the validator does.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileCharacterCountSemantics": "{count} of {limit} characters",
+  "@profileCharacterCountSemantics": {
+    "description": "What a screen reader says for the free-text counter.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSexFemale": "Female",
+  "@profileSexFemale": {
+    "description": "About you: sex used for default reference ranges."
+  },
+  "profileSexMale": "Male",
+  "@profileSexMale": {
+    "description": "About you: sex used for default reference ranges."
+  },
+  "profileGoalLongevity": "Longevity",
+  "@profileGoalLongevity": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalStrength": "Strength",
+  "@profileGoalStrength": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalMuscleGain": "Muscle gain",
+  "@profileGoalMuscleGain": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalBodyComposition": "Body composition",
+  "@profileGoalBodyComposition": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalEndurance": "Endurance performance",
+  "@profileGoalEndurance": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalMobility": "Mobility",
+  "@profileGoalMobility": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalGeneralFitness": "General fitness",
+  "@profileGoalGeneralFitness": {
+    "description": "Training Goal chip."
+  },
+  "profileLevelBeginner": "Beginner",
+  "@profileLevelBeginner": {
+    "description": "Experience level."
+  },
+  "profileLevelIntermediate": "Intermediate",
+  "@profileLevelIntermediate": {
+    "description": "Experience level."
+  },
+  "profileLevelAdvanced": "Advanced",
+  "@profileLevelAdvanced": {
+    "description": "Experience level."
+  },
+  "profileLevelBeginnerMeaning": "Under a year of regular training in this Focus.",
+  "@profileLevelBeginnerMeaning": {
+    "description": "What the Beginner level means."
+  },
+  "profileLevelIntermediateMeaning": "One to three years.",
+  "@profileLevelIntermediateMeaning": {
+    "description": "What the Intermediate level means."
+  },
+  "profileLevelAdvancedMeaning": "More than three years.",
+  "@profileLevelAdvancedMeaning": {
+    "description": "What the Advanced level means."
+  },
+  "profileWarningTitle": "Check this value",
+  "@profileWarningTitle": {
+    "description": "Title of the dialog that confirms a soft validation warning."
+  },
+  "profileWarningEdit": "Edit",
+  "@profileWarningEdit": {
+    "description": "Soft-warning dialog button that returns to the field."
+  },
+  "profileWarningSaveAnyway": "Save anyway",
+  "@profileWarningSaveAnyway": {
+    "description": "Soft-warning dialog button that saves the value."
+  },
+  "profileValidationBirthYearFuture": "Birth year can't be in the future.",
+  "@profileValidationBirthYearFuture": {
+    "description": "Validation rule birth_year.future."
+  },
+  "profileValidationBirthYearTooOld": "Birth year can't be more than 130 years ago.",
+  "@profileValidationBirthYearTooOld": {
+    "description": "Validation rule birth_year.too_old."
+  },
+  "profileValidationBirthYearImprobable": "That makes you {age}. Check the birth year.",
+  "@profileValidationBirthYearImprobable": {
+    "description": "Validation rule birth_year.improbable_age.",
+    "placeholders": {
+      "age": {
+        "type": "int"
+      }
+    }
+  },
+  "profileValidationHeightNonPositive": "Height must be more than zero.",
+  "@profileValidationHeightNonPositive": {
+    "description": "Validation rule height.non_positive."
+  },
+  "profileValidationHeightTooTall": "Height must be 300 cm (118.1 in) or less.",
+  "@profileValidationHeightTooTall": {
+    "description": "Validation rule height.too_tall."
+  },
+  "profileValidationHeightUnit": "Height must be in cm or in.",
+  "@profileValidationHeightUnit": {
+    "description": "Validation rule height.unit."
+  },
+  "profileValidationHeightImprobable": "A height of {height} is unusual. Check it.",
+  "@profileValidationHeightImprobable": {
+    "description": "Validation rule height.improbable.",
+    "placeholders": {
+      "height": {
+        "type": "String"
+      }
+    }
+  },
+  "profileValidationDaysPerWeekRange": "Days per week must be 1 to 7.",
+  "@profileValidationDaysPerWeekRange": {
+    "description": "Validation rule days_per_week.range."
+  },
+  "profileValidationSessionMinutesRange": "Session length must be 1 to 600 minutes.",
+  "@profileValidationSessionMinutesRange": {
+    "description": "Validation rule session_minutes.range."
+  },
+  "profileValidationSessionMinutesImprobable": "Sessions over 4 hours are unusual. Check the length.",
+  "@profileValidationSessionMinutesImprobable": {
+    "description": "Validation rule session_minutes.improbable."
+  },
+  "profileValidationGoalsUnknown": "Unknown Training Goal.",
+  "@profileValidationGoalsUnknown": {
+    "description": "Validation rule goals.unknown."
+  },
+  "profileValidationDuplicate": "Each item can appear once.",
+  "@profileValidationDuplicate": {
+    "description": "Validation rules goals.duplicate and equipment.duplicate."
+  },
+  "profileValidationEquipmentInvalid": "Equipment ids must be 1 to 64 characters.",
+  "@profileValidationEquipmentInvalid": {
+    "description": "Validation rule equipment.invalid."
+  },
+  "profileValidationLevelsUnknownLevel": "Level must be Beginner, Intermediate or Advanced.",
+  "@profileValidationLevelsUnknownLevel": {
+    "description": "Validation rule levels.unknown_level."
+  },
+  "profileValidationLevelsInvalidFocus": "Each level needs a Focus.",
+  "@profileValidationLevelsInvalidFocus": {
+    "description": "Validation rule levels.invalid_focus."
+  },
+  "profileValidationLevelsDuplicateFocus": "Each Focus can have one level.",
+  "@profileValidationLevelsDuplicateFocus": {
+    "description": "Validation rule levels.duplicate_focus."
+  },
+  "profileValidationTextTooLong": "Keep this under {limit} characters.",
+  "@profileValidationTextTooLong": {
+    "description": "Validation rule text.too_long.",
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileValidationSexUnknown": "Sex must be Female, Male or Not set.",
+  "@profileValidationSexUnknown": {
+    "description": "Validation rule sex.unknown."
+  },
+  "onboardingTitleAboutYou": "About you",
+  "@onboardingTitleAboutYou": {
+    "description": "Title of onboarding screen 1."
+  },
+  "onboardingTitleGoalsExperience": "Training Goals and Experience",
+  "@onboardingTitleGoalsExperience": {
+    "description": "Title of onboarding screen 2."
+  },
+  "onboardingTitleTrainingSetup": "Training setup",
+  "@onboardingTitleTrainingSetup": {
+    "description": "Title of onboarding screen 3."
+  },
+  "onboardingSkipAll": "Skip all",
+  "@onboardingSkipAll": {
+    "description": "App bar action that leaves onboarding from any screen and saves nothing on that screen."
+  },
+  "onboardingSkipThis": "Skip this",
+  "@onboardingSkipThis": {
+    "description": "Bottom action that moves to the next onboarding screen and saves nothing on this one."
+  },
+  "onboardingNext": "Next",
+  "@onboardingNext": {
+    "description": "Bottom action that saves what was entered on an onboarding screen and moves on."
+  },
+  "onboardingDone": "Done",
+  "@onboardingDone": {
+    "description": "The Next action on the last onboarding screen."
+  },
+  "onboardingBack": "Back",
+  "@onboardingBack": {
+    "description": "Tooltip of the back arrow on onboarding screens 2 and 3."
+  },
+  "onboardingSignInLink": "Already use Perennia? Sign in",
+  "@onboardingSignInLink": {
+    "description": "Link on onboarding screen 1 that opens the sign-in screen."
+  },
+  "onboardingUnitsLabel": "Units",
+  "@onboardingUnitsLabel": {
+    "description": "Label of the unit system control on onboarding screen 1."
+  },
+  "onboardingWeekStartLabel": "Week starts",
+  "@onboardingWeekStartLabel": {
+    "description": "Label of the week start day control on onboarding screen 1."
   }
 }

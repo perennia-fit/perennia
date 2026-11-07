@@ -3,6 +3,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { and, asc, eq, gt, gte, inArray, isNull, or } from "drizzle-orm";
 
 import { ACCOUNT_DELETION_LOCAL_ONLY_MESSAGE } from "./account-deletion.js";
+import { USER_PROFILE_SECTION_NAMES } from "./agent-validation.js";
 import { CanonicalImportConsentDataClassSchema } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
@@ -27,6 +28,9 @@ export const FOOD_ENTRIES_SYNC_ENTITY = "food_entries";
 export const METRICS_SYNC_ENTITY = "metrics";
 export const METRIC_READINGS_SYNC_ENTITY = "metric_readings";
 export const NUTRITION_GOALS_SYNC_ENTITY = "nutrition_goals";
+// A User Profile section (docs/designs/user-profile.md). Additive: an older
+// client's pull skips the unknown entity, so SYNC_PROTOCOL_VERSION stays 2.
+export const USER_PROFILE_SECTIONS_SYNC_ENTITY = "user_profile_sections";
 export const USER_SETTINGS_SYNC_ENTITY = "user_settings";
 export const EXERCISE_CATEGORIES_SYNC_ENTITY = "exercise_categories";
 export const FOCUSES_SYNC_ENTITY = "focuses";
@@ -82,6 +86,7 @@ const SYNC_PULL_ENTITIES = [
   SCHEDULES_SYNC_ENTITY,
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
+  USER_PROFILE_SECTIONS_SYNC_ENTITY,
   USER_SETTINGS_SYNC_ENTITY,
   ROUTINES_SYNC_ENTITY,
   WORKOUT_TEMPLATES_SYNC_ENTITY,
@@ -115,6 +120,7 @@ const SYNC_PUSH_ENTITIES = [
   SCHEDULES_SYNC_ENTITY,
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
+  USER_PROFILE_SECTIONS_SYNC_ENTITY,
   USER_SETTINGS_SYNC_ENTITY,
   ROUTINES_SYNC_ENTITY,
   WORKOUT_TEMPLATES_SYNC_ENTITY,
@@ -577,6 +583,12 @@ export type SyncStore = {
     deviceId: string;
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
+  pushUserProfileSections(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
   pushUserSettings(input: {
     userId: string;
     correlationId?: string;
@@ -890,6 +902,123 @@ export async function pushNutritionGoalsInTransaction(
         .update(schema.nutritionGoals)
         .set(rowValues)
         .where(eq(schema.nutritionGoals.id, change.id));
+    }
+
+    await maybeRecordActivityLog({ ...change, payload });
+    acceptedIds.push(change.id);
+    applied.push({
+      id: change.id,
+      updatedAt: updatedAt.toISOString(),
+      deviceId
+    });
+  }
+
+  return {
+    accepted: acceptedIds,
+    serverClock: serverClock.toISOString(),
+    applied
+  };
+}
+
+// The shape of a pushed User Profile section, and nothing more. Domain rules run
+// on the device and in the agent route, never here: the server can't reject one
+// pushed change, so a change it refused would stay pending on the device and
+// stall every later Sync Run (docs/designs/user-profile.md, Sync). The stored
+// payload stays exactly what was pushed.
+const UserProfileSectionSyncPayloadSchema = z.looseObject({
+  section: z.enum(USER_PROFILE_SECTION_NAMES),
+  values: z.record(z.string(), z.unknown())
+});
+
+export async function pushUserProfileSectionsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    deviceId,
+    changes,
+    serverClock
+  }: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  const acceptedIds: string[] = [];
+  const applied: SyncAppliedChange[] = [];
+  const maybeRecordActivityLog = async (change: SyncPushChange) => {
+    if (!hasActivityLogEnvelope(change)) {
+      return;
+    }
+
+    await transaction
+      .insert(schema.activityLog)
+      .values({
+        id: change.activityLogId,
+        userId,
+        actor: change.actor,
+        batchId: change.batchId,
+        entityTable: USER_PROFILE_SECTIONS_SYNC_ENTITY,
+        entityId: change.id,
+        beforeImage: change.beforeImage,
+        afterImage: change.afterImage,
+        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
+      })
+      .onConflictDoNothing({ target: schema.activityLog.id });
+  };
+
+  for (const change of changes) {
+    UserProfileSectionSyncPayloadSchema.parse(change.payload);
+    const updatedAt = normalizeIncomingUpdatedAt(
+      parseIsoDate(change.updatedAt, "updatedAt"),
+      serverClock
+    );
+    const deletedAt =
+      change.deletedAt === null
+        ? null
+        : parseIsoDate(change.deletedAt, "deletedAt");
+    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
+    const existingRows = await transaction
+      .select({
+        userId: schema.userProfileSections.userId,
+        updatedAt: schema.userProfileSections.updatedAt,
+        deviceId: schema.userProfileSections.deviceId
+      })
+      .from(schema.userProfileSections)
+      .where(eq(schema.userProfileSections.id, change.id))
+      .limit(1);
+    const existing = existingRows[0];
+
+    // TENANT ISOLATION: a second user's push can never overwrite the
+    // first user's row keyed by the same client PK.
+    if (existing !== undefined && existing.userId !== userId) {
+      continue;
+    }
+    if (
+      existing !== undefined &&
+      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
+    ) {
+      await maybeRecordActivityLog(change);
+      acceptedIds.push(change.id);
+      continue;
+    }
+
+    const rowValues = {
+      id: change.id,
+      userId,
+      deviceId,
+      payload,
+      updatedAt,
+      deletedAt,
+      receivedAt: serverClock
+    };
+    if (existing === undefined) {
+      await transaction.insert(schema.userProfileSections).values(rowValues);
+    } else {
+      await transaction
+        .update(schema.userProfileSections)
+        .set(rowValues)
+        .where(eq(schema.userProfileSections.id, change.id));
     }
 
     await maybeRecordActivityLog({ ...change, payload });
@@ -3955,6 +4084,19 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
 
       return result;
     },
+    async pushUserProfileSections({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      const result = await db.transaction((transaction) =>
+        pushUserProfileSectionsInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+
+      return result;
+    },
     async pushUserSettings({ userId, deviceId, changes }) {
       const serverClock = new Date();
       const result = await db.transaction((transaction) =>
@@ -4313,6 +4455,12 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         schema.nutritionGoals.id,
         cursorPosition
       );
+      const userProfileSectionCursorFilter = pullCursorFilter(
+        USER_PROFILE_SECTIONS_SYNC_ENTITY,
+        schema.userProfileSections.receivedAt,
+        schema.userProfileSections.id,
+        cursorPosition
+      );
       const userSettingsCursorFilter = pullCursorFilter(
         USER_SETTINGS_SYNC_ENTITY,
         schema.userSettings.receivedAt,
@@ -4456,6 +4604,10 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
       const liveNutritionGoalSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.nutritionGoals.deletedAt)
+          : undefined;
+      const liveUserProfileSectionSnapshotFilter =
+        mode === SYNC_PULL_MODE_SNAPSHOT
+          ? isNull(schema.userProfileSections.deletedAt)
           : undefined;
       const liveUserSettingsSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
@@ -5003,6 +5155,28 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           asc(schema.nutritionGoals.id)
         )
         .limit(limit);
+      const userProfileSectionRows = await db
+        .select({
+          id: schema.userProfileSections.id,
+          deviceId: schema.userProfileSections.deviceId,
+          payload: schema.userProfileSections.payload,
+          updatedAt: schema.userProfileSections.updatedAt,
+          deletedAt: schema.userProfileSections.deletedAt,
+          receivedAt: schema.userProfileSections.receivedAt
+        })
+        .from(schema.userProfileSections)
+        .where(
+          and(
+            eq(schema.userProfileSections.userId, userId),
+            liveUserProfileSectionSnapshotFilter,
+            userProfileSectionCursorFilter
+          )
+        )
+        .orderBy(
+          asc(schema.userProfileSections.receivedAt),
+          asc(schema.userProfileSections.id)
+        )
+        .limit(limit);
       const userSettingsRows = await db
         .select({
           id: schema.userSettings.id,
@@ -5393,6 +5567,15 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         })),
         ...nutritionGoalRows.map((row): PullRow => ({
           entity: NUTRITION_GOALS_SYNC_ENTITY,
+          id: row.id,
+          deviceId: row.deviceId,
+          payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
+          updatedAt: row.updatedAt,
+          deletedAt: row.deletedAt,
+          receivedAt: row.receivedAt
+        })),
+        ...userProfileSectionRows.map((row): PullRow => ({
+          entity: USER_PROFILE_SECTIONS_SYNC_ENTITY,
           id: row.id,
           deviceId: row.deviceId,
           payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
@@ -5970,6 +6153,7 @@ function pullCursorFilter(
     | typeof schema.protocolTargetOutcomes.receivedAt
     | typeof schema.schedules.receivedAt
     | typeof schema.nutritionGoals.receivedAt
+    | typeof schema.userProfileSections.receivedAt
     | typeof schema.userSettings.receivedAt
     | typeof schema.routines.receivedAt
     | typeof schema.workoutTemplates.receivedAt
@@ -6004,6 +6188,7 @@ function pullCursorFilter(
     | typeof schema.protocolTargetOutcomes.id
     | typeof schema.schedules.id
     | typeof schema.nutritionGoals.id
+    | typeof schema.userProfileSections.id
     | typeof schema.userSettings.id
     | typeof schema.routines.id
     | typeof schema.workoutTemplates.id
@@ -6115,6 +6300,10 @@ function syncEntitySortRank(entity: SyncPullEntity) {
       return 15;
     case NUTRITION_GOALS_SYNC_ENTITY:
       return 16;
+    // A User Profile section has no parent, so this is cosmetic ordering only
+    // (no PULL_PARENT_REFERENCES).
+    case USER_PROFILE_SECTIONS_SYNC_ENTITY:
+      return 16.5;
     // WorkoutTemplates precede TemplateExercises and their child rows;
     // Routines precede RoutineEntries. TemplateGroupMembers follow both the
     // TemplateGroup and TemplateExercise parents they reference.

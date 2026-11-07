@@ -11,6 +11,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- Optional first-open onboarding, skippable from its first screen.
+- Profile under Account & app, with agent read and write (`read-profile`,
+  `update-profile`). Upgrade a Self-Hosted Deployment before the app.
 - **Agents can list Meal Types** (`listAgentMealTypes`,
   `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
   Types in the order the app shows them, to choose a `mealType` from.
@@ -40,6 +43,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **The Platform Exercise Library drops 96 more near-duplicates** (1,546 to
+  1,450 exercises), such as "Squats" alongside "Barbell Squat". Sets already
+  logged under a removed exercise stay with it as your own exercise; unused ones
+  are hidden.
 - **Messages have one style.** Every message in the app is now a dark bar with
   rounded corners, in both themes, floating above the screen's bottom bar and
   buttons. Its text and action pass WCAG AA; the Undo label was close to
@@ -92,6 +99,16 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- The User Profile agent API descriptions now say a write that changes nothing
+  appends no Activity Log Batch, and its MCP tools are titled Read User Profile
+  and Batch Write User Profile.
+- **Server crash reports no longer carry request bodies.** With crash reporting
+  on, a server error could send what was being written to Sentry.
+- **Server crash reports no longer carry session cookies.** With crash reporting
+  on, a server error could send the parsed session cookie to Sentry.
+- **Agents no longer read hidden User Profile text through unusual Activity Log
+  entries.** An entry with one unreadable image, or with text outside `values`,
+  could show Health & limitations or General Notes text in the agent's history.
 - **A backup with an unreadable value on a library exercise no longer stops the
   app seeding.** The next launch repairs the exercise from the library.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array

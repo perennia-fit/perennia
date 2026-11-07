@@ -36,6 +36,7 @@ import {
   MEAL_TYPES_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
+  USER_PROFILE_SECTIONS_SYNC_ENTITY,
   PRESCRIPTIONS_SYNC_ENTITY,
   PROTOCOL_COMPOUNDS_SYNC_ENTITY,
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
@@ -65,6 +66,7 @@ import {
   pushMealsInTransaction,
   pushMealTypesInTransaction,
   pushNutritionGoalsInTransaction,
+  pushUserProfileSectionsInTransaction,
   pushPrescriptionsInTransaction,
   pushProtocolCompoundsInTransaction,
   pushProtocolsInTransaction,
@@ -409,6 +411,7 @@ type OpaqueTable =
   | typeof schema.meals
   | typeof schema.foodEntries
   | typeof schema.nutritionGoals
+  | typeof schema.userProfileSections
   | typeof schema.compounds
   | typeof schema.doses
   | typeof schema.protocolSkips
@@ -503,6 +506,10 @@ const UNDOABLE_ENTITY_REGISTRY: Record<
   [NUTRITION_GOALS_SYNC_ENTITY]: {
     table: schema.nutritionGoals,
     push: pushNutritionGoalsInTransaction
+  },
+  [USER_PROFILE_SECTIONS_SYNC_ENTITY]: {
+    table: schema.userProfileSections,
+    push: pushUserProfileSectionsInTransaction
   },
   [COMPOUNDS_SYNC_ENTITY]: {
     table: schema.compounds,
@@ -603,7 +610,12 @@ export function createDrizzleAgentActivityStore(
 
       const batches = groupIntoBatches(rows);
       const start = cursorOffset(batches, query.cursor);
-      const page = batches.slice(start, start + query.limit);
+      const page = batches
+        .slice(start, start + query.limit)
+        .map((batch) => ({
+          ...batch,
+          entries: batch.entries.map(redactUserProfileEntry)
+        }));
 
       return AgentActivityListResponseSchema.parse({
         batches: page,
@@ -964,6 +976,79 @@ function inversePayload(
 
 function normalizeDeletedAt(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+const USER_PROFILE_SECTIONS_SHOWN_IN_ACTIVITY = new Set([
+  "about_you",
+  "training_goals",
+  "experience",
+  "training_setup"
+]);
+
+/**
+ * Hides the free-text User Profile sections from the history agents read, so a
+ * cleared health note can't be read back (docs/designs/user-profile.md, Activity
+ * redaction). It fails closed: an entry is shown only when every image it has names
+ * a section known to be shown, because a push stores its images without parsing
+ * them, so one image of a pair can be anything. Applied to this read only, so stored
+ * rows and undo, which compare and restore the real images, are untouched. The
+ * device's own Activity Log keeps the values.
+ */
+function redactUserProfileEntry<
+  Entry extends {
+    entityTable: string;
+    beforeImage: Record<string, unknown> | null;
+    afterImage: Record<string, unknown> | null;
+  }
+>(entry: Entry): Entry {
+  if (entry.entityTable !== USER_PROFILE_SECTIONS_SYNC_ENTITY) {
+    return entry;
+  }
+  const images = [entry.beforeImage, entry.afterImage].filter(
+    (image) => image !== null
+  );
+  const isShown =
+    images.length > 0 &&
+    images.every(
+      (image) =>
+        typeof image.section === "string" &&
+        USER_PROFILE_SECTIONS_SHOWN_IN_ACTIVITY.has(image.section)
+    );
+  if (isShown) {
+    return entry;
+  }
+  return {
+    ...entry,
+    beforeImage: redactValues(entry.beforeImage),
+    afterImage: redactValues(entry.afterImage)
+  };
+}
+
+const USER_PROFILE_IMAGE_METADATA_KEYS = [
+  "id",
+  "section",
+  "updated_at",
+  "deleted_at"
+];
+
+/**
+ * Builds the image from the metadata it may show rather than copying it and hiding
+ * `values`: an unparsed image can hold the same text under any other key.
+ */
+function redactValues(
+  image: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (image === null) {
+    return null;
+  }
+  const redacted: Record<string, unknown> = { values: { redacted: true } };
+  for (const key of USER_PROFILE_IMAGE_METADATA_KEYS) {
+    const value = image[key];
+    if (typeof value === "string" || value === null) {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
 }
 
 function groupIntoBatches(rows: ActivityLogRow[]) {

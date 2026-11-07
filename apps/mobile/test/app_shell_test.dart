@@ -27,6 +27,7 @@ import 'package:perennia/features/catalog/repositories/exercise_catalog_reposito
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/catalog/widgets/exercise_editor_screen.dart';
 import 'package:perennia/features/exercise/widgets/exercise_page.dart';
+import 'package:perennia/features/focus/controllers/focus_providers.dart';
 import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
@@ -39,6 +40,7 @@ import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/widgets/meal_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
+import 'package:perennia/features/profile/widgets/profile_screen.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
 import 'package:perennia/features/progress/widgets/body_card.dart';
 import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
@@ -776,6 +778,57 @@ void main() {
     expect(find.text('qa@example.com'), findsOneWidget);
     expect(find.text('Manage account and sync'), findsOneWidget);
     expect(find.text('Local only'), findsNothing);
+
+    final statusTile = find.byKey(HomeScreen.accountAndAppSignInKey);
+    final profileTile = find.byKey(HomeScreen.accountAndAppProfileKey);
+    final settingsTile = find.byKey(HomeScreen.accountAndAppSettingsKey);
+    expect(
+      find.descendant(of: profileTile, matching: find.text('Profile')),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(profileTile).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(statusTile).dy),
+    );
+    expect(
+      tester.getTopLeft(settingsTile).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(profileTile).dy),
+    );
+  });
+
+  testWidgets('Account and app opens the Profile screen', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [
+          _homeNutritionDayOverride(),
+          _disabledSyncCoordinatorOverride(),
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          activeFocusesProvider.overrideWith(
+            (ref) => Stream<List<FocusRecord>>.value(const <FocusRecord>[]),
+          ),
+        ],
+        authRepository: InMemoryAuthRepository(),
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+        settingsRepository: InMemorySettingsRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.accountAndAppButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.accountAndAppProfileKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProfileScreen), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('Account and app waits for the live auth state', (tester) async {

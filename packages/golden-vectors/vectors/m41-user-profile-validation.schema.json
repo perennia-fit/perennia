@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m41-user-profile-validation.schema.json",
+  "title": "M41 User Profile validation golden vector",
+  "description": "Language-neutral parity cases for the User Profile tier of the shared two-tier validator (docs/designs/user-profile.md, Validation). Each case gives the reference year, a section's wire name and its values in the snake_case section shape, and expects the verdict and the ordered error and warning rule ids. Issues follow the section's field order and, within a field, the order of the Validation table, with each rule at most once per field. A hard reject on a field carries no soft warning for that field. A field of the wrong JSON type is skipped as unset. Height limits are in centimetres, and an inch value is multiplied by cmPerInch with no rounding before it is compared. Text length is counted in UTF-16 code units. The limits block is asserted against both runners' limits constants.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "limits", "cases"],
+  "properties": {
+    "name": {"const": "m41-user-profile-validation"},
+    "domain": {"const": "user-profile-validation"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m41-user-profile-validation.schema.json"},
+    "limits": {"$ref": "#/$defs/limits"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "ruleList": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z_]+\\.[a-z_]+$"}
+    },
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "birthYearMaxAgeYears",
+        "birthYearWarnMinAgeYears",
+        "birthYearWarnMaxAgeYears",
+        "heightMaxCentimetres",
+        "heightWarnMinCentimetres",
+        "heightWarnMaxCentimetres",
+        "heightUnits",
+        "cmPerInch",
+        "daysPerWeekMin",
+        "daysPerWeekMax",
+        "sessionMinutesMin",
+        "sessionMinutesMax",
+        "sessionMinutesWarnMax",
+        "equipmentIdMaxLength",
+        "healthLimitationsTextMaxLength",
+        "generalNotesTextMaxLength",
+        "trainingGoalIds",
+        "sexes",
+        "experienceLevels"
+      ],
+      "properties": {
+        "birthYearMaxAgeYears": {"type": "integer", "minimum": 1},
+        "birthYearWarnMinAgeYears": {"type": "integer", "minimum": 1},
+        "birthYearWarnMaxAgeYears": {"type": "integer", "minimum": 1},
+        "heightMaxCentimetres": {"type": "number", "exclusiveMinimum": 0},
+        "heightWarnMinCentimetres": {"type": "number", "exclusiveMinimum": 0},
+        "heightWarnMaxCentimetres": {"type": "number", "exclusiveMinimum": 0},
+        "heightUnits": {"$ref": "#/$defs/stringList"},
+        "cmPerInch": {"const": 2.54},
+        "daysPerWeekMin": {"type": "integer", "minimum": 1},
+        "daysPerWeekMax": {"type": "integer", "minimum": 1},
+        "sessionMinutesMin": {"type": "integer", "minimum": 1},
+        "sessionMinutesMax": {"type": "integer", "minimum": 1},
+        "sessionMinutesWarnMax": {"type": "integer", "minimum": 1},
+        "equipmentIdMaxLength": {"type": "integer", "minimum": 1},
+        "healthLimitationsTextMaxLength": {"type": "integer", "minimum": 1},
+        "generalNotesTextMaxLength": {"type": "integer", "minimum": 1},
+        "trainingGoalIds": {"$ref": "#/$defs/stringList"},
+        "sexes": {"$ref": "#/$defs/stringList"},
+        "experienceLevels": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["referenceYear", "section", "values"],
+          "properties": {
+            "referenceYear": {"type": "integer"},
+            "section": {
+              "enum": [
+                "about_you",
+                "training_goals",
+                "experience",
+                "training_setup",
+                "health_limitations",
+                "general_notes"
+              ]
+            },
+            "values": {"type": "object"}
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accepted", "errorRules", "warningRules"],
+          "properties": {
+            "accepted": {"type": "boolean"},
+            "errorRules": {"$ref": "#/$defs/ruleList"},
+            "warningRules": {"$ref": "#/$defs/ruleList"}
+          }
+        }
+      }
+    }
+  }
+}

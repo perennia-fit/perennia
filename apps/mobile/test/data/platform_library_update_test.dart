@@ -20,7 +20,7 @@ const _unlistedId = '01910000-0000-7000-8000-000000000301';
 
 final _libraryStamp = DateTime.utc(2026, 1, 1);
 
-/// Carries milliseconds, as 177 retired and 711 live records in the bundled
+/// Carries milliseconds, as 239 retired and 649 live records in the bundled
 /// seed do. Drift stores whole seconds, so a row never equals this stamp exactly.
 final _recordStamp = DateTime.utc(2026, 3, 1, 12, 0, 0, 500);
 final _retiredAt = DateTime.utc(2026, 11, 5);
@@ -1023,7 +1023,7 @@ void main() {
     await TrainingRepositories(database).catalog.ensurePlatformLibrarySeeded();
     final rowsBefore = await allRows();
     final logCountBefore = (await logEntries()).length;
-    expect(rowsBefore.where((row) => row.deletedAt != null), hasLength(309));
+    expect(rowsBefore.where((row) => row.deletedAt != null), hasLength(405));
 
     await TrainingRepositories(database).catalog.ensurePlatformLibrarySeeded();
 

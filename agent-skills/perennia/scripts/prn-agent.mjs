@@ -292,6 +292,17 @@ const COMMANDS = {
     body: true,
     operationId: "batchWriteAgentSettings"
   },
+  "read-profile": {
+    method: "GET",
+    path: "/agent/profile",
+    operationId: "readAgentProfile"
+  },
+  "update-profile": {
+    method: "POST",
+    path: "/agent/profile/batch-write",
+    body: true,
+    operationId: "batchWriteAgentProfile"
+  },
   "list-activity": {
     method: "GET",
     path: "/agent/activity",

@@ -335,6 +335,33 @@ export const nutritionGoals = pgTable(
   })
 );
 
+// One row per User Profile section (docs/designs/user-profile.md), newest live
+// row wins. The id is random, not derived from the user: a Local-only device
+// mints its rows before it has a user id. The payload is opaque: no domain rule
+// runs at push, so agent reads parse it tolerantly.
+export const userProfileSections = pgTable(
+  "user_profile_sections",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => ({
+    userUpdatedAtIndex: index("user_profile_sections_user_updated_at_index").on(
+      table.userId,
+      table.updatedAt
+    )
+  })
+);
+
 // The account-level half of a user's Settings as a synced singleton
 // on the opaque-payload sync rails: one row per user, keyed by a stable
 // well-known client id (never a UUIDv7 list). The server never inspects domain

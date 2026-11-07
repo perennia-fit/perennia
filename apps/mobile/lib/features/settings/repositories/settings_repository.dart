@@ -49,13 +49,15 @@ class FileSettingsRepository implements SettingsRepository {
     try {
       final file = await _settingsFile();
       if (!await file.exists()) {
-        return AppSettings.defaults;
+        return AppSettings.defaults.copyWith(onboardingDone: false);
       }
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is Map<String, Object?>) {
         return AppSettings.fromJson(decoded);
       }
     } on Object {
+      // Unreadable or corrupt (here and below) is not evidence of a fresh
+      // install, and widget tests with no path_provider land here: no onboarding.
       return AppSettings.defaults;
     }
     return AppSettings.defaults;
@@ -212,6 +214,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     });
   }
 
+  Future<void> setOnboardingDone() {
+    return _update((settings) {
+      return settings.copyWith(onboardingDone: true);
+    });
+  }
+
   Future<void> setKeepScreenOn(bool enabled) {
     return _update((settings) {
       return settings.copyWith(keepScreenOn: enabled);
@@ -288,6 +296,7 @@ class AppSettings {
     this.onlineFoodLookups = true,
     this.protocolRemindersOnThisDevice = true,
     this.showProtocolsOnToday = true,
+    this.onboardingDone = true,
   }) : assert(defaultWeightIncrement > 0);
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -356,6 +365,11 @@ class AppSettings {
       showProtocolsOnToday: json['showProtocolsOnToday'] is bool
           ? json['showProtocolsOnToday']! as bool
           : true,
+      // Unlike the constructor default: a settings file without the key comes
+      // from an install older than onboarding, which sees it once.
+      onboardingDone: json['onboardingDone'] is bool
+          ? json['onboardingDone']! as bool
+          : false,
     );
   }
 
@@ -401,6 +415,15 @@ class AppSettings {
   /// Protocols domain is still in Library, behind its lock as always.
   final bool showProtocolsOnToday;
 
+  /// Device-level (never synced): whether first-open onboarding has been
+  /// finished or skipped on this device. The gate runs before sign-in on a
+  /// fresh device, so a synced record could not stop the first showing (see
+  /// Onboarding gate in docs/designs/user-profile.md). Defaults to true so
+  /// `AppSettings.defaults` skips onboarding; only
+  /// `FileSettingsRepository.load` produces false, for a missing settings file
+  /// or a file without the key.
+  final bool onboardingDone;
+
   bool get autoBackupNeedsFolderGrant =>
       autoBackupEnabled &&
       (autoBackupFolderUri == null ||
@@ -444,6 +467,7 @@ class AppSettings {
       'onlineFoodLookups': onlineFoodLookups,
       'protocolRemindersOnThisDevice': protocolRemindersOnThisDevice,
       'showProtocolsOnToday': showProtocolsOnToday,
+      'onboardingDone': onboardingDone,
     };
   }
 
@@ -469,6 +493,7 @@ class AppSettings {
     bool? onlineFoodLookups,
     bool? protocolRemindersOnThisDevice,
     bool? showProtocolsOnToday,
+    bool? onboardingDone,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -509,6 +534,7 @@ class AppSettings {
       protocolRemindersOnThisDevice:
           protocolRemindersOnThisDevice ?? this.protocolRemindersOnThisDevice,
       showProtocolsOnToday: showProtocolsOnToday ?? this.showProtocolsOnToday,
+      onboardingDone: onboardingDone ?? this.onboardingDone,
     );
   }
 
@@ -589,7 +615,8 @@ class AppSettings {
             onlineFoodLookups == other.onlineFoodLookups &&
             protocolRemindersOnThisDevice ==
                 other.protocolRemindersOnThisDevice &&
-            showProtocolsOnToday == other.showProtocolsOnToday;
+            showProtocolsOnToday == other.showProtocolsOnToday &&
+            onboardingDone == other.onboardingDone;
   }
 
   @override
@@ -615,6 +642,7 @@ class AppSettings {
         onlineFoodLookups,
         protocolRemindersOnThisDevice,
         showProtocolsOnToday,
+        onboardingDone,
       ]);
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/profile/user_profile.dart';
 
 final activityFeedRepositoryProvider = Provider<ActivityFeedRepository>((ref) {
   return ActivityFeedRepository(ref.watch(trainingRepositoriesProvider));
@@ -56,6 +57,10 @@ final class ActivityFeedBatch {
     if (entries.isEmpty) {
       return 'Changed activity';
     }
+    final profileSummary = _userProfileSummary();
+    if (profileSummary != null) {
+      return profileSummary;
+    }
     final mealSummary = _mealOccasionSummary();
     if (mealSummary != null) {
       return mealSummary;
@@ -80,6 +85,29 @@ final class ActivityFeedBatch {
       return 'Changed ${entityLabels.first} and ${entityLabels.last}';
     }
     return 'Changed ${entries.length} entity types';
+  }
+
+  /// A section is one part of one record the user sees, so a first write reads
+  /// "updated" like every later one, and a Batch names its sections. Returns
+  /// `null` unless every entry is a User Profile section, so the generic summary
+  /// applies to a mixed Batch.
+  String? _userProfileSummary() {
+    if (entries.any(
+      (entry) => entry.entityTable != AppDatabase.userProfileSectionsTable,
+    )) {
+      return null;
+    }
+    final labels = entries
+        .map(
+          (entry) => _userProfileSectionLabel(
+            (entry.afterImage ?? entry.beforeImage)?['section'],
+          ),
+        )
+        .nonNulls
+        .toSet();
+    return labels.isEmpty
+        ? 'Profile updated'
+        : 'Profile · ${labels.join(', ')} updated';
   }
 
   /// A `Meal` and its `Food Entry` rows are one eating occasion, so an
@@ -177,6 +205,21 @@ class _ActivityFeedBatchBuilder {
   }
 }
 
+String? _userProfileSectionLabel(Object? wireName) {
+  final section = UserProfileSection.fromWireName(wireName);
+  if (section == null) {
+    return null;
+  }
+  return switch (section) {
+    UserProfileSection.aboutYou => 'About you',
+    UserProfileSection.trainingGoals => 'Training Goals',
+    UserProfileSection.experience => 'Experience',
+    UserProfileSection.trainingSetup => 'Training setup',
+    UserProfileSection.healthLimitations => 'Health & limitations',
+    UserProfileSection.generalNotes => 'General Notes',
+  };
+}
+
 String _verbFor(ActivityLogEntry entry) {
   if (entry.beforeImage == null && entry.afterImage != null) {
     return entry.entityTable == AppDatabase.loggedSetsTable
@@ -215,6 +258,7 @@ String _entityLabel(String entityTable) {
     AppDatabase.foodsTable => 'food',
     AppDatabase.foodEntriesTable => 'food entry',
     AppDatabase.nutritionGoalsTable => 'nutrition goal',
+    AppDatabase.userProfileSectionsTable => 'profile',
     AppDatabase.userSettingsTable => 'settings',
     AppDatabase.metricsTable => 'metric',
     AppDatabase.metricReadingsTable => 'reading',

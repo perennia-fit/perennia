@@ -838,6 +838,30 @@ class PortableArchiveRepository {
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _nutritionGoalImage,
         ),
+        _TypedPortableArchiveEntity<UserProfileSectionRow>(
+          tableName: AppDatabase.userProfileSectionsTable,
+          selectRows: () {
+            final query = _database.select(_database.userProfileSections)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return query.get();
+          },
+          fromJson: UserProfileSectionRow.fromJson,
+          toJson: (row) => row.toJson(),
+          findById: (id) {
+            final query = _database.select(_database.userProfileSections)
+              ..where((row) => row.id.equals(id));
+            return query.getSingleOrNull();
+          },
+          upsert: (row) => _database.into(_database.userProfileSections).insert(
+                row,
+                mode: InsertMode.insertOrReplace,
+              ),
+          idOf: (row) => row.id,
+          updatedAtOf: (row) => row.updatedAt,
+          imageOf: _userProfileSectionImage,
+        ),
         _TypedPortableArchiveEntity<UserSettingsRow>(
           tableName: AppDatabase.userSettingsTable,
           selectRows: () {
@@ -1712,6 +1736,11 @@ class PortableArchiveRepository {
     }
     // Purposes arrived at schema 66 (compound-purposes.md, D1).
     if (archiveSchemaVersion < 66 && tableName == AppDatabase.purposesTable) {
+      return true;
+    }
+    // The User Profile arrived at schema 67 (user-profile.md, Data model).
+    if (archiveSchemaVersion < 67 &&
+        tableName == AppDatabase.userProfileSectionsTable) {
       return true;
     }
     return archiveSchemaVersion < 53 &&
