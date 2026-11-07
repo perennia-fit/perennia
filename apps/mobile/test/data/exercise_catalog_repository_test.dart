@@ -65,10 +65,10 @@ void main() {
       expect(
           seed.exercises.map((exercise) => exercise.name),
           containsAll(<String>[
-            'Biceps Curls With Barbell',
+            'Barbell Biceps Curl',
             'Walking',
             'Lying Hip Abduction with Band',
-            'Facepulls',
+            'Face Pull',
           ]));
       expect(
         seed.exercises.map((exercise) => exercise.name.toLowerCase()).toSet(),
@@ -78,8 +78,8 @@ void main() {
           everyElement(_isUuidV7));
       final exerciseIds = seed.exercises.map((exercise) => exercise.id).toSet();
       final retiredIds = seed.retired.map((exercise) => exercise.id).toSet();
-      expect(seed.retired, hasLength(405));
-      expect(retiredIds, hasLength(405));
+      expect(seed.retired, hasLength(419));
+      expect(retiredIds, hasLength(419));
       expect(retiredIds, everyElement(_isUuidV7));
       expect(retiredIds.intersection(exerciseIds), isEmpty);
       expect(
@@ -123,7 +123,7 @@ void main() {
       expect(
         seed.exercises
             .singleWhere(
-              (exercise) => exercise.name == 'Biceps Curls With Barbell',
+              (exercise) => exercise.name == 'Barbell Biceps Curl',
             )
             .equipment,
         contains(ExerciseEquipment.barbell),
@@ -137,7 +137,7 @@ void main() {
         DimensionId.reps,
       });
       final facepulls = seed.exercises.singleWhere(
-        (exercise) => exercise.name == 'Facepulls',
+        (exercise) => exercise.name == 'Face Pull',
       );
       expect(categoriesById[facepulls.categoryId]?.name, 'Shoulders');
       expect(

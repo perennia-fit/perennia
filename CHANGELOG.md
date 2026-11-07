@@ -9,6 +9,14 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Changed
+
+- **Exercise names follow one style.** 787 names change, such as "Bent Over
+  Barbell Rows" to "Bent-Over Barbell Row": singular, title case, one spelling
+  for each term, and no stray text or non-English names. Names update on existing
+  devices and logged sets keep their history. 14 left, right and one-leg variants
+  merge into one exercise, taking the library from 1,450 to 1,436.
+
 ## [0.3.0] - 2026-11-07
 
 A minor release: one screen for logging meals, rest timer cues and a Finish
