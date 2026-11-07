@@ -554,6 +554,8 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
         authorization: "Bearer secret-token",
         cookie: "session=secret"
       },
+      // The SDK parses the Cookie header into this field as well.
+      cookies: { "better-auth.session_token": "session-cookie-secret" },
       // The SDK sends the raw body as a string, which filtering by key can't reach.
       data: JSON.stringify({
         sections: { healthLimitations: { text: "HIVSECRET meds" } },
@@ -570,6 +572,7 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
   assert.doesNotMatch(serialized, /private note/);
   assert.doesNotMatch(serialized, /90 kg/);
   assert.doesNotMatch(serialized, /secret-token/);
+  assert.doesNotMatch(serialized, /session-cookie-secret/);
   assert.doesNotMatch(serialized, /private request note/);
   assert.doesNotMatch(serialized, /HIVSECRET/);
   assert.equal("data" in event.request, false);

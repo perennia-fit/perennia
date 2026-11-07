@@ -821,6 +821,82 @@ profileTest(
   }
 );
 
+profileTest(
+  "Activity fails closed on a mixed image pair, and a redacted image keeps only its metadata",
+  async ({ app, database, userId }) => {
+    const logEntry = (batchId, beforeImage, afterImage) =>
+      database.db.insert(schema.activityLog).values({
+        id: `activity-${randomUUID()}`,
+        userId,
+        actor: "app",
+        batchId,
+        entityTable: "user_profile_sections",
+        entityId: randomUUID(),
+        beforeImage,
+        afterImage,
+        occurredAt: new Date("2026-06-01T08:00:00.000Z")
+      });
+    const shown = { section: "about_you", values: { birth_year: 1990 } };
+    await logEntry("shown-then-unreadable", shown, {
+      section: 7,
+      values: { text: "Unreadable secret" }
+    });
+    await logEntry(
+      "unreadable-then-shown",
+      { values: { text: "Sectionless secret" } },
+      shown
+    );
+    await logEntry("shown-then-unknown", shown, {
+      section: "made_up",
+      values: { text: "Unknown secret" }
+    });
+    await logEntry("outside-values", null, {
+      id: "row-1",
+      section: "health_limitations",
+      values: { text: "Inner secret" },
+      text: "Stray secret",
+      valuesJson: "{\"text\":\"Json secret\"}",
+      updated_at: "2026-06-01T08:00:00.000Z",
+      deleted_at: null
+    });
+    await logEntry("non-text-metadata", null, {
+      id: { text: "Id secret" },
+      section: { text: "Section secret" },
+      values: { text: "Inner secret" },
+      updated_at: ["Clock secret"]
+    });
+    await logEntry("shown-with-null", null, shown);
+
+    const batches = await listProfileActivity(app);
+    assert.doesNotMatch(JSON.stringify(batches), /secret/);
+    const entry = (batchId) =>
+      batches.find((batch) => batch.batchId === batchId).entries[0];
+
+    for (const batchId of [
+      "shown-then-unreadable",
+      "unreadable-then-shown",
+      "shown-then-unknown"
+    ]) {
+      assert.deepEqual(entry(batchId).beforeImage.values, { redacted: true });
+      assert.deepEqual(entry(batchId).afterImage.values, { redacted: true });
+    }
+    assert.deepEqual(entry("outside-values").afterImage, {
+      id: "row-1",
+      section: "health_limitations",
+      values: { redacted: true },
+      updated_at: "2026-06-01T08:00:00.000Z",
+      deleted_at: null
+    });
+    assert.deepEqual(entry("non-text-metadata").afterImage, {
+      values: { redacted: true }
+    });
+
+    // A null image doesn't make a shown section unreadable.
+    assert.equal(entry("shown-with-null").beforeImage, null);
+    assert.equal(entry("shown-with-null").afterImage.values.birth_year, 1990);
+  }
+);
+
 test("the agent routes answer 503 when the store isn't configured, and 401 without a key", async () => {
   const unconfigured = createApp({
     logger: { info() {}, error() {} },

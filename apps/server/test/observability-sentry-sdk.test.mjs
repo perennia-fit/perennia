@@ -17,6 +17,7 @@ import { createSentryCrashReporterFromEnv } from "../src/observability.ts";
 test("a crash on a User Profile write sends Sentry no request body", async () => {
   // Built at runtime, so source context lines copied into an event can't match.
   const secret = ["HIV", "SECRET"].join("");
+  const sessionToken = ["SESSION", "COOKIE", "SECRET"].join("");
   const preScrubRequests = [];
   const sentEnvelopes = [];
   const crashReporter = createSentryCrashReporterFromEnv(
@@ -74,6 +75,7 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
         method: "POST",
         headers: {
           authorization: "Bearer prn_agent_secret",
+          cookie: `better-auth.session_token=${sessionToken}`,
           "content-type": "application/json"
         },
         body: JSON.stringify({
@@ -94,6 +96,8 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
   assert.equal(preScrubRequests.length, 1);
   assert.match(preScrubRequests[0].url, /\/agent\/profile\/batch-write$/);
   assert.equal(preScrubRequests[0].data, undefined);
+  // The SDK did read the session cookie, so its absence below is the scrubber's work.
+  assert.match(JSON.stringify(preScrubRequests[0]), new RegExp(sessionToken));
 
   const eventEnvelopes = sentEnvelopes.filter(([, items]) =>
     items.some(([header]) => header.type === "event")
@@ -104,5 +108,6 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
   // Every envelope, not only the event: a body must not leave by any of them.
   const sent = JSON.stringify(sentEnvelopes);
   assert.ok(!sent.includes(secret));
+  assert.ok(!sent.includes(sessionToken));
   assert.doesNotMatch(sent, /healthLimitations/);
 });
