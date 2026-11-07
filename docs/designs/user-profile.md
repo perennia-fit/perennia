@@ -575,11 +575,14 @@ section values above.
     entities.
 *   **Activity redaction.** In `listAgentActivity` (REST and the MCP tool `agent_list_activity`),
     any change to a `user_profile_sections` row whose section is `health_limitations` or
-    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`. The
-    section is read from either image, and values are also redacted when no image gives a
-    readable section, so redaction fails closed. A null image stays null. The entity, section,
-    actor and time are kept. The device's Activity Log is not redacted. Redaction limits what
-    agents read in history; it is not access control.
+    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`.
+    Redaction fails closed: an entry is shown only when every non-null image names
+    `about_you`, `training_goals`, `experience` or `training_setup`, because a push stores its
+    images without parsing them. A redacted image keeps only `values` and whichever of `id`,
+    `section`, `updated_at` and `deleted_at` are strings or null, so text under any other key
+    is dropped too. A null image stays null. The entity, section, actor and time are kept. The
+    device's Activity Log is not redacted. Redaction limits what agents read in history; it is
+    not access control.
 *   **Tool descriptions**, verbatim:
     *   `agent_read_profile`: "Read the user's User Profile: About you, Training Goals,
         Experience, Training setup, Health & limitations and General Notes. Every agent

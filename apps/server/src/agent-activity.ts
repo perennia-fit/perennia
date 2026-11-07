@@ -984,18 +984,15 @@ const USER_PROFILE_SECTIONS_SHOWN_IN_ACTIVITY = new Set([
   "experience",
   "training_setup"
 ]);
-const USER_PROFILE_SECTIONS_REDACTED_IN_ACTIVITY = new Set([
-  "health_limitations",
-  "general_notes"
-]);
 
 /**
  * Hides the free-text User Profile sections from the history agents read, so a
  * cleared health note can't be read back (docs/designs/user-profile.md, Activity
- * redaction). It fails closed: an entry where no image names a known section is
- * redacted too. Applied to this read only, so stored rows and undo, which compare
- * and restore the real images, are untouched. The device's own Activity Log keeps
- * the values.
+ * redaction). It fails closed: an entry is shown only when every image it has names
+ * a section known to be shown, because a push stores its images without parsing
+ * them, so one image of a pair can be anything. Applied to this read only, so stored
+ * rows and undo, which compare and restore the real images, are untouched. The
+ * device's own Activity Log keeps the values.
  */
 function redactUserProfileEntry<
   Entry extends {
@@ -1007,17 +1004,15 @@ function redactUserProfileEntry<
   if (entry.entityTable !== USER_PROFILE_SECTIONS_SYNC_ENTITY) {
     return entry;
   }
-  const sections = [entry.beforeImage?.section, entry.afterImage?.section];
+  const images = [entry.beforeImage, entry.afterImage].filter(
+    (image) => image !== null
+  );
   const isShown =
-    sections.some(
-      (section) =>
-        typeof section === "string" &&
-        USER_PROFILE_SECTIONS_SHOWN_IN_ACTIVITY.has(section)
-    ) &&
-    !sections.some(
-      (section) =>
-        typeof section === "string" &&
-        USER_PROFILE_SECTIONS_REDACTED_IN_ACTIVITY.has(section)
+    images.length > 0 &&
+    images.every(
+      (image) =>
+        typeof image.section === "string" &&
+        USER_PROFILE_SECTIONS_SHOWN_IN_ACTIVITY.has(image.section)
     );
   if (isShown) {
     return entry;
@@ -1029,10 +1024,31 @@ function redactUserProfileEntry<
   };
 }
 
+const USER_PROFILE_IMAGE_METADATA_KEYS = [
+  "id",
+  "section",
+  "updated_at",
+  "deleted_at"
+];
+
+/**
+ * Builds the image from the metadata it may show rather than copying it and hiding
+ * `values`: an unparsed image can hold the same text under any other key.
+ */
 function redactValues(
   image: Record<string, unknown> | null
 ): Record<string, unknown> | null {
-  return image === null ? null : { ...image, values: { redacted: true } };
+  if (image === null) {
+    return null;
+  }
+  const redacted: Record<string, unknown> = { values: { redacted: true } };
+  for (const key of USER_PROFILE_IMAGE_METADATA_KEYS) {
+    const value = image[key];
+    if (typeof value === "string" || value === null) {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
 }
 
 function groupIntoBatches(rows: ActivityLogRow[]) {

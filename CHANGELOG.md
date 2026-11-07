@@ -104,6 +104,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   and Batch Write User Profile.
 - **Server crash reports no longer carry request bodies.** With crash reporting
   on, a server error could send what was being written to Sentry.
+- **Server crash reports no longer carry session cookies.** With crash reporting
+  on, a server error could send the parsed session cookie to Sentry.
+- **Agents no longer read hidden User Profile text through unusual Activity Log
+  entries.** An entry with one unreadable image, or with text outside `values`,
+  could show Health & limitations or General Notes text in the agent's history.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array
   holding an entry that can't be turned into a string now reads as an empty list.
 - **A second device's seed no longer overrides a built-in Compound renamed after
