@@ -693,7 +693,8 @@ void main() {
       expect(row.updatedAt.toUtc(), _retiredAt);
     });
 
-    test('its older unacknowledged Activity Log entries are acknowledged, and '
+    test(
+        'its older unacknowledged Activity Log entries are acknowledged, and '
         'the kept entry is not', () async {
       final installed = await launch(_installedSeed());
       await logSet(installed, _plankId);
@@ -749,7 +750,8 @@ void main() {
       expect(await logEntries(), logBefore);
     });
 
-    test('with a name an active User Library exercise has, both stay active '
+    test(
+        'with a name an active User Library exercise has, both stay active '
         'and an edit to either is refused until one is renamed (CUJ 9)',
         () async {
       final type = ExerciseType(const <DimensionId>[DimensionId.reps]);
@@ -900,7 +902,8 @@ void main() {
       expect(row.recordProfile, RecordProfile.fastestPace.name);
     });
 
-    test('a fresh install inserts one with the record\'s own name for every '
+    test(
+        'a fresh install inserts one with the record\'s own name for every '
         'retired id', () async {
       final repositories = await launch(_updatedSeed());
 
@@ -931,7 +934,8 @@ void main() {
       );
     });
 
-    test('a Set that arrives later is accepted and the next pass keeps it '
+    test(
+        'a Set that arrives later is accepted and the next pass keeps it '
         '(CUJ 6)', () async {
       final repositories = await launch(_updatedSeed());
       expectHidden(await rowOf(_plankId));
@@ -1140,7 +1144,174 @@ void main() {
     });
   });
 
-  test('an imported merged alias and removed active row are corrected by the '
+  group('a Platform row with a value nothing can read', () {
+    const unreadable = ExercisesCompanion(
+      dimensionIds: Value<String>('not json'),
+      loadMode: Value<String>('sideways'),
+      recordProfile: Value<String>('nonsense'),
+      defaultLoadUnit: Value<String>('stone'),
+      equipmentIds: Value<String>('{"id":"barbell"}'),
+      focusIds: Value<String>('not json'),
+    );
+
+    test('with a seed id is repaired from the seed and can be read', () async {
+      await launch(_installedSeed());
+      await setRow(_squatId, unreadable);
+
+      final repositories = await launch(_updatedSeed());
+
+      final row = await rowOf(_squatId);
+      expect(row.deletedAt, isNull);
+      expect(row.dimensionIds, '["load","reps"]');
+      expect(row.loadMode, ExerciseLoadMode.added.name);
+      expect(
+        row.recordProfile,
+        defaultRecordProfileFor(
+          type: ExerciseType(const <DimensionId>[
+            DimensionId.load,
+            DimensionId.reps,
+          ]),
+          loadMode: ExerciseLoadMode.added,
+        ).name,
+      );
+      expect(row.defaultLoadUnit, TrainingUnit.kilogram.name);
+      expect(row.equipmentIds, '["barbell","plate"]');
+      expect(row.focusIds, '["$_weightsId","$_enduranceId"]');
+      await expectLater(repositories.catalog.listMergedCatalog(), completes);
+    });
+
+    test('keeps the readable values beside the one it repairs', () async {
+      await launch(_installedSeed());
+      await setRow(
+        _squatId,
+        const ExercisesCompanion(
+          dimensionIds: Value<String>('["reps"]'),
+          loadMode: Value<String>('assisted'),
+          defaultLoadUnit: Value<String>('pound'),
+          recordProfile: Value<String>('nonsense'),
+        ),
+      );
+
+      await launch(_updatedSeed());
+
+      final row = await rowOf(_squatId);
+      expect(row.dimensionIds, '["reps"]');
+      expect(row.loadMode, 'assisted');
+      expect(row.defaultLoadUnit, 'pound');
+      expect(
+        row.recordProfile,
+        defaultRecordProfileFor(
+          type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+          loadMode: ExerciseLoadMode.assisted,
+        ).name,
+      );
+    });
+
+    test('with an unused retired id is hidden and repaired', () async {
+      await launch(_installedSeed());
+      await setRow(_plankId, unreadable);
+
+      await launch(_updatedSeed());
+
+      final row = await rowOf(_plankId);
+      expectHidden(row);
+      expect(row.dimensionIds, '["reps"]');
+      expect(row.loadMode, ExerciseLoadMode.added.name);
+      expect(row.defaultLoadUnit, TrainingUnit.kilogram.name);
+      expect(
+        RecordProfile.values.map((profile) => profile.name),
+        contains(row.recordProfile),
+      );
+    });
+
+    test('with a used retired id is kept and repaired', () async {
+      final installed = await launch(_installedSeed());
+      await logSet(installed, _plankId);
+      await setRow(_plankId, unreadable);
+
+      final repositories = await launch(_updatedSeed());
+
+      final row = await rowOf(_plankId);
+      expectKept(row);
+      expect(row.loadMode, ExerciseLoadMode.added.name);
+      expect(row.defaultLoadUnit, TrainingUnit.kilogram.name);
+      await expectLater(repositories.catalog.listMergedCatalog(), completes);
+    });
+
+    test('recalculates a profile from the dimensions the row ends up with',
+        () async {
+      await launch(_installedSeed());
+      await setRow(
+        _plankId,
+        const ExercisesCompanion(
+          loadMode: Value<String>('sideways'),
+          recordProfile: Value<String>('nonsense'),
+        ),
+      );
+
+      await launch(
+        _updatedSeed(
+          plankDimensions: const <DimensionId>[
+            DimensionId.load,
+            DimensionId.reps,
+          ],
+        ),
+      );
+
+      final row = await rowOf(_plankId);
+      expect(row.dimensionIds, '["load","reps"]');
+      expect(
+        row.recordProfile,
+        defaultRecordProfileFor(
+          type: ExerciseType(const <DimensionId>[
+            DimensionId.load,
+            DimensionId.reps,
+          ]),
+          loadMode: ExerciseLoadMode.added,
+        ).name,
+      );
+    });
+
+    test('settles after one write', () async {
+      await launch(_installedSeed());
+      await setRow(_squatId, unreadable);
+      await setRow(_plankId, unreadable);
+      await launch(_updatedSeed());
+      final entries = (await logEntries()).length;
+
+      await launch(_updatedSeed());
+
+      expect((await logEntries()).length, entries);
+    });
+
+    test('arriving in a backup is repaired by the next launch', () async {
+      final sourceDatabase = AppDatabase.inMemory();
+      addTearDown(sourceDatabase.close);
+      final source = await launch(_installedSeed(), on: sourceDatabase);
+      await (sourceDatabase.update(sourceDatabase.exercises)
+            ..where((row) => row.id.equals(_squatId)))
+          .write(
+        unreadable.copyWith(
+          updatedAt: Value<DateTime>(
+            _retiredAt.add(const Duration(days: 1)),
+          ),
+        ),
+      );
+      final archive = await source.portableArchives.exportPortableArchive();
+
+      final target = await launch(_updatedSeed());
+      await target.portableArchives.importPortableArchive(archive);
+      expect((await rowOf(_squatId)).loadMode, 'sideways');
+
+      final repositories = await launch(_updatedSeed());
+
+      expect((await rowOf(_squatId)).loadMode, ExerciseLoadMode.added.name);
+      await expectLater(repositories.catalog.listMergedCatalog(), completes);
+    });
+  });
+
+  test(
+      'an imported merged alias and removed active row are corrected by the '
       'next pass', () async {
     // An older backup: the merged id is an alias under its target's name, and
     // the removed exercise is still active.
