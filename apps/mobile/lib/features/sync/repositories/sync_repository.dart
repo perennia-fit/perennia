@@ -1256,9 +1256,14 @@ class SyncRepository implements SyncCycleRepository {
         nextCursor: response.nextCursor,
         serverClock: response.serverClock,
         fullResyncRequired: false,
-        // A malformed entry still took a slot on the page.
+        // A malformed entry still took a slot on the page. The server fills a
+        // page with up to `limit` rows and then adds the parents they
+        // reference, so a full page can hold more than `limit` changes:
+        // anything short of `limit` is the last page, nothing else is. With
+        // `== limit`, a page that carried parents ended the pull partway
+        // through a batch, and the rest waited for the next sync.
         hasMore:
-            response.changes.length + response.malformedChanges.length == limit,
+            response.changes.length + response.malformedChanges.length >= limit,
         userSettingsApplied: applied.userSettingsApplied,
       );
       if (manageStatus) {

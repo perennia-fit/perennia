@@ -1639,6 +1639,57 @@ void main() {
     expect(jsonDecode(held.last.changeJson), 'not-an-object');
   });
 
+  test(
+      'reports more changes when parent rows push a page past the limit, '
+      'so the rest of a batch is pulled in the same sync', () async {
+    // The server fills a page with up to `limit` rows and then adds the
+    // parents they reference, so a full page can hold more than `limit`
+    // changes. Reading that as the last page stopped the pull partway through
+    // an agent's plan: its Workout Templates arrived, its Routine did not.
+    final updatedAt = DateTime.utc(2026, 11, 8, 8, 45);
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-with-parents-1',
+              'serverClock': '2026-11-08T08:45:01.000Z',
+              'changes': <Object?>[
+                for (final id in const [
+                  '019a66b0-1108-7000-a627-0000000000a1',
+                  '019a66b0-1108-7000-a627-0000000000a2',
+                  '019a66b0-1108-7000-a627-0000000000a3',
+                ])
+                  _pulledChange(
+                    id: id,
+                    updatedAt: updatedAt,
+                    repsEntered: '5',
+                    deviceId: 'device-b',
+                  ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+      limit: 2,
+    );
+
+    expect(result.appliedCount, 3);
+    expect(result.hasMore, isTrue);
+    expect(await _storedPullCursor(database), 'cursor-with-parents-1');
+  });
+
   test('a later valid version of a quarantined row supersedes it', () async {
     final updatedAt = DateTime.utc(2026, 6, 22, 9);
     const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
@@ -6121,7 +6172,8 @@ void main() {
           'height': <String, Object?>{'value': 66, 'unit': 'in'},
         },
       );
-      expect(await SyncRepository(database: database).hasPendingChanges(), true);
+      expect(
+          await SyncRepository(database: database).hasPendingChanges(), true);
 
       final bodies = <Map<String, Object?>>[];
       final repository = SyncRepository(
@@ -6152,8 +6204,8 @@ void main() {
       final push = bodies.singleWhere(
         (body) => body['entity'] == AppDatabase.userProfileSectionsTable,
       );
-      final change = (push['changes']! as List<Object?>).single!
-          as Map<String, Object?>;
+      final change =
+          (push['changes']! as List<Object?>).single! as Map<String, Object?>;
       expect(change['payload'], <String, Object?>{
         'id': row.id,
         'section': 'about_you',
@@ -6176,7 +6228,8 @@ void main() {
             ))
           .getSingle();
       expect(entry.syncAcknowledgedAt, isNotNull);
-      expect(await SyncRepository(database: database).hasPendingChanges(), false);
+      expect(
+          await SyncRepository(database: database).hasPendingChanges(), false);
     });
 
     test(
@@ -6330,7 +6383,9 @@ void main() {
           id: 'dropped',
           payload: const <String, Object?>{
             'section': 'training_goals',
-            'values': <String, Object?>{'goals': <String>['strength']},
+            'values': <String, Object?>{
+              'goals': <String>['strength']
+            },
           },
         ),
       ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
