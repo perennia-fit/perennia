@@ -192,7 +192,7 @@ List<String> _sectionLines(
         return const <String>[];
       }
       if (levels.isEmpty) {
-        return [l10n.profileNone];
+        return [l10n.profileExperienceNone];
       }
       // An entry whose Focus is archived is kept and hidden, so a Focus's
       // position in the user's order decides the lines, not the stored order.
@@ -213,7 +213,7 @@ List<String> _sectionLines(
           line(
             l10n.profileFieldEquipment,
             equipment.isEmpty
-                ? l10n.profileNone
+                ? l10n.profileEquipmentPresetBodyweightOnly
                 : equipment.map(profileEquipmentLabel).join(', '),
           ),
         if (days != null) line(l10n.profileFieldDaysPerWeek, '$days'),

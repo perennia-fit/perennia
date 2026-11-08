@@ -4345,4 +4345,88 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingWeekStartLabel => 'Week starts';
+
+  @override
+  String onboardingStepOf(int step, int total) {
+    return 'Step $step of $total';
+  }
+
+  @override
+  String get onboardingLeadAboutYou =>
+      'Perennia uses these to pick default reference ranges for your Metrics, and an agent you connect can read them. Every field is optional, and you can change them later in Account & app, Profile.';
+
+  @override
+  String get onboardingLeadGoalsExperience =>
+      'Logging works the same whatever you pick. This tells an agent you connect what you are working toward and what you already train, so its suggestions fit you.';
+
+  @override
+  String get onboardingLeadTrainingSetup =>
+      'What you can train with and how much time you usually have, so an agent suggests workouts you can actually do.';
+
+  @override
+  String get onboardingGoalsQuestion =>
+      'What are you training for? Pick any that apply.';
+
+  @override
+  String get profileExperienceQuestion =>
+      'Which kinds of training do you do? Pick each one, then your level in it.';
+
+  @override
+  String get profileExperiencePickLevel => 'Pick a level';
+
+  @override
+  String profileExperienceMissingLevel(String focus) {
+    return 'Pick a level for $focus, or unselect it.';
+  }
+
+  @override
+  String get profileExperienceNone => 'New to all of these';
+
+  @override
+  String get profileFocusDescriptionWeights =>
+      'Barbells, dumbbells and machines, for strength and muscle.';
+
+  @override
+  String get profileFocusDescriptionEndurance =>
+      'Running, cycling, rowing, swimming and other cardio, steady or in intervals.';
+
+  @override
+  String get profileFocusDescriptionFunctional =>
+      'Mixed strength and conditioning: CrossFit-style workouts, HYROX-style races, kettlebell flows.';
+
+  @override
+  String get profileFocusDescriptionCalisthenics =>
+      'Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits.';
+
+  @override
+  String get profileFocusDescriptionMobility =>
+      'Stretching, yoga and mobility flows.';
+
+  @override
+  String get profileEquipmentWhere => 'Where do you train?';
+
+  @override
+  String get profileEquipmentPresetGym => 'Gym';
+
+  @override
+  String get profileEquipmentPresetHome => 'Home';
+
+  @override
+  String get profileEquipmentPresetBodyweightOnly => 'Bodyweight only';
+
+  @override
+  String get profileEquipmentGroupFreeWeights => 'Free weights';
+
+  @override
+  String get profileEquipmentGroupRacksMachines =>
+      'Racks, benches and machines';
+
+  @override
+  String get profileEquipmentGroupConditioning => 'Conditioning';
+
+  @override
+  String get profileEquipmentGroupAccessories => 'Accessories';
+
+  @override
+  String get profileEquipmentGroupOther => 'Other';
 }

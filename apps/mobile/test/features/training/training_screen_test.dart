@@ -5086,7 +5086,11 @@ void main() {
           tester,
           find.byKey(TrainingScreen.restStripStopKey),
         );
-        final left = resumed.deadlineAt.difference(DateTime.now().toUtc());
+        // The screen starts and counts the rest on `clock`, the test's fake
+        // clock, so the expected value must use it too. The real clock runs
+        // ahead by however long setup took in real time (seeding the exercise
+        // library), which made this check fail on a slower run.
+        final left = resumed.deadlineAt.difference(clock.now().toUtc());
         expect(
           _restStripSeconds(tester),
           inInclusiveRange(left.inSeconds - 2, left.inSeconds + 1),

@@ -16,6 +16,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   for each term, and no stray text or non-English names. Names update on existing
   devices and logged sets keep their history. 14 left, right and one-leg variants
   merge into one exercise, taking the library from 1,450 to 1,436.
+- Onboarding explains each screen and shows which step you are on. Experience asks
+  which kinds of training you do, with what each covers, before asking your level.
+- Training setup offers Gym, Home and Bodyweight only presets and groups the
+  equipment. Onboarding starts from Gym, so Done saves a typical gym list.
 
 ### Fixed
 
