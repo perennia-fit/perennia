@@ -30,6 +30,15 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   "Sign in required" until the user signed in again. Devices already showing
   that need one more sign-in.
 
+### Fixed
+
+- **An expired sign-in no longer looks signed in.** When the server stops
+  accepting this phone's session, the Account screen says the sign-in expired
+  instead of "Signed in as", the Account & app button shows a small dot, and
+  both the Account and Sync screens offer **Sign in again**. Signing in again
+  keeps everything on the phone, including changes that have not synced yet,
+  and the next sync sends them.
+
 ## [0.3.0] - 2026-11-07
 
 A minor release: one screen for logging meals, rest timer cues and a Finish

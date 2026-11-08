@@ -78,7 +78,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -116,7 +116,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
         openFoodFactsRepository: openFoodFacts,
@@ -142,7 +142,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -169,7 +169,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _ErrorHomeRepository(),
       ),
@@ -196,7 +196,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _LoadingHomeRepository(),
       ),
@@ -223,6 +223,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _idleSyncStatusOverride(),
             upNextFeatureRepositoryProvider.overrideWith(
               (ref) => const StubUpNextFeatureRepository(),
             ),
@@ -334,6 +335,7 @@ void main() {
           // A new scope per theme, so each loop starts on the list.
           key: UniqueKey(),
           overrides: [
+            _idleSyncStatusOverride(),
             compoundListProvider.overrideWith(
               (ref) => Stream<List<CompoundRecord>>.value(compounds),
             ),
@@ -404,7 +406,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _ScrollableHomeRepository(),
       ),
@@ -437,7 +439,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         authRepository: InMemoryAuthRepository(),
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
@@ -469,7 +471,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -495,7 +497,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -565,7 +567,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
         settingsRepository: settingsRepository,
@@ -611,6 +613,7 @@ void main() {
             (ref) => const StubUpNextFeatureRepository(),
           ),
           _homeNutritionDayOverride(),
+          _idleSyncStatusOverride(),
           appDatabaseProvider.overrideWith((ref) => database),
           exerciseCatalogRepositoryProvider.overrideWith(
             (ref) => const StubExerciseCatalogRepository(),
@@ -719,7 +722,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         authRepository: authRepository,
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
@@ -760,6 +763,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           _disabledSyncCoordinatorOverride(),
         ],
@@ -796,6 +800,110 @@ void main() {
     );
   });
 
+  testWidgets('an expired sign-in shows a quiet dot and Sign in again', (
+    tester,
+  ) async {
+    final serverUrl = Uri.parse('https://perennia.example.com');
+    final session = AuthSession(
+      provider: AuthSessionProvider.email,
+      serverUrl: serverUrl,
+      token: 'token-a',
+      userEmail: 'qa@example.com',
+      userId: 'user-a',
+      userName: 'QA User',
+    );
+
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [
+          _homeNutritionDayOverride(),
+          _disabledSyncCoordinatorOverride(),
+          syncStatusControllerProvider.overrideWith(
+            () => _StubSyncStatusController(
+              SyncStatusState(
+                kind: SyncStatusKind.authExpired,
+                lastFailureAt: DateTime.utc(2026, 6, 22, 10),
+                observedAt: DateTime.utc(2026, 6, 22, 12),
+              ),
+            ),
+          ),
+        ],
+        authRepository: InMemoryAuthRepository(
+          AuthState(serverUrl: serverUrl, session: session),
+        ),
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Non-blocking: Today renders as usual, with a dot and words on the
+    // Account & app button and no dialog.
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byKey(HomeScreen.accountSignInExpiredBadgeKey), findsOneWidget);
+    expect(find.byTooltip('Account & app: sign-in expired'), findsOneWidget);
+
+    await tester.tap(find.byKey(HomeScreen.accountAndAppButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('qa@example.com'), findsOneWidget);
+    expect(
+      find.text('Sign-in expired. Sign in again to sync.'),
+      findsOneWidget,
+    );
+    expect(find.text('Manage account and sync'), findsNothing);
+
+    await tester.tap(find.byKey(HomeScreen.accountAndAppSignInKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(SignInScreen.sessionExpiredNoticeKey), findsOneWidget);
+    expect(find.byKey(SignInScreen.emailSignInButtonKey), findsOneWidget);
+  });
+
+  testWidgets('a healthy session shows no sign-in-expired dot', (
+    tester,
+  ) async {
+    final serverUrl = Uri.parse('https://perennia.example.com');
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [
+          _homeNutritionDayOverride(),
+          _disabledSyncCoordinatorOverride(),
+          syncStatusControllerProvider.overrideWith(
+            () => _StubSyncStatusController(
+              SyncStatusState(
+                kind: SyncStatusKind.synced,
+                lastSuccessfulSyncAt: DateTime.utc(2026, 6, 22, 11),
+                observedAt: DateTime.utc(2026, 6, 22, 12),
+              ),
+            ),
+          ),
+        ],
+        authRepository: InMemoryAuthRepository(
+          AuthState(
+            serverUrl: serverUrl,
+            session: AuthSession(
+              provider: AuthSessionProvider.email,
+              serverUrl: serverUrl,
+              token: 'token-a',
+              userEmail: 'qa@example.com',
+              userId: 'user-a',
+              userName: 'QA User',
+            ),
+          ),
+        ),
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(HomeScreen.accountSignInExpiredBadgeKey), findsNothing);
+    expect(find.byTooltip('Account & app'), findsOneWidget);
+  });
+
   testWidgets('Account and app opens the Profile screen', (tester) async {
     final database = AppDatabase.inMemory();
     addTearDown(database.close);
@@ -805,6 +913,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           _disabledSyncCoordinatorOverride(),
           trainingRepositoriesProvider.overrideWith((ref) => repositories),
@@ -839,6 +948,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           _disabledSyncCoordinatorOverride(),
         ],
@@ -883,6 +993,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           appDatabaseProvider.overrideWith((ref) => database),
         ],
@@ -914,6 +1025,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           appDatabaseProvider.overrideWith((ref) => database),
           // Navigation smoke test only: keep this off real Drift watch streams.
@@ -943,6 +1055,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           routinePlanListControllerProvider.overrideWith(
             _StubRoutinePlanListController.new,
@@ -991,6 +1104,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           trainingRepositoriesProvider.overrideWith(
             (ref) => repositories,
@@ -1023,6 +1137,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           compoundListProvider.overrideWith(
             (ref) => Stream<List<CompoundRecord>>.value(
@@ -1072,6 +1187,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           trainingRepositoriesProvider.overrideWith((ref) => repositories),
         ],
@@ -1106,7 +1222,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _DateEchoHomeRepository(),
       ),
@@ -1127,7 +1243,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -1149,7 +1265,7 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_homeNutritionDayOverride()],
+        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: _FailingStartHomeRepository(),
       ),
@@ -1180,6 +1296,7 @@ void main() {
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
+          _idleSyncStatusOverride(),
           _homeNutritionDayOverride(),
           appDatabaseProvider.overrideWith((ref) => database),
           compoundListProvider.overrideWith(
@@ -1248,6 +1365,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _idleSyncStatusOverride(),
             upNextFeatureRepositoryProvider.overrideWith(
               (ref) => const StubUpNextFeatureRepository(),
             ),
@@ -1320,6 +1438,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1365,6 +1484,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1400,6 +1520,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1453,6 +1574,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1517,6 +1639,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _idleSyncStatusOverride(),
             upNextFeatureRepositoryProvider.overrideWith(
               (ref) => const StubUpNextFeatureRepository(),
             ),
@@ -1577,6 +1700,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _idleSyncStatusOverride(),
             upNextFeatureRepositoryProvider.overrideWith(
               (ref) => const StubUpNextFeatureRepository(),
             ),
@@ -1623,6 +1747,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1674,6 +1799,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1719,6 +1845,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -1983,6 +2110,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2072,6 +2200,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2137,6 +2266,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2198,6 +2328,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2251,6 +2382,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2396,6 +2528,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2433,6 +2566,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2564,6 +2698,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2594,6 +2729,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2620,6 +2756,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _idleSyncStatusOverride(),
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
@@ -2665,6 +2802,17 @@ void main() {
       findsNothing,
     );
   });
+}
+
+/// The Account & app button watches sync status on every root. Tests that do
+/// not exercise sync keep it off the Drift stream, which would otherwise leave
+/// a timer pending when the tree is torn down.
+Override _idleSyncStatusOverride() {
+  return syncStatusControllerProvider.overrideWith(
+    () => _StubSyncStatusController(
+      SyncStatusState.initial(DateTime.utc(2026, 6, 22, 12)),
+    ),
+  );
 }
 
 class _StubSyncStatusController extends SyncStatusController {
@@ -3564,6 +3712,7 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
 Widget _finishableWorkoutApp(_FinishableWorkoutHomeRepository repository) {
   return ProviderScope(
     overrides: [
+      _idleSyncStatusOverride(),
       upNextFeatureRepositoryProvider.overrideWith(
         (ref) => const StubUpNextFeatureRepository(),
       ),
@@ -4043,6 +4192,7 @@ Future<void> _pumpPlanProgressApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        _idleSyncStatusOverride(),
         upNextFeatureRepositoryProvider.overrideWith(
           (ref) => const StubUpNextFeatureRepository(),
         ),

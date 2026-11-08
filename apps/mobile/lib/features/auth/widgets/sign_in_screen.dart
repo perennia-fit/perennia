@@ -4,10 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/theme.dart';
+import '../../sync/controllers/sync_status_controller.dart';
 import '../repositories/auth_repository.dart';
 
+/// Sign in, sign up, and the Account view of the current session.
+///
+/// A stored session is not proof the server still accepts it: when the last
+/// Sync Run was rejected as unauthorized, sync status is
+/// [SyncStatusKind.authExpired] and this screen says the sign-in expired
+/// instead of "Signed in as". **Sign in again** shows the sign-in form over the
+/// expired session without signing out first, so backing out leaves the device
+/// exactly as it was, and success replaces only the session: local data and
+/// unsynced changes stay put, and the next Sync Run pushes them.
 class SignInScreen extends ConsumerStatefulWidget {
-  const SignInScreen({super.key});
+  const SignInScreen({super.key, this.signInAgain = false});
+
+  /// Opens straight onto the sign-in form when the session has expired, for
+  /// callers whose own button already said "Sign in again".
+  final bool signInAgain;
 
   static const routeName = '/sign-in';
   static const serverUrlFieldKey = Key('auth.serverUrl');
@@ -22,6 +36,9 @@ class SignInScreen extends ConsumerStatefulWidget {
   static const resendVerificationEmailButtonKey =
       Key('auth.resendVerificationEmail');
   static const signOutButtonKey = Key('auth.signOut');
+  static const signInAgainButtonKey = Key('auth.signInAgain');
+  static const cancelSignInAgainButtonKey = Key('auth.cancelSignInAgain');
+  static const sessionExpiredNoticeKey = Key('auth.sessionExpiredNotice');
   static const sessionStatusKey = Key('auth.sessionStatus');
   static const noticeTextKey = Key('auth.notice');
   static const errorTextKey = Key('auth.error');
@@ -39,6 +56,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   bool _serverUrlEdited = false;
   String? _noticeText;
   String? _verificationEmailAddress;
+
+  /// The sign-in form is showing over an expired session.
+  late bool _signingInAgain = widget.signInAgain;
+
+  /// The session this screen just signed in again with. Sync status still
+  /// reads [SyncStatusKind.authExpired] until the Sync Run that sign-in starts
+  /// records over it, and that verdict was about the old session, not this
+  /// one.
+  String? _signedInAgainToken;
 
   @override
   void dispose() {
@@ -58,6 +84,29 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final resendEmailAddress = _resendVerificationEmailAddress(
       authValue.error,
     );
+    final syncKind = ref.watch(syncStatusControllerProvider).value?.kind;
+    final sessionExpired = session != null &&
+        syncKind == SyncStatusKind.authExpired &&
+        session.token != _signedInAgainToken;
+    final signingInAgain = sessionExpired && _signingInAgain;
+
+    ref.listen<AsyncValue<AuthState>>(authControllerProvider, (previous, next) {
+      final nextSession = next.value?.session;
+      if (!signingInAgain ||
+          nextSession == null ||
+          nextSession.token == previous?.value?.session?.token) {
+        return;
+      }
+      setState(() {
+        _signingInAgain = false;
+        _signedInAgainToken = nextSession.token;
+        _passwordController.clear();
+      });
+    });
+
+    if (signingInAgain && _emailController.text.isEmpty) {
+      _emailController.text = session.userEmail;
+    }
 
     if (!_serverUrlEdited &&
         _serverUrlController.text != authState.serverUrl.toString()) {
@@ -65,22 +114,35 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(session == null ? 'Sign in' : 'Account')),
+      appBar: AppBar(
+        title: Text(
+          session == null || signingInAgain ? 'Sign in' : 'Account',
+        ),
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(AppDimens.base),
-          children: session == null
-              ? _signedOutContent(
-                  context: context,
-                  authValue: authValue,
-                  isLoading: isLoading,
-                  resendEmailAddress: resendEmailAddress,
-                )
+          children: session == null || signingInAgain
+              ? [
+                  if (signingInAgain)
+                    ..._signInAgainHeader(
+                      context: context,
+                      serverUrl: authState.serverUrl,
+                      isLoading: isLoading,
+                    ),
+                  ..._signedOutContent(
+                    context: context,
+                    authValue: authValue,
+                    isLoading: isLoading,
+                    resendEmailAddress: resendEmailAddress,
+                  ),
+                ]
               : _signedInContent(
                   context: context,
                   session: session,
                   serverUrl: authState.serverUrl,
                   isLoading: isLoading,
+                  sessionExpired: sessionExpired,
                 ),
         ),
       ),
@@ -255,13 +317,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     required AuthSession session,
     required Uri serverUrl,
     required bool isLoading,
+    required bool sessionExpired,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return [
       Icon(
-        Icons.account_circle_outlined,
+        sessionExpired
+            ? Icons.person_off_outlined
+            : Icons.account_circle_outlined,
         size: AppDimens.touchTarget,
-        color: colorScheme.primary,
+        color: sessionExpired ? colorScheme.error : colorScheme.primary,
       ),
       const SizedBox(height: AppDimens.base),
       Text(
@@ -271,11 +336,38 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ),
       const SizedBox(height: AppDimens.dense),
       Text(
-        'Signed in as ${session.userEmail}',
+        sessionExpired
+            ? 'Sign-in expired for ${session.userEmail}'
+            : 'Signed in as ${session.userEmail}',
         key: SignInScreen.sessionStatusKey,
         textAlign: TextAlign.center,
         style: context.textStyles.body,
       ),
+      if (sessionExpired) ...[
+        const SizedBox(height: AppDimens.base),
+        Text(
+          _sessionExpiredExplanation,
+          key: SignInScreen.sessionExpiredNoticeKey,
+          textAlign: TextAlign.center,
+          style: context.textStyles.body,
+        ),
+        const SizedBox(height: AppDimens.base),
+        FilledButton.icon(
+          key: SignInScreen.signInAgainButtonKey,
+          onPressed: isLoading ? null : _startSigningInAgain,
+          icon: const Icon(Icons.login),
+          label: const Text('Sign in again'),
+        ),
+      ],
+      if (session.token == _signedInAgainToken) ...[
+        const SizedBox(height: AppDimens.base),
+        Text(
+          'Signed in again. Changes on this phone are syncing.',
+          key: SignInScreen.noticeTextKey,
+          textAlign: TextAlign.center,
+          style: context.textStyles.body,
+        ),
+      ],
       const SizedBox(height: AppDimens.base),
       ListTile(
         contentPadding: EdgeInsets.zero,
@@ -303,6 +395,44 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         label: const Text('Sign out'),
       ),
     ];
+  }
+
+  List<Widget> _signInAgainHeader({
+    required BuildContext context,
+    required Uri serverUrl,
+    required bool isLoading,
+  }) {
+    return [
+      Text(
+        _sessionExpiredExplanation,
+        key: SignInScreen.sessionExpiredNoticeKey,
+        style: context.textStyles.body,
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: SignInScreen.cancelSignInAgainButtonKey,
+          onPressed: isLoading
+              ? null
+              : () => setState(() {
+                    _signingInAgain = false;
+                    _noticeText = null;
+                  }),
+          child: const Text('Cancel'),
+        ),
+      ),
+      const SizedBox(height: AppDimens.dense),
+    ];
+  }
+
+  void _startSigningInAgain() {
+    setState(() {
+      _signingInAgain = true;
+      _formMode = _AuthFormMode.signIn;
+      _noticeText = null;
+      _verificationEmailAddress = null;
+      _serverUrlEdited = false;
+    });
   }
 
   void _submitEmail() {
@@ -413,6 +543,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     return 'Sign-in failed';
   }
 }
+
+const _sessionExpiredExplanation =
+    'The server no longer accepts this sign-in, so sync has stopped. '
+    'Everything on this phone stays here, including changes that have not '
+    'synced yet. Sign in again to send them.';
 
 String _providerLabel(AuthSessionProvider provider) {
   return switch (provider) {
