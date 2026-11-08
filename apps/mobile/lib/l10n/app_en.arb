@@ -3191,5 +3191,110 @@
   "onboardingWeekStartLabel": "Week starts",
   "@onboardingWeekStartLabel": {
     "description": "Label of the week start day control on onboarding screen 1."
+  },
+  "onboardingStepOf": "Step {step} of {total}",
+  "@onboardingStepOf": {
+    "description": "App bar title on onboarding screens: where the user is in the flow.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "onboardingLeadAboutYou": "Perennia uses these to pick default reference ranges for your Metrics, and an agent you connect can read them. Every field is optional, and you can change them later in Account & app, Profile.",
+  "@onboardingLeadAboutYou": {
+    "description": "Lead under the title of onboarding screen 1: what the screen is for."
+  },
+  "onboardingLeadGoalsExperience": "Logging works the same whatever you pick. This tells an agent you connect what you are working toward and what you already train, so its suggestions fit you.",
+  "@onboardingLeadGoalsExperience": {
+    "description": "Lead under the title of onboarding screen 2: what the screen is for."
+  },
+  "onboardingLeadTrainingSetup": "What you can train with and how much time you usually have, so an agent suggests workouts you can actually do.",
+  "@onboardingLeadTrainingSetup": {
+    "description": "Lead under the title of onboarding screen 3: what the screen is for."
+  },
+  "onboardingGoalsQuestion": "What are you training for? Pick any that apply.",
+  "@onboardingGoalsQuestion": {
+    "description": "Question under the Training Goals subheading on onboarding screen 2."
+  },
+  "profileExperienceQuestion": "Which kinds of training do you do? Pick each one, then your level in it.",
+  "@profileExperienceQuestion": {
+    "description": "Question at the top of the Experience fields, in onboarding and the Profile editor."
+  },
+  "profileExperiencePickLevel": "Pick a level",
+  "@profileExperiencePickLevel": {
+    "description": "Prompt under a Focus the user selected but has not given a level yet."
+  },
+  "profileExperienceMissingLevel": "Pick a level for {focus}, or unselect it.",
+  "@profileExperienceMissingLevel": {
+    "description": "Error when Next or Save is tapped while a selected Focus has no level.",
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "profileExperienceNone": "New to all of these",
+  "@profileExperienceNone": {
+    "description": "Experience option that stores an empty list: the user has no experience in any Focus."
+  },
+  "profileFocusDescriptionWeights": "Barbells, dumbbells and machines, for strength and muscle.",
+  "@profileFocusDescriptionWeights": {
+    "description": "What the starter Weights Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionEndurance": "Running, cycling, rowing, swimming and other cardio, steady or in intervals.",
+  "@profileFocusDescriptionEndurance": {
+    "description": "What the starter Endurance Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionFunctional": "Mixed strength and conditioning: CrossFit-style workouts, HYROX-style races, kettlebell flows.",
+  "@profileFocusDescriptionFunctional": {
+    "description": "What the starter Functional Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionCalisthenics": "Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits.",
+  "@profileFocusDescriptionCalisthenics": {
+    "description": "What the starter Calisthenics Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionMobility": "Stretching, yoga and mobility flows.",
+  "@profileFocusDescriptionMobility": {
+    "description": "What the starter Mobility Focus covers, shown in the Experience fields."
+  },
+  "profileEquipmentWhere": "Where do you train?",
+  "@profileEquipmentWhere": {
+    "description": "Label of the equipment preset chips in the Training setup fields."
+  },
+  "profileEquipmentPresetGym": "Gym",
+  "@profileEquipmentPresetGym": {
+    "description": "Equipment preset: a typical commercial gym."
+  },
+  "profileEquipmentPresetHome": "Home",
+  "@profileEquipmentPresetHome": {
+    "description": "Equipment preset: a home setup."
+  },
+  "profileEquipmentPresetBodyweightOnly": "Bodyweight only",
+  "@profileEquipmentPresetBodyweightOnly": {
+    "description": "Equipment preset that stores an empty equipment list. Also how the Profile screen shows that list."
+  },
+  "profileEquipmentGroupFreeWeights": "Free weights",
+  "@profileEquipmentGroupFreeWeights": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupRacksMachines": "Racks, benches and machines",
+  "@profileEquipmentGroupRacksMachines": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupConditioning": "Conditioning",
+  "@profileEquipmentGroupConditioning": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupAccessories": "Accessories",
+  "@profileEquipmentGroupAccessories": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupOther": "Other",
+  "@profileEquipmentGroupOther": {
+    "description": "Heading of the group that holds stored equipment ids outside the registry."
   }
 }

@@ -339,7 +339,7 @@ Rules for the values:
     `endurance_performance`, `mobility`, `general_fitness`. The list is unordered and has no
     duplicates. Chip labels: Longevity, Strength, Muscle gain, Body composition, Endurance
     performance, Mobility, General fitness.
-*   **Experience levels.** Each level has a one-line meaning shown in the UI:
+*   **Experience levels.** Each level has a one-line meaning, shown once above the Focus list:
     *   Beginner: "Under a year of regular training in this Focus."
     *   Intermediate: "One to three years."
     *   Advanced: "More than three years."
@@ -347,11 +347,37 @@ Rules for the values:
     `focus_id` is any non-empty Focus id, with no foreign key, following `Exercises.focusIds`.
     Starter Focuses are seeded with fixed ids, so they match across installs. An entry whose
     Focus is archived is kept and hidden in the device UI.
+
+    The editor asks which Focuses the user trains before it asks for a level, and says what
+    each starter Focus covers, because a name like "Functional" means nothing on its own:
+    *   Weights: "Barbells, dumbbells and machines, for strength and muscle."
+    *   Endurance: "Running, cycling, rowing, swimming and other cardio, steady or in
+        intervals."
+    *   Functional: "Mixed strength and conditioning: CrossFit-style workouts, HYROX-style
+        races, kettlebell flows."
+    *   Calisthenics: "Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits."
+    *   Mobility: "Stretching, yoga and mobility flows."
+
+    Descriptions are UI copy keyed by the seeded id, so a renamed starter Focus keeps its
+    description and a Focus the user added has none. Picking a Focus shows its three levels
+    with none chosen. No level is guessed: while a picked Focus has no level, Save and **Next**
+    refuse with "Pick a level for {focus}, or unselect it." That check is UI only, because such
+    a Focus never reaches the stored values, so it is no validation rule. **New to all of
+    these** writes `[]`.
 *   **EquipmentId** is any non-empty string of at most 64 characters. Ids in
     `ExerciseEquipment.known` (`apps/mobile/lib/domain/training/training_dimensions.dart`) are
     shown with their labels. Other ids are kept and shown as the id, as CONTEXT.md allows for
     Equipment. The Training setup editor offers every registry id except `bodyweight`, so `[]`
     is the only way to say "bodyweight only".
+
+    The editor shows the ids in four groups (Free weights; Racks, benches and machines;
+    Conditioning; Accessories), with stored ids outside them under Other. Above them, three
+    presets replace the selection: **Gym** (every offered id except `sled`, `skiErg` and
+    `sandbag`, which mostly live in functional-training gyms), **Home** (`dumbbell`,
+    `kettlebell`, `band`, `pullUpBar`, `bench`, `gymMat`, `swissBall`, `foamRoll`, `wall`), and
+    **Bodyweight only** (`[]`). A preset reads selected while the list matches it exactly.
+    Unpicking every item is *unset*. Groups and presets are UI arrangement only
+    (`apps/mobile/lib/domain/profile/equipment_presets.dart`); nothing stored depends on them.
 *   **Height** is stored as entered.
     *   Metric entry stores centimetres, to one decimal place.
     *   Imperial entry of feet and inches stores the total in inches, to one decimal place. For
@@ -457,7 +483,20 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     brings onboarding back.
 *   **Saving.** **Next** writes only the fields entered on that screen, following Save
     semantics. If nothing was entered, it writes nothing, like **Skip this**. Screens 2 and 3
-    each save as one Activity Log Batch.
+    each save as one Activity Log Batch. One exception: when no equipment is stored, screen 3
+    starts from the **Gym** preset, shown selected, so a user who trains in a gym can tap
+    **Done**. **Done** then saves that list; **Skip this** and **Skip all** still save nothing.
+    The Profile screen's editor starts from what is stored, with no preset.
+*   **Guidance.** The app bar reads "Step {n} of 3". Under each title, one line says what the
+    answers are used for:
+    1.  "Perennia uses these to pick default reference ranges for your Metrics, and an agent
+        you connect can read them. Every field is optional, and you can change them later in
+        Account & app, Profile."
+    2.  "Logging works the same whatever you pick. This tells an agent you connect what you are
+        working toward and what you already train, so its suggestions fit you." The Training
+        Goals subheading adds "What are you training for? Pick any that apply."
+    3.  "What you can train with and how much time you usually have, so an agent suggests
+        workouts you can actually do."
 *   **Back.** Screens 2 and 3 have a back arrow. Going back to a saved screen and saving again
     with changed values writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
@@ -480,8 +519,8 @@ Screen contents:
 | Screen | Fields |
 |---|---|
 | 1 About you | Units (Metric / Imperial), week start day, sex (Female / Male / Not set), birth year, height |
-| 2 Training Goals + Experience | Training Goal chips (multi-select); for each active Focus, a level selector that defaults to Not set |
-| 3 Training setup | Equipment chips (the registry without `bodyweight`), days per week (1 to 7), usual session length in minutes |
+| 2 Training Goals + Experience | Training Goal chips (multi-select); each active Focus with what it covers, to pick, then a level for each one picked |
+| 3 Training setup | Equipment presets (starting on **Gym** when unset) and grouped chips (the registry without `bodyweight`), days per week (1 to 7), usual session length in minutes |
 
 Health & limitations and General Notes appear only on the Profile screen.
 
@@ -575,11 +614,14 @@ section values above.
     entities.
 *   **Activity redaction.** In `listAgentActivity` (REST and the MCP tool `agent_list_activity`),
     any change to a `user_profile_sections` row whose section is `health_limitations` or
-    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`. The
-    section is read from either image, and values are also redacted when no image gives a
-    readable section, so redaction fails closed. A null image stays null. The entity, section,
-    actor and time are kept. The device's Activity Log is not redacted. Redaction limits what
-    agents read in history; it is not access control.
+    `general_notes` has its before and after `values` replaced with `{ "redacted": true }`.
+    Redaction fails closed: an entry is shown only when every non-null image names
+    `about_you`, `training_goals`, `experience` or `training_setup`, because a push stores its
+    images without parsing them. A redacted image keeps only `values` and whichever of `id`,
+    `section`, `updated_at` and `deleted_at` are strings or null, so text under any other key
+    is dropped too. A null image stays null. The entity, section, actor and time are kept. The
+    device's Activity Log is not redacted. Redaction limits what agents read in history; it is
+    not access control.
 *   **Tool descriptions**, verbatim:
     *   `agent_read_profile`: "Read the user's User Profile: About you, Training Goals,
         Experience, Training setup, Health & limitations and General Notes. Every agent
@@ -1326,13 +1368,17 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
             under Imperial, stored as total inches.
     *   **Training Goals:** the seven chips with their labels, plus **None**.
     *   **Experience:**
-        *   one row per active Focus, with a Beginner / Intermediate / Advanced / Not set
-            selector and the level's one-line meaning;
+        *   the question "Which kinds of training do you do? Pick each one, then your level in
+            it." and the three level meanings, once;
+        *   one checkbox row per active Focus, with its description for a starter Focus;
+            picking it shows Beginner / Intermediate / Advanced with none chosen, and
+            unpicking it removes its entry;
         *   entries for archived Focuses are hidden and kept;
-        *   **None**.
+        *   **New to all of these**.
     *   **Training setup:**
-        *   equipment chips from `ExerciseEquipment.known` without `bodyweight`, plus **None**,
-            and any stored unknown ids as extra selected chips;
+        *   the **Gym** / **Home** / **Bodyweight only** presets, then equipment chips from
+            `ExerciseEquipment.known` without `bodyweight` in four groups, and any stored
+            unknown ids as extra selected chips under Other;
         *   a days-per-week stepper (1 to 7, Not set);
         *   session length in minutes (Not set allowed).
     *   **Health & limitations:** a text field with a character counter against the 1,000 cap,
@@ -1594,7 +1640,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   screen titles: "About you", "Training Goals and Experience", "Training setup";
     *   buttons: "Skip all", "Skip this", "Next", "Done", "Back";
     *   the sign-in link: "Already use Perennia? Sign in";
-    *   the control labels on screen 1, matching General settings: "Units", "Week starts".
+    *   the control labels on screen 1, matching General settings: "Units", "Week starts";
+    *   "Step {n} of 3" and the three lead lines under Onboarding flow › Guidance.
 
     Screen 2's subsection headings reuse the Profile screen's "Training Goals" and "Experience".
     Then run `flutter gen-l10n`.

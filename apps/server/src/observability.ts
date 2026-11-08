@@ -361,6 +361,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const PII_KEYS = new Set([
   "authorization",
   "cookie",
+  "cookies",
   "email",
   "fullname",
   "ip",

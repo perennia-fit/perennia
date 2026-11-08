@@ -534,7 +534,9 @@ class CatalogRepository {
   ///
   /// `isFavorite`, `loadMode`, `defaultLoadUnit`, `isUnilateral` and `usesRpe`
   /// are never written on an existing row, and a live row's Exercise Type is
-  /// never corrected in place: changing one means retiring the id.
+  /// never corrected in place: changing one means retiring the id. The one
+  /// exception is a stored value no reader can parse, which an imported archive
+  /// can write, because it would otherwise fail every read of the row.
   Future<void> _reconcilePlatformExercises(
     PlatformExerciseSeed seed,
     WriteContext context,
@@ -572,7 +574,11 @@ class CatalogRepository {
       }
       await _writeReconciledExercise(
         row,
-        _seedFieldsCompanion(exercise).copyWith(
+        _withUnreadableFieldsRepaired(
+          _seedFieldsCompanion(exercise),
+          row,
+          exercise,
+        ).copyWith(
           updatedAt: Value<DateTime>(exercise.updatedAt),
           deletedAt: const Value<DateTime?>(null),
         ),
@@ -643,7 +649,7 @@ class CatalogRepository {
     required WriteContext context,
   }) async {
     final exerciseType = ExerciseType(record.dimensions);
-    const loadMode = ExerciseLoadMode.added;
+    const loadMode = _insertedLoadMode;
     await _database.into(_database.exercises).insert(
           ExercisesCompanion.insert(
             id: record.id,
@@ -758,14 +764,51 @@ class CatalogRepository {
   ) {
     final type = ExerciseType(retired.dimensions);
     final dimensionIds = _encodeDimensions(type);
-    return _seedFieldsCompanion(retired).copyWith(
-      dimensionIds: Value<String>(dimensionIds),
-      recordProfile: dimensionIds == row.dimensionIds
-          ? const Value<String>.absent()
+    return _withUnreadableFieldsRepaired(
+      _seedFieldsCompanion(retired).copyWith(
+        dimensionIds: Value<String>(dimensionIds),
+        recordProfile: dimensionIds == row.dimensionIds
+            ? const Value<String>.absent()
+            : Value<String>(
+                defaultRecordProfileFor(
+                  type: type,
+                  loadMode: _storedLoadMode(row) ?? _insertedLoadMode,
+                ).name,
+              ),
+      ),
+      row,
+      retired,
+    );
+  }
+
+  /// [changes] plus a value for each field of [row] no reader can parse. Valid
+  /// values stay, so a bad `recordProfile` is recalculated from the row's own
+  /// Exercise Type and `loadMode`. The values are what an insert would write.
+  ExercisesCompanion _withUnreadableFieldsRepaired(
+    ExercisesCompanion changes,
+    ExerciseRow row,
+    SeedExercise record,
+  ) {
+    final storedType = _storedExerciseType(row.dimensionIds);
+    final storedLoadMode = _storedLoadMode(row);
+    final writesRecordType = changes.dimensionIds.present || storedType == null;
+    return changes.copyWith(
+      dimensionIds: storedType == null && !changes.dimensionIds.present
+          ? Value<String>(_encodeDimensions(ExerciseType(record.dimensions)))
+          : null,
+      loadMode:
+          storedLoadMode == null ? Value<String>(_insertedLoadMode.name) : null,
+      defaultLoadUnit: _isReadableLoadUnit(row)
+          ? null
+          : Value<String>(TrainingUnit.kilogram.name),
+      recordProfile: _isReadableRecordProfile(row)
+          ? null
           : Value<String>(
               defaultRecordProfileFor(
-                type: type,
-                loadMode: ExerciseLoadMode.values.byName(row.loadMode),
+                type: writesRecordType
+                    ? ExerciseType(record.dimensions)
+                    : storedType,
+                loadMode: storedLoadMode ?? _insertedLoadMode,
               ).name,
             ),
     );
@@ -783,17 +826,33 @@ class CatalogRepository {
   }
 
   /// The fields shared by both lists of the seed. Equipment and Focuses compare
-  /// as sets, so a stored order alone never causes a write.
+  /// as sets, so a stored order alone never causes a write. A stored value no
+  /// reader can parse counts as a difference, so the pass writes over it instead
+  /// of failing on every launch and Sync Run.
   bool _platformFieldsMatch(ExerciseRow row, SeedExercise record) {
+    final equipment = _storedJsonList(row.equipmentIds);
+    final focuses = _storedJsonList(row.focusIds);
+    if (equipment == null ||
+        focuses == null ||
+        _storedExerciseType(row.dimensionIds) == null ||
+        _storedLoadMode(row) == null ||
+        !_isReadableLoadUnit(row) ||
+        !_isReadableRecordProfile(row)) {
+      return false;
+    }
     return row.name == record.name &&
         row.categoryId == record.categoryId &&
         row.notes == record.notes &&
         _sameStringSet(
-          _normalizedEquipmentIds(_decodeEquipment(row.equipmentIds)).toSet(),
+          equipment
+              .whereType<String>()
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toSet(),
           _normalizedEquipmentIds(record.equipment).toSet(),
         ) &&
         _sameStringSet(
-          _decodeFocusIds(row.focusIds).toSet(),
+          focuses.whereType<String>().toSet(),
           record.focusIds.toSet(),
         );
   }
@@ -14970,7 +15029,8 @@ class ActivityLogRepository {
           _activityNullableDateTime(before, 'deleted_at') != null) {
         continue;
       }
-      final restoredKey = purposeNameKey(_activityRequiredString(before, 'name'));
+      final restoredKey =
+          purposeNameKey(_activityRequiredString(before, 'name'));
       final after = entry.afterImage;
       final bringsNameBack = after == null ||
           _activityNullableDateTime(after, 'deleted_at') != null ||
@@ -19143,6 +19203,49 @@ ExerciseType _decodeDimensions(String encoded) {
   return ExerciseType(
     dimensionNames.map((name) => DimensionId.values.byName(name! as String)),
   );
+}
+
+/// The `loadMode` a new Platform row gets.
+const ExerciseLoadMode _insertedLoadMode = ExerciseLoadMode.added;
+
+/// The stored JSON list in [encoded], or null if it is not one.
+List<Object?>? _storedJsonList(String encoded) {
+  try {
+    final decoded = jsonDecode(encoded);
+    return decoded is List ? decoded : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// The Exercise Type in [encoded], or null where `_decodeDimensions` would
+/// throw: anything but a JSON list of unique Dimension names.
+ExerciseType? _storedExerciseType(String encoded) {
+  final names = _storedJsonList(encoded);
+  if (names == null) {
+    return null;
+  }
+  final byName = DimensionId.values.asNameMap();
+  final dimensions = <DimensionId>{};
+  for (final name in names) {
+    final dimension = byName[name];
+    if (dimension == null || !dimensions.add(dimension)) {
+      return null;
+    }
+  }
+  return ExerciseType(dimensions);
+}
+
+ExerciseLoadMode? _storedLoadMode(ExerciseRow row) {
+  return ExerciseLoadMode.values.asNameMap()[row.loadMode];
+}
+
+bool _isReadableLoadUnit(ExerciseRow row) {
+  return TrainingUnit.values.asNameMap().containsKey(row.defaultLoadUnit);
+}
+
+bool _isReadableRecordProfile(ExerciseRow row) {
+  return RecordProfile.values.asNameMap().containsKey(row.recordProfile);
 }
 
 String _encodeEquipment(List<ExerciseEquipment> equipment) {

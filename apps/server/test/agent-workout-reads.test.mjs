@@ -281,7 +281,7 @@ test(
       assert.equal(historyResponse.status, 200);
       const history = await historyResponse.json();
       assert.equal(history.sets.length, 1);
-      assert.equal(history.sets[0].exerciseName, "Kettlebell Turkish Get Up");
+      assert.equal(history.sets[0].exerciseName, "Kettlebell Turkish Get-Up");
       assert.equal(history.sets[0].performedAt, null);
       assert.equal(history.sets[0].isCompleted, false);
       assert.equal(history.sets[0].plannedRestAfter, 90);
@@ -294,7 +294,7 @@ test(
       const workouts = await workoutsResponse.json();
       assert.equal(workouts.workouts[0].id, workoutId);
       assert.deepEqual(workouts.workouts[0].exerciseNames, [
-        "Kettlebell Turkish Get Up"
+        "Kettlebell Turkish Get-Up"
       ]);
     } finally {
       await database.close();
@@ -423,7 +423,7 @@ test(
       assert.equal(detail.workout.comment, "Authoritative phone Workout");
       assert.equal(detail.workoutExercises[0].id, workoutExerciseId);
       assert.equal(detail.exerciseGroups[0].members[0].id, memberId);
-      assert.equal(detail.exerciseCatalog[0].name, "Kettlebell Turkish Get Up");
+      assert.equal(detail.exerciseCatalog[0].name, "Kettlebell Turkish Get-Up");
       assert.deepEqual(detail.coverage, {
         workoutMetadata: "authoritative",
         structure: "authoritative",
@@ -487,7 +487,7 @@ test(
         endedAt: "2026-07-27T08:15:00.000Z",
         comment: "Historical session",
         exerciseId: "01910000-0000-7000-8000-802196414109",
-        exerciseName: "Kettlebell Turkish Get Up",
+        exerciseName: "Kettlebell Turkish Get-Up",
         position: 0,
         values: {
           load: { entered: "8", unit: "kilogram" },
@@ -585,7 +585,7 @@ test(
       const detail = await response.json();
       assert.equal(detail.workoutExercises.length, 1);
       assert.equal(detail.workoutExercises[0].exerciseId, exerciseId);
-      assert.equal(detail.exerciseCatalog[0].name, "Kettlebell Turkish Get Up");
+      assert.equal(detail.exerciseCatalog[0].name, "Kettlebell Turkish Get-Up");
       assert.equal(detail.coverage.structure, "unavailable");
       assert.equal(detail.coverage.exerciseIdentity, "complete");
     } finally {
