@@ -1,22 +1,28 @@
 // The logic of the Food Aisles pipeline: the question asked of the model, the
-// committed data files, how a product's Aisle is decided, how the reference
-// set is drawn and how the labels are measured against it.
+// three committed data files, reading the tags export, how a product's Aisle
+// is decided, the second opinion's input and answers, and the edge cases a
+// person reviews.
 //
 // It is pure (no dart:io), so the builder, the labeller and the CI test call
 // the same code on the same inputs. See docs/designs/food-aisles.md.
 
 import 'dart:convert';
-import 'dart:math' show Random, max, min;
+import 'dart:math' show max;
 
 import 'package:cryptography/dart.dart';
 import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/import/csv_parser.dart';
 
-/// Paths relative to apps/mobile. The two data files are committed; the aisle
-/// input is under the git-ignored build directory.
+/// Paths relative to apps/mobile. The three data files are committed; the
+/// aisle input and the second opinion input are under the git-ignored build
+/// directory.
 const aisleInputPath = 'build/open_food_facts_aisle_input.ndjson';
 const aisleLabelsPath = 'tool/open_food_facts_bundle/aisle_labels.ndjson';
-const aisleReferencePath = 'tool/open_food_facts_bundle/aisle_reference.csv';
+const aisleSecondOpinionsPath =
+    'tool/open_food_facts_bundle/aisle_second_opinions.ndjson';
+const aisleOverridesPath = 'tool/open_food_facts_bundle/aisle_overrides.csv';
+const aisleSecondOpinionInputPath =
+    'build/open_food_facts_aisle_second_opinion_input.ndjson';
 
 /// A label decides a product's Aisle when its confidence is at least this.
 const aisleConfidenceThreshold = 0.6;
@@ -114,33 +120,35 @@ const aislePrinciples = <String>[
   'Otherwise a cooking staple or ingredient (Pantry).',
 ];
 
-const referenceTestRandomRows = 120;
+/// `review` shows at most this many edge cases a run.
+const aisleReviewLimit = 50;
 
-/// Applies to an Aisle's Browse rows, and again to its rows outside Browse.
-const referenceTestRowsPerAislePart = 15;
-const referenceDevRandomRows = 100;
-const referenceDevRowsPerAisle = 5;
-const referenceDevNoAisleRows = 10;
-const aisleMeasureMinimumRows = 15;
-const aisleAgreementBar = 0.95;
-const aisleCoverageBar = 0.85;
-const aislePrecisionBar = 0.90;
+/// At least this share of bundled products must have an Aisle. CI checks it,
+/// to catch a broken run, not a poor label: it sits just below the 88% the
+/// definitions experiment kept on confidence alone.
+const aisleCoverageFloor = 0.85;
 
 const _labelsFormat = 'perennia-open-food-facts-aisle-labels';
 const _labelsFormatVersion = 1;
+const _secondOpinionsFormat = 'perennia-open-food-facts-aisle-second-opinions';
+const _secondOpinionsFormatVersion = 1;
+const _secondOpinionAnswerInstruction =
+    'Reply with exactly one id from criteria, for each product.';
 const _otherChoice = 'other';
 const _noneAnswer = 'none';
 const _unsureAnswer = 'unsure';
 const _tagPrefix = 'en:';
-const _referenceColumns = <String>[
+const _nullTag = 'en:null';
+const _overrideColumns = <String>[
   'code',
   'name',
   'brand',
   'categories',
-  'aisle',
-  'sampled_as',
-  'set',
+  'aisle'
 ];
+const _tagsCodeColumn = 'code';
+const _tagsCategoriesColumn = 'categories_tags';
+const _tagsCountriesColumn = 'countries_tags';
 const _stateKeys = <String>[
   'product',
   'brand',
@@ -302,8 +310,9 @@ double _roundConfidence(double confidence) {
   return null;
 }
 
-/// What `label_aisles guide` prints: what a person follows when filling in the
-/// reference set, built from the same constants as the model's criteria.
+/// What `label_aisles guide` prints, and the review page shows: what a person
+/// follows when answering an edge case, built from the same constants as the
+/// model's criteria.
 String aisleGuideText() {
   final buffer = StringBuffer()
     ..writeln('The order of principles. The first that applies wins:')
@@ -450,11 +459,7 @@ AisleLabels parseAisleLabels(String text) {
         lineNumber);
     final code = _requireString(json, 'code', lineNumber);
     final inputHash = _requireString(json, 'inputHash', lineNumber);
-    final choice = _requireString(json, 'choice', lineNumber);
-    final aisle = foodAisleById(choice);
-    if (aisle == null && choice != _otherChoice) {
-      throw _formatError(lineNumber, 'unknown choice "$choice"');
-    }
+    final aisle = _requireChoice(json, lineNumber);
     final confidence = json['confidence'];
     if (confidence is! num || confidence < 0 || confidence > 1) {
       throw _formatError(
@@ -475,16 +480,11 @@ AisleLabels parseAisleLabels(String text) {
 AisleLabelsHeader _parseLabelsHeader(String line) {
   const lineNumber = 1;
   final json = _decodeObject(line, lineNumber);
-  if (json['format'] != _labelsFormat) {
-    throw _formatError(
-        lineNumber, 'the header\'s "format" is not $_labelsFormat');
-  }
-  if (json['formatVersion'] != _labelsFormatVersion) {
-    throw _formatError(
-      lineNumber,
-      'the header\'s "formatVersion" is not $_labelsFormatVersion',
-    );
-  }
+  _requireFormat(
+    json,
+    format: _labelsFormat,
+    formatVersion: _labelsFormatVersion,
+  );
   return AisleLabelsHeader(
     questionHash: _requireString(json, 'questionHash', lineNumber),
     model: _requireString(json, 'model', lineNumber),
@@ -532,72 +532,165 @@ String encodeAisleLabels(AisleLabels labels) {
 }
 
 // ---------------------------------------------------------------------------
-// The reference set.
+// The second opinions file.
 // ---------------------------------------------------------------------------
 
-enum ReferenceAnswer { aisle, none, unsure, unlabelled }
+final class AisleSecondOpinionsHeader {
+  const AisleSecondOpinionsHeader({
+    required this.questionHash,
+    required this.model,
+  });
 
-enum ReferenceDraw { random, aisle, noAisle }
+  final String questionHash;
 
-enum ReferenceSet { dev, test }
+  /// The name given to `second-opinion-apply`. A hosted model has no digest,
+  /// so this name is all that is recorded of its version.
+  final String model;
+}
 
-final class AisleReferenceRow {
-  const AisleReferenceRow({
+/// One product's second opinion. `aisle` holds the file's `choice`; `null`
+/// means the model chose `other`. There is no confidence.
+typedef AisleSecondOpinion = ({String inputHash, FoodAisle? aisle});
+
+final class AisleSecondOpinions {
+  const AisleSecondOpinions({required this.header, required this.byCode});
+
+  /// `null` means no file: no header and no second opinions.
+  final AisleSecondOpinionsHeader? header;
+  final Map<String, AisleSecondOpinion> byCode;
+}
+
+AisleSecondOpinions parseAisleSecondOpinions(String text) {
+  if (text.isEmpty) {
+    return const AisleSecondOpinions(header: null, byCode: {});
+  }
+  final lines = _dataLines(text);
+  final header = _parseSecondOpinionsHeader(lines.first);
+  final byCode = <String, AisleSecondOpinion>{};
+  for (var i = 1; i < lines.length; i += 1) {
+    final lineNumber = i + 1;
+    final json = _decodeObject(lines[i], lineNumber);
+    _requireExactKeys(json, const {'code', 'inputHash', 'choice'}, lineNumber);
+    final code = _requireString(json, 'code', lineNumber);
+    final inputHash = _requireString(json, 'inputHash', lineNumber);
+    final aisle = _requireChoice(json, lineNumber);
+    if (byCode.containsKey(code)) {
+      throw _formatError(lineNumber, 'repeated code "$code"');
+    }
+    byCode[code] = (inputHash: inputHash, aisle: aisle);
+  }
+  return AisleSecondOpinions(header: header, byCode: byCode);
+}
+
+AisleSecondOpinionsHeader _parseSecondOpinionsHeader(String line) {
+  const lineNumber = 1;
+  final json = _decodeObject(line, lineNumber);
+  _requireFormat(
+    json,
+    format: _secondOpinionsFormat,
+    formatVersion: _secondOpinionsFormatVersion,
+  );
+  return AisleSecondOpinionsHeader(
+    questionHash: _requireString(json, 'questionHash', lineNumber),
+    model: _requireString(json, 'model', lineNumber),
+  );
+}
+
+/// The file's text: a header line, then one line per product sorted by code,
+/// compact JSON. No header means no file, so it encodes to empty text.
+String encodeAisleSecondOpinions(AisleSecondOpinions opinions) {
+  final header = opinions.header;
+  if (header == null) {
+    if (opinions.byCode.isNotEmpty) {
+      throw ArgumentError.value(
+        opinions,
+        'opinions',
+        'second opinions with no header',
+      );
+    }
+    return '';
+  }
+  final buffer = StringBuffer()
+    ..write(
+      jsonEncode(<String, Object?>{
+        'format': _secondOpinionsFormat,
+        'formatVersion': _secondOpinionsFormatVersion,
+        'questionHash': header.questionHash,
+        'model': header.model,
+      }),
+    )
+    ..write('\n');
+  final codes = opinions.byCode.keys.toList()..sort();
+  for (final code in codes) {
+    final opinion = opinions.byCode[code]!;
+    buffer
+      ..write(
+        jsonEncode(<String, Object?>{
+          'code': code,
+          'inputHash': opinion.inputHash,
+          'choice': opinion.aisle?.name ?? _otherChoice,
+        }),
+      )
+      ..write('\n');
+  }
+  return buffer.toString();
+}
+
+// ---------------------------------------------------------------------------
+// The overrides file.
+// ---------------------------------------------------------------------------
+
+/// A person's answer: an Aisle, `none` (no Aisle fits) or `unsure` (they
+/// cannot tell what the product is).
+enum AisleOverrideAnswer { aisle, none, unsure }
+
+final class AisleOverrideRow {
+  const AisleOverrideRow({
     required this.code,
     required this.name,
     required this.brand,
     required this.categories,
     required this.answer,
     required this.aisle,
-    required this.sampledAs,
-    required this.set,
-  }) : assert((answer == ReferenceAnswer.aisle) == (aisle != null));
+  }) : assert((answer == AisleOverrideAnswer.aisle) == (aisle != null));
 
   final String code;
+
+  /// [name], [brand] and [categories] are there so the diff can be read;
+  /// nothing reads them.
   final String name;
   final String brand;
 
-  /// The product's Open Food Facts tags when the row was sampled, `en:` kept.
+  /// The product's Open Food Facts tags when it was answered, `en:` kept.
   final List<String> categories;
-  final ReferenceAnswer answer;
+  final AisleOverrideAnswer answer;
 
-  /// Set only when [answer] is [ReferenceAnswer.aisle].
+  /// Set only when [answer] is [AisleOverrideAnswer.aisle].
   final FoodAisle? aisle;
-  final ReferenceDraw sampledAs;
-  final ReferenceSet set;
 }
 
-/// Parses the reference set. With `allowUnlabelled: false` (CI) an empty
-/// `aisle` is rejected too. Unlike the labels file, the reference set always
-/// has a header row, so empty text is rejected: a missing file is the caller's
-/// no rows.
-List<AisleReferenceRow> parseAisleReference(
-  String csv, {
-  required bool allowUnlabelled,
-}) {
+/// Parses the overrides file. It always has a header row, so empty text is
+/// rejected: a missing file is the caller's no rows.
+List<AisleOverrideRow> parseAisleOverrides(String csv) {
   final records = parseCsv(csv);
   if (records.isEmpty) {
     throw _formatError(1, 'there is no header row');
   }
   final header = records.first;
-  if (header.join(',') != _referenceColumns.join(',')) {
+  if (header.join(',') != _overrideColumns.join(',')) {
     throw _formatError(
       1,
-      'the columns are not ${_referenceColumns.join(',')}',
+      'the columns are not ${_overrideColumns.join(',')}',
     );
   }
 
-  final rows = <AisleReferenceRow>[];
+  final rows = <AisleOverrideRow>[];
   final codes = <String>{};
   // parseCsv gives records, and a quoted cell can hold line breaks, so the
   // line a record starts on is worked out from the breaks before it.
   var lineNumber = 1 + _lineCount(header);
   for (final record in records.skip(1)) {
-    final row = _parseReferenceRecord(
-      record,
-      lineNumber: lineNumber,
-      allowUnlabelled: allowUnlabelled,
-    );
+    final row = _parseOverrideRecord(record, lineNumber: lineNumber);
     if (!codes.add(row.code)) {
       throw _formatError(lineNumber, 'repeated code "${row.code}"');
     }
@@ -611,70 +704,47 @@ int _lineCount(List<String> record) {
   return 1 + record.fold(0, (sum, cell) => sum + '\n'.allMatches(cell).length);
 }
 
-AisleReferenceRow _parseReferenceRecord(
+AisleOverrideRow _parseOverrideRecord(
   List<String> cells, {
   required int lineNumber,
-  required bool allowUnlabelled,
 }) {
-  if (cells.length != _referenceColumns.length) {
+  if (cells.length != _overrideColumns.length) {
     throw _formatError(
       lineNumber,
-      'expected ${_referenceColumns.length} cells, found ${cells.length}',
+      'expected ${_overrideColumns.length} cells, found ${cells.length}',
     );
   }
   final aisleCell = cells[4];
   final aisle = foodAisleById(aisleCell);
-  final ReferenceAnswer answer;
+  final AisleOverrideAnswer answer;
   if (aisle != null) {
-    answer = ReferenceAnswer.aisle;
+    answer = AisleOverrideAnswer.aisle;
   } else if (aisleCell == _noneAnswer) {
-    answer = ReferenceAnswer.none;
+    answer = AisleOverrideAnswer.none;
   } else if (aisleCell == _unsureAnswer) {
-    answer = ReferenceAnswer.unsure;
+    answer = AisleOverrideAnswer.unsure;
   } else if (aisleCell.isEmpty) {
-    if (!allowUnlabelled) {
-      throw _formatError(lineNumber, '"aisle" is empty');
-    }
-    answer = ReferenceAnswer.unlabelled;
+    throw _formatError(lineNumber, '"aisle" is empty');
   } else {
     throw _formatError(lineNumber, 'unknown aisle "$aisleCell"');
   }
-  final sampledAs = _enumByName(ReferenceDraw.values, cells[5]);
-  if (sampledAs == null) {
-    throw _formatError(lineNumber, 'unknown sampled_as "${cells[5]}"');
-  }
-  final set = _enumByName(ReferenceSet.values, cells[6]);
-  if (set == null) {
-    throw _formatError(lineNumber, 'unknown set "${cells[6]}"');
-  }
-  return AisleReferenceRow(
+  return AisleOverrideRow(
     code: cells[0],
     name: _removeFormulaPrefix(cells[1]),
     brand: _removeFormulaPrefix(cells[2]),
     categories: cells[3].isEmpty ? const [] : cells[3].split(' '),
     answer: answer,
     aisle: aisle,
-    sampledAs: sampledAs,
-    set: set,
   );
 }
 
-T? _enumByName<T extends Enum>(List<T> values, String name) {
-  for (final value in values) {
-    if (value.name == name) {
-      return value;
-    }
-  }
-  return null;
-}
-
-/// The reference set's text. Data files are LF with a trailing newline, unlike
-/// the CSV export's CRLF rows, so this writes its own rows with
+/// The overrides file's text. Data files are LF with a trailing newline,
+/// unlike the CSV export's CRLF rows, so this writes its own rows with
 /// [escapeCsvField].
-String encodeAisleReference(List<AisleReferenceRow> rows) {
+String encodeAisleOverrides(List<AisleOverrideRow> rows) {
   final sorted = [...rows]..sort((a, b) => a.code.compareTo(b.code));
   final buffer = StringBuffer()
-    ..write(_referenceColumns.join(','))
+    ..write(_overrideColumns.join(','))
     ..write('\n');
   for (final row in sorted) {
     final cells = <String>[
@@ -682,9 +752,7 @@ String encodeAisleReference(List<AisleReferenceRow> rows) {
       _addFormulaPrefix(row.name),
       _addFormulaPrefix(row.brand),
       row.categories.join(' '),
-      _encodeAnswer(row),
-      row.sampledAs.name,
-      row.set.name,
+      _overrideAnswerText(row),
     ];
     buffer
       ..write(cells.map(escapeCsvField).join(','))
@@ -693,12 +761,11 @@ String encodeAisleReference(List<AisleReferenceRow> rows) {
   return buffer.toString();
 }
 
-String _encodeAnswer(AisleReferenceRow row) {
+String _overrideAnswerText(AisleOverrideRow row) {
   return switch (row.answer) {
-    ReferenceAnswer.aisle => row.aisle!.name,
-    ReferenceAnswer.none => _noneAnswer,
-    ReferenceAnswer.unsure => _unsureAnswer,
-    ReferenceAnswer.unlabelled => '',
+    AisleOverrideAnswer.aisle => row.aisle!.name,
+    AisleOverrideAnswer.none => _noneAnswer,
+    AisleOverrideAnswer.unsure => _unsureAnswer,
   };
 }
 
@@ -724,6 +791,67 @@ String _removeFormulaPrefix(String cell) {
 }
 
 // ---------------------------------------------------------------------------
+// The tags export.
+// ---------------------------------------------------------------------------
+
+/// Where the three columns the builder reads sit in the tags export's rows.
+final class AisleTagsColumns {
+  const AisleTagsColumns({
+    required this.code,
+    required this.categories,
+    required this.countries,
+  });
+
+  final int code;
+  final int categories;
+  final int countries;
+}
+
+/// Finds the columns by name in the export's header row, which is tab
+/// separated whatever the file's name says.
+AisleTagsColumns parseAisleTagsHeader(String line) {
+  final cells = line.split('\t');
+  int column(String name) {
+    final index = cells.indexOf(name);
+    if (index < 0) {
+      throw _formatError(1, 'the tags export has no "$name" column');
+    }
+    return index;
+  }
+
+  return AisleTagsColumns(
+    code: column(_tagsCodeColumn),
+    categories: column(_tagsCategoriesColumn),
+    countries: column(_tagsCountriesColumn),
+  );
+}
+
+/// One export row, or `null` when it has too few cells to hold the three
+/// columns (the builder skips and counts it). Tags are the comma-separated
+/// entries that start with `en:`, in order, prefix kept, leaving out
+/// `en:null`, which the export writes for a product with none.
+({String code, List<String> categories, List<String> countries})?
+    parseAisleTagsRow(String line, AisleTagsColumns columns) {
+  final cells = line.split('\t');
+  final needed = max(columns.code, max(columns.categories, columns.countries));
+  if (cells.length <= needed) {
+    return null;
+  }
+  return (
+    code: cells[columns.code],
+    categories: _exportTags(cells[columns.categories]),
+    countries: _exportTags(cells[columns.countries]),
+  );
+}
+
+List<String> _exportTags(String cell) {
+  return [
+    for (final tag in cell.split(','))
+      if (tag.startsWith(_tagPrefix) && tag != _nullTag) tag,
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Deciding a product's Aisle.
 // ---------------------------------------------------------------------------
 
@@ -738,28 +866,53 @@ bool isCurrentLabel(
       label.inputHash == inputHash;
 }
 
+/// An Aisle id, at or above [aisleConfidenceThreshold]. `other` is never
+/// confident, whatever its confidence.
+bool isConfidentLabel(AisleLabel label) {
+  return label.aisle != null && label.confidence >= aisleConfidenceThreshold;
+}
+
+/// The same rule as [isCurrentLabel]: the current question, and the product's
+/// current input hash.
+bool isCurrentSecondOpinion(
+  AisleSecondOpinion? opinion,
+  AisleSecondOpinionsHeader? header,
+  String inputHash,
+) {
+  return opinion != null &&
+      header != null &&
+      header.questionHash == _currentQuestionHash &&
+      opinion.inputHash == inputHash;
+}
+
 /// A bundled product's Aisle. The first step that gives an answer wins: the
-/// person's reference answer, then a current label at or above the threshold,
-/// otherwise no Aisle. With no [reference] this is the product's **prediction**,
-/// which sampling and measuring use so they judge the pipeline, not the
-/// person's own answers.
+/// person's override, then a confident current label, then a current second
+/// opinion that names the same Aisle as the label, otherwise no Aisle. A
+/// product whose two models both answered `other`, and every edge case nobody
+/// gave an Aisle, has none.
 FoodAisle? resolveFoodAisle({
   required AisleLabel? currentLabel,
-  AisleReferenceRow? reference,
+  AisleSecondOpinion? currentSecondOpinion,
+  AisleOverrideRow? override,
 }) {
-  switch (reference?.answer) {
-    case ReferenceAnswer.aisle:
-      return reference!.aisle;
-    case ReferenceAnswer.none:
+  switch (override?.answer) {
+    case AisleOverrideAnswer.aisle:
+      return override!.aisle;
+    case AisleOverrideAnswer.none:
       return null;
-    case ReferenceAnswer.unsure:
-    case ReferenceAnswer.unlabelled:
+    case AisleOverrideAnswer.unsure:
     case null:
       break;
   }
-  if (currentLabel != null &&
-      currentLabel.confidence >= aisleConfidenceThreshold) {
+  if (currentLabel == null) {
+    return null;
+  }
+  if (isConfidentLabel(currentLabel)) {
     return currentLabel.aisle;
+  }
+  final secondAisle = currentSecondOpinion?.aisle;
+  if (secondAisle != null && secondAisle == currentLabel.aisle) {
+    return secondAisle;
   }
   return null;
 }
@@ -767,15 +920,16 @@ FoodAisle? resolveFoodAisle({
 /// A bundled product, with its resolved Aisle.
 typedef AisleBundleProduct = ({String code, int scans, FoodAisle? aisle});
 
-/// [resolveFoodAisle] for each input line, in input order. [labels] holds the
-/// labels the caller treats as current; a code with no label has only the
-/// reference step.
+/// [resolveFoodAisle] for each input line, in input order. [labels] and
+/// [secondOpinions] hold what the caller treats as current; a code with no
+/// label has only the override step.
 List<AisleBundleProduct> resolveAisleBundle({
   required List<AisleInputLine> input,
   required Map<String, AisleLabel> labels,
-  required List<AisleReferenceRow> reference,
+  required Map<String, AisleSecondOpinion> secondOpinions,
+  required List<AisleOverrideRow> overrides,
 }) {
-  final referenceByCode = {for (final row in reference) row.code: row};
+  final overrideByCode = {for (final row in overrides) row.code: row};
   return [
     for (final line in input)
       (
@@ -783,70 +937,11 @@ List<AisleBundleProduct> resolveAisleBundle({
         scans: line.scans,
         aisle: resolveFoodAisle(
           currentLabel: labels[line.code],
-          reference: referenceByCode[line.code],
+          currentSecondOpinion: secondOpinions[line.code],
+          override: overrideByCode[line.code],
         ),
       ),
   ];
-}
-
-// ---------------------------------------------------------------------------
-// Browse rows.
-// ---------------------------------------------------------------------------
-
-/// For each Aisle, its list: the products whose resolved Aisle it is, sorted
-/// by `scans` descending, then `code` ascending, as the picker orders an Aisle.
-final class AisleRanking {
-  const AisleRanking._(this._lists);
-
-  final Map<FoodAisle, List<AisleBundleProduct>> _lists;
-
-  List<AisleBundleProduct> listOf(FoodAisle aisle) => _lists[aisle] ?? const [];
-}
-
-AisleRanking buildAisleRanking(List<AisleBundleProduct> bundle) {
-  final lists = <FoodAisle, List<AisleBundleProduct>>{};
-  for (final product in bundle) {
-    final aisle = product.aisle;
-    if (aisle != null) {
-      (lists[aisle] ??= []).add(product);
-    }
-  }
-  for (final list in lists.values) {
-    list.sort((a, b) => _compareRank(a.scans, a.code, b.scans, b.code));
-  }
-  return AisleRanking._(lists);
-}
-
-int _compareRank(int scansA, String codeA, int scansB, String codeB) {
-  final byScans = scansB.compareTo(scansA);
-  return byScans != 0 ? byScans : codeA.compareTo(codeB);
-}
-
-/// A product's Browse rank in [aisle]: 1 plus the number of products in the
-/// Aisle's list that come before it. It counts as in [aisle] whatever its
-/// resolved Aisle, because sampling and measuring ask where it would sit if
-/// [aisle] were right. Binary search, because this runs for every product: a
-/// product already in the list does not precede itself, so the first position
-/// not before it is the count either way.
-int browseRank(
-  AisleRanking ranking,
-  FoodAisle aisle, {
-  required String code,
-  required int scans,
-}) {
-  final list = ranking.listOf(aisle);
-  var low = 0;
-  var high = list.length;
-  while (low < high) {
-    final middle = (low + high) ~/ 2;
-    final other = list[middle];
-    if (_compareRank(other.scans, other.code, scans, code) < 0) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-  return low + 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -912,401 +1007,315 @@ AisleLabels mergeLabels({
 }
 
 // ---------------------------------------------------------------------------
-// Sampling the reference set.
+// The second opinion.
 // ---------------------------------------------------------------------------
 
-/// Tops the reference set up to its counts and returns only the new rows, in
-/// the order they were drawn. [labels] holds current labels only; `sample`
-/// refuses to run otherwise.
-///
-/// Each cell's shortfall is counted from [existing] alone, never from rows
-/// drawn earlier in this run: the first run draws the table's 720 rows, and a
-/// later run tops up only what the file lacks. A row whose code has left the
-/// input has no prediction and falls in no cell, so a top-up replaces it, and
-/// it stays in the file because rows are never removed.
-///
-/// One [Random] serves the whole run and the draw order is fixed, with random
-/// rows first so they stay a uniform sample of the input. The same inputs and
-/// seed therefore give the same rows.
-List<AisleReferenceRow> sampleReference({
-  required List<AisleInputLine> input,
-  required Map<String, AisleLabel> labels,
-  required List<AisleReferenceRow> existing,
-  required int seed,
-}) {
-  final ranking = buildAisleRanking(
-    resolveAisleBundle(input: input, labels: labels, reference: existing),
-  );
-  final byCode = {for (final line in input) line.code: line};
-  final sortedInput = [...input]..sort((a, b) => a.code.compareTo(b.code));
-  final predictions = <String, FoodAisle?>{
-    for (final line in input)
-      line.code: resolveFoodAisle(currentLabel: labels[line.code]),
-  };
-
-  bool inBrowse(AisleInputLine line, FoodAisle aisle) {
-    final rank = browseRank(
-      ranking,
-      aisle,
-      code: line.code,
-      scans: line.scans,
-    );
-    return rank <= aisleBrowseLimit;
-  }
-
-  final random = Random(seed);
-  final taken = {for (final row in existing) row.code};
-  final drawn = <AisleReferenceRow>[];
-
-  void draw(
-    ReferenceSet set,
-    ReferenceDraw sampledAs,
-    int count,
-    bool Function(AisleInputLine line) eligible,
-  ) {
-    final alreadyInCell = existing.where((row) {
-      final line = byCode[row.code];
-      return row.set == set &&
-          line != null &&
-          eligible(line) &&
-          (sampledAs != ReferenceDraw.random ||
-              row.sampledAs == ReferenceDraw.random);
-    }).length;
-    final candidates = [
-      for (final line in sortedInput)
-        if (!taken.contains(line.code) && eligible(line)) line,
-    ]..shuffle(random);
-    for (final line in candidates.take(max(0, count - alreadyInCell))) {
-      taken.add(line.code);
-      drawn.add(
-        AisleReferenceRow(
-          code: line.code,
-          name: line.name,
-          brand: line.brand ?? '',
-          categories: line.categories,
-          answer: ReferenceAnswer.unlabelled,
-          aisle: null,
-          sampledAs: sampledAs,
-          set: set,
-        ),
-      );
-    }
-  }
-
-  bool anyProduct(AisleInputLine line) => true;
-  draw(
-    ReferenceSet.test,
-    ReferenceDraw.random,
-    referenceTestRandomRows,
-    anyProduct,
-  );
-  draw(
-    ReferenceSet.dev,
-    ReferenceDraw.random,
-    referenceDevRandomRows,
-    anyProduct,
-  );
-  for (final aisle in FoodAisle.values) {
-    draw(
-      ReferenceSet.test,
-      ReferenceDraw.aisle,
-      referenceTestRowsPerAislePart,
-      (line) => predictions[line.code] == aisle && inBrowse(line, aisle),
-    );
-    draw(
-      ReferenceSet.test,
-      ReferenceDraw.aisle,
-      referenceTestRowsPerAislePart,
-      (line) => predictions[line.code] == aisle && !inBrowse(line, aisle),
-    );
-    draw(
-      ReferenceSet.dev,
-      ReferenceDraw.aisle,
-      referenceDevRowsPerAisle,
-      (line) => predictions[line.code] == aisle,
-    );
-  }
-  draw(
-    ReferenceSet.dev,
-    ReferenceDraw.noAisle,
-    referenceDevNoAisleRows,
-    (line) => predictions[line.code] == null,
-  );
-  return drawn;
+/// Whether [line] needs a second opinion at all: its current label is not
+/// confident. A product with no current label cannot say yet.
+bool _needsSecondOpinion(AisleInputLine line, AisleLabels labels) {
+  final label = labels.byCode[line.code];
+  return isCurrentLabel(label, labels.header, line.inputHash) &&
+      !isConfidentLabel(label!);
 }
 
-// ---------------------------------------------------------------------------
-// Measuring the labels.
-// ---------------------------------------------------------------------------
-
-/// `rows == 0` means not measured.
-typedef AisleShare = ({int matched, int rows});
-
-final class AisleSetMeasures {
-  const AisleSetMeasures({
-    required this.agreement,
-    required this.coverage,
-    required this.browsePrecision,
-    required this.precision,
-    required this.recall,
-    required this.unsureRows,
-    required this.unlabelledRows,
-  });
-
-  final AisleShare agreement;
-  final AisleShare coverage;
-  final Map<FoodAisle, AisleShare> browsePrecision;
-  final Map<FoodAisle, AisleShare> precision;
-
-  /// Reported only: 120 random rows give too few rows for most Aisles.
-  final Map<FoodAisle, AisleShare> recall;
-
-  /// Of the rows whose code is in the bundle.
-  final int unsureRows;
-  final int unlabelledRows;
-}
-
-final class AisleMeasures {
-  const AisleMeasures({
-    required this.dev,
-    required this.test,
-    required this.failures,
-  });
-
-  final AisleSetMeasures dev;
-  final AisleSetMeasures test;
-
-  /// The test set's failures only, in the spec's order and text forms.
-  final List<String> failures;
-}
-
-/// Compares the pipeline with a person, using only committed data, so the
-/// builder and the CI test get the same answer. Every label counts as current:
-/// CI has no dump to recompute input hashes from, and the builder has already
-/// refused stale labels.
-AisleMeasures measureAisleLabels({
-  required List<AisleBundleProduct> bundle,
-  required List<AisleReferenceRow> reference,
-  required AisleLabels labels,
-}) {
-  final ranking = buildAisleRanking(bundle);
-  final required = <FoodAisle, _RequiredRows>{
-    for (final aisle in FoodAisle.values)
-      aisle: _RequiredRows.of(ranking.listOf(aisle).length),
-  };
-  AisleSetMeasures measure(ReferenceSet set) => _measureSet(
-        set,
-        bundle: bundle,
-        reference: reference,
-        labels: labels,
-        ranking: ranking,
-        required: required,
-      );
-
-  final test = measure(ReferenceSet.test);
-  return AisleMeasures(
-    dev: measure(ReferenceSet.dev),
-    test: test,
-    failures: _failures(test, required),
-  );
-}
-
-/// How many rows each part of an Aisle needs: the minimum, or all of the
-/// part's products when it has fewer.
-final class _RequiredRows {
-  const _RequiredRows(this.browse, this.outsideBrowse);
-
-  factory _RequiredRows.of(int products) {
-    final browse = min(products, aisleBrowseLimit);
-    return _RequiredRows(
-      min(browse, aisleMeasureMinimumRows),
-      min(products - browse, aisleMeasureMinimumRows),
-    );
-  }
-
-  final int browse;
-  final int outsideBrowse;
-}
-
-final class _ShareCounter {
-  int matched = 0;
-  int rows = 0;
-
-  void count({required bool matches}) {
-    rows += 1;
-    if (matches) {
-      matched += 1;
-    }
-  }
-
-  AisleShare get share => (matched: matched, rows: rows);
-}
-
-AisleSetMeasures _measureSet(
-  ReferenceSet set, {
-  required List<AisleBundleProduct> bundle,
-  required List<AisleReferenceRow> reference,
-  required AisleLabels labels,
-  required AisleRanking ranking,
-  required Map<FoodAisle, _RequiredRows> required,
-}) {
-  final scansByCode = {
-    for (final product in bundle) product.code: product.scans
-  };
-  final agreement = _ShareCounter();
-  final coverage = _ShareCounter();
-  final browse = {for (final aisle in FoodAisle.values) aisle: _ShareCounter()};
-  final outside = {
-    for (final aisle in FoodAisle.values) aisle: _ShareCounter()
-  };
-  final recall = {for (final aisle in FoodAisle.values) aisle: _ShareCounter()};
-  var unsureRows = 0;
-  var unlabelledRows = 0;
-
-  for (final row in reference) {
-    final scans = scansByCode[row.code];
-    if (row.set != set || scans == null) {
-      continue;
-    }
-    if (row.answer == ReferenceAnswer.unsure) {
-      unsureRows += 1;
-      continue;
-    }
-    if (row.answer == ReferenceAnswer.unlabelled) {
-      unlabelledRows += 1;
-      continue;
-    }
-
-    final predicted = resolveFoodAisle(currentLabel: labels.byCode[row.code]);
-    final person = row.aisle;
-    if (row.sampledAs == ReferenceDraw.random) {
-      if (predicted != null) {
-        agreement.count(matches: predicted == person);
-      }
-      if (person != null) {
-        coverage.count(matches: predicted != null);
-        recall[person]!.count(matches: predicted == person);
-      }
-    }
-    if (predicted != null) {
-      final rank = browseRank(
-        ranking,
-        predicted,
-        code: row.code,
-        scans: scans,
-      );
-      final part = rank <= aisleBrowseLimit ? browse : outside;
-      part[predicted]!.count(matches: predicted == person);
-    }
-  }
-
-  return AisleSetMeasures(
-    agreement: agreement.share,
-    coverage: coverage.share,
-    browsePrecision: {
-      for (final aisle in FoodAisle.values)
-        aisle: _partShare(browse[aisle]!, required[aisle]!.browse),
-    },
-    precision: {
-      for (final aisle in FoodAisle.values)
-        aisle: _partShare(outside[aisle]!, required[aisle]!.outsideBrowse),
-    },
-    recall: {
-      for (final aisle in FoodAisle.values) aisle: recall[aisle]!.share,
-    },
-    unsureRows: unsureRows,
-    unlabelledRows: unlabelledRows,
-  );
-}
-
-/// One set's measures as report lines, which the builder and the labeller both
-/// print. A measure with no rows reads "not measured".
-List<String> aisleSetMeasuresLines(AisleSetMeasures measures) {
-  String share(AisleShare share) {
-    return share.rows == 0
-        ? 'not measured'
-        : '${_percentOf(share)} (${share.matched} of ${share.rows})';
-  }
-
+/// The products to ask: a current label that is not confident (including
+/// `other` at any confidence), and no current second opinion. In input order.
+List<AisleInputLine> secondOpinionsToAsk(
+  List<AisleInputLine> input,
+  AisleLabels labels,
+  AisleSecondOpinions opinions,
+) {
   return [
-    'agreement: ${share(measures.agreement)}',
-    'coverage:  ${share(measures.coverage)}',
-    'unsure rows: ${measures.unsureRows}, '
-        'not yet labelled: ${measures.unlabelledRows}',
-    for (final aisle in FoodAisle.values)
-      '${aisle.name.padRight(19)} '
-          'browse ${share(measures.browsePrecision[aisle]!)}; '
-          'outside browse ${share(measures.precision[aisle]!)}; '
-          'recall ${share(measures.recall[aisle]!)}',
+    for (final line in input)
+      if (_needsSecondOpinion(line, labels) &&
+          !isCurrentSecondOpinion(
+            opinions.byCode[line.code],
+            opinions.header,
+            line.inputHash,
+          ))
+        line,
   ];
 }
 
-/// A part the Aisle has no products in is not measured, even in the odd case
-/// of a row predicted into it: a product predicted as the Aisle and resolved
-/// elsewhere can rank just past a list of exactly 100.
-AisleShare _partShare(_ShareCounter counter, int requiredRows) {
-  return requiredRows == 0 ? (matched: 0, rows: 0) : counter.share;
+/// The second opinion input: the question line, holding the same instructions
+/// and criteria Clef is asked, then one line per product with the same state.
+/// Clef's answer is in no line, so it cannot sway the second opinion.
+String encodeSecondOpinionInput(List<AisleInputLine> lines) {
+  final buffer = StringBuffer()
+    ..write(
+      jsonEncode(<String, Object?>{
+        'instructions': aisleModelInstructions,
+        'criteria': _criteria(aisleModelDescriptions),
+        'answer': _secondOpinionAnswerInstruction,
+      }),
+    )
+    ..write('\n');
+  for (final line in lines) {
+    buffer
+      ..write(
+        jsonEncode(<String, Object?>{
+          'code': line.code,
+          'state': aisleModelState(
+            name: line.name,
+            brand: line.brand,
+            categories: line.categories,
+          ),
+        }),
+      )
+      ..write('\n');
+  }
+  return buffer.toString();
 }
 
-List<String> _failures(
-  AisleSetMeasures test,
-  Map<FoodAisle, _RequiredRows> required,
-) {
-  final failures = <String>[];
-
-  void overall(String name, AisleShare share, double bar) {
-    if (share.rows == 0) {
-      failures.add('overall $name: not measured');
-    } else if (_isBelow(share, bar)) {
-      failures.add(
-        'overall $name ${_percentOf(share)} is below ${_percent(bar)} '
-        '(n=${share.rows})',
+/// An answers file: JSON lines of exactly `code` and `choice`, in any order,
+/// perhaps several files joined, so blank lines are skipped. Every code must be
+/// one in [asked], once. Returns code to choice; `null` is `other`.
+Map<String, FoodAisle?> parseSecondOpinionAnswers(
+  String text, {
+  required Set<String> asked,
+}) {
+  final answers = <String, FoodAisle?>{};
+  final lines = text.split('\n');
+  for (var i = 0; i < lines.length; i += 1) {
+    final lineNumber = i + 1;
+    final line = lines[i];
+    if (line.trim().isEmpty) {
+      continue;
+    }
+    final json = _decodeObject(line, lineNumber);
+    _requireExactKeys(json, const {'code', 'choice'}, lineNumber);
+    final code = _requireString(json, 'code', lineNumber);
+    final aisle = _requireChoice(json, lineNumber);
+    if (!asked.contains(code)) {
+      throw _formatError(
+        lineNumber,
+        'code "$code" is not in the second opinion input',
       );
     }
+    if (answers.containsKey(code)) {
+      throw _formatError(lineNumber, 'repeated code "$code"');
+    }
+    answers[code] = aisle;
   }
+  return answers;
+}
 
-  overall('agreement', test.agreement, aisleAgreementBar);
-  overall('coverage', test.coverage, aisleCoverageBar);
+/// The second opinions to write, under [header]: for each product that still
+/// needs one, its answer, or else its current line already in [existing] when
+/// that file names the same model. Codes whose label is now confident, or not
+/// current, or that left the input are dropped, so a file never holds answers
+/// from two models or two questions.
+AisleSecondOpinions mergeSecondOpinions({
+  required List<AisleInputLine> input,
+  required AisleLabels labels,
+  required AisleSecondOpinions existing,
+  required Map<String, FoodAisle?> answers,
+  required AisleSecondOpinionsHeader header,
+}) {
+  final sameModel = existing.header?.model == header.model;
+  final byCode = <String, AisleSecondOpinion>{};
+  for (final line in input) {
+    if (!_needsSecondOpinion(line, labels)) {
+      continue;
+    }
+    if (answers.containsKey(line.code)) {
+      byCode[line.code] =
+          (inputHash: line.inputHash, aisle: answers[line.code]);
+      continue;
+    }
+    final kept = existing.byCode[line.code];
+    if (sameModel &&
+        isCurrentSecondOpinion(kept, existing.header, line.inputHash)) {
+      byCode[line.code] = kept!;
+    }
+  }
+  return AisleSecondOpinions(header: header, byCode: byCode);
+}
 
+// ---------------------------------------------------------------------------
+// Edge cases and the review page.
+// ---------------------------------------------------------------------------
+
+/// A product whose current label is not confident and whose current second
+/// opinion is a different choice.
+final class AisleEdgeCase {
+  const AisleEdgeCase({
+    required this.line,
+    required this.label,
+    required this.secondOpinion,
+  });
+
+  final AisleInputLine line;
+  final AisleLabel label;
+  final AisleSecondOpinion secondOpinion;
+}
+
+/// The edge cases with no row in [overrides] (an `unsure` row included),
+/// most scanned first, then by code, at most [aisleReviewLimit]: a person's
+/// time goes where most users look. Both models answering `other` is not an
+/// edge case.
+List<AisleEdgeCase> selectAisleEdgeCases({
+  required List<AisleInputLine> input,
+  required AisleLabels labels,
+  required AisleSecondOpinions opinions,
+  required List<AisleOverrideRow> overrides,
+}) {
+  final answered = {for (final row in overrides) row.code};
+  final cases = <AisleEdgeCase>[];
+  for (final line in input) {
+    if (answered.contains(line.code) || !_needsSecondOpinion(line, labels)) {
+      continue;
+    }
+    final opinion = opinions.byCode[line.code];
+    if (!isCurrentSecondOpinion(opinion, opinions.header, line.inputHash)) {
+      continue;
+    }
+    final label = labels.byCode[line.code]!;
+    if (opinion!.aisle == label.aisle) {
+      continue;
+    }
+    cases.add(AisleEdgeCase(line: line, label: label, secondOpinion: opinion));
+  }
+  cases.sort((a, b) {
+    final byScans = b.line.scans.compareTo(a.line.scans);
+    return byScans != 0 ? byScans : a.line.code.compareTo(b.line.code);
+  });
+  return cases.take(aisleReviewLimit).toList();
+}
+
+/// The review page: one self-contained HTML document, with nothing loaded from
+/// elsewhere. It shows one product at a time and posts `{code, aisle}` as JSON
+/// to [postPath]. Every product field is escaped as HTML text, because product
+/// names are contributors' writing.
+String aisleReviewPage(List<AisleEdgeCase> cases, {required String postPath}) {
+  final buffer = StringBuffer()
+    ..write('<!doctype html>\n')
+    ..write('<html lang="en">\n<head>\n')
+    ..write('<meta charset="utf-8">\n')
+    ..write(
+      '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
+    )
+    ..write('<title>Aisle review</title>\n')
+    ..write('<style>$_reviewPageStyle</style>\n')
+    ..write('</head>\n')
+    ..write('<body data-post-path="${_escapeHtml(postPath)}">\n')
+    ..write('<h1>Aisle review</h1>\n')
+    ..write('<p id="remaining"></p>\n');
+  for (final edgeCase in cases) {
+    final line = edgeCase.line;
+    final brand = line.brand;
+    buffer
+      ..write('<section class="case" data-code="${_escapeHtml(line.code)}" '
+          'hidden>\n')
+      ..write('<h2>${_escapeHtml(line.name)}</h2>\n')
+      ..write('<dl>\n')
+      ..write('<dt>Brand</dt><dd>'
+          '${brand == null || brand.isEmpty ? '(none)' : _escapeHtml(brand)}'
+          '</dd>\n')
+      ..write('<dt>Code</dt><dd>${_escapeHtml(line.code)}</dd>\n')
+      ..write('<dt>Scans</dt><dd>${line.scans}</dd>\n')
+      ..write(
+          '<dt>Clef</dt><dd>${_escapeHtml(_choiceText(edgeCase.label.aisle))}'
+          ', confidence ${edgeCase.label.confidence.toStringAsFixed(3)}</dd>\n')
+      ..write('<dt>Second opinion</dt><dd>'
+          '${_escapeHtml(_choiceText(edgeCase.secondOpinion.aisle))}</dd>\n')
+      ..write('<dt>Open Food Facts tags</dt><dd>');
+    if (line.categories.isEmpty) {
+      buffer.write('(none)');
+    } else {
+      buffer.write('<ul>');
+      for (final tag in line.categories) {
+        buffer.write('<li>${_escapeHtml(tag)}</li>');
+      }
+      buffer.write('</ul>');
+    }
+    buffer.write('</dd>\n</dl>\n</section>\n');
+  }
+  buffer.write('<div id="answers">\n');
   for (final aisle in FoodAisle.values) {
-    final id = aisle.name;
-    final rows = required[aisle]!;
-
-    final browse = test.browsePrecision[aisle]!;
-    if (browse.rows < rows.browse) {
-      failures.add(
-        'too few rows for $id in Browse: ${browse.rows} of ${rows.browse}',
-      );
-    } else if (rows.browse > 0 && _isBelow(browse, aislePrecisionBar)) {
-      failures.add(
-        'browse precision for $id ${_percentOf(browse)} is below '
-        '${_percent(aislePrecisionBar)} (n=${browse.rows})',
-      );
-    }
-
-    final outside = test.precision[aisle]!;
-    if (outside.rows < rows.outsideBrowse) {
-      failures.add(
-        'too few rows for $id outside Browse: '
-        '${outside.rows} of ${rows.outsideBrowse}',
-      );
-    } else if (rows.outsideBrowse > 0 && _isBelow(outside, aislePrecisionBar)) {
-      failures.add(
-        'precision for $id outside Browse ${_percentOf(outside)} is below '
-        '${_percent(aislePrecisionBar)} (n=${outside.rows})',
-      );
-    }
+    buffer.write(
+      '<button type="button" data-aisle="${aisle.name}">'
+      '${_escapeHtml(aisle.label)}</button>\n',
+    );
   }
-  return failures;
+  buffer
+    ..write('<button type="button" data-aisle="$_noneAnswer">'
+        'None: no Aisle fits</button>\n')
+    ..write('<button type="button" data-aisle="$_unsureAnswer">'
+        'Unsure: cannot tell what it is</button>\n')
+    ..write('</div>\n')
+    ..write('<p id="status" role="status"></p>\n')
+    ..write('<details>\n<summary>The labelling guide</summary>\n')
+    ..write('<pre>${_escapeHtml(aisleGuideText())}</pre>\n')
+    ..write('</details>\n')
+    ..write('<script>$_reviewPageScript</script>\n')
+    ..write('</body>\n</html>\n');
+  return buffer.toString();
 }
 
-/// Compared before rounding, so 189 of 199 fails a 95% bar although it prints
-/// as 95.0%.
-bool _isBelow(AisleShare share, double bar) => share.matched / share.rows < bar;
+String _choiceText(FoodAisle? aisle) {
+  return aisle == null ? _otherChoice : '${aisle.label} (${aisle.name})';
+}
 
-String _percentOf(AisleShare share) => _percent(share.matched / share.rows);
+String _escapeHtml(String text) {
+  return text
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+}
 
-String _percent(double share) => '${(share * 100).toStringAsFixed(1)}%';
+const _reviewPageStyle = '''
+body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 1rem auto; padding: 0 1rem; color: #1b1b1b; background: #fff; }
+dt { font-weight: 600; margin-top: 0.5rem; }
+dd { margin-left: 0; }
+ul { margin: 0; padding-left: 1.25rem; }
+#answers { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+#answers button { min-height: 48px; padding: 0 1rem; font-size: 1rem; }
+pre { white-space: pre-wrap; }
+''';
+
+/// Shows the cases one at a time, and moves on only once the tool has written
+/// the answer, so a page closed part way loses at most the answer in flight.
+const _reviewPageScript = '''
+(function () {
+  var postPath = document.body.dataset.postPath;
+  var cases = Array.prototype.slice.call(document.querySelectorAll('.case'));
+  var answers = document.getElementById('answers');
+  var remaining = document.getElementById('remaining');
+  var status = document.getElementById('status');
+  var index = 0;
+  var busy = false;
+  function show() {
+    cases.forEach(function (section, i) { section.hidden = i !== index; });
+    var left = cases.length - index;
+    remaining.textContent = left > 0
+      ? left + ' of ' + cases.length + ' remaining'
+      : 'All ' + cases.length + ' answered. The tool has stopped; you can close this page.';
+    answers.hidden = left === 0;
+  }
+  answers.addEventListener('click', function (event) {
+    var button = event.target.closest('button[data-aisle]');
+    if (!button || busy || index >= cases.length) { return; }
+    busy = true;
+    status.textContent = 'Saving...';
+    fetch(postPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: cases[index].dataset.code, aisle: button.dataset.aisle })
+    }).then(function (response) {
+      if (!response.ok) { throw new Error('status ' + response.status); }
+      index += 1;
+      status.textContent = '';
+      show();
+    }).catch(function (error) {
+      status.textContent = 'Not saved (' + error.message + '). Try again.';
+    }).then(function () { busy = false; });
+  });
+  show();
+})();
+''';
 
 // ---------------------------------------------------------------------------
 // Parsing helpers. Every failure is a FormatException naming the 1-based line,
@@ -1362,4 +1371,32 @@ String _requireString(Map<String, Object?> json, String key, int lineNumber) {
     throw _formatError(lineNumber, '"$key" is not text');
   }
   return value;
+}
+
+/// The `choice` key: an Aisle id, or `other` as `null`.
+FoodAisle? _requireChoice(Map<String, Object?> json, int lineNumber) {
+  final choice = _requireString(json, 'choice', lineNumber);
+  final aisle = foodAisleById(choice);
+  if (aisle == null && choice != _otherChoice) {
+    throw _formatError(lineNumber, 'unknown choice "$choice"');
+  }
+  return aisle;
+}
+
+/// A data file's header line names its format and version.
+void _requireFormat(
+  Map<String, Object?> json, {
+  required String format,
+  required int formatVersion,
+}) {
+  const lineNumber = 1;
+  if (json['format'] != format) {
+    throw _formatError(lineNumber, 'the header\'s "format" is not $format');
+  }
+  if (json['formatVersion'] != formatVersion) {
+    throw _formatError(
+      lineNumber,
+      'the header\'s "formatVersion" is not $formatVersion',
+    );
+  }
 }
