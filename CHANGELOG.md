@@ -9,6 +9,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Changed
+
+- Onboarding explains each screen and shows which step you are on. Experience asks
+  which kinds of training you do, with what each covers, before asking your level.
+- Training setup offers Gym, Home and Bodyweight only presets and groups the
+  equipment. Onboarding starts from Gym, so Done saves a typical gym list.
+
 ## [0.3.0] - 2026-11-07
 
 A minor release: one screen for logging meals, rest timer cues and a Finish
