@@ -3,10 +3,10 @@
   "source": "Exercise Catalog Review",
   "sourceExportedAt": "2026-07-19T23:48:40.614Z",
   "reviewedAt": "2026-07-19T23:48:40.614Z",
-  "retiredAt": "2026-11-07T00:00:00.000Z",
+  "retiredAt": "2026-11-07T12:00:00.000Z",
   "sourceDecisionCount": 147,
   "sourceMergeDecisionCount": 72,
-  "expectedExerciseCount": 1450,
+  "expectedExerciseCount": 1436,
   "excludedExerciseIds": [
     "01910000-0000-7000-8000-000000200284",
     "01910000-0000-7000-8000-000000200599",
@@ -94,6 +94,13 @@
     "candidatePairCount": 5708,
     "proposedPairCount": 193,
     "mergeDecisionCount": 96
+  },
+  "nameStyleReview": {
+    "source": "Rule-based and manual name review",
+    "reviewedAt": "2026-11-07T12:00:00.000Z",
+    "exercisesRead": 1450,
+    "renameCount": 787,
+    "mergeDecisionCount": 14
   },
   "merges": [
     {
@@ -1499,259 +1506,331 @@
     {
       "keepExerciseId": "01910000-0000-7000-8000-000000201473",
       "removeExerciseId": "01910000-0000-7000-8000-000000201709"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200988",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200989"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201013",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201014"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201028",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201029"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200986",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200987"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200991",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200992"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201232",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201233"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201230",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201231"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200702",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201203"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200702",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201021"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-803427080053",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201008"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-803427080053",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201009"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200456",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201020"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201321",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201019"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201211",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201388"
     }
   ],
   "replacements": [
     {
-      "englishName": "Calf Raises on Hack Machine",
+      "englishName": "Barbell Hack Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200043"
+    },
+    {
+      "englishName": "Barbell Standing Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000200046"
+    },
+    {
+      "englishName": "Bear Walk",
+      "exerciseId": "01910000-0000-7000-8000-000000200057"
+    },
+    {
+      "englishName": "Single-Leg Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000200071"
+    },
+    {
+      "englishName": "Bent High Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000200079"
+    },
+    {
+      "englishName": "Bent-Over Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200082"
+    },
+    {
+      "englishName": "Barbell Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200091"
+    },
+    {
+      "englishName": "EZ Bar Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200094"
+    },
+    {
+      "englishName": "Cable Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200095"
+    },
+    {
+      "englishName": "Burpee",
+      "exerciseId": "01910000-0000-7000-8000-000000200132"
+    },
+    {
+      "englishName": "Narrow-Grip Butterfly",
+      "exerciseId": "01910000-0000-7000-8000-000000200137"
+    },
+    {
+      "englishName": "Cable Woodchopper",
+      "exerciseId": "01910000-0000-7000-8000-000000200145"
+    },
+    {
+      "englishName": "Calf Raise on Hack Machine",
       "exerciseId": "01910000-0000-7000-8000-000000200148"
     },
     {
-      "englishName": "Leg Press on Hack Machine",
-      "exerciseId": "01910000-0000-7000-8000-000000200375"
+      "englishName": "Chin-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200154"
     },
     {
-      "englishName": "Military Press with SZ-Bar",
-      "exerciseId": "01910000-0000-7000-8000-000000200418"
+      "englishName": "Close-Grip Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000200158"
     },
     {
-      "englishName": "Biceps Curls Trifecta",
-      "exerciseId": "01910000-0000-7000-8000-000000201483"
+      "englishName": "Ball Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000200165"
     },
     {
-      "englishName": "3/4 Sit-Up",
-      "exerciseId": "01910000-0000-7000-8000-802208171065"
+      "englishName": "Incline Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000200171"
     },
     {
-      "englishName": "Standing Hip Abduction",
-      "exerciseId": "01910000-0000-7000-8000-000000201096"
+      "englishName": "Crunch on Machine",
+      "exerciseId": "01910000-0000-7000-8000-000000200172"
     },
     {
-      "englishName": "Alternating Dumbbell Gorilla Rows",
-      "exerciseId": "01910000-0000-7000-8000-000000201501"
+      "englishName": "Crunch with Cable",
+      "exerciseId": "01910000-0000-7000-8000-000000200173"
     },
     {
-      "englishName": "Around the World Superman Hold",
-      "exerciseId": "01910000-0000-7000-8000-802891502593"
+      "englishName": "Crunch with Legs Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200174"
     },
     {
-      "englishName": "Assisted Push-Ups with Band",
-      "exerciseId": "01910000-0000-7000-8000-800352562855"
+      "englishName": "Dead Bug",
+      "exerciseId": "01910000-0000-7000-8000-000000200178"
     },
     {
-      "englishName": "Punching Bag Training",
-      "exerciseId": "01910000-0000-7000-8000-000000201092"
+      "englishName": "Dumbbell Decline Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200186"
     },
     {
-      "englishName": "Barbell Bent Over Wide Grip Row",
-      "exerciseId": "01910000-0000-7000-8000-803974948080"
+      "englishName": "Decline Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200188"
     },
     {
-      "englishName": "Barbell Front Squat to Bench (Clean Grip)",
-      "exerciseId": "01910000-0000-7000-8000-801046921272"
+      "englishName": "Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000200194"
     },
     {
-      "englishName": "Bodyweight Standing Scapula Row",
-      "exerciseId": "01910000-0000-7000-8000-802501247680"
+      "englishName": "Dip Between Two Benches",
+      "exerciseId": "01910000-0000-7000-8000-000000200197"
     },
     {
-      "englishName": "Cable Seated Horizontal Shrug",
-      "exerciseId": "01910000-0000-7000-8000-803498948355"
+      "englishName": "Dumbbell Standing Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000200205"
     },
     {
-      "englishName": "Criss Cross Upper Chest Raise",
-      "exerciseId": "01910000-0000-7000-8000-802168733643"
+      "englishName": "Flutter Kick",
+      "exerciseId": "01910000-0000-7000-8000-000000200235"
     },
     {
-      "englishName": "Decline Cable Crunch",
-      "exerciseId": "01910000-0000-7000-8000-804174879861"
+      "englishName": "Dumbbell Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000200238"
     },
     {
-      "englishName": "Deep Push-up on Parallel Bars",
-      "exerciseId": "01910000-0000-7000-8000-802505862372"
+      "englishName": "Dumbbell Decline Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000200239"
     },
     {
-      "englishName": "Dumbbell Bent Over Curl",
-      "exerciseId": "01910000-0000-7000-8000-802037391407"
+      "englishName": "EZ Bar Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-000000200246"
     },
     {
-      "englishName": "Dumbbell Decline Shrug",
-      "exerciseId": "01910000-0000-7000-8000-800232187676"
+      "englishName": "Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200256"
     },
     {
-      "englishName": "Dumbbell Standing Wrist Rotation",
-      "exerciseId": "01910000-0000-7000-8000-801929510161"
-    },
-    {
-      "englishName": "Dumbbell Tate Press",
-      "exerciseId": "01910000-0000-7000-8000-000000201824"
-    },
-    {
-      "englishName": "Fingerboard Hang (20 mm Edge)",
-      "exerciseId": "01910000-0000-7000-8000-000000200820"
+      "englishName": "Front Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200257"
     },
     {
       "englishName": "Narrow-Grip Pulldown",
       "exerciseId": "01910000-0000-7000-8000-000000200259"
     },
     {
-      "englishName": "Hammer Curls on Cable",
+      "englishName": "Full Sit-Out",
+      "exerciseId": "01910000-0000-7000-8000-000000200260"
+    },
+    {
+      "englishName": "Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200272"
+    },
+    {
+      "englishName": "Hammer Curl on Cable",
       "exerciseId": "01910000-0000-7000-8000-000000200275"
     },
     {
-      "englishName": "High-Cable Cross Tricep Extension - NB",
-      "exerciseId": "01910000-0000-7000-8000-000000201298"
+      "englishName": "Hanging Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200283"
     },
     {
-      "englishName": "Ice Cream Maker",
-      "exerciseId": "01910000-0000-7000-8000-000000201248"
+      "englishName": "High Knee Jump",
+      "exerciseId": "01910000-0000-7000-8000-000000200285"
     },
     {
-      "englishName": "Incline Skull Crusher",
-      "exerciseId": "01910000-0000-7000-8000-000000200911"
+      "englishName": "Hindu Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200291"
     },
     {
-      "englishName": "Incline Dumbbell Static Hold",
-      "exerciseId": "01910000-0000-7000-8000-000000201693"
+      "englishName": "Hyperextension",
+      "exerciseId": "01910000-0000-7000-8000-000000200301"
     },
     {
-      "englishName": "Reverse Dips",
-      "exerciseId": "01910000-0000-7000-8000-800548345714"
+      "englishName": "Incline Plank with Alternating Floor Touch",
+      "exerciseId": "01910000-0000-7000-8000-000000200312"
     },
     {
-      "englishName": "Jack Burpee",
-      "exerciseId": "01910000-0000-7000-8000-803492493764"
+      "englishName": "Incline Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200313"
     },
     {
-      "englishName": "Jack Plank on Medicine Ball",
-      "exerciseId": "01910000-0000-7000-8000-800732510073"
+      "englishName": "Jumping Jack",
+      "exerciseId": "01910000-0000-7000-8000-000000200320"
     },
     {
-      "englishName": "Jumping Pull-Up",
-      "exerciseId": "01910000-0000-7000-8000-800079399828"
+      "englishName": "Cable Crossover",
+      "exerciseId": "01910000-0000-7000-8000-000000200323"
     },
     {
-      "englishName": "Kneeling Band Pulldown",
-      "exerciseId": "01910000-0000-7000-8000-804284626848"
+      "englishName": "Landmine Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200346"
     },
     {
-      "englishName": "Kneeling Finger Press",
-      "exerciseId": "01910000-0000-7000-8000-800459949152"
+      "englishName": "Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200348"
     },
     {
-      "englishName": "Kneeling Fist Roll",
-      "exerciseId": "01910000-0000-7000-8000-800666964053"
+      "englishName": "Single-Arm Cable Lateral Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200349"
     },
     {
-      "englishName": "Kneeling Knuckle Push-Up",
-      "exerciseId": "01910000-0000-7000-8000-802901460265"
+      "englishName": "Lateral-to-Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200351"
     },
     {
-      "englishName": "Kneeling Modified Hindu Push-up",
-      "exerciseId": "01910000-0000-7000-8000-800959548294"
+      "englishName": "Lat Pulldown (Leaning Back)",
+      "exerciseId": "01910000-0000-7000-8000-000000200354"
     },
     {
-      "englishName": "Kneeling Scapular Push-Up",
-      "exerciseId": "01910000-0000-7000-8000-800344317125"
+      "englishName": "Lat Pulldown (Straight Back)",
+      "exerciseId": "01910000-0000-7000-8000-000000200355"
     },
     {
-      "englishName": "Lying Hamstring Stretch",
-      "exerciseId": "01910000-0000-7000-8000-802378772503"
+      "englishName": "Seated Leg Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200366"
     },
     {
-      "englishName": "Lying Svend Press",
-      "exerciseId": "01910000-0000-7000-8000-803358282232"
+      "englishName": "Narrow-Stance Leg Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200373"
     },
     {
-      "englishName": "Lying Leg Circles",
-      "exerciseId": "01910000-0000-7000-8000-000000201909"
+      "englishName": "Wide-Stance Leg Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200374"
     },
     {
-      "englishName": "Lever Pronated Grip Seated Scapular Retraction Shrug",
-      "exerciseId": "01910000-0000-7000-8000-800383610832"
+      "englishName": "Leg Press on Hack Machine",
+      "exerciseId": "01910000-0000-7000-8000-000000200375"
     },
     {
-      "englishName": "Lever Push-up",
-      "exerciseId": "01910000-0000-7000-8000-800926575231"
+      "englishName": "Standing Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200378"
     },
     {
-      "englishName": "Prone T Raise",
-      "exerciseId": "01910000-0000-7000-8000-800690476020"
+      "englishName": "Wide-Stance Low Box Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200397"
     },
     {
-      "englishName": "Lying Reverse Push-up",
-      "exerciseId": "01910000-0000-7000-8000-802474270945"
+      "englishName": "Military Press with EZ Bar",
+      "exerciseId": "01910000-0000-7000-8000-000000200418"
     },
     {
-      "englishName": "Lying Scalene Muscles Activation",
-      "exerciseId": "01910000-0000-7000-8000-800077940285"
+      "englishName": "Muscle-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200423"
     },
     {
-      "englishName": "Medicine Ball Half Kneeling Chest Push",
-      "exerciseId": "01910000-0000-7000-8000-803471892704"
+      "englishName": "Negative Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000200427"
     },
     {
-      "englishName": "Medicine Ball Plyo Push Up",
-      "exerciseId": "01910000-0000-7000-8000-801811063111"
+      "englishName": "Pause Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200445"
     },
     {
-      "englishName": "Medicine Ball V-Up",
-      "exerciseId": "01910000-0000-7000-8000-000000200976"
-    },
-    {
-      "englishName": "Pendlay Rows",
+      "englishName": "Pendlay Row",
       "exerciseId": "01910000-0000-7000-8000-000000200448"
     },
     {
-      "englishName": "Pendulum Squat",
-      "exerciseId": "01910000-0000-7000-8000-000000201521"
+      "englishName": "Prone Scapular Retraction (Arms at Side)",
+      "exerciseId": "01910000-0000-7000-8000-000000200468"
     },
     {
-      "englishName": "Pike Push-up from Deficit",
-      "exerciseId": "01910000-0000-7000-8000-802293255772"
-    },
-    {
-      "englishName": "Planche Dip on Parallel Bars",
-      "exerciseId": "01910000-0000-7000-8000-800021038563"
-    },
-    {
-      "englishName": "Machine Pull-Ups",
+      "englishName": "Machine Pull-Up",
       "exerciseId": "01910000-0000-7000-8000-000000200477"
     },
     {
-      "englishName": "Cable Pullback",
-      "exerciseId": "01910000-0000-7000-8000-000000201905"
+      "englishName": "Rear Delt Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200487"
     },
     {
-      "englishName": "Quadruped Arm and Leg Raise",
-      "exerciseId": "01910000-0000-7000-8000-000000200957"
+      "englishName": "Reverse-Grip Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200498"
     },
     {
-      "englishName": "Hangboard Recruitment Pulls",
-      "exerciseId": "01910000-0000-7000-8000-000000201216"
+      "englishName": "Ring Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000200501"
     },
     {
-      "englishName": "Ring Archer Push-up",
-      "exerciseId": "01910000-0000-7000-8000-800079023772"
-    },
-    {
-      "englishName": "Ring Handstand",
-      "exerciseId": "01910000-0000-7000-8000-801623885286"
-    },
-    {
-      "englishName": "Ring Russian Push-Up",
-      "exerciseId": "01910000-0000-7000-8000-801478997646"
-    },
-    {
-      "englishName": "Roll Forearms Standing Against Wall",
-      "exerciseId": "01910000-0000-7000-8000-800433626263"
-    },
-    {
-      "englishName": "Roll Neck Rotation Lying on Floor",
-      "exerciseId": "01910000-0000-7000-8000-800225672048"
-    },
-    {
-      "englishName": "Roman Chair Crunches",
+      "englishName": "Roman Chair Crunch",
       "exerciseId": "01910000-0000-7000-8000-000000200505"
     },
     {
@@ -1759,64 +1838,3092 @@
       "exerciseId": "01910000-0000-7000-8000-000000200510"
     },
     {
-      "englishName": "Shoulder Raise (Dumbbell)",
-      "exerciseId": "01910000-0000-7000-8000-000000201338"
+      "englishName": "Narrow-Grip Seated Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200512"
     },
     {
-      "englishName": "Seated Rhomboid Stretch",
-      "exerciseId": "01910000-0000-7000-8000-802275649255"
+      "englishName": "Interval Running",
+      "exerciseId": "01910000-0000-7000-8000-000000200529"
     },
     {
-      "englishName": "Dumbbell Shoulder Pendulum",
-      "exerciseId": "01910000-0000-7000-8000-000000201714"
+      "englishName": "Barbell Incline Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200538"
     },
     {
-      "englishName": "Shrimp Squat",
-      "exerciseId": "01910000-0000-7000-8000-000000201739"
+      "englishName": "Incline Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200539"
     },
     {
-      "englishName": "Side Lying Single Arm Triceps Push-up",
-      "exerciseId": "01910000-0000-7000-8000-802088617407"
+      "englishName": "Side Bend on Machine",
+      "exerciseId": "01910000-0000-7000-8000-000000200556"
     },
     {
-      "englishName": "Side-Lying Internal Rotation",
-      "exerciseId": "01910000-0000-7000-8000-000000201582"
+      "englishName": "Barbell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200566"
     },
     {
-      "englishName": "Sitting Neck Stretch",
-      "exerciseId": "01910000-0000-7000-8000-802106796897"
+      "englishName": "Side-Lying External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000200578"
     },
     {
-      "englishName": "Fingerboard Sloper Hang",
-      "exerciseId": "01910000-0000-7000-8000-000000200804"
+      "englishName": "Side to Side Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200583"
     },
     {
-      "englishName": "Smith Bent Knee Good Morning",
-      "exerciseId": "01910000-0000-7000-8000-800169041634"
+      "englishName": "Single-Arm Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200584"
     },
     {
-      "englishName": "Spider Plank",
-      "exerciseId": "01910000-0000-7000-8000-801987832933"
+      "englishName": "Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200591"
     },
     {
-      "englishName": "Stability Ball Rounded Rollout",
-      "exerciseId": "01910000-0000-7000-8000-802352950783"
+      "englishName": "Skipping",
+      "exerciseId": "01910000-0000-7000-8000-000000200595"
     },
     {
-      "englishName": "Stiff Leg Deadlift from a Deficit",
-      "exerciseId": "01910000-0000-7000-8000-800320928290"
+      "englishName": "Smith Machine Close-Grip Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000200598"
     },
     {
-      "englishName": "TRX Oblique Crunches",
-      "exerciseId": "01910000-0000-7000-8000-000000201259"
+      "englishName": "Splinter Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200607"
+    },
+    {
+      "englishName": "Squat Jump",
+      "exerciseId": "01910000-0000-7000-8000-000000200614"
+    },
+    {
+      "englishName": "Standing Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200621"
+    },
+    {
+      "englishName": "Stiff-Leg Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000200627"
+    },
+    {
+      "englishName": "Straight-Arm Pulldown (Bar Attachment)",
+      "exerciseId": "01910000-0000-7000-8000-000000200628"
+    },
+    {
+      "englishName": "Straight-Arm Pulldown (Rope Attachment)",
+      "exerciseId": "01910000-0000-7000-8000-000000200629"
+    },
+    {
+      "englishName": "Sumo Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200632"
+    },
+    {
+      "englishName": "Triceps Dumbbell Kickback",
+      "exerciseId": "01910000-0000-7000-8000-000000200655"
     },
     {
       "englishName": "Machine Triceps Extension",
       "exerciseId": "01910000-0000-7000-8000-000000200661"
     },
     {
+      "englishName": "Trunk Rotation with Cable",
+      "exerciseId": "01910000-0000-7000-8000-000000200672"
+    },
+    {
+      "englishName": "Underhand Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000200684"
+    },
+    {
+      "englishName": "Single-Leg Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200702"
+    },
+    {
+      "englishName": "Wall Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200713"
+    },
+    {
+      "englishName": "Weighted Step-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200722"
+    },
+    {
+      "englishName": "Wide-Grip Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000200723"
+    },
+    {
+      "englishName": "Barbell Walking Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000200802"
+    },
+    {
+      "englishName": "Single-Arm Triceps Extension on Cable",
+      "exerciseId": "01910000-0000-7000-8000-000000200803"
+    },
+    {
+      "englishName": "Fingerboard Sloper Hang",
+      "exerciseId": "01910000-0000-7000-8000-000000200804"
+    },
+    {
+      "englishName": "Fingerboard Hang (20 mm Edge)",
+      "exerciseId": "01910000-0000-7000-8000-000000200820"
+    },
+    {
+      "englishName": "Fingerboard Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200821"
+    },
+    {
+      "englishName": "Incline Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-000000200911"
+    },
+    {
+      "englishName": "Straight Bar Cable Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200912"
+    },
+    {
+      "englishName": "Reverse EZ Bar Cable Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200914"
+    },
+    {
+      "englishName": "Seated Dumbbell Side Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200918"
+    },
+    {
+      "englishName": "T-Bar Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200919"
+    },
+    {
+      "englishName": "Seated Cable Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200921"
+    },
+    {
+      "englishName": "Quadruped Arm and Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200957"
+    },
+    {
+      "englishName": "TRX Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200959"
+    },
+    {
+      "englishName": "Swimming 50m Sprint",
+      "exerciseId": "01910000-0000-7000-8000-000000200961"
+    },
+    {
+      "englishName": "Two-Handed Kettlebell Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200974"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000200975"
+    },
+    {
+      "englishName": "Medicine Ball V-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200976"
+    },
+    {
+      "englishName": "Box Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200977"
+    },
+    {
+      "englishName": "Commando Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200980"
+    },
+    {
+      "englishName": "High Knees",
+      "exerciseId": "01910000-0000-7000-8000-000000200983"
+    },
+    {
+      "englishName": "Push-Up Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000200985"
+    },
+    {
+      "englishName": "Side Split Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200986"
+    },
+    {
+      "englishName": "Bulgarian Split Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200988"
+    },
+    {
+      "englishName": "Split Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000200991"
+    },
+    {
+      "englishName": "Backward Arm Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000200995"
+    },
+    {
+      "englishName": "Mountain Climber",
+      "exerciseId": "01910000-0000-7000-8000-000000200996"
+    },
+    {
+      "englishName": "4-Count Burpee",
+      "exerciseId": "01910000-0000-7000-8000-000000200997"
+    },
+    {
+      "englishName": "No Push-Up Burpee",
+      "exerciseId": "01910000-0000-7000-8000-000000200998"
+    },
+    {
+      "englishName": "Reverse Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000200999"
+    },
+    {
+      "englishName": "Floor Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000201000"
+    },
+    {
+      "englishName": "Child's Pose",
+      "exerciseId": "01910000-0000-7000-8000-000000201002"
+    },
+    {
+      "englishName": "Kettlebell Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201003"
+    },
+    {
+      "englishName": "Forward Shoulder Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201004"
+    },
+    {
+      "englishName": "Backward Shoulder Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201005"
+    },
+    {
+      "englishName": "Chin Tuck",
+      "exerciseId": "01910000-0000-7000-8000-000000201006"
+    },
+    {
+      "englishName": "Head Turns",
+      "exerciseId": "01910000-0000-7000-8000-000000201007"
+    },
+    {
+      "englishName": "Back Neck Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201010"
+    },
+    {
+      "englishName": "Front Neck Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201011"
+    },
+    {
+      "englishName": "Alternating Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201012"
+    },
+    {
+      "englishName": "Levator Scapulae Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201013"
+    },
+    {
+      "englishName": "Clockwise Neck Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000201015"
+    },
+    {
+      "englishName": "Counterclockwise Neck Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000201016"
+    },
+    {
+      "englishName": "Neck Half Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000201017"
+    },
+    {
+      "englishName": "Head Tilts",
+      "exerciseId": "01910000-0000-7000-8000-000000201018"
+    },
+    {
+      "englishName": "Single-Arm Plank to Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201022"
+    },
+    {
+      "englishName": "Elevated Prayer Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201027"
+    },
+    {
+      "englishName": "Quadruped Thoracic Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201028"
+    },
+    {
+      "englishName": "Plate Twist",
+      "exerciseId": "01910000-0000-7000-8000-000000201079"
+    },
+    {
+      "englishName": "Hindu Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201080"
+    },
+    {
+      "englishName": "Shoulder Dislocates",
+      "exerciseId": "01910000-0000-7000-8000-000000201081"
+    },
+    {
+      "englishName": "Bent-Over Row to External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201082"
+    },
+    {
+      "englishName": "YWT Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201083"
+    },
+    {
+      "englishName": "Close-Grip Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201086"
+    },
+    {
+      "englishName": "Dumbbell Hang Power Clean",
+      "exerciseId": "01910000-0000-7000-8000-000000201087"
+    },
+    {
+      "englishName": "Dumbbell Sumo Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201088"
+    },
+    {
+      "englishName": "Medicine Ball Twist",
+      "exerciseId": "01910000-0000-7000-8000-000000201089"
+    },
+    {
       "englishName": "V Push-Up",
       "exerciseId": "01910000-0000-7000-8000-000000201090"
+    },
+    {
+      "englishName": "Punching Bag Training",
+      "exerciseId": "01910000-0000-7000-8000-000000201092"
+    },
+    {
+      "englishName": "Standing Hip Abduction",
+      "exerciseId": "01910000-0000-7000-8000-000000201096"
+    },
+    {
+      "englishName": "Dynamic Side Hold",
+      "exerciseId": "01910000-0000-7000-8000-000000201099"
+    },
+    {
+      "englishName": "Wall Ball",
+      "exerciseId": "01910000-0000-7000-8000-000000201100"
+    },
+    {
+      "englishName": "Alternating Back Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000201102"
+    },
+    {
+      "englishName": "Walking Bridge",
+      "exerciseId": "01910000-0000-7000-8000-000000201103"
+    },
+    {
+      "englishName": "Parallette Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201113"
+    },
+    {
+      "englishName": "Back Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201143"
+    },
+    {
+      "englishName": "Single-Arm Bent Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201186"
+    },
+    {
+      "englishName": "Side Slide and Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201195"
+    },
+    {
+      "englishName": "Wall Drill",
+      "exerciseId": "01910000-0000-7000-8000-000000201196"
+    },
+    {
+      "englishName": "Inverted Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201198"
+    },
+    {
+      "englishName": "Tibialis Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201200"
+    },
+    {
+      "englishName": "Dragon Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201201"
+    },
+    {
+      "englishName": "Side-Lying Hip Abduction",
+      "exerciseId": "01910000-0000-7000-8000-000000201202"
+    },
+    {
+      "englishName": "Dumbbell Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201205"
+    },
+    {
+      "englishName": "Shoulder-Width Three-Point Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201209"
+    },
+    {
+      "englishName": "Skydiver with Arms in T-Position",
+      "exerciseId": "01910000-0000-7000-8000-000000201210"
+    },
+    {
+      "englishName": "Single-Leg Romanian Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201211"
+    },
+    {
+      "englishName": "Front Lever Tuck",
+      "exerciseId": "01910000-0000-7000-8000-000000201214"
+    },
+    {
+      "englishName": "Hangboard Recruitment Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000201216"
+    },
+    {
+      "englishName": "Finger Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201217"
+    },
+    {
+      "englishName": "Overhead Clap",
+      "exerciseId": "01910000-0000-7000-8000-000000201223"
+    },
+    {
+      "englishName": "Dumbbell Drag Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201224"
+    },
+    {
+      "englishName": "Dumbbell Wide Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201225"
+    },
+    {
+      "englishName": "Dumbbell Biceps Curl to Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201226"
+    },
+    {
+      "englishName": "Dumbbell Rear Delt Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201227"
+    },
+    {
+      "englishName": "Dumbbell Close-Grip Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201228"
+    },
+    {
+      "englishName": "Triceps Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201230"
+    },
+    {
+      "englishName": "Standing Biceps Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201232"
+    },
+    {
+      "englishName": "Dumbbell Single-Leg Hip Thrust",
+      "exerciseId": "01910000-0000-7000-8000-000000201234"
+    },
+    {
+      "englishName": "Frog Stand",
+      "exerciseId": "01910000-0000-7000-8000-000000201238"
+    },
+    {
+      "englishName": "Cat-Cow Pose",
+      "exerciseId": "01910000-0000-7000-8000-000000201244"
+    },
+    {
+      "englishName": "TRX Roll Out",
+      "exerciseId": "01910000-0000-7000-8000-000000201246"
+    },
+    {
+      "englishName": "Ice Cream Maker",
+      "exerciseId": "01910000-0000-7000-8000-000000201248"
+    },
+    {
+      "englishName": "Front Lever Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201252"
+    },
+    {
+      "englishName": "TRX Oblique Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000201259"
+    },
+    {
+      "englishName": "TRX Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201260"
+    },
+    {
+      "englishName": "TRX Gorilla Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201261"
+    },
+    {
+      "englishName": "TRX Single-Arm Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201262"
+    },
+    {
+      "englishName": "Back Bridge",
+      "exerciseId": "01910000-0000-7000-8000-000000201263"
+    },
+    {
+      "englishName": "TRX Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201266"
+    },
+    {
+      "englishName": "TRX Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000201269"
+    },
+    {
+      "englishName": "Pseudo Planche Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201284"
+    },
+    {
+      "englishName": "Reach-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201287"
+    },
+    {
+      "englishName": "Seated Dumbbell Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201289"
+    },
+    {
+      "englishName": "Reverse-Grip Barbell Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201290"
+    },
+    {
+      "englishName": "Single-Arm Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201293"
+    },
+    {
+      "englishName": "Low-Cable Crossover",
+      "exerciseId": "01910000-0000-7000-8000-000000201296"
+    },
+    {
+      "englishName": "High-Cable Cross Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201298"
+    },
+    {
+      "englishName": "Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000201319"
+    },
+    {
+      "englishName": "Bodyweight Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000201324"
+    },
+    {
+      "englishName": "Forearm Curl (Underhand Grip)",
+      "exerciseId": "01910000-0000-7000-8000-000000201333"
+    },
+    {
+      "englishName": "Shoulder Raise (Dumbbell)",
+      "exerciseId": "01910000-0000-7000-8000-000000201338"
+    },
+    {
+      "englishName": "Seated Machine Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201365"
+    },
+    {
+      "englishName": "Assisted Triceps Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000201372"
+    },
+    {
+      "englishName": "Cable Lateral Raise (Single-Arm)",
+      "exerciseId": "01910000-0000-7000-8000-000000201378"
+    },
+    {
+      "englishName": "Band Pull-Aparts",
+      "exerciseId": "01910000-0000-7000-8000-000000201380"
+    },
+    {
+      "englishName": "Hamstring Kick",
+      "exerciseId": "01910000-0000-7000-8000-000000201387"
+    },
+    {
+      "englishName": "Elephant Walk",
+      "exerciseId": "01910000-0000-7000-8000-000000201391"
+    },
+    {
+      "englishName": "Single-Leg Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201393"
+    },
+    {
+      "englishName": "Sit and Reach",
+      "exerciseId": "01910000-0000-7000-8000-000000201394"
+    },
+    {
+      "englishName": "Cross-Body Leg Swing",
+      "exerciseId": "01910000-0000-7000-8000-000000201395"
+    },
+    {
+      "englishName": "Cross-Body Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201400"
+    },
+    {
+      "englishName": "Cossack Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201407"
+    },
+    {
+      "englishName": "Wall Sit",
+      "exerciseId": "01910000-0000-7000-8000-000000201408"
+    },
+    {
+      "englishName": "Dragon Flag",
+      "exerciseId": "01910000-0000-7000-8000-000000201409"
+    },
+    {
+      "englishName": "Heel Touch",
+      "exerciseId": "01910000-0000-7000-8000-000000201411"
+    },
+    {
+      "englishName": "Hack Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201414"
+    },
+    {
+      "englishName": "Dumbbell Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000201415"
+    },
+    {
+      "englishName": "Machine Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201424"
+    },
+    {
+      "englishName": "Standing Side Crunch",
+      "exerciseId": "01910000-0000-7000-8000-000000201426"
+    },
+    {
+      "englishName": "Dumbbell Shoulder Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201429"
+    },
+    {
+      "englishName": "Barbell Pin Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201436"
+    },
+    {
+      "englishName": "Pin Overhead Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201439"
+    },
+    {
+      "englishName": "Dumbbell Incline Overhead Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201441"
+    },
+    {
+      "englishName": "Jerk",
+      "exerciseId": "01910000-0000-7000-8000-000000201445"
+    },
+    {
+      "englishName": "Snatch",
+      "exerciseId": "01910000-0000-7000-8000-000000201447"
+    },
+    {
+      "englishName": "Torso Rotation Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201451"
+    },
+    {
+      "englishName": "Punches",
+      "exerciseId": "01910000-0000-7000-8000-000000201462"
+    },
+    {
+      "englishName": "Pause Hack Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201464"
+    },
+    {
+      "englishName": "Incline Close-Grip Barbell Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201467"
+    },
+    {
+      "englishName": "Bent-Over Cable Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000201469"
+    },
+    {
+      "englishName": "Reverse Cable Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000201473"
+    },
+    {
+      "englishName": "Butterfly Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201476"
+    },
+    {
+      "englishName": "Sit-Up Elbow Thrust",
+      "exerciseId": "01910000-0000-7000-8000-000000201479"
+    },
+    {
+      "englishName": "Lying Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201480"
+    },
+    {
+      "englishName": "Biceps Curl Trifecta",
+      "exerciseId": "01910000-0000-7000-8000-000000201483"
+    },
+    {
+      "englishName": "Omni Cable Crossover",
+      "exerciseId": "01910000-0000-7000-8000-000000201484"
+    },
+    {
+      "englishName": "Plank Jack",
+      "exerciseId": "01910000-0000-7000-8000-000000201489"
+    },
+    {
+      "englishName": "Sitting Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201494"
+    },
+    {
+      "englishName": "Dumbbell Underhand Bench Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201497"
+    },
+    {
+      "englishName": "Alternating Dumbbell Gorilla Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201501"
+    },
+    {
+      "englishName": "Dumbbell Cross-Body Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201502"
+    },
+    {
+      "englishName": "Dumbbell Bradford Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201504"
+    },
+    {
+      "englishName": "Cable Triceps Kickback",
+      "exerciseId": "01910000-0000-7000-8000-000000201509"
+    },
+    {
+      "englishName": "Neutral-Grip Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201510"
+    },
+    {
+      "englishName": "Overhead Cable Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201513"
+    },
+    {
+      "englishName": "Pendulum Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201521"
+    },
+    {
+      "englishName": "Toes to Bar",
+      "exerciseId": "01910000-0000-7000-8000-000000201529"
+    },
+    {
+      "englishName": "Lying Dumbbell Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201530"
+    },
+    {
+      "englishName": "Pull-Up Isometric Hold",
+      "exerciseId": "01910000-0000-7000-8000-000000201537"
+    },
+    {
+      "englishName": "Wide Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201542"
+    },
+    {
+      "englishName": "Clap Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201554"
+    },
+    {
+      "englishName": "Alternating Dumbbell Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201567"
+    },
+    {
+      "englishName": "Ab Wheel",
+      "exerciseId": "01910000-0000-7000-8000-000000201573"
+    },
+    {
+      "englishName": "Standing Dowel Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201575"
+    },
+    {
+      "englishName": "Pretzel Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201577"
+    },
+    {
+      "englishName": "Hip Hinge",
+      "exerciseId": "01910000-0000-7000-8000-000000201578"
+    },
+    {
+      "englishName": "Trap Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201581"
+    },
+    {
+      "englishName": "Side-Lying Internal Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201582"
+    },
+    {
+      "englishName": "Supine Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201583"
+    },
+    {
+      "englishName": "Band Leg Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201603"
+    },
+    {
+      "englishName": "Copenhagen Adduction",
+      "exerciseId": "01910000-0000-7000-8000-000000201605"
+    },
+    {
+      "englishName": "Arm Raise (T/Y/I)",
+      "exerciseId": "01910000-0000-7000-8000-000000201606"
+    },
+    {
+      "englishName": "Typewriter Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201607"
+    },
+    {
+      "englishName": "Kettlebell Sumo Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201612"
+    },
+    {
+      "englishName": "Rope Pullover Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201634"
+    },
+    {
+      "englishName": "Modified Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201635"
+    },
+    {
+      "englishName": "Unilateral Cable Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201636"
+    },
+    {
+      "englishName": "Dumbbell Bent-Over Face Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000201639"
+    },
+    {
+      "englishName": "Kettlebell Single-Leg Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201641"
+    },
+    {
+      "englishName": "Cable Decline Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201656"
+    },
+    {
+      "englishName": "Preacher Curl (Internally Rotated)",
+      "exerciseId": "01910000-0000-7000-8000-000000201657"
+    },
+    {
+      "englishName": "Preacher Curl (Externally Rotated)",
+      "exerciseId": "01910000-0000-7000-8000-000000201658"
+    },
+    {
+      "englishName": "Single-Arm Cross-Body Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201659"
+    },
+    {
+      "englishName": "Cable Incline Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201660"
+    },
+    {
+      "englishName": "Cable Triceps Extension (Internal Rotation)",
+      "exerciseId": "01910000-0000-7000-8000-000000201662"
+    },
+    {
+      "englishName": "Cable Triceps Extension (External Rotation)",
+      "exerciseId": "01910000-0000-7000-8000-000000201665"
+    },
+    {
+      "englishName": "Curl with Shoulder Elevated",
+      "exerciseId": "01910000-0000-7000-8000-000000201666"
+    },
+    {
+      "englishName": "Single-Arm Overhead Cable Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201668"
+    },
+    {
+      "englishName": "Leg Swing (Front-Back)",
+      "exerciseId": "01910000-0000-7000-8000-000000201670"
+    },
+    {
+      "englishName": "Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201675"
+    },
+    {
+      "englishName": "Seated Figure Four",
+      "exerciseId": "01910000-0000-7000-8000-000000201680"
+    },
+    {
+      "englishName": "Zottman Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201683"
+    },
+    {
+      "englishName": "Bear Crawl Pull-Through",
+      "exerciseId": "01910000-0000-7000-8000-000000201687"
+    },
+    {
+      "englishName": "Kickstand Romanian Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-000000201688"
+    },
+    {
+      "englishName": "Cable Fly (Middle Chest)",
+      "exerciseId": "01910000-0000-7000-8000-000000201689"
+    },
+    {
+      "englishName": "Cable Fly (Upper Chest)",
+      "exerciseId": "01910000-0000-7000-8000-000000201690"
+    },
+    {
+      "englishName": "Cable Fly (Lower Chest)",
+      "exerciseId": "01910000-0000-7000-8000-000000201691"
+    },
+    {
+      "englishName": "Incline Dumbbell Static Hold",
+      "exerciseId": "01910000-0000-7000-8000-000000201693"
+    },
+    {
+      "englishName": "Pull-Up (Neutral Grip)",
+      "exerciseId": "01910000-0000-7000-8000-000000201696"
+    },
+    {
+      "englishName": "Single-Arm Heavy Row",
+      "exerciseId": "01910000-0000-7000-8000-000000201701"
+    },
+    {
+      "englishName": "Tuck L-Sit",
+      "exerciseId": "01910000-0000-7000-8000-000000201704"
+    },
+    {
+      "englishName": "Butcher's Block Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201710"
+    },
+    {
+      "englishName": "Dumbbell Shoulder Pendulum",
+      "exerciseId": "01910000-0000-7000-8000-000000201714"
+    },
+    {
+      "englishName": "Incline Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201716"
+    },
+    {
+      "englishName": "Neck Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000201717"
+    },
+    {
+      "englishName": "Band Face Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000201732"
+    },
+    {
+      "englishName": "Single-Leg Lunge with Kettlebell",
+      "exerciseId": "01910000-0000-7000-8000-000000201734"
+    },
+    {
+      "englishName": "Single-Leg Side Glute Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201735"
+    },
+    {
+      "englishName": "Shrimp Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201739"
+    },
+    {
+      "englishName": "Single-Leg Glute Bridge",
+      "exerciseId": "01910000-0000-7000-8000-000000201740"
+    },
+    {
+      "englishName": "L-Sit Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201741"
+    },
+    {
+      "englishName": "Machine Side Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201744"
+    },
+    {
+      "englishName": "Smith Machine Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201747"
+    },
+    {
+      "englishName": "Cable Pull-Through",
+      "exerciseId": "01910000-0000-7000-8000-000000201751"
+    },
+    {
+      "englishName": "Cable Side Lateral Raise (Front)",
+      "exerciseId": "01910000-0000-7000-8000-000000201752"
+    },
+    {
+      "englishName": "Cable Shoulder Y-Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000201755"
+    },
+    {
+      "englishName": "Chair Dip",
+      "exerciseId": "01910000-0000-7000-8000-000000201774"
+    },
+    {
+      "englishName": "Deficit Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201777"
+    },
+    {
+      "englishName": "Single-Arm Cross-Body Cable Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201795"
+    },
+    {
+      "englishName": "Ankle Dorsiflexion Rocks",
+      "exerciseId": "01910000-0000-7000-8000-000000201804"
+    },
+    {
+      "englishName": "Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201806"
+    },
+    {
+      "englishName": "Dumbbell Tate Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201824"
+    },
+    {
+      "englishName": "Band Pull-Apart with External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201826"
+    },
+    {
+      "englishName": "Plate-Loaded Decline Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201831"
+    },
+    {
+      "englishName": "Floor Glider Hamstring Curl",
+      "exerciseId": "01910000-0000-7000-8000-000000201833"
+    },
+    {
+      "englishName": "Banded Shoulder Drill",
+      "exerciseId": "01910000-0000-7000-8000-000000201838"
+    },
+    {
+      "englishName": "L-Sit",
+      "exerciseId": "01910000-0000-7000-8000-000000201852"
+    },
+    {
+      "englishName": "Foam Roll Calves",
+      "exerciseId": "01910000-0000-7000-8000-000000201854"
+    },
+    {
+      "englishName": "Foam Roll Hamstrings",
+      "exerciseId": "01910000-0000-7000-8000-000000201855"
+    },
+    {
+      "englishName": "Foam Roll Tibialis Anterior",
+      "exerciseId": "01910000-0000-7000-8000-000000201856"
+    },
+    {
+      "englishName": "Foam Roll IT Band",
+      "exerciseId": "01910000-0000-7000-8000-000000201857"
+    },
+    {
+      "englishName": "Foam Roll Quads",
+      "exerciseId": "01910000-0000-7000-8000-000000201858"
+    },
+    {
+      "englishName": "Foam Roll Glutes",
+      "exerciseId": "01910000-0000-7000-8000-000000201859"
+    },
+    {
+      "englishName": "Foam Roll Adductors",
+      "exerciseId": "01910000-0000-7000-8000-000000201860"
+    },
+    {
+      "englishName": "Side Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201861"
+    },
+    {
+      "englishName": "Runner's Lunge Stretch",
+      "exerciseId": "01910000-0000-7000-8000-000000201874"
+    },
+    {
+      "englishName": "YTWL Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201885"
+    },
+    {
+      "englishName": "Triceps Rope Pushdown",
+      "exerciseId": "01910000-0000-7000-8000-000000201900"
+    },
+    {
+      "englishName": "Weighted Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201902"
+    },
+    {
+      "englishName": "Walking Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000201903"
+    },
+    {
+      "englishName": "Cable Pullback",
+      "exerciseId": "01910000-0000-7000-8000-000000201905"
+    },
+    {
+      "englishName": "Unilateral Lunge",
+      "exerciseId": "01910000-0000-7000-8000-000000201907"
+    },
+    {
+      "englishName": "Lying Leg Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000201909"
+    },
+    {
+      "englishName": "Tuck Planche",
+      "exerciseId": "01910000-0000-7000-8000-000000201916"
+    },
+    {
+      "englishName": "Seated Cable Chest Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000201922"
+    },
+    {
+      "englishName": "Inverted Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000201927"
+    },
+    {
+      "englishName": "Single-Arm Cable Rear Delt Fly",
+      "exerciseId": "01910000-0000-7000-8000-000000201936"
+    },
+    {
+      "englishName": "Dumbbell Swing",
+      "exerciseId": "01910000-0000-7000-8000-800001625172"
+    },
+    {
+      "englishName": "Single-Arm High Pulley Cable Side Bend",
+      "exerciseId": "01910000-0000-7000-8000-800002551710"
+    },
+    {
+      "englishName": "TRX Squat",
+      "exerciseId": "01910000-0000-7000-8000-800006831089"
+    },
+    {
+      "englishName": "Single-Arm Scapula Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800010923391"
+    },
+    {
+      "englishName": "Seated Dumbbell Military Press on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-800012263714"
+    },
+    {
+      "englishName": "Single-Arm Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-800019613502"
+    },
+    {
+      "englishName": "Planche Dip on Parallel Bars",
+      "exerciseId": "01910000-0000-7000-8000-800021038563"
+    },
+    {
+      "englishName": "Single-Leg Calf Stretch",
+      "exerciseId": "01910000-0000-7000-8000-800024818232"
+    },
+    {
+      "englishName": "Neutral-Grip Single-Arm Seated Dumbbell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-800045321996"
+    },
+    {
+      "englishName": "Humble Warrior Pose",
+      "exerciseId": "01910000-0000-7000-8000-800064891758"
+    },
+    {
+      "englishName": "Stability Ball Hip Thrust",
+      "exerciseId": "01910000-0000-7000-8000-800066492661"
+    },
+    {
+      "englishName": "Lying Scalene Muscles Activation",
+      "exerciseId": "01910000-0000-7000-8000-800077940285"
+    },
+    {
+      "englishName": "Ring Archer Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800079023772"
+    },
+    {
+      "englishName": "Jumping Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-800079399828"
+    },
+    {
+      "englishName": "Kneeling One Side Archer Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800082603107"
+    },
+    {
+      "englishName": "Incline Cable Skull Crusher with Bar Attachment",
+      "exerciseId": "01910000-0000-7000-8000-800085094982"
+    },
+    {
+      "englishName": "Cable Seated Neck Extension (with Head Harness)",
+      "exerciseId": "01910000-0000-7000-8000-800092468685"
+    },
+    {
+      "englishName": "Kipping Muscle-Up",
+      "exerciseId": "01910000-0000-7000-8000-800105074732"
+    },
+    {
+      "englishName": "Dumbbell Walking Lunge",
+      "exerciseId": "01910000-0000-7000-8000-800131475101"
+    },
+    {
+      "englishName": "Step-Up",
+      "exerciseId": "01910000-0000-7000-8000-800132285993"
+    },
+    {
+      "englishName": "Single-Leg High Box Squat (Bulgarian Style)",
+      "exerciseId": "01910000-0000-7000-8000-800138880786"
+    },
+    {
+      "englishName": "Pronated-Grip Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-800149721193"
+    },
+    {
+      "englishName": "Lever Hand Gripper (Plate-Loaded)",
+      "exerciseId": "01910000-0000-7000-8000-800153477285"
+    },
+    {
+      "englishName": "Pike Push-Up (on Bench)",
+      "exerciseId": "01910000-0000-7000-8000-800155431893"
+    },
+    {
+      "englishName": "Negative Biceps Concentration Curl",
+      "exerciseId": "01910000-0000-7000-8000-800162199686"
+    },
+    {
+      "englishName": "Smith Bent-Knee Good Morning",
+      "exerciseId": "01910000-0000-7000-8000-800169041634"
+    },
+    {
+      "englishName": "Band Assisted Chin-Up",
+      "exerciseId": "01910000-0000-7000-8000-800186974526"
+    },
+    {
+      "englishName": "Kettlebell Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-800198576359"
+    },
+    {
+      "englishName": "Narrow-Grip Barbell Triceps Press to Chin",
+      "exerciseId": "01910000-0000-7000-8000-800220022708"
+    },
+    {
+      "englishName": "Knuckle Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800225166173"
+    },
+    {
+      "englishName": "Roll Neck Rotation Lying on Floor",
+      "exerciseId": "01910000-0000-7000-8000-800225672048"
+    },
+    {
+      "englishName": "Stability Ball Reverse Hyperextension (Off a Bench)",
+      "exerciseId": "01910000-0000-7000-8000-800228797395"
+    },
+    {
+      "englishName": "Dumbbell Decline Shrug",
+      "exerciseId": "01910000-0000-7000-8000-800232187676"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Row",
+      "exerciseId": "01910000-0000-7000-8000-800244455966"
+    },
+    {
+      "englishName": "Medicine Ball Single-Leg Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-800259399158"
+    },
+    {
+      "englishName": "Ring Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-800263020735"
+    },
+    {
+      "englishName": "Chest-Supported Cable Face Pull with Handles",
+      "exerciseId": "01910000-0000-7000-8000-800266299322"
+    },
+    {
+      "englishName": "Push-Up from the Knees",
+      "exerciseId": "01910000-0000-7000-8000-800267362688"
+    },
+    {
+      "englishName": "Incline Leg Hip Raise (Leg Straight)",
+      "exerciseId": "01910000-0000-7000-8000-800269727957"
+    },
+    {
+      "englishName": "Banded Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-800283127409"
+    },
+    {
+      "englishName": "Face Pull",
+      "exerciseId": "01910000-0000-7000-8000-800293367129"
+    },
+    {
+      "englishName": "Stiff-Leg Deadlift from a Deficit",
+      "exerciseId": "01910000-0000-7000-8000-800320928290"
+    },
+    {
+      "englishName": "Reverse Lunge with Front Foot Elevated",
+      "exerciseId": "01910000-0000-7000-8000-800325828453"
+    },
+    {
+      "englishName": "Decline Bar Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-800334835389"
+    },
+    {
+      "englishName": "Kneeling Scapular Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800344317125"
+    },
+    {
+      "englishName": "Cable Russian Twist (on Stability Ball)",
+      "exerciseId": "01910000-0000-7000-8000-800345425435"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Snatch",
+      "exerciseId": "01910000-0000-7000-8000-800345972508"
+    },
+    {
+      "englishName": "Lateral Cone Hop",
+      "exerciseId": "01910000-0000-7000-8000-800351594505"
+    },
+    {
+      "englishName": "Assisted Push-Up with Band",
+      "exerciseId": "01910000-0000-7000-8000-800352562855"
+    },
+    {
+      "englishName": "Seated Concentration Curl with Narrow-Grip Barbell",
+      "exerciseId": "01910000-0000-7000-8000-800376751348"
+    },
+    {
+      "englishName": "Bench Tuck Crunch",
+      "exerciseId": "01910000-0000-7000-8000-800378424150"
+    },
+    {
+      "englishName": "Lever Pronated-Grip Seated Scapular Retraction Shrug",
+      "exerciseId": "01910000-0000-7000-8000-800383610832"
+    },
+    {
+      "englishName": "BOSU Crunch",
+      "exerciseId": "01910000-0000-7000-8000-800390977274"
+    },
+    {
+      "englishName": "Kettlebell Jump Squat",
+      "exerciseId": "01910000-0000-7000-8000-800402926996"
+    },
+    {
+      "englishName": "Narrow-Stance Hack Squat",
+      "exerciseId": "01910000-0000-7000-8000-800410126996"
+    },
+    {
+      "englishName": "Archer Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-800413374575"
+    },
+    {
+      "englishName": "Dumbbell Hammer Concentration Curl",
+      "exerciseId": "01910000-0000-7000-8000-800426044957"
+    },
+    {
+      "englishName": "Roll Forearms Standing Against Wall",
+      "exerciseId": "01910000-0000-7000-8000-800433626263"
+    },
+    {
+      "englishName": "Bent-Arm Chest Stretch",
+      "exerciseId": "01910000-0000-7000-8000-800440373503"
+    },
+    {
+      "englishName": "Skater Jump",
+      "exerciseId": "01910000-0000-7000-8000-800441363294"
+    },
+    {
+      "englishName": "Flat Bench Lying Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-800457048127"
+    },
+    {
+      "englishName": "Kneeling Finger Press",
+      "exerciseId": "01910000-0000-7000-8000-800459949152"
+    },
+    {
+      "englishName": "Prisoner Squat",
+      "exerciseId": "01910000-0000-7000-8000-800465159831"
+    },
+    {
+      "englishName": "Sled Reverse Fly",
+      "exerciseId": "01910000-0000-7000-8000-800470260213"
+    },
+    {
+      "englishName": "Cable Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-800471721772"
+    },
+    {
+      "englishName": "Alternating Dumbbell Lunge",
+      "exerciseId": "01910000-0000-7000-8000-800506186183"
+    },
+    {
+      "englishName": "Scapula Dip",
+      "exerciseId": "01910000-0000-7000-8000-800535213400"
+    },
+    {
+      "englishName": "Banded Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-800535232523"
+    },
+    {
+      "englishName": "Smith Machine Stiff-Leg Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-800543611005"
+    },
+    {
+      "englishName": "Reverse Dip",
+      "exerciseId": "01910000-0000-7000-8000-800548345714"
+    },
+    {
+      "englishName": "Bodyweight Walking Lunge",
+      "exerciseId": "01910000-0000-7000-8000-800564470452"
+    },
+    {
+      "englishName": "Standing Cable Crunch",
+      "exerciseId": "01910000-0000-7000-8000-800568929357"
+    },
+    {
+      "englishName": "Decline Narrow-Grip EZ Bar Pullover",
+      "exerciseId": "01910000-0000-7000-8000-800569939268"
+    },
+    {
+      "englishName": "Alternating Lateral Bodyweight Lunge",
+      "exerciseId": "01910000-0000-7000-8000-800572129637"
+    },
+    {
+      "englishName": "Side-Lying Floor Stretch",
+      "exerciseId": "01910000-0000-7000-8000-800575027500"
+    },
+    {
+      "englishName": "Kneeling Cable High Rope Row",
+      "exerciseId": "01910000-0000-7000-8000-800586349288"
+    },
+    {
+      "englishName": "Step-Up with Knee Raise",
+      "exerciseId": "01910000-0000-7000-8000-800588064119"
+    },
+    {
+      "englishName": "Dumbbell Clean and Press",
+      "exerciseId": "01910000-0000-7000-8000-800597688161"
+    },
+    {
+      "englishName": "Standing Rear Delt Row Head Against Bench",
+      "exerciseId": "01910000-0000-7000-8000-800603570718"
+    },
+    {
+      "englishName": "Side Neck Flexion (Plate-Loaded)",
+      "exerciseId": "01910000-0000-7000-8000-800604139476"
+    },
+    {
+      "englishName": "Diamond Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800609712479"
+    },
+    {
+      "englishName": "Close-Grip EZ Bar Seated Concentration Curl",
+      "exerciseId": "01910000-0000-7000-8000-800644182772"
+    },
+    {
+      "englishName": "Dumbbell Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-800653636218"
+    },
+    {
+      "englishName": "Plank with Rotation",
+      "exerciseId": "01910000-0000-7000-8000-800658585384"
+    },
+    {
+      "englishName": "Kneeling Fist Roll",
+      "exerciseId": "01910000-0000-7000-8000-800666964053"
+    },
+    {
+      "englishName": "Band Fly",
+      "exerciseId": "01910000-0000-7000-8000-800683248514"
+    },
+    {
+      "englishName": "Dumbbell Single-Arm Concentration Curl on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-800686598150"
+    },
+    {
+      "englishName": "Prone T Raise",
+      "exerciseId": "01910000-0000-7000-8000-800690476020"
+    },
+    {
+      "englishName": "Lying Hamstring Curl",
+      "exerciseId": "01910000-0000-7000-8000-800700740073"
+    },
+    {
+      "englishName": "Hanging Knee Raise",
+      "exerciseId": "01910000-0000-7000-8000-800703004640"
+    },
+    {
+      "englishName": "BOSU Single-Leg Glute Bridge (Foot on Dome)",
+      "exerciseId": "01910000-0000-7000-8000-800705430868"
+    },
+    {
+      "englishName": "TRX Mountain Climber",
+      "exerciseId": "01910000-0000-7000-8000-800706067167"
+    },
+    {
+      "englishName": "Warrior I Pose",
+      "exerciseId": "01910000-0000-7000-8000-800710325528"
+    },
+    {
+      "englishName": "Barbell Lying Triceps Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-800716911912"
+    },
+    {
+      "englishName": "Stability Ball Jackknife",
+      "exerciseId": "01910000-0000-7000-8000-800730798789"
+    },
+    {
+      "englishName": "Jack Plank on Medicine Ball",
+      "exerciseId": "01910000-0000-7000-8000-800732510073"
+    },
+    {
+      "englishName": "Dumbbell Seated Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-800740985515"
+    },
+    {
+      "englishName": "BOSU Side Plank (Feet on Dome)",
+      "exerciseId": "01910000-0000-7000-8000-800750648148"
+    },
+    {
+      "englishName": "Banded Lat Raise",
+      "exerciseId": "01910000-0000-7000-8000-800753065011"
+    },
+    {
+      "englishName": "Dumbbell Finger Curl Behind the Back",
+      "exerciseId": "01910000-0000-7000-8000-800753830214"
+    },
+    {
+      "englishName": "Single-Arm Standing Dumbbell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-800760456335"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Split Snatch",
+      "exerciseId": "01910000-0000-7000-8000-800762310688"
+    },
+    {
+      "englishName": "Cable Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-800767746077"
+    },
+    {
+      "englishName": "Stability Ball Side Bend",
+      "exerciseId": "01910000-0000-7000-8000-800781919146"
+    },
+    {
+      "englishName": "Barbell Shrug Behind the Back",
+      "exerciseId": "01910000-0000-7000-8000-800794830767"
+    },
+    {
+      "englishName": "Dumbbell Fly on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-800816013790"
+    },
+    {
+      "englishName": "Cable Rope Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-800819148740"
+    },
+    {
+      "englishName": "Straight-Leg Bodyweight Glute Kickback",
+      "exerciseId": "01910000-0000-7000-8000-800831525890"
+    },
+    {
+      "englishName": "Weighted Twisting Crunch (on Bench)",
+      "exerciseId": "01910000-0000-7000-8000-800848190669"
+    },
+    {
+      "englishName": "Incline Barbell Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-800854189841"
+    },
+    {
+      "englishName": "Wrist Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800872694132"
+    },
+    {
+      "englishName": "Supine Twist with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-800879368672"
+    },
+    {
+      "englishName": "Barbell Shoulder Press (Behind the Head)",
+      "exerciseId": "01910000-0000-7000-8000-800880214366"
+    },
+    {
+      "englishName": "Deadlift from Blocks",
+      "exerciseId": "01910000-0000-7000-8000-800881721918"
+    },
+    {
+      "englishName": "Dumbbell Lying Single-Arm Rear Lateral Raise on Bench",
+      "exerciseId": "01910000-0000-7000-8000-800892680922"
+    },
+    {
+      "englishName": "Plank with Hands on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-800900634995"
+    },
+    {
+      "englishName": "Decline Narrow-Grip EZ Bar Triceps Extension Behind the Head",
+      "exerciseId": "01910000-0000-7000-8000-800914053413"
+    },
+    {
+      "englishName": "Single-Leg Quarter Squat",
+      "exerciseId": "01910000-0000-7000-8000-800924100537"
+    },
+    {
+      "englishName": "Lever Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800926575231"
+    },
+    {
+      "englishName": "Knee Tuck Jump",
+      "exerciseId": "01910000-0000-7000-8000-800934404560"
+    },
+    {
+      "englishName": "Alternating Kettlebell Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-800934481004"
+    },
+    {
+      "englishName": "Skydiver",
+      "exerciseId": "01910000-0000-7000-8000-800945516282"
+    },
+    {
+      "englishName": "EZ Bar Standing Single-Arm Neutral Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-800947095868"
+    },
+    {
+      "englishName": "Incline Wide-Grip EZ Bar Triceps Extension Behind the Head",
+      "exerciseId": "01910000-0000-7000-8000-800947739938"
+    },
+    {
+      "englishName": "Standing Narrow-Grip EZ Bar Overhead Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-800950208766"
+    },
+    {
+      "englishName": "Kneeling Modified Hindu Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800959548294"
+    },
+    {
+      "englishName": "Barbell Overhead Alternating Lunge",
+      "exerciseId": "01910000-0000-7000-8000-800971138900"
+    },
+    {
+      "englishName": "Seated Dumbbell Lateral Raise on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-801010055428"
+    },
+    {
+      "englishName": "Smith Machine Upright Row",
+      "exerciseId": "01910000-0000-7000-8000-801016010938"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Hang Clean",
+      "exerciseId": "01910000-0000-7000-8000-801020974543"
+    },
+    {
+      "englishName": "Dumbbell Lunge with Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-801022667934"
+    },
+    {
+      "englishName": "Dumbbell Romanian Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-801042677228"
+    },
+    {
+      "englishName": "Barbell Front Squat to Bench (Clean Grip)",
+      "exerciseId": "01910000-0000-7000-8000-801046921272"
+    },
+    {
+      "englishName": "Dumbbell Jump Squat",
+      "exerciseId": "01910000-0000-7000-8000-801055421431"
+    },
+    {
+      "englishName": "Russian Twist on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-801062597061"
+    },
+    {
+      "englishName": "Full Lateral Raise with Band",
+      "exerciseId": "01910000-0000-7000-8000-801078991168"
+    },
+    {
+      "englishName": "Backward Run",
+      "exerciseId": "01910000-0000-7000-8000-801091366296"
+    },
+    {
+      "englishName": "Chest-Supported Cable Row",
+      "exerciseId": "01910000-0000-7000-8000-801096356635"
+    },
+    {
+      "englishName": "Stability Ball Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-801105633356"
+    },
+    {
+      "englishName": "Bent-Arm Barbell Pullover",
+      "exerciseId": "01910000-0000-7000-8000-801119948769"
+    },
+    {
+      "englishName": "Barbell Reverse Lunge",
+      "exerciseId": "01910000-0000-7000-8000-801128167297"
+    },
+    {
+      "englishName": "Alternating Barbell Lunge",
+      "exerciseId": "01910000-0000-7000-8000-801151052724"
+    },
+    {
+      "englishName": "EZ Bar Spider Curl",
+      "exerciseId": "01910000-0000-7000-8000-801151583520"
+    },
+    {
+      "englishName": "Double Kettlebell Hang Clean",
+      "exerciseId": "01910000-0000-7000-8000-801157873318"
+    },
+    {
+      "englishName": "Wide-Grip EZ Bar Curl",
+      "exerciseId": "01910000-0000-7000-8000-801160514721"
+    },
+    {
+      "englishName": "Trap Bar Shrug",
+      "exerciseId": "01910000-0000-7000-8000-801166907459"
+    },
+    {
+      "englishName": "Bent-Knee Hip Raise",
+      "exerciseId": "01910000-0000-7000-8000-801177775955"
+    },
+    {
+      "englishName": "Clean from Blocks",
+      "exerciseId": "01910000-0000-7000-8000-801187687734"
+    },
+    {
+      "englishName": "Incline Dumbbell Curl on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-801204899570"
+    },
+    {
+      "englishName": "Cable Standing Forearm Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-801207261163"
+    },
+    {
+      "englishName": "Pause Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-801225548658"
+    },
+    {
+      "englishName": "Kipping Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-801239171365"
+    },
+    {
+      "englishName": "Sandbag Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-801239526266"
+    },
+    {
+      "englishName": "Cable Incline Fly (on Stability Ball)",
+      "exerciseId": "01910000-0000-7000-8000-801249183465"
+    },
+    {
+      "englishName": "Barbell Alternating Reverse Lunge",
+      "exerciseId": "01910000-0000-7000-8000-801290574565"
+    },
+    {
+      "englishName": "Stability Ball Wall Calf Raise (Tennis Ball Between Knees)",
+      "exerciseId": "01910000-0000-7000-8000-801293221152"
+    },
+    {
+      "englishName": "Static Dumbbell Lunge",
+      "exerciseId": "01910000-0000-7000-8000-801328497287"
+    },
+    {
+      "englishName": "Single-Arm Leverage Iso Row",
+      "exerciseId": "01910000-0000-7000-8000-801341127401"
+    },
+    {
+      "englishName": "Incline Dumbbell Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-801390402235"
+    },
+    {
+      "englishName": "Bodyweight Depth Jump",
+      "exerciseId": "01910000-0000-7000-8000-801412783622"
+    },
+    {
+      "englishName": "Smith Machine Pistol Squat",
+      "exerciseId": "01910000-0000-7000-8000-801469077402"
+    },
+    {
+      "englishName": "Ring Russian Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-801478997646"
+    },
+    {
+      "englishName": "Modified Push-Up to Forearms",
+      "exerciseId": "01910000-0000-7000-8000-801508601320"
+    },
+    {
+      "englishName": "Side-Lying Outward Knee Kick",
+      "exerciseId": "01910000-0000-7000-8000-801531678669"
+    },
+    {
+      "englishName": "Scapular Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-801535086143"
+    },
+    {
+      "englishName": "Upright Barbell Row",
+      "exerciseId": "01910000-0000-7000-8000-801543039701"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Clean and Jerk",
+      "exerciseId": "01910000-0000-7000-8000-801543751940"
+    },
+    {
+      "englishName": "Standing Neutral-Grip Dumbbell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-801545918256"
+    },
+    {
+      "englishName": "Cable Upright Row",
+      "exerciseId": "01910000-0000-7000-8000-801549952869"
+    },
+    {
+      "englishName": "Barbell Press Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-801553349156"
+    },
+    {
+      "englishName": "Wrist Radial Deviator and Extensor Stretch",
+      "exerciseId": "01910000-0000-7000-8000-801556665539"
+    },
+    {
+      "englishName": "Foam Roll Piriformis",
+      "exerciseId": "01910000-0000-7000-8000-801568122031"
+    },
+    {
+      "englishName": "Medicine Ball Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-801577444339"
+    },
+    {
+      "englishName": "Sissy Squat",
+      "exerciseId": "01910000-0000-7000-8000-801587587030"
+    },
+    {
+      "englishName": "Seated Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-801593621341"
+    },
+    {
+      "englishName": "Sandbag Squat Jump",
+      "exerciseId": "01910000-0000-7000-8000-801595312410"
+    },
+    {
+      "englishName": "Dumbbell Goblet Squat",
+      "exerciseId": "01910000-0000-7000-8000-801616733243"
+    },
+    {
+      "englishName": "Ring Handstand",
+      "exerciseId": "01910000-0000-7000-8000-801623885286"
+    },
+    {
+      "englishName": "Dumbbell Over Bench Single-Arm Neutral Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-801629050758"
+    },
+    {
+      "englishName": "Seated Cross-Leg Glute Stretch",
+      "exerciseId": "01910000-0000-7000-8000-801633070032"
+    },
+    {
+      "englishName": "Barbell Lunge (Same Foot)",
+      "exerciseId": "01910000-0000-7000-8000-801641888139"
+    },
+    {
+      "englishName": "Alternating Bench Glute Kickback",
+      "exerciseId": "01910000-0000-7000-8000-801641911827"
+    },
+    {
+      "englishName": "Foam Roll Lats",
+      "exerciseId": "01910000-0000-7000-8000-801644885484"
+    },
+    {
+      "englishName": "TRX Chest Fly",
+      "exerciseId": "01910000-0000-7000-8000-801645821419"
+    },
+    {
+      "englishName": "Rocky Vertical Pull",
+      "exerciseId": "01910000-0000-7000-8000-801664445050"
+    },
+    {
+      "englishName": "Cocoon",
+      "exerciseId": "01910000-0000-7000-8000-801665962001"
+    },
+    {
+      "englishName": "Seated Single-Arm Dumbbell Lat Raise",
+      "exerciseId": "01910000-0000-7000-8000-801677648626"
+    },
+    {
+      "englishName": "EZ Bar Deadlift with Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-801697900898"
+    },
+    {
+      "englishName": "Dumbbell Shrug",
+      "exerciseId": "01910000-0000-7000-8000-801714571933"
+    },
+    {
+      "englishName": "Kneeling Cable Triceps Extension Over the Head",
+      "exerciseId": "01910000-0000-7000-8000-801714903567"
+    },
+    {
+      "englishName": "Lateral Bound",
+      "exerciseId": "01910000-0000-7000-8000-801721922351"
+    },
+    {
+      "englishName": "Chest-Supported Cable Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-801722523067"
+    },
+    {
+      "englishName": "Crunch (Legs on Stability Ball)",
+      "exerciseId": "01910000-0000-7000-8000-801731549124"
+    },
+    {
+      "englishName": "Triceps Stretch Against a Wall",
+      "exerciseId": "01910000-0000-7000-8000-801742658394"
+    },
+    {
+      "englishName": "Squat Jump on a Box",
+      "exerciseId": "01910000-0000-7000-8000-801763309745"
+    },
+    {
+      "englishName": "Prisoner Squat Jump",
+      "exerciseId": "01910000-0000-7000-8000-801766240025"
+    },
+    {
+      "englishName": "Breaststroke Movement Simulation (Warm-Up)",
+      "exerciseId": "01910000-0000-7000-8000-801782636388"
+    },
+    {
+      "englishName": "Bench Dip (Knees Bent)",
+      "exerciseId": "01910000-0000-7000-8000-801786103132"
+    },
+    {
+      "englishName": "Behind-the-Neck Machine Lat Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-801796046782"
+    },
+    {
+      "englishName": "Sandbag Overhead Press",
+      "exerciseId": "01910000-0000-7000-8000-801796944468"
+    },
+    {
+      "englishName": "Calf Stretch with Hands Against Wall",
+      "exerciseId": "01910000-0000-7000-8000-801804528440"
+    },
+    {
+      "englishName": "Prone Single-Arm Trap Raise",
+      "exerciseId": "01910000-0000-7000-8000-801806174286"
+    },
+    {
+      "englishName": "Medicine Ball Plyo Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-801811063111"
+    },
+    {
+      "englishName": "EZ Bar Upright Row",
+      "exerciseId": "01910000-0000-7000-8000-801815901643"
+    },
+    {
+      "englishName": "Push-Up to Side Plank",
+      "exerciseId": "01910000-0000-7000-8000-801836654735"
+    },
+    {
+      "englishName": "Double Kettlebell Clean",
+      "exerciseId": "01910000-0000-7000-8000-801840009757"
+    },
+    {
+      "englishName": "Dumbbell Press on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-801847042646"
+    },
+    {
+      "englishName": "Alternating Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-801848204064"
+    },
+    {
+      "englishName": "Band Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-801852231243"
+    },
+    {
+      "englishName": "Banded Straight-Arm Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-801858184204"
+    },
+    {
+      "englishName": "Sled Overhead Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-801867844641"
+    },
+    {
+      "englishName": "Standing Side Adductor Stretch",
+      "exerciseId": "01910000-0000-7000-8000-801869732825"
+    },
+    {
+      "englishName": "Seated Dumbbell Overhead Extension",
+      "exerciseId": "01910000-0000-7000-8000-801869809333"
+    },
+    {
+      "englishName": "Push-Up Burpee",
+      "exerciseId": "01910000-0000-7000-8000-801895095782"
+    },
+    {
+      "englishName": "Narrow-Stance Bodyweight Squat",
+      "exerciseId": "01910000-0000-7000-8000-801906652361"
+    },
+    {
+      "englishName": "Barbell Seated Twist (on Stability Ball)",
+      "exerciseId": "01910000-0000-7000-8000-801918580211"
+    },
+    {
+      "englishName": "Dumbbell Standing Wrist Rotation",
+      "exerciseId": "01910000-0000-7000-8000-801929510161"
+    },
+    {
+      "englishName": "Assisted Seated Pectoralis Major Stretch with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-801933113738"
+    },
+    {
+      "englishName": "Stability Ball Spinal Stretch",
+      "exerciseId": "01910000-0000-7000-8000-801934486511"
+    },
+    {
+      "englishName": "Barbell Rear Delt Row",
+      "exerciseId": "01910000-0000-7000-8000-801941152988"
+    },
+    {
+      "englishName": "Single-Leg Good Morning with BOSU",
+      "exerciseId": "01910000-0000-7000-8000-801950100776"
+    },
+    {
+      "englishName": "High Cable Fly",
+      "exerciseId": "01910000-0000-7000-8000-801964722079"
+    },
+    {
+      "englishName": "Stability Ball Hip Bridge",
+      "exerciseId": "01910000-0000-7000-8000-801968934050"
+    },
+    {
+      "englishName": "Medicine Ball Single-Leg Wood Chop",
+      "exerciseId": "01910000-0000-7000-8000-801980796859"
+    },
+    {
+      "englishName": "Barbell Clean and Jerk",
+      "exerciseId": "01910000-0000-7000-8000-801980907717"
+    },
+    {
+      "englishName": "Bodyweight Squat",
+      "exerciseId": "01910000-0000-7000-8000-801984195389"
+    },
+    {
+      "englishName": "Cable Biceps Curl with Bar",
+      "exerciseId": "01910000-0000-7000-8000-801987361112"
+    },
+    {
+      "englishName": "Spider Plank",
+      "exerciseId": "01910000-0000-7000-8000-801987832933"
+    },
+    {
+      "englishName": "V-Bar Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-801990369080"
+    },
+    {
+      "englishName": "Kipping Handstand Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-801995066679"
+    },
+    {
+      "englishName": "Landmine Bent-Over Two-Arm Row",
+      "exerciseId": "01910000-0000-7000-8000-801998060628"
+    },
+    {
+      "englishName": "EZ Bar Standing Back Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-802015381099"
+    },
+    {
+      "englishName": "Front Barbell Pause Squat",
+      "exerciseId": "01910000-0000-7000-8000-802021658469"
+    },
+    {
+      "englishName": "Weighted Seated Neck Extension (with Head Harness)",
+      "exerciseId": "01910000-0000-7000-8000-802024849177"
+    },
+    {
+      "englishName": "Single-Arm Supinated Dumbbell Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-802025103516"
+    },
+    {
+      "englishName": "Single-Arm Cable Lat Raise Behind the Back",
+      "exerciseId": "01910000-0000-7000-8000-802028003935"
+    },
+    {
+      "englishName": "Barbell Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-802028726968"
+    },
+    {
+      "englishName": "Dumbbell Bent-Over Curl",
+      "exerciseId": "01910000-0000-7000-8000-802037391407"
+    },
+    {
+      "englishName": "Lying Cable Front Delt Raise on Bench",
+      "exerciseId": "01910000-0000-7000-8000-802047968984"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Floor Press",
+      "exerciseId": "01910000-0000-7000-8000-802052648986"
+    },
+    {
+      "englishName": "Standing Triceps Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802058858035"
+    },
+    {
+      "englishName": "Incline Knee Push-Up on Box",
+      "exerciseId": "01910000-0000-7000-8000-802066956828"
+    },
+    {
+      "englishName": "Medicine Ball Chest Pass Against Wall",
+      "exerciseId": "01910000-0000-7000-8000-802067257043"
+    },
+    {
+      "englishName": "Standing Rear Delt Fly Head Against Bench Overhand Grip",
+      "exerciseId": "01910000-0000-7000-8000-802072925853"
+    },
+    {
+      "englishName": "Cable Single-Arm Incline Fly on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-802085751967"
+    },
+    {
+      "englishName": "Side-Lying Single-Arm Triceps Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802088617407"
+    },
+    {
+      "englishName": "Oblique Crunch",
+      "exerciseId": "01910000-0000-7000-8000-802089522975"
+    },
+    {
+      "englishName": "TRX Push-Up (Feet Suspended)",
+      "exerciseId": "01910000-0000-7000-8000-802095789032"
+    },
+    {
+      "englishName": "Elbow Lift Reverse Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802102237172"
+    },
+    {
+      "englishName": "Neutral-Grip Dumbbell Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-802105539433"
+    },
+    {
+      "englishName": "Sitting Neck Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802106796897"
+    },
+    {
+      "englishName": "TRX Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-802111055352"
+    },
+    {
+      "englishName": "Supine Twist with Bent Knees on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-802115902107"
+    },
+    {
+      "englishName": "Quick Mini Jump",
+      "exerciseId": "01910000-0000-7000-8000-802133571846"
+    },
+    {
+      "englishName": "Hang Snatch (Below Knees)",
+      "exerciseId": "01910000-0000-7000-8000-802135696675"
+    },
+    {
+      "englishName": "TRX Y Row",
+      "exerciseId": "01910000-0000-7000-8000-802147364487"
+    },
+    {
+      "englishName": "Criss Cross Upper Chest Raise",
+      "exerciseId": "01910000-0000-7000-8000-802168733643"
+    },
+    {
+      "englishName": "Kettlebell Turkish Get-Up",
+      "exerciseId": "01910000-0000-7000-8000-802196414109"
+    },
+    {
+      "englishName": "TRX Single-Leg Squat",
+      "exerciseId": "01910000-0000-7000-8000-802198769617"
+    },
+    {
+      "englishName": "Dumbbell Hammer Spider Curl",
+      "exerciseId": "01910000-0000-7000-8000-802205244079"
+    },
+    {
+      "englishName": "3/4 Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-802208171065"
+    },
+    {
+      "englishName": "Semi-Australian Pull-Up (Bent Legs)",
+      "exerciseId": "01910000-0000-7000-8000-802223700715"
+    },
+    {
+      "englishName": "EZ Bar Standing Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-802223888743"
+    },
+    {
+      "englishName": "Dumbbell Seated Reverse-Grip Concentration Curl",
+      "exerciseId": "01910000-0000-7000-8000-802226033446"
+    },
+    {
+      "englishName": "Seated Single-Arm Kettlebell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-802254831038"
+    },
+    {
+      "englishName": "Dumbbell Side Lunge",
+      "exerciseId": "01910000-0000-7000-8000-802260145745"
+    },
+    {
+      "englishName": "Seated Single-Arm Cable Row",
+      "exerciseId": "01910000-0000-7000-8000-802262396020"
+    },
+    {
+      "englishName": "Spiderman Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802273244488"
+    },
+    {
+      "englishName": "Cross-Body Crunch",
+      "exerciseId": "01910000-0000-7000-8000-802273653763"
+    },
+    {
+      "englishName": "Band Rear Delt Fly",
+      "exerciseId": "01910000-0000-7000-8000-802274189997"
+    },
+    {
+      "englishName": "Seated Rhomboid Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802275649255"
+    },
+    {
+      "englishName": "Single-Leg Dumbbell Seated Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-802290958085"
+    },
+    {
+      "englishName": "Weighted Seated Single-Arm Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-802292865106"
+    },
+    {
+      "englishName": "Pike Push-Up from Deficit",
+      "exerciseId": "01910000-0000-7000-8000-802293255772"
+    },
+    {
+      "englishName": "Dumbbell Step-Up",
+      "exerciseId": "01910000-0000-7000-8000-802345910571"
+    },
+    {
+      "englishName": "Unilateral Triceps Press Down Machine",
+      "exerciseId": "01910000-0000-7000-8000-802352587904"
+    },
+    {
+      "englishName": "Stability Ball Rounded Rollout",
+      "exerciseId": "01910000-0000-7000-8000-802352950783"
+    },
+    {
+      "englishName": "Kneeling Squat",
+      "exerciseId": "01910000-0000-7000-8000-802357198133"
+    },
+    {
+      "englishName": "Step-Up Biceps Curl with Dumbbells",
+      "exerciseId": "01910000-0000-7000-8000-802360289425"
+    },
+    {
+      "englishName": "Single-Arm Dumbbell Floor Press",
+      "exerciseId": "01910000-0000-7000-8000-802368577285"
+    },
+    {
+      "englishName": "Smith Machine Shoulder Press Behind the Head",
+      "exerciseId": "01910000-0000-7000-8000-802372546146"
+    },
+    {
+      "englishName": "Foam Roll Biceps",
+      "exerciseId": "01910000-0000-7000-8000-802378381798"
+    },
+    {
+      "englishName": "Lying Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802378772503"
+    },
+    {
+      "englishName": "Weighted Seated Single-Arm Reverse Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-802380305184"
+    },
+    {
+      "englishName": "Arm-Up Rotator Cuff Stretch (with Stick)",
+      "exerciseId": "01910000-0000-7000-8000-802388609650"
+    },
+    {
+      "englishName": "EZ Bar Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-802394517512"
+    },
+    {
+      "englishName": "Incline Treadmill Walking",
+      "exerciseId": "01910000-0000-7000-8000-802403273007"
+    },
+    {
+      "englishName": "Dumbbell Hammer Curl (with Arm Blaster)",
+      "exerciseId": "01910000-0000-7000-8000-802410525185"
+    },
+    {
+      "englishName": "Cable Reverse-Grip Straight Back Seated High Row",
+      "exerciseId": "01910000-0000-7000-8000-802423903523"
+    },
+    {
+      "englishName": "Stability Ball Wall Squat",
+      "exerciseId": "01910000-0000-7000-8000-802427753214"
+    },
+    {
+      "englishName": "Biceps Stretch Against a Wall",
+      "exerciseId": "01910000-0000-7000-8000-802446045022"
+    },
+    {
+      "englishName": "Chest-Supported Dumbbell Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-802467650121"
+    },
+    {
+      "englishName": "Lying Reverse Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802474270945"
+    },
+    {
+      "englishName": "Slingshot Glute Bridge",
+      "exerciseId": "01910000-0000-7000-8000-802490182244"
+    },
+    {
+      "englishName": "Bodyweight Standing Scapula Row",
+      "exerciseId": "01910000-0000-7000-8000-802501247680"
+    },
+    {
+      "englishName": "Wrist Curl with Neutral-Grip Plate",
+      "exerciseId": "01910000-0000-7000-8000-802502845463"
+    },
+    {
+      "englishName": "Deep Push-Up on Parallel Bars",
+      "exerciseId": "01910000-0000-7000-8000-802505862372"
+    },
+    {
+      "englishName": "Single-Arm Wrist Curl Over a Bench (Palm Down)",
+      "exerciseId": "01910000-0000-7000-8000-802505910660"
+    },
+    {
+      "englishName": "Rack Pull",
+      "exerciseId": "01910000-0000-7000-8000-802507625775"
+    },
+    {
+      "englishName": "Dumbbell Sumo Squat",
+      "exerciseId": "01910000-0000-7000-8000-802513213238"
+    },
+    {
+      "englishName": "Smith Machine Alternating Reverse Lunge",
+      "exerciseId": "01910000-0000-7000-8000-802527710077"
+    },
+    {
+      "englishName": "Barbell Shrug",
+      "exerciseId": "01910000-0000-7000-8000-802528988475"
+    },
+    {
+      "englishName": "Alternating Incline Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-802557093341"
+    },
+    {
+      "englishName": "Decline Diamond Pike Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802560075570"
+    },
+    {
+      "englishName": "Barbell Standing Wide-Grip Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-802566377365"
+    },
+    {
+      "englishName": "Reverse-Grip Cable Curl",
+      "exerciseId": "01910000-0000-7000-8000-802569756512"
+    },
+    {
+      "englishName": "Band Overhead Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-802583536798"
+    },
+    {
+      "englishName": "Stiff-Leg Dumbbell Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-802584994743"
+    },
+    {
+      "englishName": "Floor Hyperextension with Band",
+      "exerciseId": "01910000-0000-7000-8000-802587258334"
+    },
+    {
+      "englishName": "Dumbbell Internal and External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-802587433996"
+    },
+    {
+      "englishName": "Active Circles (Warm-Up)",
+      "exerciseId": "01910000-0000-7000-8000-802612541765"
+    },
+    {
+      "englishName": "Crossover Mountain Climber",
+      "exerciseId": "01910000-0000-7000-8000-802621894088"
+    },
+    {
+      "englishName": "Dumbbell Hammer-Grip Incline Bench Two-Arm Row",
+      "exerciseId": "01910000-0000-7000-8000-802628099564"
+    },
+    {
+      "englishName": "Smith Machine Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-802642822720"
+    },
+    {
+      "englishName": "Dumbbell Seated Alternating Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-802644234196"
+    },
+    {
+      "englishName": "TRX Curtsy Squat",
+      "exerciseId": "01910000-0000-7000-8000-802644539736"
+    },
+    {
+      "englishName": "Scissor Kick",
+      "exerciseId": "01910000-0000-7000-8000-802644653445"
+    },
+    {
+      "englishName": "Band Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-802661395807"
+    },
+    {
+      "englishName": "Kneeling Hip Thrust",
+      "exerciseId": "01910000-0000-7000-8000-802662689419"
+    },
+    {
+      "englishName": "Single-Arm Incline Dumbbell Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-802665984119"
+    },
+    {
+      "englishName": "Bent-Arm Circles (Warm-Up)",
+      "exerciseId": "01910000-0000-7000-8000-802670003629"
+    },
+    {
+      "englishName": "Reverse-Grip Dumbbell Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-802674431864"
+    },
+    {
+      "englishName": "Seated Single-Arm Triceps Kickback",
+      "exerciseId": "01910000-0000-7000-8000-802682869601"
+    },
+    {
+      "englishName": "Stability Ball Pec Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802688172824"
+    },
+    {
+      "englishName": "Kneeling Single-Arm High Cable Row",
+      "exerciseId": "01910000-0000-7000-8000-802705350838"
+    },
+    {
+      "englishName": "Seal Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802711975564"
+    },
+    {
+      "englishName": "Standing Dumbbell Inner Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-802713200026"
+    },
+    {
+      "englishName": "Single-Arm Flat Bench Dumbbell Fly",
+      "exerciseId": "01910000-0000-7000-8000-802722456307"
+    },
+    {
+      "englishName": "Dumbbell Finger Curl",
+      "exerciseId": "01910000-0000-7000-8000-802723682929"
+    },
+    {
+      "englishName": "Narrow Push-Up on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-802734055512"
+    },
+    {
+      "englishName": "Pike to Cobra Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802737014559"
+    },
+    {
+      "englishName": "Dumbbell Two-Arm Seated Hammer Curl on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-802737325411"
+    },
+    {
+      "englishName": "Kneeling Triceps Kickback",
+      "exerciseId": "01910000-0000-7000-8000-802751484438"
+    },
+    {
+      "englishName": "Seated Calf Raise Toes Out",
+      "exerciseId": "01910000-0000-7000-8000-802773650144"
+    },
+    {
+      "englishName": "Plank with Feet on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-802800305350"
+    },
+    {
+      "englishName": "Weighted Lying Neck Extension",
+      "exerciseId": "01910000-0000-7000-8000-802826037592"
+    },
+    {
+      "englishName": "Plyometric Lunge",
+      "exerciseId": "01910000-0000-7000-8000-802832112694"
+    },
+    {
+      "englishName": "Decline Oblique Crunch",
+      "exerciseId": "01910000-0000-7000-8000-802839878137"
+    },
+    {
+      "englishName": "Cable Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-802846244724"
+    },
+    {
+      "englishName": "Dumbbell Squat (Back on Stability Ball Wall)",
+      "exerciseId": "01910000-0000-7000-8000-802848780575"
+    },
+    {
+      "englishName": "Lying Alternating Toe Touch Floor",
+      "exerciseId": "01910000-0000-7000-8000-802849544495"
+    },
+    {
+      "englishName": "Kneeling Side Push-Up (Semi-Archer)",
+      "exerciseId": "01910000-0000-7000-8000-802860914874"
+    },
+    {
+      "englishName": "High Dumbbell Internal and External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-802876450774"
+    },
+    {
+      "englishName": "Standing High-Leg Bent-Knee Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802877985067"
+    },
+    {
+      "englishName": "Around the World Superman Hold",
+      "exerciseId": "01910000-0000-7000-8000-802891502593"
+    },
+    {
+      "englishName": "V-Up",
+      "exerciseId": "01910000-0000-7000-8000-802898803846"
+    },
+    {
+      "englishName": "Treadmill Walking",
+      "exerciseId": "01910000-0000-7000-8000-802899497374"
+    },
+    {
+      "englishName": "Kneeling Knuckle Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802901460265"
+    },
+    {
+      "englishName": "Back-Supported Hanging Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-802926206172"
+    },
+    {
+      "englishName": "Reverse Crunch with Band",
+      "exerciseId": "01910000-0000-7000-8000-802940117321"
+    },
+    {
+      "englishName": "TRX Glute Bridge",
+      "exerciseId": "01910000-0000-7000-8000-802941951789"
+    },
+    {
+      "englishName": "Reverse Crunch",
+      "exerciseId": "01910000-0000-7000-8000-802942379039"
+    },
+    {
+      "englishName": "Stability Ball Ab Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802978387040"
+    },
+    {
+      "englishName": "Dumbbell Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-802982340411"
+    },
+    {
+      "englishName": "Alternating Arm Circles (Warm-Up)",
+      "exerciseId": "01910000-0000-7000-8000-803004670418"
+    },
+    {
+      "englishName": "Barbell Wrist Curl Over a Bench (Palms Up)",
+      "exerciseId": "01910000-0000-7000-8000-803026314742"
+    },
+    {
+      "englishName": "Negative Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-803030440794"
+    },
+    {
+      "englishName": "Single-Arm Preacher Curl Machine",
+      "exerciseId": "01910000-0000-7000-8000-803037259898"
+    },
+    {
+      "englishName": "Burpee with Push-Up and Front Jump",
+      "exerciseId": "01910000-0000-7000-8000-803065585458"
+    },
+    {
+      "englishName": "Cable Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-803066935450"
+    },
+    {
+      "englishName": "Stability Ball Supine Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-803076545834"
+    },
+    {
+      "englishName": "Barbell Seated Calf Raise",
+      "exerciseId": "01910000-0000-7000-8000-803091163332"
+    },
+    {
+      "englishName": "Incline Dumbbell Fly with a Twist",
+      "exerciseId": "01910000-0000-7000-8000-803111082662"
+    },
+    {
+      "englishName": "Single-Arm Medicine Ball Slam",
+      "exerciseId": "01910000-0000-7000-8000-803113055671"
+    },
+    {
+      "englishName": "EZ Bar Standing Wrist Reverse Curl",
+      "exerciseId": "01910000-0000-7000-8000-803116816234"
+    },
+    {
+      "englishName": "Belt Squat",
+      "exerciseId": "01910000-0000-7000-8000-803124302191"
+    },
+    {
+      "englishName": "Back Extension on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-803130400090"
+    },
+    {
+      "englishName": "Barbell Incline Reverse-Grip Spider Curl with Chest Support",
+      "exerciseId": "01910000-0000-7000-8000-803154224196"
+    },
+    {
+      "englishName": "Single-Arm Bent-Over Cable Lateral Raise",
+      "exerciseId": "01910000-0000-7000-8000-803193185369"
+    },
+    {
+      "englishName": "Single-Arm Cable Crossover",
+      "exerciseId": "01910000-0000-7000-8000-803193500540"
+    },
+    {
+      "englishName": "Muscle-Up with Bands",
+      "exerciseId": "01910000-0000-7000-8000-803196302958"
+    },
+    {
+      "englishName": "Alternating Barbell Side Lunge",
+      "exerciseId": "01910000-0000-7000-8000-803215646117"
+    },
+    {
+      "englishName": "Bodyweight Glute Kickback",
+      "exerciseId": "01910000-0000-7000-8000-803222166234"
+    },
+    {
+      "englishName": "Cable Crossover Lateral Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-803226099402"
+    },
+    {
+      "englishName": "Cable Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-803227065885"
+    },
+    {
+      "englishName": "Glute Stretch (One Knee to Chest)",
+      "exerciseId": "01910000-0000-7000-8000-803239375254"
+    },
+    {
+      "englishName": "Narrow-Grip EZ Bar Curl",
+      "exerciseId": "01910000-0000-7000-8000-803255922572"
+    },
+    {
+      "englishName": "Incline Scapula Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-803282717646"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Jerk",
+      "exerciseId": "01910000-0000-7000-8000-803307443969"
+    },
+    {
+      "englishName": "Chained Sumo Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-803331925142"
+    },
+    {
+      "englishName": "TRX Pistol Squat Jump",
+      "exerciseId": "01910000-0000-7000-8000-803341814049"
+    },
+    {
+      "englishName": "Wrist Radial Deviator and Flexor Stretch",
+      "exerciseId": "01910000-0000-7000-8000-803342595654"
+    },
+    {
+      "englishName": "Assisted Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-803349716193"
+    },
+    {
+      "englishName": "Lying Svend Press",
+      "exerciseId": "01910000-0000-7000-8000-803358282232"
+    },
+    {
+      "englishName": "Dumbbell Standing Single-Arm Concentration Curl",
+      "exerciseId": "01910000-0000-7000-8000-803361920311"
+    },
+    {
+      "englishName": "Standing Cable Russian Twist",
+      "exerciseId": "01910000-0000-7000-8000-803368623436"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-803387506248"
+    },
+    {
+      "englishName": "Arnold Calf Raise (Donkey Calf)",
+      "exerciseId": "01910000-0000-7000-8000-803400088680"
+    },
+    {
+      "englishName": "Dumbbell Sumo Squat (Back on Stability Ball Wall)",
+      "exerciseId": "01910000-0000-7000-8000-803412252992"
+    },
+    {
+      "englishName": "Cable Front Squat",
+      "exerciseId": "01910000-0000-7000-8000-803416199274"
+    },
+    {
+      "englishName": "Leverage Lat Pulldown Machine",
+      "exerciseId": "01910000-0000-7000-8000-803417418177"
+    },
+    {
+      "englishName": "Single-Leg Box Squat",
+      "exerciseId": "01910000-0000-7000-8000-803419947860"
+    },
+    {
+      "englishName": "V-Up with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-803425957229"
+    },
+    {
+      "englishName": "Banded Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-803446735132"
+    },
+    {
+      "englishName": "Seated Alternating Rotating Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-803454690556"
+    },
+    {
+      "englishName": "Band Chest Press",
+      "exerciseId": "01910000-0000-7000-8000-803457905262"
+    },
+    {
+      "englishName": "Single-Arm Chin-Up",
+      "exerciseId": "01910000-0000-7000-8000-803459347416"
+    },
+    {
+      "englishName": "Cable Seated Neck Flexion (with Head Harness)",
+      "exerciseId": "01910000-0000-7000-8000-803471482785"
+    },
+    {
+      "englishName": "Medicine Ball Half Kneeling Chest Push",
+      "exerciseId": "01910000-0000-7000-8000-803471892704"
+    },
+    {
+      "englishName": "Single-Arm Landmine Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-803476378179"
+    },
+    {
+      "englishName": "Jack Burpee",
+      "exerciseId": "01910000-0000-7000-8000-803492493764"
+    },
+    {
+      "englishName": "Standing Reach-Down Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-803496280997"
+    },
+    {
+      "englishName": "Cable Seated Horizontal Shrug",
+      "exerciseId": "01910000-0000-7000-8000-803498948355"
+    },
+    {
+      "englishName": "TRX Fallout",
+      "exerciseId": "01910000-0000-7000-8000-803501071341"
+    },
+    {
+      "englishName": "Standing Knee to Chest Stretch",
+      "exerciseId": "01910000-0000-7000-8000-803519162132"
+    },
+    {
+      "englishName": "Sled Single-Leg Press (Hips)",
+      "exerciseId": "01910000-0000-7000-8000-803526232048"
+    },
+    {
+      "englishName": "Wide-Grip Upright Barbell Row",
+      "exerciseId": "01910000-0000-7000-8000-803529962627"
+    },
+    {
+      "englishName": "Cable Shrug",
+      "exerciseId": "01910000-0000-7000-8000-803530389641"
+    },
+    {
+      "englishName": "Incline Alternating Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-803543969390"
+    },
+    {
+      "englishName": "Wide-Stance Hack Squat",
+      "exerciseId": "01910000-0000-7000-8000-803546366291"
+    },
+    {
+      "englishName": "Rickshaw Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-803546477891"
+    },
+    {
+      "englishName": "Narrow-Grip Push-Up from the Knees",
+      "exerciseId": "01910000-0000-7000-8000-803547345050"
+    },
+    {
+      "englishName": "Warrior II Pose",
+      "exerciseId": "01910000-0000-7000-8000-803549318475"
+    },
+    {
+      "englishName": "Dumbbell High Curl",
+      "exerciseId": "01910000-0000-7000-8000-803582938815"
+    },
+    {
+      "englishName": "Squat Jump (Barbell)",
+      "exerciseId": "01910000-0000-7000-8000-803584566703"
+    },
+    {
+      "englishName": "Barbell Biceps Curl (with Arm Blaster)",
+      "exerciseId": "01910000-0000-7000-8000-803619362867"
+    },
+    {
+      "englishName": "Medicine Ball Sit-Up (Wall)",
+      "exerciseId": "01910000-0000-7000-8000-803621822400"
+    },
+    {
+      "englishName": "Barbell Clean",
+      "exerciseId": "01910000-0000-7000-8000-803626271775"
+    },
+    {
+      "englishName": "Single-Leg Extension with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-803643072906"
+    },
+    {
+      "englishName": "Chest-Supported EZ Bar Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-803656665689"
+    },
+    {
+      "englishName": "Dumbbell Single-Arm Seated Neutral Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-803661337939"
+    },
+    {
+      "englishName": "Reverse-Grip Triceps Pushdown",
+      "exerciseId": "01910000-0000-7000-8000-803661437794"
+    },
+    {
+      "englishName": "BOSU Squat (on Dome)",
+      "exerciseId": "01910000-0000-7000-8000-803663899609"
+    },
+    {
+      "englishName": "Seated Dumbbell Front Raise",
+      "exerciseId": "01910000-0000-7000-8000-803667855449"
+    },
+    {
+      "englishName": "Barbell Single-Leg Deadlift",
+      "exerciseId": "01910000-0000-7000-8000-803680129222"
+    },
+    {
+      "englishName": "Stability Ball Torso Rotation",
+      "exerciseId": "01910000-0000-7000-8000-803684054841"
+    },
+    {
+      "englishName": "Sandbag Alternating Static Side Lunge (Front)",
+      "exerciseId": "01910000-0000-7000-8000-803688180271"
+    },
+    {
+      "englishName": "Banded Upright Row",
+      "exerciseId": "01910000-0000-7000-8000-803695092143"
+    },
+    {
+      "englishName": "Bench Hop",
+      "exerciseId": "01910000-0000-7000-8000-803706703744"
+    },
+    {
+      "englishName": "TRX Hamstring Curl",
+      "exerciseId": "01910000-0000-7000-8000-803710484723"
+    },
+    {
+      "englishName": "Alternating Barbell Curtsy Squat",
+      "exerciseId": "01910000-0000-7000-8000-803722525054"
+    },
+    {
+      "englishName": "Seated Band Row",
+      "exerciseId": "01910000-0000-7000-8000-803725339606"
+    },
+    {
+      "englishName": "Dumbbell Bent-Over Rear Delt Fly",
+      "exerciseId": "01910000-0000-7000-8000-803731017476"
+    },
+    {
+      "englishName": "Single-Arm Cable Curl with Handle",
+      "exerciseId": "01910000-0000-7000-8000-803734001598"
+    },
+    {
+      "englishName": "Band Assisted Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-803740612039"
+    },
+    {
+      "englishName": "Single-Arm Lateral Raise Against Bench",
+      "exerciseId": "01910000-0000-7000-8000-803742017094"
+    },
+    {
+      "englishName": "Kettlebell Upright Row",
+      "exerciseId": "01910000-0000-7000-8000-803746491795"
+    },
+    {
+      "englishName": "TRX Squat Jump",
+      "exerciseId": "01910000-0000-7000-8000-803752466469"
+    },
+    {
+      "englishName": "Cable Kickback",
+      "exerciseId": "01910000-0000-7000-8000-803763536454"
+    },
+    {
+      "englishName": "Reverse-Grip Incline Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-803764134223"
+    },
+    {
+      "englishName": "Barbell Reverse Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-803772542688"
+    },
+    {
+      "englishName": "Wrist Ulnar Deviator and Flexor Stretch",
+      "exerciseId": "01910000-0000-7000-8000-803783049872"
+    },
+    {
+      "englishName": "Banded Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-803801529542"
+    },
+    {
+      "englishName": "Single-Arm Wrist Curl Over a Bench (Palm Up)",
+      "exerciseId": "01910000-0000-7000-8000-803801748923"
+    },
+    {
+      "englishName": "Weighted Crunch",
+      "exerciseId": "01910000-0000-7000-8000-803807041640"
+    },
+    {
+      "englishName": "Landmine T-Bar Row",
+      "exerciseId": "01910000-0000-7000-8000-803812451792"
+    },
+    {
+      "englishName": "Feet Elevated Bench Dip",
+      "exerciseId": "01910000-0000-7000-8000-803824836381"
+    },
+    {
+      "englishName": "Alternating Bodyweight Lunge",
+      "exerciseId": "01910000-0000-7000-8000-803836538906"
+    },
+    {
+      "englishName": "Chin to Chest Stretch",
+      "exerciseId": "01910000-0000-7000-8000-803845119543"
+    },
+    {
+      "englishName": "Dumbbell Pullover on Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-803855069807"
+    },
+    {
+      "englishName": "Seated Alternating Hammer Curl",
+      "exerciseId": "01910000-0000-7000-8000-803855536220"
+    },
+    {
+      "englishName": "Plyometric Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-803856128360"
+    },
+    {
+      "englishName": "Calf Raise on Leg Press",
+      "exerciseId": "01910000-0000-7000-8000-803864477669"
+    },
+    {
+      "englishName": "Battle Rope Alternating Waves (Single-Arm)",
+      "exerciseId": "01910000-0000-7000-8000-803874158693"
+    },
+    {
+      "englishName": "Cable V-Bar Triceps Pushdown",
+      "exerciseId": "01910000-0000-7000-8000-803886778203"
+    },
+    {
+      "englishName": "Brachialis Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-803890416286"
+    },
+    {
+      "englishName": "Smith Machine Static Lunge",
+      "exerciseId": "01910000-0000-7000-8000-803897178806"
+    },
+    {
+      "englishName": "Banded Hip Abduction",
+      "exerciseId": "01910000-0000-7000-8000-803907845547"
+    },
+    {
+      "englishName": "Incline Dumbbell Fly",
+      "exerciseId": "01910000-0000-7000-8000-803925904138"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Push Press",
+      "exerciseId": "01910000-0000-7000-8000-803941550450"
+    },
+    {
+      "englishName": "Single-Leg Push-Off",
+      "exerciseId": "01910000-0000-7000-8000-803949031834"
+    },
+    {
+      "englishName": "Band External Rotation",
+      "exerciseId": "01910000-0000-7000-8000-803959259772"
+    },
+    {
+      "englishName": "Barbell Bent-Over Wide-Grip Row",
+      "exerciseId": "01910000-0000-7000-8000-803974948080"
+    },
+    {
+      "englishName": "Reverse-Grip EZ Bar Curl",
+      "exerciseId": "01910000-0000-7000-8000-803980601464"
+    },
+    {
+      "englishName": "TRX Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-803989590051"
+    },
+    {
+      "englishName": "Seated Calf Raise on Smith Machine",
+      "exerciseId": "01910000-0000-7000-8000-803989867955"
+    },
+    {
+      "englishName": "EZ Bar Reverse-Grip Preacher Curl",
+      "exerciseId": "01910000-0000-7000-8000-803993888807"
+    },
+    {
+      "englishName": "Dumbbell Single-Arm Shrug",
+      "exerciseId": "01910000-0000-7000-8000-803999677266"
+    },
+    {
+      "englishName": "Seated Single-Leg Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-804005679258"
+    },
+    {
+      "englishName": "Flat Cable Fly",
+      "exerciseId": "01910000-0000-7000-8000-804007379059"
+    },
+    {
+      "englishName": "Frog Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-804024615044"
+    },
+    {
+      "englishName": "High-Grip Dumbbell Squat",
+      "exerciseId": "01910000-0000-7000-8000-804027993257"
+    },
+    {
+      "englishName": "Handstand Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-804038341039"
+    },
+    {
+      "englishName": "Single-Arm Dumbbell Spider Curl with Chest Support",
+      "exerciseId": "01910000-0000-7000-8000-804051664667"
+    },
+    {
+      "englishName": "Smith Machine Bent-Over Row",
+      "exerciseId": "01910000-0000-7000-8000-804059552385"
+    },
+    {
+      "englishName": "Lying High Bench Barbell Spider Curl",
+      "exerciseId": "01910000-0000-7000-8000-804068289709"
+    },
+    {
+      "englishName": "Single-Leg Football Kick with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-804068387685"
+    },
+    {
+      "englishName": "Pike Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-804087219200"
+    },
+    {
+      "englishName": "Standing Alternating Rotating Biceps Curl",
+      "exerciseId": "01910000-0000-7000-8000-804098096798"
+    },
+    {
+      "englishName": "Alternating Reverse Dumbbell Lunge Off a Step",
+      "exerciseId": "01910000-0000-7000-8000-804110575043"
+    },
+    {
+      "englishName": "Seated Dumbbell Single-Arm Shoulder Press",
+      "exerciseId": "01910000-0000-7000-8000-804113441413"
+    },
+    {
+      "englishName": "Yin Yang Circles (Warm-Up)",
+      "exerciseId": "01910000-0000-7000-8000-804130964551"
+    },
+    {
+      "englishName": "Bent-Over Barbell Row",
+      "exerciseId": "01910000-0000-7000-8000-804147853905"
+    },
+    {
+      "englishName": "Band Row",
+      "exerciseId": "01910000-0000-7000-8000-804154087675"
+    },
+    {
+      "englishName": "Barbell Standing Back Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-804155893368"
+    },
+    {
+      "englishName": "Decline Cable Crunch",
+      "exerciseId": "01910000-0000-7000-8000-804174879861"
+    },
+    {
+      "englishName": "Cable Single-Arm Wrist Curl",
+      "exerciseId": "01910000-0000-7000-8000-804178375628"
+    },
+    {
+      "englishName": "Kneeling Pike Push-Up (on Bench)",
+      "exerciseId": "01910000-0000-7000-8000-804203130942"
+    },
+    {
+      "englishName": "Single-Leg Squat with Stability Ball",
+      "exerciseId": "01910000-0000-7000-8000-804205962802"
+    },
+    {
+      "englishName": "Lying Dumbbell Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-804209096718"
+    },
+    {
+      "englishName": "Single-Arm Kettlebell Overhead Squat",
+      "exerciseId": "01910000-0000-7000-8000-804209658792"
+    },
+    {
+      "englishName": "Landmine Single-Arm Jammer",
+      "exerciseId": "01910000-0000-7000-8000-804231041980"
+    },
+    {
+      "englishName": "Narrow-Grip Incline Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-804234692730"
+    },
+    {
+      "englishName": "Alternating Reverse Dumbbell Lunge",
+      "exerciseId": "01910000-0000-7000-8000-804243341065"
+    },
+    {
+      "englishName": "Alternating Step Groiner",
+      "exerciseId": "01910000-0000-7000-8000-804251431646"
+    },
+    {
+      "englishName": "TRX Bulgarian Squat",
+      "exerciseId": "01910000-0000-7000-8000-804258285349"
+    },
+    {
+      "englishName": "Wrist Roller",
+      "exerciseId": "01910000-0000-7000-8000-804264741451"
+    },
+    {
+      "englishName": "Kneeling Band Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-804284626848"
     }
   ],
   "acceptedEnglishExerciseIds": [

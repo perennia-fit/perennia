@@ -30,7 +30,7 @@ const ENDURANCE = "01910000-0000-7000-8000-000000000402";
 const FUNCTIONAL = "01910000-0000-7000-8000-000000000403";
 const CALISTHENICS = "01910000-0000-7000-8000-000000000404";
 const MOBILITY = "01910000-0000-7000-8000-000000000405";
-// "4-count burpees" in the bundled Platform Library (reps-only).
+// "4-Count Burpee" in the bundled Platform Library (reps-only).
 const PLATFORM_BURPEES = "01910000-0000-7000-8000-000000200997";
 
 test("starter Focuses merge with user rows: renames and reorders override, archives hide, new rows join", () => {
@@ -789,7 +789,7 @@ function workoutBody(id, startedAt, extra = {}) {
 function setBody(id) {
   return {
     id,
-    exerciseName: "4-count burpees",
+    exerciseName: "4-Count Burpee",
     position: 0,
     values: { reps: { entered: "10", unit: "repetition" } },
     updatedAt: "2026-06-24T05:00:00.000Z"
