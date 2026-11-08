@@ -1,7 +1,8 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import type { ApiKey } from "@better-auth/api-key";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
+import { verifySessionToken } from "./auth/session.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
@@ -432,21 +433,8 @@ export function createDrizzleAgentApiKeyStore(
 
       return revoked.length > 0;
     },
-    async verifySessionBearerToken(token) {
-      const rows = await db
-        .select({ userId: schema.session.userId })
-        .from(schema.session)
-        .innerJoin(schema.user, eq(schema.user.id, schema.session.userId))
-        .where(
-          and(
-            eq(schema.session.token, token),
-            gt(schema.session.expiresAt, new Date()),
-            isNull(schema.user.deletionRequestedAt)
-          )
-        )
-        .limit(1);
-
-      return rows[0] ?? null;
+    verifySessionBearerToken(token) {
+      return verifySessionToken(db, token);
     }
   };
 }
