@@ -345,10 +345,9 @@ third on 2026-11-07.
     and a comparison with [Alternative E](#alternative-e-a-generative-model-prompted-to-answer-in-json).
 3.  **The second opinion's model. Resolved (2026-11-07).** The first run uses
     `claude-haiku-5-5`. Its answers are one word from a fixed list, committed
-    and published under the ODbL with the labels. Before they are first
-    committed, the maintainer checks that the provider's terms allow this, and
-    says so in pull request 1's description. No other hosted model has been
-    tried. Changing the model discards its earlier answers, as a new Clef
+    and published under the ODbL with the labels; the provider's terms give
+    the user its outputs, so no further check is needed. No other hosted
+    model has been tried. Changing the model discards its earlier answers, as a new Clef
     digest discards earlier labels, and needs no other change.
 
 ## Critical User Journeys (CUJs)
@@ -1815,8 +1814,7 @@ those out.
         assets/seeds/open_food_facts_bundle.ndjson.gz --tags-export <path>
         --aisle-input-only`, then a full `label` run.
     2.  `second-opinion-input`, the answers from `claude-haiku-5-5`, and
-        `second-opinion-apply --model claude-haiku-5-5`, after checking the
-        provider's terms as [Open Questions](#open-questions) says.
+        `second-opinion-apply --model claude-haiku-5-5`.
     3.  `review`: a person answers up to 50 edge cases.
     4.  The builder, with the same `--from-bundle` and `--tags-export`, which now
         writes a bundle (still format version 1, and not committed until step 5)
@@ -2427,7 +2425,6 @@ those out.
     *   the labeller's report;
     *   the labels header's model and digest, and the second opinions header's
         model;
-    *   the check of the provider's terms from [Open Questions](#open-questions);
     *   a plain statement that no person measured the labels, and how many edge
         cases a person answered.
 *   **On a device (pull request 2):** a debug build with a fresh install of
