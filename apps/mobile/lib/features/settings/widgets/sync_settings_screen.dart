@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/theme.dart';
 import '../../auth/repositories/auth_repository.dart';
+import '../../auth/widgets/sign_in_screen.dart';
 import '../../sync/controllers/sync_status_controller.dart';
 import '../../sync/repositories/sync_device_id_repository.dart';
 import 'settings_providers.dart';
@@ -18,6 +19,7 @@ class SyncSettingsScreen extends ConsumerWidget {
   static const syncStatusRowKey = Key('settings.syncStatus.row');
   static const syncNowButtonKey = Key('settings.syncStatus.syncNow');
   static const syncFailureBannerKey = Key('settings.syncStatus.failureBanner');
+  static const signInAgainButtonKey = Key('settings.syncStatus.signInAgain');
   static const quarantinedChangesRowKey =
       Key('settings.syncStatus.quarantinedChanges');
   static const integrationStatusRowKey = Key('settings.integrationStatus.row');
@@ -38,6 +40,15 @@ class SyncSettingsScreen extends ConsumerWidget {
       children: [
         _SyncStatusTile(
           status: syncStatus,
+          onSignInAgain: () {
+            unawaited(
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SignInScreen(signInAgain: true),
+                ),
+              ),
+            );
+          },
           onSyncNow: authState.session == null ||
                   syncDeviceId == null ||
                   syncStatus.kind == SyncStatusKind.syncing
@@ -61,10 +72,12 @@ class SyncSettingsScreen extends ConsumerWidget {
 class _SyncStatusTile extends StatelessWidget {
   const _SyncStatusTile({
     required this.status,
+    required this.onSignInAgain,
     required this.onSyncNow,
   });
 
   final SyncStatusState status;
+  final VoidCallback onSignInAgain;
   final VoidCallback? onSyncNow;
 
   @override
@@ -76,6 +89,23 @@ class _SyncStatusTile extends StatelessWidget {
         children: [
           if (status.showsFailureBanner) ...[
             _SyncFailureBanner(status: status),
+            const SizedBox(height: AppDimens.dense),
+          ],
+          if (status.kind == SyncStatusKind.authExpired) ...[
+            // The banner says why sync stopped; this is the way back. It
+            // keeps every local change, so it needs no confirmation.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                height: AppDimens.touchTarget,
+                child: FilledButton.icon(
+                  key: SyncSettingsScreen.signInAgainButtonKey,
+                  onPressed: onSignInAgain,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign in again'),
+                ),
+              ),
+            ),
             const SizedBox(height: AppDimens.dense),
           ],
           for (final integration in status.integrationStatuses)

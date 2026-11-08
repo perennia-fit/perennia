@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart'
     show BooleanExpressionOperators, OrderingTerm, Value, driftRuntimeOptions;
@@ -1149,6 +1150,143 @@ void main() {
 
     expect(status.kind, SyncStatusKind.authExpired);
     expect(status.showsFailureBanner, isTrue);
+  });
+
+  test(
+      'signing in again after an expired session keeps local data and pending '
+      'changes, and the next push sends them', () async {
+    final updatedAt = DateTime.utc(2026, 11, 6, 8);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c001';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    await _insertLoggedSet(
+      database,
+      id: setId,
+      updatedAt: updatedAt,
+      repsEntered: '5',
+      syncDeviceId: 'device-a',
+      syncPreviouslySynced: true,
+    );
+    await _insertActivityLogEntry(
+      database,
+      id: 'pending-while-expired',
+      entityId: setId,
+      updatedAt: updatedAt,
+    );
+
+    final tempDir = await Directory.systemTemp.createTemp('perennia-reauth-');
+    addTearDown(() => tempDir.delete(recursive: true));
+    var issuedToken = 'expired-token';
+    final auth = FileAuthRepository(
+      authFile: () async => File('${tempDir.path}/auth.json'),
+      tokenStore: _MemoryAuthSessionTokenStore(),
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode(<String, Object?>{
+              'redirect': false,
+              'token': issuedToken,
+              'user': <String, Object?>{
+                'id': 'user-1',
+                'email': 'user@example.com',
+                'name': 'Sync User',
+                'emailVerified': true,
+              },
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          ),
+        ),
+      ),
+    );
+    Future<AuthSession> signIn() => auth.signInWithEmail(
+          serverUrl: Uri.parse('https://sync.example/'),
+          email: 'user@example.com',
+          password: 'secret',
+        );
+
+    final pushAuthorizations = <String?>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          pushAuthorizations.add(request.headers['authorization']);
+          if (request.headers['authorization'] == 'Bearer expired-token') {
+            return http.Response('unauthorized', 401);
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'accepted': <String>[setId],
+              'serverClock': '2026-11-08T09:00:01.000Z',
+              'applied': <Object?>[
+                <String, Object?>{
+                  'id': setId,
+                  'updatedAt': updatedAt.toIso8601String(),
+                  'deviceId': 'device-a',
+                },
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final expiredSession = await signIn();
+    await expectLater(
+      repository.pushPendingLoggedSets(
+        session: expiredSession,
+        deviceId: 'device-a',
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    final expiredStatus = await SyncStatusRepository(database).loadStatus(
+      observedAt: DateTime.utc(2026, 11, 8, 9),
+    );
+    expect(expiredStatus.kind, SyncStatusKind.authExpired);
+
+    issuedToken = 'fresh-token';
+    final freshSession = await signIn();
+
+    // Signing in again touched only the session: the logged set and its
+    // unsynced change are exactly as they were.
+    expect((await auth.load()).session?.token, 'fresh-token');
+    final keptSet = await _loggedSet(database, setId);
+    expect(keptSet.repsEntered, '5');
+    expect(keptSet.deletedAt, isNull);
+    expect(
+      (await _activityLogEntry(database, 'pending-while-expired'))
+          .syncAcknowledgedAt,
+      isNull,
+    );
+    expect(await repository.hasPendingChanges(), isTrue);
+
+    final result = await repository.pushPendingLoggedSets(
+      session: freshSession,
+      deviceId: 'device-a',
+    );
+
+    expect(result.pushedCount, 1);
+    expect(result.acknowledgedActivityLogIds, <String>[
+      'pending-while-expired',
+    ]);
+    expect(pushAuthorizations, <String?>[
+      'Bearer expired-token',
+      'Bearer fresh-token',
+    ]);
+    expect(
+      (await _activityLogEntry(database, 'pending-while-expired'))
+          .syncAcknowledgedAt,
+      isNotNull,
+    );
+    final status = await SyncStatusRepository(database).loadStatus(
+      observedAt: DateTime.utc(2026, 11, 8, 9, 1),
+    );
+    expect(status.kind, SyncStatusKind.synced);
+    expect(status.showsFailureBanner, isFalse);
   });
 
   test(
@@ -7367,4 +7505,21 @@ Map<String, Object?> _lastExerciseChange(
   String id,
 ) {
   return changes.lastWhere((change) => change['id'] == id);
+}
+
+class _MemoryAuthSessionTokenStore implements AuthSessionTokenStore {
+  String? _token;
+
+  @override
+  Future<String?> read() async => _token;
+
+  @override
+  Future<void> write(String token) async {
+    _token = token;
+  }
+
+  @override
+  Future<void> delete() async {
+    _token = null;
+  }
 }

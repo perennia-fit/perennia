@@ -29,6 +29,14 @@
   "homeLocalOnlyStatus": "Local only",
   "homeSignInToSync": "Sign in to sync",
   "homeManageAccountAndSync": "Manage account and sync",
+  "homeSignInExpired": "Sign-in expired. Sign in again to sync.",
+  "@homeSignInExpired": {
+    "description": "Account & app sheet subtitle when the server rejected this device's session. Local data is kept; tapping opens the sign-in form."
+  },
+  "homeAccountAndAppSignInExpiredTooltip": "Account & app: sign-in expired",
+  "@homeAccountAndAppSignInExpiredTooltip": {
+    "description": "Tooltip and screen-reader label for the Account & app button while it shows the sign-in-expired dot."
+  },
   "homeLogAction": "Log",
   "homeLogSheetTitle": "Log for this day",
   "homeLogWorkout": "Workout",

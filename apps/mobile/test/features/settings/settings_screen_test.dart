@@ -17,6 +17,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/activity/widgets/activity_feed_screen.dart';
 import 'package:perennia/features/agent_keys/repositories/agent_api_key_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/auth/widgets/sign_in_screen.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/settings/services/auto_backup_service.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
@@ -288,6 +289,64 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('auth-expired warning offers Sign in again', (tester) async {
+      await _pumpSettings(
+        tester,
+        authState: AuthState(
+          serverUrl: Uri.parse('https://sync.example/'),
+          session: _session(),
+        ),
+        syncStatus: SyncStatusState(
+          kind: SyncStatusKind.authExpired,
+          lastSuccessfulSyncAt: DateTime.utc(2026, 6, 20, 10),
+          lastFailureAt: DateTime.utc(2026, 6, 22, 10),
+          observedAt: DateTime.utc(2026, 6, 22, 12),
+        ),
+      );
+
+      await _openHubScreen(tester, SettingsScreen.syncTileKey);
+      expect(find.byKey(SettingsScreen.syncFailureBannerKey), findsOneWidget);
+      final signInAgain = find.byKey(SettingsScreen.syncSignInAgainButtonKey);
+      expect(signInAgain, findsOneWidget);
+      expect(
+        tester.getTopLeft(signInAgain).dy,
+        greaterThanOrEqualTo(
+          tester
+              .getBottomLeft(find.byKey(SettingsScreen.syncFailureBannerKey))
+              .dy,
+        ),
+      );
+      expect(tester.getSize(signInAgain).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(signInAgain);
+      await tester.pumpAndSettle();
+
+      // Straight onto the sign-in form, over the kept session.
+      expect(find.byType(SignInScreen), findsOneWidget);
+      expect(find.byKey(SignInScreen.sessionExpiredNoticeKey), findsOneWidget);
+      expect(find.byKey(SignInScreen.emailSignInButtonKey), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('a healthy sync offers no Sign in again', (tester) async {
+      await _pumpSettings(
+        tester,
+        authState: AuthState(
+          serverUrl: Uri.parse('https://sync.example/'),
+          session: _session(),
+        ),
+        syncStatus: SyncStatusState(
+          kind: SyncStatusKind.synced,
+          lastSuccessfulSyncAt: DateTime.utc(2026, 6, 22, 10),
+          observedAt: DateTime.utc(2026, 6, 22, 12),
+        ),
+      );
+
+      await _openHubScreen(tester, SettingsScreen.syncTileKey);
+
+      expect(find.byKey(SettingsScreen.syncSignInAgainButtonKey), findsNothing);
     });
 
     testWidgets('shows how many pulled changes are held back', (
