@@ -3,10 +3,13 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 
 /// Checks the committed Open Food Facts bundle against its format
-/// (docs/designs/open-food-facts.md, "The bundle file"). The builder has no
+/// (docs/designs/open-food-facts.md, "The bundle file", and
+/// docs/designs/food-aisles.md, "The bundle file, format version 2"). The
+/// builder has no
 /// separate verify mode, so this is what keeps a hand-edited or truncated
 /// bundle from merging.
 const _bundlePath = openFoodFactsBundleAssetPath;
@@ -63,14 +66,15 @@ void main() {
     final failures = <String>[];
     String? previousCode;
     for (final (index, line) in productLines.indexed) {
-      final MappedOpenFoodFactsProduct product;
+      final BundleProductLine decoded;
       try {
-        product = decodeBundleProductLine(line);
+        decoded = decodeBundleProductLine(line);
       } on Object catch (error) {
         failures.add('line ${index + 2} does not decode: $error');
         continue;
       }
-      if (encodeBundleProductLine(product) != line) {
+      final product = decoded.product;
+      if (encodeBundleProductLine(product, aisle: decoded.aisle) != line) {
         failures.add('line ${index + 2} is not in the canonical format');
       }
       if (previousCode != null && product.code.compareTo(previousCode) <= 0) {
@@ -81,5 +85,24 @@ void main() {
     }
 
     expect(failures, isEmpty);
+  });
+
+  test('every Aisle has at least one product', () {
+    // The picker lists every Aisle without asking the database which ones have
+    // products (docs/designs/food-aisles.md, "The coverage guarantee").
+    final counts = <FoodAisle, int>{};
+    for (final line in productLines) {
+      if (decodeBundleProductLine(line).aisle case final aisle?) {
+        counts[aisle] = (counts[aisle] ?? 0) + 1;
+      }
+    }
+
+    expect(
+      [
+        for (final aisle in FoodAisle.values)
+          if ((counts[aisle] ?? 0) == 0) aisle.name,
+      ],
+      isEmpty,
+    );
   });
 }

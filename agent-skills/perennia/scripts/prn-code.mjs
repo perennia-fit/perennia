@@ -841,7 +841,7 @@ export class PortableOwlAgentClient {
       method: "GET",
       path: "/agent/foods/platform-search",
       expectedStatus: 200,
-      query: pick(input, ["search", "source", "limit"]),
+      query: pick(input, ["search", "source", "limit", "aisle"]),
       signal: options.signal
     });
   }

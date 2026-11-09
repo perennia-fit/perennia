@@ -8,6 +8,7 @@ import 'package:drift/native.dart';
 // ignore: experimental_member_use
 import 'package:drift/remote.dart' show DriftRemoteException;
 
+import '../../domain/nutrition/food_aisle.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/open_food_facts.dart';
 
@@ -19,7 +20,8 @@ part 'food_reference_database.g.dart';
 /// backups and the portable archive, and its install (about 41,000 rows, on
 /// another isolate) can never hold a lock a Set or Food Entry save needs.
 ///
-/// See docs/designs/open-food-facts.md, "Installing the bundle on the device".
+/// See docs/designs/open-food-facts.md, "Installing the bundle on the device",
+/// and docs/designs/food-aisles.md, "On the device".
 @DataClassName('ReferenceMetaRow')
 class ReferenceMeta extends Table {
   TextColumn get key => text()();
@@ -53,6 +55,12 @@ class OpenFoodFactsProducts extends Table {
   IntColumn get modifiedAt => integer()();
   IntColumn get scans => integer().nullable()();
   TextColumn get origin => text()();
+
+  /// The product's `FoodAisle` id, or `NULL` when it has none. Only the bundle
+  /// install writes it: an `online` row has an Aisle only while the current
+  /// bundle gives its code one. It is Perennia's label, not Open Food Facts
+  /// data, so the newer-copy rule never writes or clears it.
+  TextColumn get aisle => text().nullable()();
 }
 
 const originBundle = 'bundle';
@@ -91,9 +99,11 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
 
   static const productsTable = 'open_food_facts_products';
   static const productsFtsTable = 'open_food_facts_products_fts';
+  static const aisleRankIndex = 'open_food_facts_products_aisle_rank';
 
+  /// 2 added `aisle`, its index and the narrower update trigger.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// No migrations: the data can be rebuilt, so a new schema drops everything
   /// and the missing content hash makes the installer run.
@@ -138,31 +148,62 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
         INSERT INTO $productsFtsTable($productsFtsTable, rowid, name, brand)
         VALUES ('delete', old.id, old.name, old.brand);
       END''');
+    // Only a change to the indexed text rewrites the search entry, so writing
+    // an Aisle or an `origin` leaves the FTS5 row alone.
     await customStatement('''
       CREATE TRIGGER open_food_facts_products_au
-      AFTER UPDATE ON $productsTable BEGIN
+      AFTER UPDATE OF name, brand ON $productsTable BEGIN
         INSERT INTO $productsFtsTable($productsFtsTable, rowid, name, brand)
         VALUES ('delete', old.id, old.name, old.brand);
         INSERT INTO $productsFtsTable(rowid, name, brand)
         VALUES (new.id, new.name, new.brand);
       END''');
+    // The Aisle list walks the first entries for one Aisle instead of
+    // scanning and sorting every row.
+    await customStatement(
+      'CREATE INDEX $aisleRankIndex ON $productsTable (aisle, scans DESC, code)',
+    );
   }
 
   /// Products matching an FTS5 [match] expression (from
   /// `buildFoodSearchMatch`): `bm25` ascending with name weighted 2 and brand
-  /// 1, then scans descending (none counts as 0), then code ascending.
+  /// 1, then scans descending (none counts as 0), then code ascending. With
+  /// [aisle] (a `FoodAisle` id), only that Aisle's products; [limit] applies
+  /// after the filter.
   Future<List<OpenFoodFactsProductRow>> searchProducts(
     String match,
-    int limit,
-  ) {
+    int limit, {
+    String? aisle,
+  }) {
     return customSelect(
       'SELECT p.* FROM $productsFtsTable '
       'JOIN $productsTable p ON p.id = $productsFtsTable.rowid '
       'WHERE $productsFtsTable MATCH ? '
+      '${aisle == null ? '' : 'AND p.aisle = ? '}'
       'ORDER BY bm25($productsFtsTable, 2.0, 1.0), '
       'COALESCE(p.scans, 0) DESC, p.code ASC '
       'LIMIT ?',
-      variables: [Variable.withString(match), Variable.withInt(limit)],
+      variables: [
+        Variable.withString(match),
+        if (aisle != null) Variable.withString(aisle),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {openFoodFactsProducts},
+    ).map((row) => openFoodFactsProducts.map(row.data)).get();
+  }
+
+  /// An Aisle's products (by `FoodAisle` id), most scanned first, then code
+  /// ascending. SQLite sorts `NULL` last in descending order, so `online` rows
+  /// with no scan count come last. The order matches
+  /// `open_food_facts_products_aisle_rank`, so the read walks the index.
+  Future<List<OpenFoodFactsProductRow>> productsInAisle(
+    String aisle,
+    int limit,
+  ) {
+    return customSelect(
+      'SELECT * FROM $productsTable WHERE aisle = ? '
+      'ORDER BY scans DESC, code ASC LIMIT ?',
+      variables: [Variable.withString(aisle), Variable.withInt(limit)],
       readsFrom: {openFoodFactsProducts},
     ).map((row) => openFoodFactsProducts.map(row.data)).get();
   }
@@ -225,34 +266,67 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
   }
 
   /// The install, in one transaction so a killed install leaves the previous
-  /// state: delete every `bundle` row, insert each product as `bundle` (a
-  /// remaining row with the same code can only be `online`; it takes the
-  /// bundle's values only when they are newer, and stays `online`), then
-  /// record the content hash. [beforeCommitForTesting] runs just before the
-  /// transaction commits.
+  /// state, including the previous Aisles. In order:
+  ///
+  /// 1. read the codes of every `online` row;
+  /// 2. delete every `bundle` row;
+  /// 3. clear `aisle` on every `online` row, so an `online` row has an Aisle
+  ///    only if the current bundle gives it one;
+  /// 4. insert each product as `bundle` with its Aisle (a remaining row with
+  ///    the same code can only be `online`; it takes the bundle's values only
+  ///    when they are newer, and stays `online`; [_replaceWhenNewer] never
+  ///    touches `aisle`);
+  /// 5. for a code from step 1, set the row's `aisle` to the line's, whether
+  ///    or not the row kept its newer values: the Aisle is Perennia's label,
+  ///    not Open Food Facts data, so the change-date rule does not apply;
+  /// 6. record the content hash.
+  ///
+  /// [beforeCommitForTesting] runs just before the transaction commits.
+  /// See docs/designs/food-aisles.md, "On the device".
   Future<void> replaceBundle(
     Iterable<String> productLines,
     BundleHeader header, {
     Future<void> Function()? beforeCommitForTesting,
   }) {
     return transaction(() async {
+      final onlineCodes = <String>{
+        for (final row in await (selectOnly(openFoodFactsProducts)
+              ..addColumns([openFoodFactsProducts.code])
+              ..where(openFoodFactsProducts.origin.equals(originOnline)))
+            .get())
+          row.read(openFoodFactsProducts.code)!,
+      };
       await (delete(openFoodFactsProducts)
             ..where((table) => table.origin.equals(originBundle)))
           .go();
+      await customUpdate(
+        "UPDATE $productsTable SET aisle = NULL WHERE origin = '$originOnline'",
+        updates: {openFoodFactsProducts},
+        updateKind: UpdateKind.update,
+      );
       // Batches of a few thousand rows keep memory flat during the install.
       final lines = productLines.iterator;
       var more = lines.moveNext();
       while (more) {
         await batch((batch) {
           for (var count = 0; more && count < _installBatchSize; count += 1) {
+            final line = decodeBundleProductLine(lines.current);
             batch.insert(
               openFoodFactsProducts,
               productCompanion(
-                decodeBundleProductLine(lines.current),
+                line.product,
                 origin: originBundle,
+                aisle: line.aisle,
               ),
               onConflict: _replaceWhenNewer(),
             );
+            if (onlineCodes.contains(line.product.code)) {
+              batch.update(
+                openFoodFactsProducts,
+                OpenFoodFactsProductsCompanion(aisle: Value(line.aisle?.name)),
+                where: (table) => table.code.equals(line.product.code),
+              );
+            }
             more = lines.moveNext();
           }
         });
@@ -289,7 +363,7 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
   static const _installBatchSize = 2000;
 
   /// On a code that is already stored, take the incoming copy's values (never
-  /// its `origin`) only when it is newer.
+  /// its `origin` or its `aisle`) only when it is newer.
   DoUpdate<$OpenFoodFactsProductsTable, OpenFoodFactsProductRow>
       _replaceWhenNewer() {
     return DoUpdate.withExcluded(
@@ -312,10 +386,23 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
 }
 
 /// The row for a mapped product, with [origin] `bundle` or `online`.
+///
+/// With `bundle`, `aisle` is [aisle]'s id (`NULL` when it is `null`). With
+/// `online`, [aisle] must be `null` and `aisle` is left absent, so an insert
+/// stores `NULL` and an update keeps the Aisle the row has: only the bundle
+/// install gives a product an Aisle.
 OpenFoodFactsProductsCompanion productCompanion(
   MappedOpenFoodFactsProduct product, {
   required String origin,
+  FoodAisle? aisle,
 }) {
+  if (origin == originOnline && aisle != null) {
+    throw ArgumentError.value(
+      aisle,
+      'aisle',
+      'an online row is never given an Aisle',
+    );
+  }
   return OpenFoodFactsProductsCompanion.insert(
     code: product.code,
     name: product.name,
@@ -328,6 +415,7 @@ OpenFoodFactsProductsCompanion productCompanion(
     modifiedAt: product.modifiedAt.millisecondsSinceEpoch ~/ 1000,
     scans: Value(product.scans),
     origin: origin,
+    aisle: origin == originBundle ? Value(aisle?.name) : const Value.absent(),
   );
 }
 

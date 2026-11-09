@@ -118,6 +118,7 @@ node scripts/prn-agent.mjs list-meal-history --query limit=10
 node scripts/prn-agent.mjs list-meal-types
 node scripts/prn-agent.mjs search-platform-foods --query search=chicken
 node scripts/prn-agent.mjs search-platform-foods --query source=openFoodFacts --query search=0894700010137
+node scripts/prn-agent.mjs search-platform-foods --query aisle=snacks
 node scripts/prn-agent.mjs nutrition-totals --query from=2026-06-01 --query to=2026-06-30
 node scripts/prn-agent.mjs list-nutrition-goals
 node scripts/prn-agent.mjs resolve-exercise --query name="Back Squat"
@@ -170,6 +171,20 @@ validator's per-item `warnings[]`. A `duplicate` retry must not be resubmitted w
 a new key. A `422` error with rule `idempotency_key_conflict` means the key was
 reused for different work, so keep the original key with the original payload and
 use a new key only for the new request.
+
+`search-platform-foods` takes an optional `aisle`: one Aisle, a
+consumer-facing group of Open Food Facts products. It implies
+`source=openFoodFacts` (the default when `aisle` is given; without it the
+default is `usda`), and `source=usda` with `aisle` fails with 422
+`agent_platform_search_invalid_request`, because USDA foods have no Aisle.
+Without `search` it lists the Aisle's foods, most scanned first. Each food
+carries its `aisle`, `null` when it has none and for USDA. The ids, with the
+labels the app shows: `dairyEggs` (Dairy & eggs), `breadBakery` (Bread &
+bakery), `breakfastCereals` (Breakfast cereals), `meatSeafood` (Meat &
+seafood), `fruitVeg` (Fruit & vegetables), `pantry` (Pantry), `saucesSpreads`
+(Sauces & spreads), `snacks` (Snacks), `sweetsDesserts` (Sweets & desserts),
+`drinks` (Drinks), `alcohol` (Alcohol), `readyMeals` (Ready meals),
+`proteinSupplements` (Protein & supplements), `babyFood` (Baby food).
 
 Before choosing a `mealType` for `log-meal`, read the user's Meal Types with
 `list-meal-types` and send one of their names: a Meal stores the name it was

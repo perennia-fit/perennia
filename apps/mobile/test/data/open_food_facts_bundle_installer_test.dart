@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_bundle_installer.dart';
+import 'package:perennia/domain/nutrition/open_food_facts.dart';
 
 import 'open_food_facts_fixtures.dart';
 
@@ -73,7 +74,14 @@ void main() {
     for (final asset in <BundleAssetSource>[
       FixtureBundleAsset(Uint8List.fromList(<int>[1, 2, 3])),
       FixtureBundleAsset(
-          bundleBytes([offProduct('1', 'Oats')], formatVersion: 2)),
+        bundleBytes(
+          [offProduct('1', 'Oats')],
+          formatVersion: bundleFormatVersion + 1,
+        ),
+      ),
+      FixtureBundleAsset(
+        bundleBytes([offProduct('1', 'Oats')], formatVersion: 1),
+      ),
       const ThrowingBundleAsset(),
     ]) {
       final installer = installerFor(asset);

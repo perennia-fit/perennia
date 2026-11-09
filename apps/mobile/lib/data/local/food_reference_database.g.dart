@@ -275,6 +275,11 @@ class $OpenFoodFactsProductsTable extends OpenFoodFactsProducts
   late final GeneratedColumn<String> origin = GeneratedColumn<String>(
       'origin', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _aisleMeta = const VerificationMeta('aisle');
+  @override
+  late final GeneratedColumn<String> aisle = GeneratedColumn<String>(
+      'aisle', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -288,7 +293,8 @@ class $OpenFoodFactsProductsTable extends OpenFoodFactsProducts
         nutrientsJson,
         modifiedAt,
         scans,
-        origin
+        origin,
+        aisle
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -370,6 +376,10 @@ class $OpenFoodFactsProductsTable extends OpenFoodFactsProducts
     } else if (isInserting) {
       context.missing(_originMeta);
     }
+    if (data.containsKey('aisle')) {
+      context.handle(
+          _aisleMeta, aisle.isAcceptableOrUnknown(data['aisle']!, _aisleMeta));
+    }
     return context;
   }
 
@@ -404,6 +414,8 @@ class $OpenFoodFactsProductsTable extends OpenFoodFactsProducts
           .read(DriftSqlType.int, data['${effectivePrefix}scans']),
       origin: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}origin'])!,
+      aisle: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}aisle']),
     );
   }
 
@@ -433,6 +445,12 @@ class OpenFoodFactsProductRow extends DataClass
   final int modifiedAt;
   final int? scans;
   final String origin;
+
+  /// The product's `FoodAisle` id, or `NULL` when it has none. Only the bundle
+  /// install writes it: an `online` row has an Aisle only while the current
+  /// bundle gives its code one. It is Perennia's label, not Open Food Facts
+  /// data, so the newer-copy rule never writes or clears it.
+  final String? aisle;
   const OpenFoodFactsProductRow(
       {required this.id,
       required this.code,
@@ -445,7 +463,8 @@ class OpenFoodFactsProductRow extends DataClass
       required this.nutrientsJson,
       required this.modifiedAt,
       this.scans,
-      required this.origin});
+      required this.origin,
+      this.aisle});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -471,6 +490,9 @@ class OpenFoodFactsProductRow extends DataClass
       map['scans'] = Variable<int>(scans);
     }
     map['origin'] = Variable<String>(origin);
+    if (!nullToAbsent || aisle != null) {
+      map['aisle'] = Variable<String>(aisle);
+    }
     return map;
   }
 
@@ -496,6 +518,8 @@ class OpenFoodFactsProductRow extends DataClass
       scans:
           scans == null && nullToAbsent ? const Value.absent() : Value(scans),
       origin: Value(origin),
+      aisle:
+          aisle == null && nullToAbsent ? const Value.absent() : Value(aisle),
     );
   }
 
@@ -515,6 +539,7 @@ class OpenFoodFactsProductRow extends DataClass
       modifiedAt: serializer.fromJson<int>(json['modifiedAt']),
       scans: serializer.fromJson<int?>(json['scans']),
       origin: serializer.fromJson<String>(json['origin']),
+      aisle: serializer.fromJson<String?>(json['aisle']),
     );
   }
   @override
@@ -533,6 +558,7 @@ class OpenFoodFactsProductRow extends DataClass
       'modifiedAt': serializer.toJson<int>(modifiedAt),
       'scans': serializer.toJson<int?>(scans),
       'origin': serializer.toJson<String>(origin),
+      'aisle': serializer.toJson<String?>(aisle),
     };
   }
 
@@ -548,7 +574,8 @@ class OpenFoodFactsProductRow extends DataClass
           String? nutrientsJson,
           int? modifiedAt,
           Value<int?> scans = const Value.absent(),
-          String? origin}) =>
+          String? origin,
+          Value<String?> aisle = const Value.absent()}) =>
       OpenFoodFactsProductRow(
         id: id ?? this.id,
         code: code ?? this.code,
@@ -563,6 +590,7 @@ class OpenFoodFactsProductRow extends DataClass
         modifiedAt: modifiedAt ?? this.modifiedAt,
         scans: scans.present ? scans.value : this.scans,
         origin: origin ?? this.origin,
+        aisle: aisle.present ? aisle.value : this.aisle,
       );
   OpenFoodFactsProductRow copyWithCompanion(
       OpenFoodFactsProductsCompanion data) {
@@ -586,6 +614,7 @@ class OpenFoodFactsProductRow extends DataClass
           data.modifiedAt.present ? data.modifiedAt.value : this.modifiedAt,
       scans: data.scans.present ? data.scans.value : this.scans,
       origin: data.origin.present ? data.origin.value : this.origin,
+      aisle: data.aisle.present ? data.aisle.value : this.aisle,
     );
   }
 
@@ -603,14 +632,27 @@ class OpenFoodFactsProductRow extends DataClass
           ..write('nutrientsJson: $nutrientsJson, ')
           ..write('modifiedAt: $modifiedAt, ')
           ..write('scans: $scans, ')
-          ..write('origin: $origin')
+          ..write('origin: $origin, ')
+          ..write('aisle: $aisle')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, code, name, brand, isLiquid, servingLabel,
-      servingSize, packageSize, nutrientsJson, modifiedAt, scans, origin);
+  int get hashCode => Object.hash(
+      id,
+      code,
+      name,
+      brand,
+      isLiquid,
+      servingLabel,
+      servingSize,
+      packageSize,
+      nutrientsJson,
+      modifiedAt,
+      scans,
+      origin,
+      aisle);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -626,7 +668,8 @@ class OpenFoodFactsProductRow extends DataClass
           other.nutrientsJson == this.nutrientsJson &&
           other.modifiedAt == this.modifiedAt &&
           other.scans == this.scans &&
-          other.origin == this.origin);
+          other.origin == this.origin &&
+          other.aisle == this.aisle);
 }
 
 class OpenFoodFactsProductsCompanion
@@ -643,6 +686,7 @@ class OpenFoodFactsProductsCompanion
   final Value<int> modifiedAt;
   final Value<int?> scans;
   final Value<String> origin;
+  final Value<String?> aisle;
   const OpenFoodFactsProductsCompanion({
     this.id = const Value.absent(),
     this.code = const Value.absent(),
@@ -656,6 +700,7 @@ class OpenFoodFactsProductsCompanion
     this.modifiedAt = const Value.absent(),
     this.scans = const Value.absent(),
     this.origin = const Value.absent(),
+    this.aisle = const Value.absent(),
   });
   OpenFoodFactsProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -670,6 +715,7 @@ class OpenFoodFactsProductsCompanion
     required int modifiedAt,
     this.scans = const Value.absent(),
     required String origin,
+    this.aisle = const Value.absent(),
   })  : code = Value(code),
         name = Value(name),
         isLiquid = Value(isLiquid),
@@ -689,6 +735,7 @@ class OpenFoodFactsProductsCompanion
     Expression<int>? modifiedAt,
     Expression<int>? scans,
     Expression<String>? origin,
+    Expression<String>? aisle,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -703,6 +750,7 @@ class OpenFoodFactsProductsCompanion
       if (modifiedAt != null) 'modified_at': modifiedAt,
       if (scans != null) 'scans': scans,
       if (origin != null) 'origin': origin,
+      if (aisle != null) 'aisle': aisle,
     });
   }
 
@@ -718,7 +766,8 @@ class OpenFoodFactsProductsCompanion
       Value<String>? nutrientsJson,
       Value<int>? modifiedAt,
       Value<int?>? scans,
-      Value<String>? origin}) {
+      Value<String>? origin,
+      Value<String?>? aisle}) {
     return OpenFoodFactsProductsCompanion(
       id: id ?? this.id,
       code: code ?? this.code,
@@ -732,6 +781,7 @@ class OpenFoodFactsProductsCompanion
       modifiedAt: modifiedAt ?? this.modifiedAt,
       scans: scans ?? this.scans,
       origin: origin ?? this.origin,
+      aisle: aisle ?? this.aisle,
     );
   }
 
@@ -774,6 +824,9 @@ class OpenFoodFactsProductsCompanion
     if (origin.present) {
       map['origin'] = Variable<String>(origin.value);
     }
+    if (aisle.present) {
+      map['aisle'] = Variable<String>(aisle.value);
+    }
     return map;
   }
 
@@ -791,7 +844,8 @@ class OpenFoodFactsProductsCompanion
           ..write('nutrientsJson: $nutrientsJson, ')
           ..write('modifiedAt: $modifiedAt, ')
           ..write('scans: $scans, ')
-          ..write('origin: $origin')
+          ..write('origin: $origin, ')
+          ..write('aisle: $aisle')
           ..write(')'))
         .toString();
   }
@@ -957,6 +1011,7 @@ typedef $$OpenFoodFactsProductsTableCreateCompanionBuilder
   required int modifiedAt,
   Value<int?> scans,
   required String origin,
+  Value<String?> aisle,
 });
 typedef $$OpenFoodFactsProductsTableUpdateCompanionBuilder
     = OpenFoodFactsProductsCompanion Function({
@@ -972,6 +1027,7 @@ typedef $$OpenFoodFactsProductsTableUpdateCompanionBuilder
   Value<int> modifiedAt,
   Value<int?> scans,
   Value<String> origin,
+  Value<String?> aisle,
 });
 
 class $$OpenFoodFactsProductsTableFilterComposer
@@ -1018,6 +1074,9 @@ class $$OpenFoodFactsProductsTableFilterComposer
 
   ColumnFilters<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get aisle => $composableBuilder(
+      column: $table.aisle, builder: (column) => ColumnFilters(column));
 }
 
 class $$OpenFoodFactsProductsTableOrderingComposer
@@ -1066,6 +1125,9 @@ class $$OpenFoodFactsProductsTableOrderingComposer
 
   ColumnOrderings<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get aisle => $composableBuilder(
+      column: $table.aisle, builder: (column) => ColumnOrderings(column));
 }
 
 class $$OpenFoodFactsProductsTableAnnotationComposer
@@ -1112,6 +1174,9 @@ class $$OpenFoodFactsProductsTableAnnotationComposer
 
   GeneratedColumn<String> get origin =>
       $composableBuilder(column: $table.origin, builder: (column) => column);
+
+  GeneratedColumn<String> get aisle =>
+      $composableBuilder(column: $table.aisle, builder: (column) => column);
 }
 
 class $$OpenFoodFactsProductsTableTableManager extends RootTableManager<
@@ -1157,6 +1222,7 @@ class $$OpenFoodFactsProductsTableTableManager extends RootTableManager<
             Value<int> modifiedAt = const Value.absent(),
             Value<int?> scans = const Value.absent(),
             Value<String> origin = const Value.absent(),
+            Value<String?> aisle = const Value.absent(),
           }) =>
               OpenFoodFactsProductsCompanion(
             id: id,
@@ -1171,6 +1237,7 @@ class $$OpenFoodFactsProductsTableTableManager extends RootTableManager<
             modifiedAt: modifiedAt,
             scans: scans,
             origin: origin,
+            aisle: aisle,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -1185,6 +1252,7 @@ class $$OpenFoodFactsProductsTableTableManager extends RootTableManager<
             required int modifiedAt,
             Value<int?> scans = const Value.absent(),
             required String origin,
+            Value<String?> aisle = const Value.absent(),
           }) =>
               OpenFoodFactsProductsCompanion.insert(
             id: id,
@@ -1199,6 +1267,7 @@ class $$OpenFoodFactsProductsTableTableManager extends RootTableManager<
             modifiedAt: modifiedAt,
             scans: scans,
             origin: origin,
+            aisle: aisle,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
