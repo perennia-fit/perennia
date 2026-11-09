@@ -1409,7 +1409,12 @@ Open Food Facts products; null when it has none, and always null for USDA."
     description sentence, the new `AgentPlatformFoodAisle` schema, the new
     response field, and the 422 response with its schema.
     `packages/contract/src/agent-client.ts` shows the new input field, the
-    response field and the 422 type.
+    response field and the new `AgentPlatformFoodAisle` type. It has no 422
+    type: the generated client declares only success and request types.
+    The response field is declared as a union of `AgentPlatformFoodAisle` and
+    `null` rather than with `.nullable()`, which would make the shared
+    `AgentPlatformFoodAisle` component itself nullable and replace its
+    description.
 *   The Dart API client (`apps/mobile/lib/api/perennia_api_client.dart`) does
     not cover the agent operations, and the generated command-map block in
     `agent-skills/perennia/references/api-operations.md` lists only command

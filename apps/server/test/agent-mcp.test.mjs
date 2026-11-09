@@ -554,7 +554,7 @@ test("agent MCP list-meal-types returns the same body as REST from the same stor
   }
 });
 
-test("agent MCP search-platform-foods returns the same Open Food Facts body as REST, including the unavailable error", async () => {
+test("agent MCP search-platform-foods returns the same Open Food Facts body as REST, including an Aisle, its 422 and the unavailable error", async () => {
   const app = createApp({
     logger: { info() {}, error() {} },
     agentApiKeyStore: createAgentKeyStore("user-1")
@@ -599,6 +599,39 @@ test("agent MCP search-platform-foods returns the same Open Food Facts body as R
     assertToolSucceeded(mcpByBarcode);
     assert.deepEqual(mcpByBarcode.structuredContent, await restByBarcode.json());
     assert.equal(mcpByBarcode.structuredContent.foods[0].id, code);
+
+    // An Aisle with no source lists it from Open Food Facts.
+    const restByAisle = await getAgent(
+      app,
+      "/agent/foods/platform-search?aisle=snacks&limit=10"
+    );
+    assert.equal(restByAisle.status, 200);
+    const restAisleBody = await restByAisle.json();
+    const mcpByAisle = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { aisle: "snacks", limit: 10 }
+    });
+    assertToolSucceeded(mcpByAisle);
+    assert.equal(restAisleBody.foods.length, 10);
+    assert.ok(restAisleBody.foods.every((food) => food.aisle === "snacks"));
+    assert.deepEqual(mcpByAisle.structuredContent, restAisleBody);
+
+    // An Aisle with source=usda is the same 422 body in both.
+    const restUsdaAisle = await getAgent(
+      app,
+      "/agent/foods/platform-search?aisle=snacks&source=usda"
+    );
+    assert.equal(restUsdaAisle.status, 422);
+    const mcpUsdaAisle = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { aisle: "snacks", source: "usda" }
+    });
+    assert.equal(mcpUsdaAisle.isError, true);
+    assert.deepEqual(mcpUsdaAisle.structuredContent, await restUsdaAisle.json());
+    assert.equal(
+      mcpUsdaAisle.structuredContent.code,
+      "agent_platform_search_invalid_request"
+    );
 
     setOpenFoodFactsBundleLoaderForTesting(() => {
       throw new OpenFoodFactsBundleUnavailableError(

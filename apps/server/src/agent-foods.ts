@@ -27,6 +27,8 @@ import {
   USDA_FOOD_SEED_METADATA
 } from "./data/usda-food-seed.generated.js";
 import {
+  FOOD_AISLE_LABELS,
+  FOOD_AISLES,
   getOpenFoodFactsBundle,
   OPEN_FOOD_FACTS_DISCLAIMER,
   openFoodFactsProductUrl,
@@ -241,6 +243,19 @@ const AgentPlatformFoodSourceSchema = z
   .enum(["usda", "openFoodFacts"])
   .openapi("AgentPlatformFoodSource");
 
+// An Aisle (CONTEXT.md): a consumer-facing group of bundled Open Food Facts
+// products, labelled when the bundle is built (docs/designs/food-aisles.md,
+// "Agent surface"). The ids and labels are the app's FoodAisle enum, in its
+// order, which a server test checks against the Dart source.
+export const AgentPlatformFoodAisleSchema = z.enum(FOOD_AISLES).openapi(
+  "AgentPlatformFoodAisle",
+  {
+    description: `Aisle ids: ${FOOD_AISLES.map(
+      (aisle) => `\`${aisle}\` (${FOOD_AISLE_LABELS[aisle]})`
+    ).join(", ")}.`
+  }
+);
+
 export const AgentPlatformFoodSchema = z
   .object({
     id: z.string().min(1).openapi({
@@ -264,6 +279,13 @@ export const AgentPlatformFoodSchema = z
     productUrl: z.string().min(1).nullable().openapi({
       description:
         "The product's Open Food Facts page, where its data can be checked and corrected; null for USDA."
+    }),
+    // A union rather than `.nullable()`: `.nullable()` on a named schema
+    // makes the shared AgentPlatformFoodAisle component itself nullable and
+    // replaces its description, which the `aisle` query parameter also uses.
+    aisle: z.union([AgentPlatformFoodAisleSchema, z.null()]).openapi({
+      description:
+        "The food's Aisle, a consumer-facing group of Open Food Facts products; null when it has none, and always null for USDA."
     })
   })
   .openapi("AgentPlatformFood");
@@ -287,12 +309,20 @@ export const AgentFoodPlatformSearchQuerySchema = z.object({
   search: z.string().trim().min(1).optional().openapi({
     param: { name: "search", in: "query" },
     description:
-      "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods."
+      "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit it to list the bundled USDA catalog (`source=usda`) or an Aisle's Open Food Facts foods (with `aisle`); with `source=openFoodFacts` and no `aisle`, omitting it returns no foods."
   }),
-  source: AgentPlatformFoodSourceSchema.default("usda").openapi({
+  // No schema default: the handler resolves a missing source from `aisle`
+  // (openFoodFacts with an Aisle, usda without), so a default here would
+  // turn every `aisle` request into the rejected usda case.
+  source: AgentPlatformFoodSourceSchema.optional().openapi({
     param: { name: "source", in: "query" },
     description:
-      "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts."
+      "Platform Food source: usda, the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). The default is openFoodFacts when `aisle` is given, and usda otherwise. Both are offline; the server never calls Open Food Facts."
+  }),
+  aisle: AgentPlatformFoodAisleSchema.optional().openapi({
+    param: { name: "aisle", in: "query" },
+    description:
+      "Only Open Food Facts foods in this Aisle, a consumer-facing group such as `snacks`. Implies `source=openFoodFacts`; `source=usda` with `aisle` is rejected with 422, because USDA foods have no Aisle. Without `search`, lists the Aisle's foods, most scanned first, up to `limit`."
   }),
   limit: z.coerce
     .number()
@@ -316,6 +346,13 @@ export const AgentFoodPlatformSearchResponseSchema = z
     })
   })
   .openapi("AgentFoodPlatformSearchResponse");
+
+export const AgentPlatformSearchInvalidRequestResponseSchema = z
+  .object({
+    code: z.literal("agent_platform_search_invalid_request"),
+    message: z.string().min(1)
+  })
+  .openapi("AgentPlatformSearchInvalidRequestResponse");
 
 export const AgentFoodsUnavailableResponseSchema = z
   .object({
@@ -368,7 +405,7 @@ export const agentFoodPlatformSearchRoute = createRoute({
   summary:
     "Search the bundled USDA and Open Food Facts Platform Food reference data.",
   description:
-    "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, the default, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
+    "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The default source is openFoodFacts when `aisle` is given, and usda otherwise. With `aisle`, results are limited to that Aisle, and omitting `search` lists the Aisle, most scanned first. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
   security: [{ bearerAuth: [] }],
   request: { query: AgentFoodPlatformSearchQuerySchema },
   responses: {
@@ -382,6 +419,15 @@ export const agentFoodPlatformSearchRoute = createRoute({
       description: "The request is missing a valid agent API key.",
       content: {
         "application/json": { schema: AgentUnauthorizedResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "`aisle` was given with `source=usda`; USDA foods have no Aisle.",
+      content: {
+        "application/json": {
+          schema: AgentPlatformSearchInvalidRequestResponseSchema
+        }
       }
     },
     429: RateLimitExceededOpenApiResponse,
@@ -1421,7 +1467,8 @@ function usdaPlatformFood(
     packageSize: food.packageSize,
     brand: null,
     sourceModifiedAt: null,
-    productUrl: null
+    productUrl: null,
+    aisle: null
   });
 }
 
@@ -1449,8 +1496,24 @@ function openFoodFactsPlatformFood(product: BundleProduct): AgentPlatformFood {
     packageSize: product.packageSize,
     brand: product.brand,
     sourceModifiedAt: new Date(product.modifiedAt * 1000).toISOString(),
-    productUrl: openFoodFactsProductUrl(product.code)
+    productUrl: openFoodFactsProductUrl(product.code),
+    aisle: product.aisle
   });
+}
+
+const AGENT_PLATFORM_SEARCH_USDA_AISLE_MESSAGE =
+  "USDA foods have no Aisle; omit source or use source=openFoodFacts with aisle.";
+
+/**
+ * Thrown by searchAgentPlatformFoods for a request it cannot answer: `aisle`
+ * with `source=usda`. The REST route answers 422 and the MCP tool an error
+ * result, both `agent_platform_search_invalid_request` with this message.
+ */
+export class AgentPlatformSearchInvalidRequestError extends Error {
+  constructor(message: string = AGENT_PLATFORM_SEARCH_USDA_AISLE_MESSAGE) {
+    super(message);
+    this.name = "AgentPlatformSearchInvalidRequestError";
+  }
 }
 
 /**
@@ -1459,20 +1522,37 @@ function openFoodFactsPlatformFood(product: BundleProduct): AgentPlatformFood {
  * OpenFoodFactsBundleUnavailableError when `source` is `openFoodFacts` and
  * the bundle cannot be read; the REST route and the MCP tool answer 503
  * `agent_foods_unavailable`.
+ *
+ * `source` resolves as the given value, else openFoodFacts when `aisle` is
+ * given, else usda. `aisle` with usda throws
+ * AgentPlatformSearchInvalidRequestError (422
+ * `agent_platform_search_invalid_request`), because USDA foods have no
+ * Aisle. With an Aisle, searchBundle filters before `limit` applies: no
+ * search lists the Aisle most scanned first; a search keeps the Aisle's name
+ * matches and every barcode match (docs/designs/food-aisles.md, "Agent
+ * surface").
  */
 export function searchAgentPlatformFoods({
   search,
-  source = "usda",
-  limit
+  source,
+  limit,
+  aisle
 }: {
   search?: string;
   source?: AgentFoodPlatformSearchQuery["source"];
   limit: number;
+  aisle?: AgentFoodPlatformSearchQuery["aisle"];
 }): AgentFoodPlatformSearchResponse {
-  if (source === "openFoodFacts") {
+  const resolvedSource = source ?? (aisle === undefined ? "usda" : "openFoodFacts");
+  if (aisle !== undefined && resolvedSource === "usda") {
+    throw new AgentPlatformSearchInvalidRequestError();
+  }
+  if (resolvedSource === "openFoodFacts") {
     const bundle = getOpenFoodFactsBundle();
     return AgentFoodPlatformSearchResponseSchema.parse({
-      foods: searchBundle(bundle, search, limit).map(openFoodFactsPlatformFood),
+      foods: searchBundle(bundle, search, limit, aisle).map(
+        openFoodFactsPlatformFood
+      ),
       limit,
       attribution: {
         source: "openFoodFacts",

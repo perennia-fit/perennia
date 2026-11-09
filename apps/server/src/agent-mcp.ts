@@ -88,6 +88,8 @@ import {
   AgentFoodPlatformSearchQuerySchema,
   AgentFoodPlatformSearchResponseSchema,
   AgentFoodsUnavailableResponseSchema,
+  AgentPlatformSearchInvalidRequestError,
+  AgentPlatformSearchInvalidRequestResponseSchema,
   nutrientValidationLimitsForFoods,
   parseAgentFoodListQuery,
   prepareAgentFoodBatchWrite,
@@ -1892,7 +1894,7 @@ export function createAgentMcpServer({
     {
       title: "Search Agent Platform Foods",
       description:
-        "Search the bundled USDA and Open Food Facts Platform Food reference data through the same path as REST — the SAME offline data the app ships, so an agent and the app resolve identical records. source=usda (the default) is the CC0 USDA catalog; source=openFoodFacts searches the Open Food Facts bundle by name or barcode. The server never calls Open Food Facts. Show the returned attribution, and its disclaimer when present, with the results.",
+        "Search the bundled USDA and Open Food Facts Platform Food reference data through the same path as REST — the SAME offline data the app ships, so an agent and the app resolve identical records. source=usda is the CC0 USDA catalog and the default without aisle; source=openFoodFacts searches the Open Food Facts bundle by name or barcode. The default source is openFoodFacts when `aisle` is given, and usda otherwise. With `aisle`, results are limited to that Aisle, and omitting `search` lists the Aisle, most scanned first. The server never calls Open Food Facts. Show the returned attribution, and its disclaimer when present, with the results.",
       inputSchema: AgentMcpFoodPlatformSearchInputSchema,
       outputSchema: AgentFoodPlatformSearchResponseSchema
     },
@@ -1914,9 +1916,18 @@ export function createAgentMcpServer({
         result = searchAgentPlatformFoods({
           search: query.search,
           source: query.source,
-          limit: query.limit
+          limit: query.limit,
+          aisle: query.aisle
         });
       } catch (error) {
+        if (error instanceof AgentPlatformSearchInvalidRequestError) {
+          return errorResult(
+            AgentPlatformSearchInvalidRequestResponseSchema.parse({
+              code: "agent_platform_search_invalid_request",
+              message: error.message
+            })
+          );
+        }
         if (error instanceof OpenFoodFactsBundleUnavailableError) {
           logger.error?.(
             { error, cause: error.cause },

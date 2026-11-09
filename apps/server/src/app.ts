@@ -83,6 +83,8 @@ import {
   AgentFoodListResponseSchema,
   AgentFoodPlatformSearchResponseSchema,
   AgentFoodsUnavailableResponseSchema,
+  AgentPlatformSearchInvalidRequestError,
+  AgentPlatformSearchInvalidRequestResponseSchema,
   nutrientValidationLimitsForFoods,
   parseAgentFoodListQuery,
   prepareAgentFoodBatchWrite,
@@ -2763,9 +2765,19 @@ export function createApp(options: CreateAppOptions = {}) {
       result = searchAgentPlatformFoods({
         search: query.search,
         source: query.source,
-        limit: query.limit
+        limit: query.limit,
+        aisle: query.aisle
       });
     } catch (error) {
+      if (error instanceof AgentPlatformSearchInvalidRequestError) {
+        return context.json(
+          AgentPlatformSearchInvalidRequestResponseSchema.parse({
+            code: "agent_platform_search_invalid_request",
+            message: error.message
+          }),
+          422
+        );
+      }
       if (error instanceof OpenFoodFactsBundleUnavailableError) {
         logger.error?.(
           { error, cause: error.cause },
