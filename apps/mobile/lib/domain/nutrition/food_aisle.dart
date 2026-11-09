@@ -1,7 +1,7 @@
 /// A food's supermarket Aisle: the browsing group the add-food picker shows
 /// for a bundled Open Food Facts product. The id is the enum value's `name`,
-/// and the same id is written in the bundle, the labels file and the reference
-/// set, and used on the agent surface.
+/// and the same id is written in the bundle and the Aisle data files, and used
+/// on the agent surface.
 ///
 /// The order is the order the picker shows. The enum stays in the
 /// one-value-per-line `id('Label'),` form because a server test reads it with

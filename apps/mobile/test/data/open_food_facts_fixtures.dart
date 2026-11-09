@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_bundle_installer.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 
@@ -60,9 +61,16 @@ BundleHeader bundleHeader({
 }
 
 /// The product lines for [products], sorted by code as the builder writes them.
-List<String> bundleLines(List<MappedOpenFoodFactsProduct> products) {
+/// [aisles] gives a product's Aisle by code; an absent code has none.
+List<String> bundleLines(
+  List<MappedOpenFoodFactsProduct> products, {
+  Map<String, FoodAisle> aisles = const {},
+}) {
   final sorted = [...products]..sort((a, b) => a.code.compareTo(b.code));
-  return [for (final product in sorted) encodeBundleProductLine(product)];
+  return [
+    for (final product in sorted)
+      encodeBundleProductLine(product, aisle: aisles[product.code]),
+  ];
 }
 
 /// A gzip bundle file's bytes.
@@ -70,8 +78,9 @@ Uint8List bundleBytes(
   List<MappedOpenFoodFactsProduct> products, {
   String contentHash = 'hash-1',
   int formatVersion = bundleFormatVersion,
+  Map<String, FoodAisle> aisles = const {},
 }) {
-  final lines = bundleLines(products);
+  final lines = bundleLines(products, aisles: aisles);
   final header = bundleHeader(
     contentHash: contentHash,
     productCount: lines.length,

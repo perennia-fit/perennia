@@ -7,6 +7,8 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import test from "node:test";
 
 import {
+  FOOD_AISLE_LABELS,
+  FOOD_AISLES,
   getOpenFoodFactsBundle,
   loadOpenFoodFactsBundle,
   normalizedWords,
@@ -18,7 +20,8 @@ import {
 } from "../src/open-food-facts-bundle.ts";
 
 // The committed bundle the app ships and the server reads
-// (docs/designs/open-food-facts.md, "The bundle file").
+// (docs/designs/open-food-facts.md, "The bundle file", and
+// docs/designs/food-aisles.md, "The bundle file, format version 2").
 const bundleUrl = new URL(
   "../../mobile/assets/seeds/open_food_facts_bundle.ndjson.gz",
   import.meta.url
@@ -27,6 +30,11 @@ const bundleUrl = new URL(
 // (apps/mobile/test/data/open_food_facts_bundle_asset_test.dart).
 const dartModuleUrl = new URL(
   "../../mobile/lib/domain/nutrition/open_food_facts.dart",
+  import.meta.url
+);
+// The app's FoodAisle enum, which the server's FOOD_AISLES copies.
+const dartAisleUrl = new URL(
+  "../../mobile/lib/domain/nutrition/food_aisle.dart",
   import.meta.url
 );
 
@@ -55,6 +63,37 @@ test("the header's format and format version are the ones the app's asset test c
   const header = JSON.parse(rawBundleLines()[0]);
   assert.equal(header.format, dartFormat);
   assert.equal(header.formatVersion, Number(dartFormatVersion));
+  assert.equal(header.formatVersion, 2);
+});
+
+test("FOOD_AISLES and FOOD_AISLE_LABELS match the app's FoodAisle enum, in order", () => {
+  const dart = readFileSync(dartAisleUrl, "utf8");
+  const start = dart.indexOf("enum FoodAisle {");
+  assert.notEqual(start, -1, "food_aisle.dart has no FoodAisle enum");
+  const body = dart.slice(start + "enum FoodAisle {".length, dart.indexOf(";", start));
+  const dartAisles = [...body.matchAll(/(\w+)\('([^']+)'\)/g)].map(([, id, label]) => [
+    id,
+    label
+  ]);
+
+  assert.equal(dartAisles.length, 14);
+  assert.deepEqual(
+    dartAisles.map(([id]) => id),
+    [...FOOD_AISLES]
+  );
+  assert.deepEqual(Object.entries(FOOD_AISLE_LABELS), dartAisles);
+});
+
+test("the committed bundle gives every Aisle at least one product", () => {
+  const bundle = loadOpenFoodFactsBundle(bundleUrl);
+  const counts = new Map();
+  for (const found of bundle.products) {
+    counts.set(found.aisle, (counts.get(found.aisle) ?? 0) + 1);
+  }
+  assert.deepEqual(
+    FOOD_AISLES.filter((aisle) => !counts.has(aisle)),
+    []
+  );
 });
 
 test("a sample of bundled barcodes returns the record in that barcode's line", () => {
@@ -76,6 +115,8 @@ test("a sample of bundled barcodes returns the record in that barcode's line", (
     assert.deepEqual(found.nutrients, line.nutrients);
     assert.equal(found.modifiedAt, line.modifiedAt);
     assert.equal(found.scans, line.scans);
+    assert.ok(Object.hasOwn(line, "aisle"), `line ${line.code} has no aisle`);
+    assert.equal(found.aisle, line.aisle);
     checked += 1;
   }
   assert.ok(checked >= 25);
@@ -177,6 +218,99 @@ test("no query, or one with no parts and no barcode candidates, finds nothing", 
   assert.deepEqual(searchBundle(bundle, undefined, 10), []);
   assert.deepEqual(searchBundle(bundle, "", 10), []);
   assert.deepEqual(searchBundle(bundle, "!!! ---", 10), []);
+});
+
+test("with an Aisle and no query, lists the Aisle by scans descending, then code", () => {
+  const bundle = fixtureBundle([
+    product({ code: "9000003", name: "Crisps", scans: 5, aisle: "snacks" }),
+    product({ code: "9000001", name: "Pretzels", scans: 50, aisle: "snacks" }),
+    product({ code: "9000002", name: "Popcorn", scans: 50, aisle: "snacks" }),
+    product({ code: "9000004", name: "Cola", scans: 900, aisle: "drinks" }),
+    product({ code: "9000005", name: "Mystery", scans: 1000, aisle: null })
+  ]);
+
+  assert.deepEqual(codes(searchBundle(bundle, undefined, 10, "snacks")), [
+    "9000001",
+    "9000002",
+    "9000003"
+  ]);
+  assert.deepEqual(codes(searchBundle(bundle, undefined, 2, "snacks")), [
+    "9000001",
+    "9000002"
+  ]);
+  assert.deepEqual(codes(searchBundle(bundle, undefined, 10, "babyFood")), []);
+  // Without an Aisle, no query still finds nothing.
+  assert.deepEqual(searchBundle(bundle, undefined, 10), []);
+});
+
+test("with an Aisle and a query, name matches are the Aisle's and barcode matches are kept", () => {
+  const bundle = fixtureBundle([
+    product({ code: "9100001", name: "Greek Yogurt", scans: 10, aisle: "dairyEggs" }),
+    product({ code: "9100002", name: "Greek Yogurt Bar", scans: 900, aisle: "snacks" }),
+    product({ code: "9100003", name: "Greek Yogurt Plain", scans: 5, aisle: "dairyEggs" }),
+    product({ code: "0012345678905", name: "Cola", scans: 1, aisle: "drinks" })
+  ]);
+
+  assert.deepEqual(codes(searchBundle(bundle, "greek yo", 10, "dairyEggs")), [
+    "9100001",
+    "9100003"
+  ]);
+  assert.deepEqual(codes(searchBundle(bundle, "greek yo", 10)), [
+    "9100002",
+    "9100001",
+    "9100003"
+  ]);
+  // A typed barcode finds its product, even in another Aisle.
+  assert.deepEqual(codes(searchBundle(bundle, "0012345678905", 10, "dairyEggs")), [
+    "0012345678905"
+  ]);
+  // The limit applies after the filter.
+  assert.deepEqual(codes(searchBundle(bundle, "greek", 1, "dairyEggs")), ["9100001"]);
+});
+
+test("a product line's aisle is parsed, and a missing or unknown aisle is rejected", () => {
+  const bundle = fixtureBundle([
+    product({ code: "9200001", name: "Milk", aisle: "dairyEggs" }),
+    product({ code: "9200002", name: "Mystery", aisle: null })
+  ]);
+  assert.equal(bundle.byCode.get("9200001").aisle, "dairyEggs");
+  assert.equal(bundle.byCode.get("9200002").aisle, null);
+
+  const directory = mkdtempSync(path.join(tmpdir(), "off-bundle-"));
+  try {
+    const { aisle: _omitted, ...withoutAisle } = product({ code: "9200003", name: "Milk" });
+    const missing = writeBundle(directory, "missing-aisle.gz", [withoutAisle]);
+    assert.throws(
+      () => loadOpenFoodFactsBundle(missing),
+      (error) =>
+        error instanceof OpenFoodFactsBundleUnavailableError &&
+        /invalid aisle/.test(error.cause.message)
+    );
+
+    for (const aisle of ["frozen", "", "DairyEggs", 3, false]) {
+      const unknown = writeBundle(directory, "unknown-aisle.gz", [
+        product({ code: "9200004", name: "Milk", aisle })
+      ]);
+      assert.throws(
+        () => loadOpenFoodFactsBundle(unknown),
+        (error) =>
+          error instanceof OpenFoodFactsBundleUnavailableError &&
+          /invalid aisle/.test(error.cause.message),
+        `aisle ${JSON.stringify(aisle)}`
+      );
+    }
+
+    // A format version 1 file, whose lines have no aisle, is not read.
+    const versionOne = writeBundle(directory, "version-one.gz", [], { formatVersion: 1 });
+    assert.throws(
+      () => loadOpenFoodFactsBundle(versionOne),
+      (error) =>
+        error instanceof OpenFoodFactsBundleUnavailableError &&
+        /format version/.test(error.cause.message)
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("an unreadable or unknown bundle file throws OpenFoodFactsBundleUnavailableError", () => {
@@ -295,7 +429,8 @@ function product({
   brand = null,
   scans = 1,
   nutrients = { energy: "100", protein: "1", carbohydrate: "2", fat: "3" },
-  modifiedAt = 1745020800
+  modifiedAt = 1745020800,
+  aisle = null
 }) {
   return {
     code,
@@ -307,7 +442,8 @@ function product({
     packageSize: null,
     nutrients,
     modifiedAt,
-    scans
+    scans,
+    aisle
   };
 }
 

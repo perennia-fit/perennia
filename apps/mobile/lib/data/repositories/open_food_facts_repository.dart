@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../domain/nutrition/food_aisle.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/open_food_facts.dart';
 import '../../features/settings/services/client_crash_reporting.dart';
@@ -31,7 +32,8 @@ enum BarcodeLookupOutcome {
 /// cache (one row per barcode, in [FoodReferenceDatabase]), plus live lookups
 /// the user starts. Live requests go out only when `allowOnline` is true.
 ///
-/// See docs/designs/open-food-facts.md, "Technical Plan".
+/// See docs/designs/open-food-facts.md, "Technical Plan", and
+/// docs/designs/food-aisles.md, "On the device".
 abstract interface class OpenFoodFactsRepository {
   Future<void> ensureBundleInstalled();
 
@@ -40,8 +42,20 @@ abstract interface class OpenFoodFactsRepository {
   Future<BundleHeader?> bundleHeader();
 
   /// Barcode-candidate matches first, then the FTS5 search, without
-  /// duplicates.
-  Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50});
+  /// duplicates. With [aisle], the name matches are only that Aisle's. Barcode
+  /// matches are kept whatever their Aisle: the user typed an exact code.
+  Future<List<PlatformFoodRecord>> searchLocal(
+    String query, {
+    int limit = 50,
+    FoodAisle? aisle,
+  });
+
+  /// An Aisle's products, most scanned first. Empty when the database cannot
+  /// be opened.
+  Future<List<PlatformFoodRecord>> productsInAisle(
+    FoodAisle aisle, {
+    required int limit,
+  });
 
   /// The stored products with these codes, in any order; a code with no
   /// stored product is absent. Sends nothing.
@@ -168,22 +182,37 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
   Future<List<PlatformFoodRecord>> searchLocal(
     String query, {
     int limit = 50,
+    FoodAisle? aisle,
   }) async {
     final opened = await _open();
     if (opened == null || limit <= 0) {
       return const <PlatformFoodRecord>[];
     }
     final database = opened.database;
+    // Barcode matches are not filtered by Aisle; only the name search is.
     final byCode = await database.productsByCodes(barcodeCandidates(query));
     final match = buildFoodSearchMatch(query);
     final matched = match == null
         ? const <OpenFoodFactsProductRow>[]
-        : await database.searchProducts(match, limit);
+        : await database.searchProducts(match, limit, aisle: aisle?.name);
     final seen = <String>{};
     return [
       for (final row in [...byCode, ...matched])
         if (seen.add(row.code)) toPlatformFoodRecord(productFromRow(row)),
     ].take(limit).toList();
+  }
+
+  @override
+  Future<List<PlatformFoodRecord>> productsInAisle(
+    FoodAisle aisle, {
+    required int limit,
+  }) async {
+    final opened = await _open();
+    if (opened == null || limit <= 0) {
+      return const <PlatformFoodRecord>[];
+    }
+    final rows = await opened.database.productsInAisle(aisle.name, limit);
+    return [for (final row in rows) toPlatformFoodRecord(productFromRow(row))];
   }
 
   @override
@@ -355,6 +384,14 @@ class StubOpenFoodFactsRepository implements OpenFoodFactsRepository {
   Future<List<PlatformFoodRecord>> searchLocal(
     String query, {
     int limit = 50,
+    FoodAisle? aisle,
+  }) async =>
+      const <PlatformFoodRecord>[];
+
+  @override
+  Future<List<PlatformFoodRecord>> productsInAisle(
+    FoodAisle aisle, {
+    required int limit,
   }) async =>
       const <PlatformFoodRecord>[];
 

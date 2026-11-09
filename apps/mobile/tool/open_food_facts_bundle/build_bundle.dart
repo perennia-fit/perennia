@@ -80,7 +80,11 @@ const _attributionText =
     'that builds it are in the Perennia repository: '
     'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz, '
     'apps/mobile/assets/seeds/open_food_facts_bundle.LICENSE.md and '
-    'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart.';
+    'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart. Each '
+    "product's Aisle is decided from "
+    'apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson, '
+    'aisle_second_opinions.ndjson and aisle_overrides.csv, made with '
+    'label_aisles.dart, in the same directory.';
 
 const _usage = '''
 Usage:
@@ -212,13 +216,18 @@ Future<void> main(List<String> args) async {
     overrides: overrides,
   );
 
-  // Step 5: header, product lines, gzip. The lines are still format version 1;
-  // the resolved Aisle goes into them with format version 2.
+  // Step 5: header, product lines, gzip. Each line carries the product's
+  // resolved Aisle (format version 2).
+  final aisleByCode = {
+    for (final product in aisleBundle) product.code: product.aisle,
+  };
   final productBytes = BytesBuilder(copy: false);
   for (final candidate in products) {
-    productBytes.add(
-      utf8.encode('${encodeBundleProductLine(candidate.product)}\n'),
+    final line = encodeBundleProductLine(
+      candidate.product,
+      aisle: aisleByCode[candidate.product.code],
     );
+    productBytes.add(utf8.encode('$line\n'));
   }
   final productLines = productBytes.takeBytes();
   final hash = await Sha256().hash(productLines);
@@ -476,7 +485,7 @@ MappedOpenFoodFactsProduct _decodeProductLine(String line) {
   final withAisle = json.containsKey('aisle')
       ? json
       : <String, Object?>{...json, 'aisle': null};
-  return decodeBundleProductLine(jsonEncode(withAisle));
+  return decodeBundleProductLine(jsonEncode(withAisle)).product;
 }
 
 /// [decode] for one line of the bundle, as a [FormatException] naming the

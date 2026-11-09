@@ -4,6 +4,7 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/usda_food_seed.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 
 void main() {
@@ -861,6 +862,7 @@ class _RecordingOpenFoodFactsRepository extends StubOpenFoodFactsRepository {
   Future<List<PlatformFoodRecord>> searchLocal(
     String query, {
     int limit = 50,
+    FoodAisle? aisle,
   }) async {
     localQueries.add(query);
     if (failLocal) {
