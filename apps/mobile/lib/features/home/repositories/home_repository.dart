@@ -63,7 +63,10 @@ abstract interface class HomeRepository {
     required DateTime endedAt,
   });
 
-  Future<void> finishWorkout(String workoutId);
+  /// Ends [workoutId] now and cancels its running rest, if it has one.
+  /// Returns the id of the rest it cancelled, so the caller can cancel that
+  /// rest's background notifications too; null when no rest was running.
+  Future<String?> finishWorkout(String workoutId);
 
   Future<void> resumeWorkout(String workoutId);
 
@@ -165,7 +168,7 @@ class StubHomeRepository implements HomeRepository {
   }) async {}
 
   @override
-  Future<void> finishWorkout(String workoutId) async {}
+  Future<String?> finishWorkout(String workoutId) async => null;
 
   @override
   Future<void> resumeWorkout(String workoutId) async {}
@@ -322,12 +325,26 @@ class RepositoryHomeRepository implements HomeRepository {
     );
   }
 
+  /// Finish also cancels the Workout's running rest. A rest left running
+  /// after Finish keeps its row live and its background schedule queued, so
+  /// its notification fires after the user has left the Workout (and often
+  /// the app). An expired or cancelled rest is left as it is: its schedule
+  /// has already fired or been cancelled.
   @override
-  Future<void> finishWorkout(String workoutId) {
-    return _repositories.workoutSessions.updateEndedAt(
-      workoutId,
-      endedAt: _now().toUtc(),
-    );
+  Future<String?> finishWorkout(String workoutId) {
+    return _repositories.database.transaction(() async {
+      await _repositories.workoutSessions.updateEndedAt(
+        workoutId,
+        endedAt: _now().toUtc(),
+      );
+      final rest =
+          await _repositories.restTimers.getCurrentForWorkout(workoutId);
+      if (rest == null || rest.status != RestTimerStatus.running) {
+        return null;
+      }
+      await _repositories.restTimers.cancel(rest.id);
+      return rest.id;
+    });
   }
 
   @override

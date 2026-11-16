@@ -773,6 +773,10 @@ the Workout screen when the sheet closes, however it closes, which returns to
 the screen that opened the Workout. It pops only while the Workout screen is
 the current route, so it can never pop the screen under it.
 
+Writing the finish also cancels the Workout's running rest and its scheduled
+background notifications, the same pair of calls as the rest strip's Stop, so
+no rest notification fires after the user has left.
+
 *   **Layout.** The sheet is `isScrollControlled: true` with a maximum height
     of 90% of the screen and `showDragHandle: true`. Its body is a
     `SingleChildScrollView` inside a `SafeArea`, so at 2× text it scrolls

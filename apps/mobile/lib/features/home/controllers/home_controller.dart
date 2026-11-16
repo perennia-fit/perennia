@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/training/training_day.dart';
 import '../../nutrition/controllers/nutrition_day_controller.dart';
+import '../../training/services/timer_background_scheduler.dart';
 import '../repositories/home_repository.dart';
 
 enum HomeDomain {
@@ -218,8 +221,38 @@ class HomeController extends StreamNotifier<HomeState> {
         );
   }
 
-  Future<void> finishWorkout(String workoutId) {
-    return ref.read(homeRepositoryProvider).finishWorkout(workoutId);
+  /// Finishes the Workout, which also cancels its running rest, then cancels
+  /// that rest's background schedule: a rest left scheduled after Finish
+  /// fires a notification after the user has left. Same order as the rest
+  /// strip's Stop: the row first, then the schedule.
+  ///
+  /// The schedule cancel is a platform-channel call, so it is not awaited and
+  /// its errors are dropped: Finish is a local write and never waits on, or
+  /// fails because of, the notification plugin.
+  Future<void> finishWorkout(String workoutId) async {
+    final cancelledRestId =
+        await ref.read(homeRepositoryProvider).finishWorkout(workoutId);
+    if (cancelledRestId == null) {
+      return;
+    }
+    unawaited(
+      _cancelRestSchedule(
+        ref.read(timerBackgroundSchedulerProvider),
+        cancelledRestId,
+      ),
+    );
+  }
+
+  static Future<void> _cancelRestSchedule(
+    TimerBackgroundScheduler scheduler,
+    String timerId,
+  ) async {
+    try {
+      await scheduler.cancel(timerId);
+    } on Object {
+      // The row is already cancelled; a schedule that outlives it only
+      // costs one stray notification, never the Finish.
+    }
   }
 
   Future<void> resumeWorkout(String workoutId) {
