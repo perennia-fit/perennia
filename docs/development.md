@@ -8,7 +8,7 @@ access to, and no device lab.
 
 | Tool | Version | Needed for |
 |---|---|---|
-| Flutter (stable) | Dart SDK ≥ 3.6 | The app |
+| Flutter (stable) | Dart SDK ≥ 3.6; CI pins the version in `FLUTTER_VERSION` in `.github/workflows/ci.yml` | The app |
 | Node | see [`.node-version`](../.node-version) | Server, contract, tooling |
 | pnpm | 9.15.4 (via `corepack enable`) | JS workspace |
 | Docker | any recent | Postgres for the server tests only |
