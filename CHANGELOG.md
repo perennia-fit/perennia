@@ -31,6 +31,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- Deleting a Workout cancels its running rest timer's notifications, as
+  finishing one now does. Before, the rest's notification still fired after
+  the Workout was gone.
 - **Sync no longer stops a week after sign-in.** The server renews a device's
   session when it syncs, as it already did for the website, so a device that
   syncs at least once a week stays signed in. Before, every device's session
