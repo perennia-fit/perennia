@@ -37,9 +37,6 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   expired 7 days after sign-in however often it synced, and sync stopped with
   "Sign in required" until the user signed in again. Devices already showing
   that need one more sign-in.
-
-### Fixed
-
 - **An expired sign-in no longer looks signed in.** When the server stops
   accepting this phone's session, the Account screen says the sign-in expired
   instead of "Signed in as", the Account & app button shows a small dot, and
