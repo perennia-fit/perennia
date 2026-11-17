@@ -5098,16 +5098,16 @@ void main() {
         // database answered in real time, so the expected value is bounded
         // by those two moments, not by a fixed slack: a slack let a run whose
         // frames straddled a whole second fail.
-        final shownAtLatest = ceilToSeconds(
+        final maxShownSeconds = ceilToSeconds(
           resumed.deadlineAt.difference(reopenedAt),
         ).inSeconds;
-        final shownAtEarliest = ceilToSeconds(
+        final minShownSeconds = ceilToSeconds(
           resumed.deadlineAt.difference(clock.now().toUtc()),
         ).inSeconds;
-        expect(shownAtLatest, lessThanOrEqualTo(60));
+        expect(maxShownSeconds, lessThanOrEqualTo(60));
         expect(
           _restStripSeconds(tester),
-          inInclusiveRange(shownAtEarliest, shownAtLatest),
+          inInclusiveRange(minShownSeconds, maxShownSeconds),
         );
       } finally {
         await _disposeWidgetTree(tester);

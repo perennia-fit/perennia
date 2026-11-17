@@ -369,7 +369,7 @@ class RepositoryHomeRepository implements HomeRepository {
     final rest = await _repositories.restTimers.getCurrentForWorkout(workoutId);
     if (rest == null ||
         rest.status != RestTimerStatus.running ||
-        rest.remainingAt(now) <= Duration.zero) {
+        rest.isExpiredAt(now)) {
       return null;
     }
     return rest;
