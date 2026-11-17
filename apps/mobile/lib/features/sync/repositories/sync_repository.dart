@@ -5240,10 +5240,16 @@ class SyncPullResult {
   final String serverClock;
   final bool fullResyncRequired;
 
-  /// True when the remote pull window was full and another request is needed
-  /// to prove the replica is caught up. This is deliberately independent of
-  /// [appliedCount]: LWW losers and already-current rows still consume space
-  /// in the server page.
+  /// True when the page may not be the last one, so another request is needed
+  /// to prove the replica is caught up. It is set when the page held at least
+  /// `limit` entries, counting malformed ones. The server pads a page with the
+  /// parents its rows reference past `limit`, and the reply does not say how
+  /// many rows were padding, so a last page that parents filled also reports
+  /// true: the follow-up pull then comes back empty with the same cursor.
+  /// A false value is certain; a true value is not proof that rows remain, so
+  /// callers must accept an empty follow-up page whose cursor did not move.
+  /// This is deliberately independent of [appliedCount]: LWW losers and
+  /// already-current rows still consume space in the server page.
   final bool hasMore;
 
   /// True when this pull applied at least one account-level Settings

@@ -352,8 +352,12 @@ final class _PagedPullSyncRepository implements SyncCycleRepository {
     required String deviceId,
     int limit = 100,
     bool manageStatus = true,
-  }) async =>
-      pages[pullCalls++];
+  }) async {
+    if (pullCalls >= pages.length) {
+      fail('unexpected pull #${pullCalls + 1}: only ${pages.length} pages');
+    }
+    return pages[pullCalls++];
+  }
 
   @override
   Future<SyncPushResult> pushPendingIntegrationDataClassConsents({
