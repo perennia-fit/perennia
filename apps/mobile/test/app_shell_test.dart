@@ -2989,7 +2989,7 @@ abstract class _HomeRepositoryTestDefaults implements HomeRepository {
   Future<void> resumeWorkout(String workoutId) async {}
 
   @override
-  Future<void> deleteWorkout(String workoutId) async {}
+  Future<String?> deleteWorkout(String workoutId) async => null;
 
   @override
   Future<void> removeExerciseFromWorkout({
