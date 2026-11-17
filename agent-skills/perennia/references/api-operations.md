@@ -27,6 +27,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | Command | Method | Path |
 |---|---:|---|
 | `capture-workout-template` | POST | `/agent/workout-templates/capture` |
+| `delete-protocols` | POST | `/agent/protocols/delete` |
 | `effect-window` | GET | `/agent/protocols/effect-window` |
 | `energy-balance` | GET | `/agent/cross-domain/energy-balance` |
 | `exercise-analytics` | GET | `/agent/analytics/exercises/{exerciseId}` |
@@ -37,13 +38,20 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-compounds` | GET | `/agent/protocols/compounds` |
 | `list-doses` | GET | `/agent/protocols/doses` |
 | `list-exercises` | GET | `/agent/exercises` |
+| `list-focuses` | GET | `/agent/focuses` |
+| `list-food-history` | GET | `/agent/foods/history` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
+| `list-meal-history` | GET | `/agent/meals/history` |
+| `list-meal-types` | GET | `/agent/meal-types` |
 | `list-meals` | GET | `/agent/meals` |
 | `list-metric-readings` | GET | `/agent/metrics/readings` |
 | `list-metrics` | GET | `/agent/metrics` |
 | `list-nutrition-goals` | GET | `/agent/nutrition/goals` |
+| `list-protocol-day-statuses` | GET | `/agent/protocols/day-statuses` |
+| `list-protocol-planned-days` | GET | `/agent/protocols/planned-days` |
 | `list-protocols` | GET | `/agent/protocols` |
+| `list-purposes` | GET | `/agent/protocols/purposes` |
 | `list-routines` | GET | `/agent/routines` |
 | `list-workout-templates` | GET | `/agent/workout-templates` |
 | `list-workouts` | GET | `/agent/workouts` |
@@ -51,22 +59,28 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `log-meal` | POST | `/agent/meals/batch-write` |
 | `log-metrics` | POST | `/agent/metrics/batch-write` |
 | `log-nutrition-goals` | POST | `/agent/nutrition/goals/batch-write` |
+| `log-protocol-skips` | POST | `/agent/protocols/skips/batch-write` |
 | `log-workout` | POST | `/agent/workouts/batch-write` |
 | `manage-compounds` | POST | `/agent/protocols/compounds/batch-write` |
 | `manage-exercise-catalog` | POST | `/agent/exercises/batch-write` |
 | `manage-foods` | POST | `/agent/foods/batch-write` |
 | `manage-plan-tree` | POST | `/agent/plan-tree/batch-write` |
 | `manage-protocols` | POST | `/agent/protocols/batch-write` |
+| `manage-purposes` | POST | `/agent/protocols/purposes/batch-write` |
 | `materialize-workout-template` | POST | `/agent/workout-templates/materialize` |
 | `monitoring-activity` | GET | `/agent/monitoring/activities/{externalActivityId}` |
 | `nutrition-totals` | GET | `/agent/nutrition/totals` |
 | `nutrition-trends` | GET | `/agent/nutrition/trends` |
 | `probe` | GET | `/agent/probe` |
+| `progress-new-bests` | GET | `/agent/progress/new-bests` |
+| `progress-training-days` | GET | `/agent/progress/training-days` |
+| `read-profile` | GET | `/agent/profile` |
 | `read-settings` | GET | `/agent/settings` |
 | `resolve-exercise` | GET | `/agent/exercises/resolve` |
 | `search-platform-foods` | GET | `/agent/foods/platform-search` |
 | `training-day-nutrition` | GET | `/agent/cross-domain/training-day-nutrition` |
 | `undo-activity-batch` | POST | `/agent/activity/undo-batch` |
+| `update-profile` | POST | `/agent/profile/batch-write` |
 | `update-settings` | POST | `/agent/settings/batch-write` |
 | `update-workout-template-from-workout` | POST | `/agent/workout-templates/update-from-workout` |
 | `validate-dose` | POST | `/agent/validate-dose` |
@@ -388,18 +402,133 @@ Routine/slot must contain an active Routine Entry referencing the Template.
 }
 ```
 
+`log-meal` (`POST /agent/meals/batch-write`) writes only the Meal fields a
+request sends, with its entries, as one idempotent Activity Log batch.
+
+- **Meal Types.** Read them with `list-meal-types` (`GET /agent/meal-types`)
+  before choosing a `mealType`. It returns the user's active Meal Types as
+  `{ "mealTypes": [{ "id", "name", "sortOrder" }] }`, in the order the app
+  lists them. A Meal stores the `mealType` name it was sent, so send one of
+  these names.
+- **Timestamps.** `startedAt`, `endedAt`, `deletedAt` and an entry's
+  `updatedAt` and `deletedAt` must be ISO-8601 with `Z` or a UTC offset.
+  Anything else is a 400.
+- **Meal fields.** `meal.id` is required. `mealType`, `endedAt`, `deletedAt`
+  and `timePrecision` may each be sent on their own. An absent field keeps its
+  stored value; `null` clears `endedAt`, and `deletedAt: null` un-archives.
+  To delete a Meal, send `meal.deletedAt` together with every active Food
+  Entry of that Meal, each as its full entry with `deletedAt` set (read them
+  with `list-meals`), as the app's delete does in one Batch.
+- **Entries only.** A request whose `meal` carries only `id` writes its
+  entries and leaves the Meal row, and its `updatedAt`, untouched. For an id
+  that doesn't exist it fails with `404` `meal_not_found`.
+- **No foods yet.** `entries: []` with Meal fields creates or edits a Meal
+  with no Food Entries. A request with neither Meal fields nor entries is a
+  `400`.
+- **Create.** A new Meal id needs `mealType` and the time block, or the write
+  fails with `422` `meal_create_incomplete`.
+- **Time block.** Send `startedAt` with `timezoneOffsetMinutes` (minutes east
+  of UTC, -720 to +840), a `timezone`, or both. `timezone`,
+  `timezoneOffsetMinutes` and `localDate` are never sent without `startedAt`
+  (`400`). The offset is resolved in this order: the sent
+  `timezoneOffsetMinutes`, else the offset of an IANA `timezone` at
+  `startedAt`, else none. With an offset, the server derives `localDate` and
+  ignores one you send, and the offset is frozen on the Meal. With no offset
+  (a label such as `BRT`), `localDate` is required and stored as sent;
+  without it the write fails with `422` `meal_offset_unknown`. When only an
+  offset is sent, the stored `timezone` is `UTC+hh:mm` or `UTC-hh:mm`.
+- **`timePrecision`.** `instant` means `startedAt` is when the user ate;
+  `date` means only the day is known, and `startedAt` is local midnight.
+  Sending `startedAt` sets `instant` unless `timePrecision` is also sent.
+- **Entries** are written as sent, except that an unsent entry `deletedAt`
+  keeps its stored value.
+- **Errors.** `409` `meal_id_conflict` or `entry_id_conflict` when an id
+  belongs to another user; `422` `entry_meal_mismatch` when an existing entry
+  id is sent under a different `meal.id`; `422` `meal_archived` when entries
+  are added to an archived Meal (send `deletedAt: null` in the same request
+  to un-archive it first), and when a request archives a Meal, or edits an
+  archived one, without tombstoning every Food Entry stored active in it
+  (each sent with `deletedAt` set and an `updatedAt` that is newer than the
+  stored entry's, or omitted so the server clock stamps it). The
+  Meal as it will be stored is validated: `422` `meal_ended_before_start` and
+  `meal_type_required` reject the request, with `itemIndex` and `entryId`
+  `null` on Meal-level issues.
+- **Warnings.** Meal-level soft warnings, such as `meal_time_in_future` (a
+  start more than 5 minutes ahead), come back in the response's top-level
+  `warnings`; per-entry nutrient warnings stay on `entries[].warnings`.
+
+To move a Meal's time, send only `id`, `startedAt` and its offset or zone; the
+derived `localDate` moves with it, across midnight if need be:
+
+```json
+{
+  "idempotencyKey": "stable-meal-time-key",
+  "meal": {
+    "id": "meal-id",
+    "startedAt": "2026-06-24T14:30:00.000Z",
+    "timezone": "Australia/Brisbane"
+  },
+  "entries": []
+}
+```
+
+`list-meals` returns each Meal's `timezoneOffsetMinutes` (`null` when unknown)
+and `timePrecision` in its default fields.
+
 ## Food Library Reads and Writes
 
 `list-foods` (`GET /agent/foods`) searches or lists the caller's own Food
 library (User Foods and Recipes) with `search`/`includeArchived`/`limit`/
 `cursor`/`fields`. Platform reference data is never in this list.
 
+`list-food-history` (`GET /agent/foods/history`) lists the Foods the caller
+has logged, in the order the app's add-food picker shows them: most often in
+the last 90 days first, then most recently logged. Each item carries the
+`foodSource` and `foodId` to look the Food up (`list-foods` for `user`,
+`search-platform-foods` otherwise), the name it was last logged under, and its
+`lastPortion`, so "log my usual breakfast" is this read followed by
+`log-meal`. Archived User Foods are left out; `limit` bounds it (default 50).
+
+`list-meal-history` (`GET /agent/meals/history`) lists the meals the caller
+repeats, which the app shows as Your meals. A meal is the set of distinct
+Foods in a timed Meal of the last 90 days that holds two or more Foods;
+Portions and Quick Entries don't count, and archived Meals, date-only Meals
+and archived User Foods are left out. It returns
+`{ "items": [{ "foods": [{ "foodSource", "foodId", "name" }], "count", "lastMealId", "lastStartedAt" }] }`,
+most often first, then most recent. `lastMealId` is the most recent Meal with
+that set of Foods, the one the app's Log again copies: read it with
+`list-meals` (around `lastStartedAt`) for its Portions and Quick Entries
+before repeating it with `log-meal`. `limit` bounds it (default 20, at most
+50). It is computed on each call and never stored.
+
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
-bundled USDA Platform Food dataset — the SAME offline, CC0 catalog the app
-ships — with `search`/`limit`. The response includes an
-`attribution` object; surface it wherever the result is shown, mirroring the
-in-app USDA courtesy attribution. Open Food Facts (branded/barcode)
-is not available through this operation.
+Platform Food reference data the app ships, with `source`/`search`/`limit`.
+Nothing is fetched from an external service.
+
+- `source=usda` (the default) searches the bundled USDA dataset, a CC0
+  catalog of generic foods.
+- `source=openFoodFacts` searches the Open Food Facts bundle: branded,
+  packaged products from Australia, the United States, the United Kingdom,
+  Canada and New Zealand. `search` takes a name or a barcode, as the app's
+  search box does; a barcode is matched with and without a leading `0`, and
+  name words match word prefixes of the product's name or brand. Only the
+  bundle is searched: a product that is not in it is not found, and omitting
+  `search` returns no foods. Each food carries its `brand`, the date Open Food
+  Facts last changed it (`sourceModifiedAt`) and its Open Food Facts page
+  (`productUrl`); `id` is the barcode. Its `nutrientsPer100` lists every
+  Nutrient; one the bundle does not report is
+  `{ status: "unknown", value: null, entered: null }`. To log the food with
+  `log-meal` (`POST /agent/meals/batch-write`, `foodSource: "openFoodFacts"`,
+  `foodId` set to the barcode), send `nutrientsPer100` as the entry's
+  `nutrients` with each unknown amount sent as `{ status: "unknown", unit }`,
+  without `value` and `entered` (the write rejects `null` there), along with
+  `name`, `isLiquid` and the serving and package sizes.
+
+The response includes an `attribution` object. Surface its
+`attributionText` and licence wherever the result is shown; for Open Food
+Facts the data is under the Open Database License (ODbL), and also show
+`attribution.disclaimer` (Open Food Facts values come from its contributors
+and may be wrong) and, where a single product is shown, its `productUrl`.
 
 `manage-foods` (`POST /agent/foods/batch-write`) creates, edits, or archives
 User Foods and Recipes. A Recipe is a Food whose `recipeIngredients` carries a
@@ -560,7 +689,7 @@ new key for genuinely new work.
       "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d010",
       "compoundId": "018f6a90-6d7f-7d63-bfc1-6f1025e0d011",
       "compoundName": "Creatine Monohydrate",
-      "compoundStrength": { "value": 5, "massUnit": "gram", "perUnit": "scoop" },
+      "compoundStrength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
       "amount": "5",
       "unit": "gram",
       "route": "oral",
@@ -587,6 +716,18 @@ or archives Compounds. A Compound is a neutral tracking template — never
 categorized by substance type or legality. Archiving is a tombstone and
 never cascades to logged Doses (they keep their self-describing snapshot).
 
+A `strength` is the amount of `massUnit` in one `perUnit`, as in 5 mg per
+capsule. Both units are Dose unit names from the curated registry (`milligram`,
+`capsule`, and so on), and `value` must be positive. Anything else refuses the
+batch with `compound_strength`, as does a Dose's `compoundStrength`. The server
+stores the strength as the app's label (`"5 mg/capsule"`) and reads it back as
+this object; a stored strength it can't read comes back as `null`.
+
+`purposeIds` lists the Purposes to tag the Compound with, in order. Omit it to
+keep the stored list; `[]` clears it. An id that isn't an active Purpose refuses
+the batch with `purpose_not_found`, so drop an archived id read back from
+`list-compounds`, or omit `purposeIds`.
+
 ```json
 {
   "idempotencyKey": "stable-compound-batch-key",
@@ -596,7 +737,8 @@ never cascades to logged Doses (they keep their self-describing snapshot).
       "name": "Creatine Monohydrate",
       "defaultUnit": "gram",
       "defaultRoute": "oral",
-      "strength": { "value": 5, "massUnit": "gram", "perUnit": "scoop" },
+      "strength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
+      "purposeIds": ["019200ff-0000-7000-8000-000000000103"],
       "updatedAt": "2026-06-24T05:00:00.000Z",
       "deletedAt": null
     }
@@ -604,22 +746,86 @@ never cascades to logged Doses (they keep their self-describing snapshot).
 }
 ```
 
+## Purpose Write Shape
+
+A Purpose is a label for why the user takes a Compound. `list-purposes` returns
+the six starter Purposes merged with the account's rows; `includeArchived=true`
+adds the archived ones. `manage-purposes`
+(`POST /agent/protocols/purposes/batch-write`) creates, renames, reorders, or
+archives them:
+
+```json
+{
+  "idempotencyKey": "purposes-2026-11-06",
+  "purposes": [
+    { "id": "uuidv7", "name": "Skin", "sortOrder": 0 },
+    {
+      "id": "starter-purpose-id",
+      "name": "General health",
+      "sortOrder": 5,
+      "deletedAt": "2026-11-06T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+Names are stored trimmed. The rules are checked on the state the whole batch
+leaves: an empty name refuses the batch with `purpose_name_required`, and the
+name of another active Purpose, in any case, with `duplicate_purpose_name`. An
+archived Purpose's name is free to reuse. Archiving never touches a Compound: its
+tags keep the id. Undo through the Activity Log restores a Purpose.
+Undo doesn't check names, so it can leave two active Purposes with one name;
+rename or archive one to resolve it.
+
 ## Protocol Write Shape
 
 `manage-protocols` (`POST /agent/protocols/batch-write`) creates, edits, or
-archives Protocol plans with their member Compounds, Schedules, and target
-outcomes. Plan writes never touch logged Doses — archiving a Protocol never
-cascades (PROTOCOLS.md §7).
+archives Protocol plans with their Protocol Members, Schedule Versions, and
+target outcomes. Every request carries `today`, the user's local date
+(`YYYY-MM-DD`), which must be within one day of the server's UTC date. A
+Protocol's bounds are local dates: `startLocalDate`, and an inclusive
+`endLocalDate` (`null` is ongoing). `period` is `null`, or an on/off `cycle`
+and the `pauses`. Each Schedule is a new Schedule Version with a `rule`; the
+server dates it (`effectiveFrom`) exactly as the app does, so never send
+`effectiveFrom`, and never reuse a version id: every edit is a new version.
+`timed` and `untimed` rules need the planned amount, unit, and route;
+`as_needed` and `unscheduled` (no Schedule) carry none. The rule and period are
+judged by the shared two-tier plan validators; soft warnings come back in
+`warnings[]`. Plan writes never touch logged Doses — archiving a Protocol never
+cascades.
+
+A target outcome's `outcomeKind` is `metric` (the default) or `performance`;
+any other value is a 400. A `metric` outcome needs a `metricId`, and a
+`performance` outcome takes `metricId: null`; otherwise the batch is refused
+with `target_outcome_metric_id`. So an outcome sent as just `{ "id": … }` is
+refused, and so is an archive sent as `{ "id": …, "deletedAt": … }`: a write
+replaces the whole outcome, so send it as read, with its kind and Metric. `position` orders a Protocol's outcomes, as
+the app shows them. Leave it out and the server keeps an existing outcome's
+position, or puts a new one after the Protocol's other outcomes, in the order
+you send them. `GET /agent/protocols` returns each outcome's `position` and
+lists them in that order.
 
 ```json
 {
   "idempotencyKey": "stable-protocol-batch-key",
+  "today": "2026-10-26",
   "protocols": [
     {
       "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d012",
-      "name": "Off-season base",
-      "startDate": "2026-06-01T00:00:00.000Z",
-      "endDate": null,
+      "name": "Skin",
+      "startLocalDate": "2026-09-01",
+      "endLocalDate": null,
+      "period": {
+        "v": 1,
+        "cycle": {
+          "on_days": 60,
+          "off_days": 30,
+          "anchor": "2026-09-01",
+          "anchor_is_default": true
+        },
+        "pauses": []
+      },
+      "remindersEnabled": true,
       "members": [
         {
           "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d013",
@@ -631,11 +837,16 @@ cascades (PROTOCOLS.md §7).
         {
           "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d014",
           "protocolCompoundId": "018f6a90-6d7f-7d63-bfc1-6f1025e0d013",
-          "doseAmountValue": 5,
-          "doseAmountEntered": "5",
-          "doseUnit": "gram",
-          "frequency": "daily",
-          "route": "oral"
+          "rule": {
+            "v": 1,
+            "kind": "timed",
+            "days": { "kind": "daily" },
+            "times": ["21:00"]
+          },
+          "doseAmountValue": 0.1,
+          "doseAmountEntered": "0.1",
+          "doseUnit": "milliliter",
+          "route": "topical"
         }
       ],
       "targetOutcomes": [
@@ -645,8 +856,7 @@ cascades (PROTOCOLS.md §7).
           "outcomeKind": "metric"
         }
       ],
-      "updatedAt": "2026-06-24T05:00:00.000Z",
-      "deletedAt": null
+      "updatedAt": "2026-06-24T05:00:00.000Z"
     }
   ]
 }
@@ -657,14 +867,21 @@ Dose, Compound, and Protocol batch results include per-item `outcome` (`applied`
 `warnings[]` from the shared two-tier validator. Compound and Protocol structural
 failures are hard-validation errors on the batch response rather than permanently
 empty per-item warning arrays.
-Set `deletedAt` on any row to archive it.
+Set `deletedAt` on a Dose, Compound, or target outcome to archive it. Archive a
+Protocol or a Protocol Member with `archived: true`: the server stamps the time
+and freezes `archivedOn` as `today`. An archived Protocol or member is never
+restored; add the Compound again as a new member.
 
 ## Effect Window Read
 
 `effect-window` (`GET /agent/protocols/effect-window`) computes a descriptive
-before/during/after summary of one outcome Metric around the logged Dose timeline
-of a Compound or Protocol over a range. Provide exactly one of `compoundId` /
-`protocolId` and exactly one of `metricId` / `metricKey`, plus `from` and `to`.
+before/during/after summary of one outcome Metric. DURING is a Protocol's
+declared course (start to end date, ongoing until now with no end date) or a
+Compound's logged Doses (earliest to latest, ongoing until now after a single
+Dose); BEFORE and AFTER mirror its length. It is the same window the app's
+Effect view shows. Provide exactly one of `compoundId` / `protocolId` and
+exactly one of `metricId` / `metricKey`, plus `from` and `to`, which scope only
+the Dose markers returned, never the window.
 
 ```bash
 node scripts/prn-agent.mjs effect-window \
@@ -737,7 +954,10 @@ push path (silent LWW, tenant isolation, its own Activity Log entry). Undo is
 **batch-atomic**: if any single entry's current state no longer matches its
 recorded after-image, nothing is applied, no new Activity Log batch is
 recorded, and the response reports the conflicting entries with
-`applied: false` and `undoBatchId: null`. Idempotent by `idempotencyKey` —
+`applied: false` and `undoBatchId: null`. Undoing the batch that created a
+Meal is refused the same way, with `skipped_dependent` on the Meal's entry,
+when another batch has since added an active Food Entry to that Meal.
+Idempotent by `idempotencyKey` —
 undo-of-undo resurrects the original rows.
 
 ```json

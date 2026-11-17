@@ -6,7 +6,8 @@ import {
   createApp,
   createDrizzleIntegrationCredentialStore,
   createMigratedServerApp,
-  schema
+  schema,
+  SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -47,7 +48,7 @@ test("sync push accepts one logged set through the route contract", async () => 
       "x-correlation-id": "corr-sync-push"
     },
     body: JSON.stringify({
-      protocolVersion: 1,
+      protocolVersion: SYNC_PROTOCOL_VERSION,
       deviceId: "device-a",
       entity: "logged_sets",
       changes: [
@@ -67,7 +68,7 @@ test("sync push accepts one logged set through the route contract", async () => 
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    protocolVersion: 1,
+    protocolVersion: SYNC_PROTOCOL_VERSION,
     accepted: [setId],
     serverClock: "2026-06-22T08:00:01.000Z",
     applied: [
@@ -117,7 +118,7 @@ test("sync push accepts Open Food Facts Food Entry snapshots through the route c
       "x-correlation-id": "corr-food-entry"
     },
     body: JSON.stringify({
-      protocolVersion: 1,
+      protocolVersion: SYNC_PROTOCOL_VERSION,
       deviceId: "device-a",
       entity: "food_entries",
       changes: [
@@ -154,7 +155,7 @@ test("sync push accepts Open Food Facts Food Entry snapshots through the route c
   assert.equal(pushedBatches[0].correlationId, "corr-food-entry");
   assert.equal(pushedBatches[0].changes[0].payload.food_source, "openFoodFacts");
   assert.deepEqual(await response.json(), {
-    protocolVersion: 1,
+    protocolVersion: SYNC_PROTOCOL_VERSION,
     accepted: [entryId],
     serverClock: "2026-06-27T08:00:01.000Z",
     applied: [
@@ -208,7 +209,7 @@ test("sync pull returns one cursor window through the route contract", async () 
       "x-correlation-id": "corr-sync-pull"
     },
     body: JSON.stringify({
-      protocolVersion: 1,
+      protocolVersion: SYNC_PROTOCOL_VERSION,
       cursor: null,
       limit: 1
     })
@@ -216,7 +217,7 @@ test("sync pull returns one cursor window through the route contract", async () 
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    protocolVersion: 1,
+    protocolVersion: SYNC_PROTOCOL_VERSION,
     fullResyncRequired: false,
     nextCursor: "2026-06-22T08:00:00.000Z|set-1",
     changes: [
@@ -276,7 +277,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "device-a",
           entity: "logged_sets",
           changes: [
@@ -298,7 +299,7 @@ test(
 
       assert.equal(response.status, 200);
       const body = await response.json();
-      assert.equal(body.protocolVersion, 1);
+      assert.equal(body.protocolVersion, SYNC_PROTOCOL_VERSION);
       assert.deepEqual(body.accepted, [setId]);
       assert.equal(typeof body.serverClock, "string");
       assert.deepEqual(body.applied, [
@@ -349,7 +350,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 10
         })
@@ -406,7 +407,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "other-device",
           entity: "logged_sets",
           changes: [
@@ -427,7 +428,7 @@ test(
 
       assert.equal(response.status, 200);
       const body = await response.json();
-      assert.equal(body.protocolVersion, 1);
+      assert.equal(body.protocolVersion, SYNC_PROTOCOL_VERSION);
       assert.deepEqual(body.accepted, []);
       assert.equal(typeof body.serverClock, "string");
       assert.deepEqual(body.applied, []);
@@ -520,7 +521,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 1
         })
@@ -541,7 +542,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: firstBody.nextCursor,
           limit: 10
         })
@@ -591,7 +592,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "other-device",
           entity: "meals",
           changes: [
@@ -673,7 +674,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "other-device",
           entity: "food_entries",
           changes: [
@@ -798,7 +799,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 10
         })
@@ -859,7 +860,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "device-z",
           entity: "logged_sets",
           changes: [
@@ -885,7 +886,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "device-b",
           entity: "logged_sets",
           changes: [
@@ -949,7 +950,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "bad-clock-device",
           entity: "logged_sets",
           changes: [
@@ -986,7 +987,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "normal-device",
           entity: "logged_sets",
           changes: [
@@ -1066,7 +1067,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "device-b",
           entity: "logged_sets",
           changes: [
@@ -1126,7 +1127,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: "2000-01-01T00:00:00.000Z|expired-row",
           limit: 100
         })
@@ -1134,7 +1135,7 @@ test(
 
       assert.equal(response.status, 200);
       const body = await response.json();
-      assert.equal(body.protocolVersion, 1);
+      assert.equal(body.protocolVersion, SYNC_PROTOCOL_VERSION);
       assert.equal(body.fullResyncRequired, true);
       assert.deepEqual(body.changes, []);
       assert.equal(body.nextCursor, "2000-01-01T00:00:00.000Z|expired-row");
@@ -1194,7 +1195,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100,
           mode: "snapshot"
@@ -1271,7 +1272,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 1
         })
@@ -1279,7 +1280,7 @@ test(
 
       assert.equal(firstResponse.status, 200);
       const firstBody = await firstResponse.json();
-      assert.equal(firstBody.protocolVersion, 1);
+      assert.equal(firstBody.protocolVersion, SYNC_PROTOCOL_VERSION);
       assert.equal(typeof firstBody.serverClock, "string");
       assert.equal(firstBody.changes.length, 1);
       assert.equal(firstBody.changes[0].id, firstSetId);
@@ -1295,7 +1296,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: firstBody.nextCursor,
           limit: 10
         })
@@ -1317,7 +1318,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: secondBody.nextCursor,
           limit: 10
         })
@@ -1325,7 +1326,7 @@ test(
 
       assert.equal(emptyResponse.status, 200);
       const emptyBody = await emptyResponse.json();
-      assert.equal(emptyBody.protocolVersion, 1);
+      assert.equal(emptyBody.protocolVersion, SYNC_PROTOCOL_VERSION);
       assert.deepEqual(emptyBody.changes, []);
       assert.equal(emptyBody.nextCursor, secondBody.nextCursor);
       assert.equal(typeof emptyBody.serverClock, "string");
@@ -1414,7 +1415,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: `${consentReceivedAt.toISOString()}|integration_data_class_consents|${consentId}`,
           limit: 100
         })
@@ -1577,7 +1578,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100
         })
@@ -1618,7 +1619,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100,
           mode: "snapshot"
@@ -1666,7 +1667,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100,
           mode: "snapshot"
@@ -1709,7 +1710,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "device-a",
           entity: "integration_data_class_consents",
           changes: [
@@ -1756,7 +1757,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100,
           mode: "snapshot"

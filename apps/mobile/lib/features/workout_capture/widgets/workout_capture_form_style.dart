@@ -69,12 +69,3 @@ ButtonStyle workoutCaptureOutlinedButtonStyle(BuildContext context) {
     shape: const RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
   );
 }
-
-ButtonStyle workoutCaptureSaveButtonStyle(BuildContext context) {
-  return FilledButton.styleFrom(
-    backgroundColor: context.colors.save,
-    foregroundColor: Theme.of(context).colorScheme.onSecondary,
-    minimumSize: const Size.fromHeight(AppDimens.rowHeight),
-    shape: const RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
-  );
-}

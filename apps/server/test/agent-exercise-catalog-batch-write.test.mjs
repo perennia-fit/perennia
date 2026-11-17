@@ -484,8 +484,9 @@ test(
       assert.equal(setRowsAfterArchive.length, 1);
       assert.equal(setRowsAfterArchive[0].payload.exercise_id, exerciseId);
 
-      // Tenant isolation: a second user's push must never overwrite the
-      // first user's row keyed by the same client PK.
+      // Tenant isolation: the table is keyed (user_id, id), so a second user's
+      // write under the same client id is that user's own row and never
+      // touches the first user's.
       const otherApp = createAgentExerciseCatalogApp({
         agentCatalogStore: createDrizzleAgentCatalogStore(database.db),
         agentExerciseCatalogBatchWriteStore:
@@ -511,8 +512,12 @@ test(
       const postHijackRows = await database.sql`
         select user_id, payload from exercises where id = ${exerciseId}
       `;
-      assert.equal(postHijackRows[0].user_id, userId);
-      assert.equal(postHijackRows[0].payload.name, "Comp Squat");
+      assert.deepEqual(
+        Object.fromEntries(
+          postHijackRows.map((row) => [row.user_id, row.payload.name]),
+        ),
+        { [userId]: "Comp Squat", [otherUserId]: "Hijacked Name" },
+      );
     } finally {
       await database.close();
     }

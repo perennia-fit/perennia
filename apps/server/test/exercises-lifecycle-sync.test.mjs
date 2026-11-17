@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -68,9 +72,8 @@ test(
       assert.equal(pushExercise.status, 200);
       assert.deepEqual((await pushExercise.json()).accepted, [exerciseId]);
 
-      // TENANT ISOLATION: user B cannot overwrite user A's Exercise keyed by
-      // the same client PK. The push reports accepted (idempotent no-op) but
-      // the stored row keeps user A's payload + ownership.
+      // TENANT ISOLATION: the table is keyed (user_id, id), so user B's push
+      // under the same client id is B's own row and never touches A's.
       const crossUserUpdatedAt = "2025-06-30T10:00:00.000Z";
       const crossPush = await syncPush(serverApp.app, userB.sessionToken, {
         deviceId: "device-b",
@@ -93,9 +96,10 @@ test(
         .select()
         .from(schema.exercises)
         .where(eq(schema.exercises.id, exerciseId));
-      assert.equal(storedExercise.length, 1);
-      assert.equal(storedExercise[0].userId, userA.userId);
-      assert.equal(storedExercise[0].payload.name, "Barbell Row");
+      assert.deepEqual(
+        Object.fromEntries(storedExercise.map((row) => [row.userId, row.payload.name])),
+        { [userA.userId]: "Barbell Row", [userB.userId]: "Hijacked" }
+      );
 
       // TENANT ISOLATION on the category too.
       const crossCategoryPush = await syncPush(
@@ -122,9 +126,12 @@ test(
         .select()
         .from(schema.exerciseCategories)
         .where(eq(schema.exerciseCategories.id, categoryId));
-      assert.equal(storedCategory.length, 1);
-      assert.equal(storedCategory[0].userId, userA.userId);
-      assert.equal(storedCategory[0].payload.name, "Back");
+      // The table is keyed (user_id, id): B's push is B's own row under the
+      // same id and never touches A's.
+      assert.deepEqual(
+        Object.fromEntries(storedCategory.map((row) => [row.userId, row.payload.name])),
+        { [userA.userId]: "Back", [userB.userId]: "Hijacked" }
+      );
 
       // Device B (same user A account, different device) pulls its own rows;
       // both the ExerciseCategory and Exercise round-trip.
@@ -143,13 +150,16 @@ test(
       assert.equal(pulledExercise.payload.category_id, categoryId);
       assert.equal(pulledExercise.deletedAt, null);
 
-      // User B pulls and sees NEITHER row — strict per-user scoping on read.
+      // User B pulls none of A's rows — strict per-user scoping on read —
+      // only its own copies under the shared Category and Exercise ids.
       const userBPulled = await pullAll(serverApp.app, userB.sessionToken);
-      assert.equal(
-        userBPulled.filter(
-          (change) => change.id === exerciseId || change.id === categoryId
-        ).length,
-        0
+      assert.deepEqual(
+        Object.fromEntries(
+          userBPulled
+            .filter((change) => change.id === exerciseId || change.id === categoryId)
+            .map((change) => [change.entity, change.payload.name])
+        ),
+        { exercise_categories: "Hijacked", exercises: "Hijacked" }
       );
 
       // A newer Exercise edit wins LWW; an older replay loses.
@@ -193,7 +203,12 @@ test(
       const afterLww = await serverApp.database.db
         .select()
         .from(schema.exercises)
-        .where(eq(schema.exercises.id, exerciseId));
+        .where(
+          and(
+            eq(schema.exercises.userId, userA.userId),
+            eq(schema.exercises.id, exerciseId)
+          )
+        );
       assert.equal(afterLww[0].payload.name, "Pendlay Row");
 
       // Archiving the Exercise (a tombstone via deleted_at) propagates without
@@ -219,12 +234,22 @@ test(
       const archivedExercise = await serverApp.database.db
         .select()
         .from(schema.exercises)
-        .where(eq(schema.exercises.id, exerciseId));
+        .where(
+          and(
+            eq(schema.exercises.userId, userA.userId),
+            eq(schema.exercises.id, exerciseId)
+          )
+        );
       assert.notEqual(archivedExercise[0].deletedAt, null);
       const categoryStillLive = await serverApp.database.db
         .select()
         .from(schema.exerciseCategories)
-        .where(eq(schema.exerciseCategories.id, categoryId));
+        .where(
+          and(
+            eq(schema.exerciseCategories.userId, userA.userId),
+            eq(schema.exerciseCategories.id, categoryId)
+          )
+        );
       assert.equal(categoryStillLive.length, 1);
       assert.equal(categoryStillLive[0].deletedAt, null);
 
@@ -280,7 +305,7 @@ async function syncPush(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
 }
 
@@ -294,7 +319,7 @@ async function pullAll(app, sessionToken) {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

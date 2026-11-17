@@ -10,6 +10,7 @@ import {
   createAgentMcpServer,
   createApp,
   createDatabaseClient,
+  createDrizzleAgentActivityStore,
   createDrizzleAgentCrossDomainReadStore,
   createDrizzleAgentExerciseCatalogBatchWriteStore,
   createDrizzleAgentFoodBatchWriteStore,
@@ -17,12 +18,17 @@ import {
   createDrizzleAgentMealBatchWriteStore,
   createDrizzleAgentNutritionGoalStore,
   createDrizzleAgentNutritionReadStore,
+  createDrizzleAgentProfileStore,
   createDrizzleAgentReadStore,
   createDrizzleAgentWorkoutBatchWriteStore,
   createDrizzleRateLimitBackend,
   createInMemoryAgentCatalogStore,
   schema
 } from "../src/index.ts";
+import {
+  OpenFoodFactsBundleUnavailableError,
+  setOpenFoodFactsBundleLoaderForTesting
+} from "../src/open-food-facts-bundle.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -86,13 +92,15 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
       agentMealBatchWriteStore: {
         async writeMealBatch(input) {
           return {
+            status: "written",
             duplicate: false,
             serverClock: "2026-06-24T05:00:01.000Z",
-            applied: [input.meal, ...input.entries].map((row) => ({
+            applied: [input.request.meal, ...input.request.entries].map((row) => ({
               id: row.id,
-              updatedAt: row.updatedAt,
+              updatedAt: "2026-06-24T05:00:01.000Z",
               deviceId: input.deviceId
-            }))
+            })),
+            warnings: []
           };
         }
       },
@@ -173,6 +181,9 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         async listCompounds() {
           return { compounds: [], fields: ["id", "name"], limit: 50, nextCursor: null, totalMatched: 0 };
         },
+        async listPurposes() {
+          return { purposes: [] };
+        },
         async listProtocols() {
           return { protocols: [], limit: 50, nextCursor: null, totalMatched: 0 };
         },
@@ -212,6 +223,21 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
             validationErrors: []
           };
         },
+        async writePurposeBatch(input) {
+          return {
+            duplicate: false,
+            idempotencyConflict: false,
+            receiptUnavailable: false,
+            serverClock: "2026-06-24T05:00:01.000Z",
+            accepted: input.purposes.map((purpose) => purpose.id),
+            applied: input.purposes.map((purpose) => ({
+              id: purpose.id,
+              updatedAt: purpose.updatedAt,
+              deviceId: input.deviceId
+            })),
+            validationErrors: []
+          };
+        },
         async writeProtocolBatch(input) {
           return {
             duplicate: false,
@@ -246,10 +272,14 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_batch_write_metrics",
         "agent_batch_write_nutrition_goals",
         "agent_batch_write_plan_tree",
+        "agent_batch_write_profile",
+        "agent_batch_write_protocol_skips",
         "agent_batch_write_protocols",
+        "agent_batch_write_purposes",
         "agent_batch_write_settings",
         "agent_batch_write_workout",
         "agent_capture_workout_template",
+        "agent_delete_protocols",
         "agent_get_energy_balance",
         "agent_get_exercise_analytics",
         "agent_get_monitoring_activity",
@@ -263,18 +293,28 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_list_compounds",
         "agent_list_doses",
         "agent_list_exercises",
+        "agent_list_focuses",
+        "agent_list_food_history",
         "agent_list_foods",
         "agent_list_history_sets",
+        "agent_list_meal_history",
+        "agent_list_meal_types",
         "agent_list_meals",
         "agent_list_metric_readings",
         "agent_list_metrics",
+        "agent_list_new_bests",
         "agent_list_nutrition_goals",
+        "agent_list_protocol_day_statuses",
+        "agent_list_protocol_planned_days",
         "agent_list_protocols",
+        "agent_list_purposes",
         "agent_list_routines",
+        "agent_list_training_days",
         "agent_list_workout_templates",
         "agent_list_workouts",
         "agent_materialize_workout_template",
         "agent_read_effect_window",
+        "agent_read_profile",
         "agent_read_settings",
         "agent_resolve_exercise",
         "agent_search_platform_foods",
@@ -362,6 +402,30 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         .inputSchema.properties.request.properties.dryRun.default,
       false
     );
+    // The delete tool takes the REST body: an idempotency key and the ids.
+    const deleteRequest = toolsByName.get("agent_delete_protocols").inputSchema
+      .properties.request;
+    assert.deepEqual(deleteRequest.required.sort(), ["idempotencyKey", "protocolIds"]);
+    assert.equal(deleteRequest.properties.protocolIds.maxItems, 100);
+    assert.ok(
+      toolsByName.get("agent_delete_protocols").outputSchema.properties.protocols
+    );
+    // The Skip tool takes the REST body: a key, today, and 1 to 100 Skips,
+    // each a UUIDv7 id naming its planned dose.
+    const skipRequest = toolsByName.get("agent_batch_write_protocol_skips").inputSchema
+      .properties.request;
+    assert.deepEqual(skipRequest.required.sort(), ["idempotencyKey", "skips", "today"]);
+    assert.equal(skipRequest.properties.skips.maxItems, 100);
+    assert.deepEqual(
+      skipRequest.properties.skips.items.required.sort(),
+      ["compoundId", "id", "localDate", "plannedLocalTime", "protocolId"]
+    );
+    assert.ok(
+      JSON.stringify(skipRequest.properties.skips.items.properties.id).includes("[0-9a-fA-F]")
+    );
+    assert.ok(
+      toolsByName.get("agent_batch_write_protocol_skips").outputSchema.properties.skips
+    );
     const doseIdSchema = toolsByName
       .get("agent_batch_write_doses")
       .inputSchema.properties.request.properties.doses.items.properties.id;
@@ -439,6 +503,233 @@ test("agent MCP nutrition tool list mirrors the nutrition REST route set", () =>
     "agent_get_training_day_nutrition"
   ];
   assert.equal(nutritionToolNames.length, nutritionRoutePaths.length);
+});
+
+test("agent MCP list-meal-types returns the same body as REST from the same store", async () => {
+  const calls = [];
+  const agentMealTypesReadStore = {
+    async listMealTypes(input) {
+      calls.push(input);
+      return {
+        mealTypes: [
+          { id: "mt-breakfast", name: "Breakfast", sortOrder: 0 },
+          { id: "mt-lunch", name: "Lunch", sortOrder: 1 }
+        ]
+      };
+    }
+  };
+  const restApp = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: createAgentKeyStore("user-1"),
+    agentMealTypesReadStore
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      agentMealTypesReadStore,
+      logger: { info() {}, error() {} }
+    })
+  );
+
+  try {
+    const { tools } = await client.listTools();
+    const tool = tools.find((candidate) => candidate.name === "agent_list_meal_types");
+    assert.ok(tool, "agent_list_meal_types should be registered");
+    // Auth fields only: the read takes no filters.
+    assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}), ["apiKey"]);
+    assert.deepEqual(tool.outputSchema.required, ["mealTypes"]);
+
+    const restResponse = await getAgent(restApp, "/agent/meal-types");
+    assert.equal(restResponse.status, 200);
+    const restBody = await restResponse.json();
+
+    const mcpResponse = await callTool(client, "agent_list_meal_types", {
+      apiKey: "prn_agent_secret"
+    });
+    assertToolSucceeded(mcpResponse);
+    assert.deepEqual(mcpResponse.structuredContent, restBody);
+    assert.deepEqual(calls, [{ userId: "user-1" }, { userId: "user-1" }]);
+  } finally {
+    await close();
+  }
+});
+
+test("agent MCP search-platform-foods returns the same Open Food Facts body as REST, including the unavailable error", async () => {
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: createAgentKeyStore("user-1")
+  });
+  const mcpErrors = [];
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      logger: {
+        info() {},
+        error(payload, message) {
+          mcpErrors.push({ payload, message });
+        }
+      }
+    })
+  );
+
+  try {
+    const restByName = await getAgent(
+      app,
+      "/agent/foods/platform-search?source=openFoodFacts&search=greek%20yog&limit=5"
+    );
+    assert.equal(restByName.status, 200);
+    const restNameBody = await restByName.json();
+    const mcpByName = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: "greek yog", limit: 5 }
+    });
+    assertToolSucceeded(mcpByName);
+    assert.equal(restNameBody.foods.length, 5);
+    assert.deepEqual(mcpByName.structuredContent, restNameBody);
+
+    const code = restNameBody.foods[0].id;
+    const restByBarcode = await getAgent(
+      app,
+      `/agent/foods/platform-search?source=openFoodFacts&search=${code}`
+    );
+    const mcpByBarcode = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: code }
+    });
+    assertToolSucceeded(mcpByBarcode);
+    assert.deepEqual(mcpByBarcode.structuredContent, await restByBarcode.json());
+    assert.equal(mcpByBarcode.structuredContent.foods[0].id, code);
+
+    setOpenFoodFactsBundleLoaderForTesting(() => {
+      throw new OpenFoodFactsBundleUnavailableError(
+        new Error("ENOENT: no such file or directory")
+      );
+    });
+    const restUnavailable = await getAgent(
+      app,
+      "/agent/foods/platform-search?source=openFoodFacts&search=milk"
+    );
+    assert.equal(restUnavailable.status, 503);
+    const mcpUnavailable = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: "milk" }
+    });
+    assert.equal(mcpUnavailable.isError, true);
+    assert.deepEqual(mcpUnavailable.structuredContent, await restUnavailable.json());
+    assert.equal(mcpUnavailable.structuredContent.code, "agent_foods_unavailable");
+    // The reason the bundle is missing reaches the log, not only the
+    // generic message (the cause is not an enumerable property of the error).
+    const logged = mcpErrors.find(
+      (entry) => entry.message === "open food facts bundle unavailable"
+    );
+    assert.ok(logged);
+    assert.match(String(logged.payload.cause?.message), /ENOENT/);
+  } finally {
+    setOpenFoodFactsBundleLoaderForTesting(null);
+    await close();
+  }
+});
+
+test("agent MCP meal batch write accepts Meal fields with no entries, and returns a store rejection as the error body", async () => {
+  const writes = [];
+  let rejectNext = false;
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      logger: { info() {}, error() {} },
+      agentMealBatchWriteStore: {
+        async writeMealBatch(input) {
+          writes.push(input);
+          if (rejectNext) {
+            return {
+              status: "rejected",
+              httpStatus: 422,
+              errors: [
+                {
+                  field: "meal.deletedAt",
+                  nutrient: null,
+                  rule: "meal_archived",
+                  message: "This Meal is archived.",
+                  limit: null,
+                  itemIndex: null,
+                  entryId: null
+                }
+              ],
+              warnings: []
+            };
+          }
+          return {
+            status: "written",
+            duplicate: false,
+            serverClock: "2026-06-24T05:00:01.000Z",
+            applied: [
+              {
+                id: input.request.meal.id,
+                updatedAt: "2026-06-24T05:00:01.000Z",
+                deviceId: input.deviceId
+              }
+            ],
+            warnings: []
+          };
+        }
+      }
+    })
+  );
+
+  try {
+    // Add foods later: Meal fields only, no entries.
+    const response = await callTool(client, "agent_batch_write_meal", {
+      apiKey: "prn_agent_secret",
+      request: {
+        idempotencyKey: "agent-mcp-meal-fields-only",
+        meal: {
+          id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d700",
+          mealType: "Dinner",
+          startedAt: "2026-06-24T09:30:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      }
+    });
+    assertToolSucceeded(response);
+    assert.equal(response.structuredContent.mealId, "018f6a90-6d7f-7d63-bfc1-6f1025e0d700");
+    assert.deepEqual(response.structuredContent.entries, []);
+    assert.deepEqual(response.structuredContent.warnings, []);
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].request.entries, []);
+    assert.equal(writes[0].request.meal.mealType, "Dinner");
+    assert.equal(writes[0].request.meal.localDate, undefined);
+
+    rejectNext = true;
+    const rejected = await callTool(client, "agent_batch_write_meal", {
+      apiKey: "prn_agent_secret",
+      request: {
+        idempotencyKey: "agent-mcp-meal-archived",
+        meal: { id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d700" },
+        entries: [
+          {
+            id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d701",
+            position: 0,
+            name: "Coffee",
+            nutrients: {
+              energy: { status: "complete", value: 2, entered: "2", unit: "kilocalorie" }
+            },
+            isLiquid: true,
+            foodId: null,
+            foodSource: null,
+            portion: null
+          }
+        ]
+      }
+    });
+    assert.equal(rejected.isError, true);
+    assert.equal(rejected.structuredContent.code, "agent_meal_batch_write_failed");
+    assert.equal(rejected.structuredContent.errors[0].rule, "meal_archived");
+    assert.equal(rejected.structuredContent.errors[0].itemIndex, null);
+    assert.ok(rejected.structuredContent.limits);
+  } finally {
+    await close();
+  }
 });
 
 test("agent MCP validate-dose accepts a valid dose and echoes limits, like REST", async () => {
@@ -1895,6 +2186,148 @@ test(
       assert.equal(energyGoalProgress.target.value, 2000);
     } finally {
       await close();
+      await database.close();
+    }
+  }
+);
+
+test("the User Profile tools carry their descriptions verbatim", async () => {
+  const { client, close } = await createMcpClient(createAgentMcpServer({}));
+  try {
+    const { tools } = await client.listTools();
+    const description = (name) =>
+      tools.find((tool) => tool.name === name).description;
+    assert.equal(
+      description("agent_read_profile"),
+      "Read the user's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. Every agent connected to this account can read it. Values are what the user entered, not medical advice."
+    );
+    assert.equal(
+      description("agent_batch_write_profile"),
+      "Change fields in the user's User Profile. Only the fields you send change, null clears a field, and a list replaces the whole list. Improbable values are saved and returned as warnings to confirm with the user. Each call is one Activity Log Batch the user can undo."
+    );
+  } finally {
+    await close();
+  }
+});
+
+test(
+  "the User Profile tools read and write as REST does, nudge once, and agent_list_activity redacts Health & limitations",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-mcp-profile-user-${randomUUID()}`;
+    const nudges = [];
+    const agentApiKeyStore = createAgentKeyStore(userId);
+    const profileStore = createDrizzleAgentProfileStore(database.db);
+    const agentActivityStore = createDrizzleAgentActivityStore(database.db);
+    const syncNudgePublisher = {
+      async enqueueSyncNudge(input) {
+        nudges.push(input);
+        return { enqueued: true, jobId: `nudge-${nudges.length}` };
+      }
+    };
+    const logger = { info() {}, error() {} };
+    const app = createApp({
+      logger,
+      agentApiKeyStore,
+      agentProfileStore: profileStore,
+      createMcpServer: () =>
+        createAgentMcpServer({
+          agentApiKeyStore,
+          agentActivityStore,
+          profileStore,
+          logger,
+          syncNudgePublisher
+        })
+    });
+    const callOverHttp = async (name, args) => {
+      const response = await app.request("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer prn_agent_secret",
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name, arguments: args }
+        })
+      });
+      assert.equal(response.status, 200);
+      return (await response.json()).result;
+    };
+
+    try {
+      await seedUser(database, userId);
+
+      const request = {
+        idempotencyKey: `profile-${randomUUID()}`,
+        sections: {
+          healthLimitations: { text: "Left knee surgery" },
+          aboutYou: { birthYear: new Date().getUTCFullYear() - 111 }
+        }
+      };
+      const written = await callOverHttp("agent_batch_write_profile", {
+        request
+      });
+      assert.equal(written.isError, undefined, JSON.stringify(written.content));
+      assert.equal(written.structuredContent.duplicate, false);
+      assert.deepEqual(
+        written.structuredContent.warnings.map((warning) => warning.rule),
+        ["birth_year.improbable_age"]
+      );
+      assert.equal(nudges.length, 1);
+
+      const replayed = await callOverHttp("agent_batch_write_profile", {
+        request
+      });
+      assert.equal(replayed.structuredContent.duplicate, true);
+      assert.equal(nudges.length, 1, "a replay does not nudge");
+
+      const rejected = await callOverHttp("agent_batch_write_profile", {
+        request: {
+          idempotencyKey: `profile-${randomUUID()}`,
+          sections: { trainingSetup: { daysPerWeek: 0 } }
+        }
+      });
+      assert.equal(rejected.isError, true);
+      assert.equal(
+        rejected.structuredContent.code,
+        "agent_profile_batch_write_failed"
+      );
+
+      const read = await callOverHttp("agent_read_profile", {});
+      assert.equal(read.isError, undefined, JSON.stringify(read.content));
+      assert.equal(
+        read.structuredContent.sections.healthLimitations.values.text,
+        "Left knee surgery"
+      );
+      const restRead = await app.request("/agent/profile", {
+        headers: { authorization: "Bearer prn_agent_secret" }
+      });
+      assert.deepEqual(read.structuredContent, await restRead.json());
+
+      const activity = await callOverHttp("agent_list_activity", {
+        query: { entityTable: "user_profile_sections" }
+      });
+      assert.equal(activity.isError, undefined, JSON.stringify(activity.content));
+      assert.doesNotMatch(
+        JSON.stringify(activity.structuredContent),
+        /Left knee surgery/
+      );
+      const entries = activity.structuredContent.batches[0].entries;
+      const healthEntry = entries.find(
+        (entry) => entry.afterImage.section === "health_limitations"
+      );
+      assert.deepEqual(healthEntry.afterImage.values, { redacted: true });
+      const aboutEntry = entries.find(
+        (entry) => entry.afterImage.section === "about_you"
+      );
+      assert.equal(typeof aboutEntry.afterImage.values.birth_year, "number");
+    } finally {
       await database.close();
     }
   }

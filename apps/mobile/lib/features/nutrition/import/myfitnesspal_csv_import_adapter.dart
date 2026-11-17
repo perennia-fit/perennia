@@ -280,6 +280,10 @@ class _MealAccumulator {
       mealType: mealType,
       startedAt: startedAt,
       localDate: localDate,
+      // The MyFitnessPal export has a date column only, so every imported
+      // Meal knows only its day; `startedAt` is local midnight
+      // (docs/designs/meal-logging.md §1).
+      timePrecision: MealTimePrecision.date,
       entries: List<NutritionImportFoodEntry>.unmodifiable(entries),
     );
   }

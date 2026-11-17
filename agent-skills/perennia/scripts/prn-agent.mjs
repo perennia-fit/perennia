@@ -112,6 +112,16 @@ const COMMANDS = {
     params: ["exerciseId"],
     operationId: "getAgentExerciseAnalytics"
   },
+  "progress-training-days": {
+    method: "GET",
+    path: "/agent/progress/training-days",
+    operationId: "listAgentTrainingDays"
+  },
+  "progress-new-bests": {
+    method: "GET",
+    path: "/agent/progress/new-bests",
+    operationId: "listAgentNewBests"
+  },
   "monitoring-activity": {
     method: "GET",
     path: "/agent/monitoring/activities/{externalActivityId}",
@@ -125,6 +135,26 @@ const COMMANDS = {
     operationId: "batchWriteAgentMeal"
   },
   "list-meals": { method: "GET", path: "/agent/meals", operationId: "listAgentMeals" },
+  "list-meal-history": {
+    method: "GET",
+    path: "/agent/meals/history",
+    operationId: "listAgentMealHistory"
+  },
+  "list-meal-types": {
+    method: "GET",
+    path: "/agent/meal-types",
+    operationId: "listAgentMealTypes"
+  },
+  "list-focuses": {
+    method: "GET",
+    path: "/agent/focuses",
+    operationId: "listAgentFocuses"
+  },
+  "list-food-history": {
+    method: "GET",
+    path: "/agent/foods/history",
+    operationId: "listAgentFoodHistory"
+  },
   "list-foods": { method: "GET", path: "/agent/foods", operationId: "listAgentFoods" },
   "search-platform-foods": {
     method: "GET",
@@ -185,6 +215,11 @@ const COMMANDS = {
     path: "/agent/protocols/compounds",
     operationId: "listAgentCompounds"
   },
+  "list-purposes": {
+    method: "GET",
+    path: "/agent/protocols/purposes",
+    operationId: "listAgentPurposes"
+  },
   "list-protocols": {
     method: "GET",
     path: "/agent/protocols",
@@ -200,6 +235,16 @@ const COMMANDS = {
     path: "/agent/protocols/effect-window",
     operationId: "readAgentEffectWindow"
   },
+  "list-protocol-planned-days": {
+    method: "GET",
+    path: "/agent/protocols/planned-days",
+    operationId: "listAgentProtocolPlannedDays"
+  },
+  "list-protocol-day-statuses": {
+    method: "GET",
+    path: "/agent/protocols/day-statuses",
+    operationId: "listAgentProtocolDayStatuses"
+  },
   "log-doses": {
     method: "POST",
     path: "/agent/protocols/doses/batch-write",
@@ -212,11 +257,29 @@ const COMMANDS = {
     body: true,
     operationId: "batchWriteAgentCompounds"
   },
+  "manage-purposes": {
+    method: "POST",
+    path: "/agent/protocols/purposes/batch-write",
+    body: true,
+    operationId: "batchWriteAgentPurposes"
+  },
   "manage-protocols": {
     method: "POST",
     path: "/agent/protocols/batch-write",
     body: true,
     operationId: "batchWriteAgentProtocols"
+  },
+  "delete-protocols": {
+    method: "POST",
+    path: "/agent/protocols/delete",
+    body: true,
+    operationId: "deleteAgentProtocols"
+  },
+  "log-protocol-skips": {
+    method: "POST",
+    path: "/agent/protocols/skips/batch-write",
+    body: true,
+    operationId: "batchWriteAgentProtocolSkips"
   },
   "read-settings": {
     method: "GET",
@@ -228,6 +291,17 @@ const COMMANDS = {
     path: "/agent/settings/batch-write",
     body: true,
     operationId: "batchWriteAgentSettings"
+  },
+  "read-profile": {
+    method: "GET",
+    path: "/agent/profile",
+    operationId: "readAgentProfile"
+  },
+  "update-profile": {
+    method: "POST",
+    path: "/agent/profile/batch-write",
+    body: true,
+    operationId: "batchWriteAgentProfile"
   },
   "list-activity": {
     method: "GET",
@@ -597,6 +671,7 @@ Usage:
 
 Environment:
   PRN_BASE_URL        API base URL, default http://localhost:3000
+                      (Official Service: https://api.perennia.fit)
   PRN_AGENT_API_KEY   Agent API key used as the bearer token
 
 Options:

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../theme/theme.dart';
 import 'settings_shared.dart';
@@ -40,8 +41,10 @@ class DataManagementScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Erase local workouts, exercises, routines, timers, and '
-                  'analytics source data from this device.',
+                  'Erase your workouts, routines and templates, custom '
+                  'exercises, food log, nutrition goals, supplements, body '
+                  'and health readings, and timers. With sync on, your other '
+                  'devices erase them too.',
                   style: context.textStyles.body,
                 ),
                 const SizedBox(height: AppDimens.dense),
@@ -57,9 +60,17 @@ class DataManagementScreen extends ConsumerWidget {
                           _confirmEraseAllData(
                             context,
                             onEraseAllData ??
-                                () => ref
-                                    .read(trainingRepositoriesProvider)
-                                    .eraseAllData(),
+                                () async {
+                                  await ref
+                                      .read(trainingRepositoriesProvider)
+                                      .eraseAllData();
+                                  // The reference database is not in the
+                                  // erase batch: reset it and reinstall the
+                                  // bundle, which empties the device cache.
+                                  await ref
+                                      .read(openFoodFactsRepositoryProvider)
+                                      .resetDeviceData();
+                                },
                           ),
                         );
                       },
@@ -103,8 +114,13 @@ class DataManagementScreen extends ConsumerWidget {
         return AlertDialog(
           title: const Text('Erase all data?'),
           content: const Text(
-            'This clears local workouts, exercises, routines, timers, and '
-            'analytics source data on this device. Backup restore is separate.',
+            'This erases your workouts, routines and templates, custom '
+            'exercises, food log, nutrition goals, supplements, body and '
+            'health readings, and timers. With sync on, your other devices '
+            'erase them too. Settings and the built-in exercise library stay. '
+            'You can undo it from Recent activity. Open Food Facts products '
+            'you opened or scanned are cleared from this device too, and undo '
+            'does not bring them back.',
           ),
           actions: [
             TextButton(
@@ -131,7 +147,7 @@ class DataManagementScreen extends ConsumerWidget {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Local data erased')),
+      const SnackBar(content: Text('All data erased')),
     );
   }
 }

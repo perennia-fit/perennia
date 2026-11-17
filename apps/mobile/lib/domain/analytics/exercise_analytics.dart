@@ -254,11 +254,10 @@ class ExerciseAnalyticsEngine {
   ) {
     final points = <AnalyticsPoint>[];
     for (final set in sets) {
-      final load = _metricValue(set.values.load, TrainingUnit.kilogram);
-      final reps = _metricValue(set.values.reps, TrainingUnit.repetition);
       if (profile.type.hasDimension(DimensionId.load) &&
           profile.type.hasDimension(DimensionId.reps)) {
-        if (load == null || reps == null) {
+        final volume = setLoadVolumeKilograms(set.values);
+        if (volume == null) {
           continue;
         }
 
@@ -266,7 +265,7 @@ class ExerciseAnalyticsEngine {
           AnalyticsPoint(
             setId: set.id,
             achievedAt: set.performedAt,
-            value: load * reps,
+            value: volume,
             unit: TrainingUnit.kilogram,
           ),
         );
@@ -311,6 +310,48 @@ class ExerciseAnalyticsEngine {
     }
     return List<AnalyticsPoint>.unmodifiable(points);
   }
+}
+
+/// One set's load volume in kilograms (load × reps), or null when it carries
+/// no load or no reps. Load is converted to kilograms first, so sets entered
+/// in kg and lb add up. The single definition behind both the exercise
+/// volume series and [sessionLoadVolumeKilograms].
+double? setLoadVolumeKilograms(LoggedSet values) {
+  final load = _metricValue(values.load, TrainingUnit.kilogram);
+  final reps = _metricValue(values.reps, TrainingUnit.repetition);
+  if (load == null || reps == null) {
+    return null;
+  }
+  return load * reps;
+}
+
+/// A logged set as session volume reads it: its values and the load mode of
+/// its exercise.
+class SessionVolumeSet {
+  const SessionVolumeSet({required this.loadMode, required this.values});
+
+  final ExerciseLoadMode loadMode;
+  final LoggedSet values;
+}
+
+/// A Workout's total load volume in kilograms: Σ [setLoadVolumeKilograms]
+/// over its sets. Assisted-load sets are excluded because their load is
+/// assistance, not lifted weight (the same reason the exercise volume series
+/// is undefined for them). Null when no set contributes, so a session with
+/// nothing to score is absent rather than a fabricated zero.
+double? sessionLoadVolumeKilograms(Iterable<SessionVolumeSet> sets) {
+  double? total;
+  for (final set in sets) {
+    if (set.loadMode == ExerciseLoadMode.assisted) {
+      continue;
+    }
+    final volume = setLoadVolumeKilograms(set.values);
+    if (volume == null) {
+      continue;
+    }
+    total = (total ?? 0) + volume;
+  }
+  return total;
 }
 
 class ExerciseAnalyticsProfile {

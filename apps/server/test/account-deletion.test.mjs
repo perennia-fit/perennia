@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { createApp, createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createApp,
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -127,7 +132,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100
         })

@@ -1,0 +1,447 @@
+{
+  "name": "m41-user-profile-validation",
+  "domain": "user-profile-validation",
+  "schemaVersion": 1,
+  "schema": "m41-user-profile-validation.schema.json",
+  "limits": {
+    "birthYearMaxAgeYears": 130,
+    "birthYearWarnMinAgeYears": 13,
+    "birthYearWarnMaxAgeYears": 100,
+    "heightMaxCentimetres": 300,
+    "heightWarnMinCentimetres": 120,
+    "heightWarnMaxCentimetres": 220,
+    "heightUnits": ["cm","in"],
+    "cmPerInch": 2.54,
+    "daysPerWeekMin": 1,
+    "daysPerWeekMax": 7,
+    "sessionMinutesMin": 1,
+    "sessionMinutesMax": 600,
+    "sessionMinutesWarnMax": 240,
+    "equipmentIdMaxLength": 64,
+    "healthLimitationsTextMaxLength": 1000,
+    "generalNotesTextMaxLength": 2000,
+    "trainingGoalIds": ["longevity","strength","muscle_gain","body_composition","endurance_performance","mobility","general_fitness"],
+    "sexes": ["female","male"],
+    "experienceLevels": ["beginner","intermediate","advanced"]
+  },
+  "cases": [
+    {
+      "name": "about-you-all-unset",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "about-you-filled",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"female","birth_year":1990,"height":{"value":66,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "about-you-partial-values-validate-only-what-is-present",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"male"}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "birth-year-at-reference-year-warns",
+      "note": "Age 0: possible, improbable.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":2026,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["birth_year.improbable_age"]}
+    },
+    {
+      "name": "birth-year-after-reference-year-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":2027,"height":null}},
+      "expected": {"accepted":false,"errorRules":["birth_year.future"],"warningRules":[]}
+    },
+    {
+      "name": "birth-year-130-years-ago-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":1896,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["birth_year.improbable_age"]}
+    },
+    {
+      "name": "birth-year-131-years-ago-rejects",
+      "note": "A hard reject carries no soft warning for the same field.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":1895,"height":null}},
+      "expected": {"accepted":false,"errorRules":["birth_year.too_old"],"warningRules":[]}
+    },
+    {
+      "name": "birth-year-age-12-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":2014,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["birth_year.improbable_age"]}
+    },
+    {
+      "name": "birth-year-age-13-passes",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":2013,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "birth-year-age-100-passes",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":1926,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "birth-year-age-101-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":1925,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["birth_year.improbable_age"]}
+    },
+    {
+      "name": "height-cm-0-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":0,"unit":"cm"}}},
+      "expected": {"accepted":false,"errorRules":["height.non_positive"],"warningRules":[]}
+    },
+    {
+      "name": "height-cm-negative-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":-1,"unit":"cm"}}},
+      "expected": {"accepted":false,"errorRules":["height.non_positive"],"warningRules":[]}
+    },
+    {
+      "name": "height-cm-119.9-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":119.9,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-cm-120-passes",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":120,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "height-cm-220-passes",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":220,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "height-cm-220.1-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":220.1,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-cm-300-warns",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":300,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-cm-300.1-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":300.1,"unit":"cm"}}},
+      "expected": {"accepted":false,"errorRules":["height.too_tall"],"warningRules":[]}
+    },
+    {
+      "name": "height-in-0-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":0,"unit":"in"}}},
+      "expected": {"accepted":false,"errorRules":["height.non_positive"],"warningRules":[]}
+    },
+    {
+      "name": "height-in-47.2-warns",
+      "note": "119.888 cm.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":47.2,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-in-47.3-passes",
+      "note": "120.142 cm.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":47.3,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "height-in-86.6-passes",
+      "note": "219.964 cm.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":86.6,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "height-in-86.7-warns",
+      "note": "220.218 cm.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":86.7,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-in-118.1-warns",
+      "note": "299.974 cm: accepted, and above the soft bound.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":118.1,"unit":"in"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["height.improbable"]}
+    },
+    {
+      "name": "height-in-118.2-rejects",
+      "note": "300.228 cm.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":118.2,"unit":"in"}}},
+      "expected": {"accepted":false,"errorRules":["height.too_tall"],"warningRules":[]}
+    },
+    {
+      "name": "height-unknown-unit-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":180,"unit":"ft"}}},
+      "expected": {"accepted":false,"errorRules":["height.unit"],"warningRules":[]}
+    },
+    {
+      "name": "height-bad-value-bad-unit-reports-unit",
+      "note": "A value in an unknown unit can't be compared to the limits, so only the unit is reported.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":0,"unit":"ft"}}},
+      "expected": {"accepted":false,"errorRules":["height.unit"],"warningRules":[]}
+    },
+    {
+      "name": "sex-female-passes",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"female","birth_year":null,"height":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "sex-unknown-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"other","birth_year":null,"height":null}},
+      "expected": {"accepted":false,"errorRules":["sex.unknown"],"warningRules":[]}
+    },
+    {
+      "name": "about-you-issues-are-in-field-order",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"other","birth_year":2027,"height":{"value":0,"unit":"cm"}}},
+      "expected": {"accepted":false,"errorRules":["sex.unknown","birth_year.future","height.non_positive"],"warningRules":[]}
+    },
+    {
+      "name": "about-you-warnings-are-in-field-order",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":1925,"height":{"value":119.9,"unit":"cm"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["birth_year.improbable_age","height.improbable"]}
+    },
+    {
+      "name": "goals-unset-passes",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "goals-none-passes",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":[]}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "goals-every-known-id-passes",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":["longevity","strength","muscle_gain","body_composition","endurance_performance","mobility","general_fitness"]}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "goals-unknown-rejects",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":["strength","world_domination"]}},
+      "expected": {"accepted":false,"errorRules":["goals.unknown"],"warningRules":[]}
+    },
+    {
+      "name": "goals-duplicate-rejects",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":["strength","strength"]}},
+      "expected": {"accepted":false,"errorRules":["goals.duplicate"],"warningRules":[]}
+    },
+    {
+      "name": "levels-unset-passes",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "levels-none-passes",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[]}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "levels-every-level-passes",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[{"focus_id":"focus-a","level":"beginner"},{"focus_id":"focus-b","level":"intermediate"},{"focus_id":"focus-c","level":"advanced"}]}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "levels-unknown-level-rejects",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[{"focus_id":"focus-a","level":"elite"}]}},
+      "expected": {"accepted":false,"errorRules":["levels.unknown_level"],"warningRules":[]}
+    },
+    {
+      "name": "levels-empty-focus-rejects",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[{"focus_id":"","level":"beginner"}]}},
+      "expected": {"accepted":false,"errorRules":["levels.invalid_focus"],"warningRules":[]}
+    },
+    {
+      "name": "levels-two-for-one-focus-rejects",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[{"focus_id":"focus-a","level":"beginner"},{"focus_id":"focus-a","level":"advanced"}]}},
+      "expected": {"accepted":false,"errorRules":["levels.duplicate_focus"],"warningRules":[]}
+    },
+    {
+      "name": "setup-all-unset",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "setup-bodyweight-only-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":[],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "equipment-unknown-id-is-accepted",
+      "note": "Equipment ids are checked for length and duplicates only.",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":["dumbbell","rowing_machine"],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "equipment-empty-id-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":[""],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["equipment.invalid"],"warningRules":[]}
+    },
+    {
+      "name": "equipment-64-character-id-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "equipment-65-character-id-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["equipment.invalid"],"warningRules":[]}
+    },
+    {
+      "name": "equipment-duplicate-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":["dumbbell","dumbbell"],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["equipment.duplicate"],"warningRules":[]}
+    },
+    {
+      "name": "days-per-week-0-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":0,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["days_per_week.range"],"warningRules":[]}
+    },
+    {
+      "name": "days-per-week-1-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":1,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "days-per-week-7-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":7,"session_minutes":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "days-per-week-8-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":8,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["days_per_week.range"],"warningRules":[]}
+    },
+    {
+      "name": "session-minutes-0-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":0}},
+      "expected": {"accepted":false,"errorRules":["session_minutes.range"],"warningRules":[]}
+    },
+    {
+      "name": "session-minutes-1-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":1}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "session-minutes-240-passes",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":240}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "session-minutes-241-warns",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":241}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["session_minutes.improbable"]}
+    },
+    {
+      "name": "session-minutes-600-warns",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":600}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":["session_minutes.improbable"]}
+    },
+    {
+      "name": "session-minutes-601-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":null,"days_per_week":null,"session_minutes":601}},
+      "expected": {"accepted":false,"errorRules":["session_minutes.range"],"warningRules":[]}
+    },
+    {
+      "name": "health-unset-passes",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":null,"none":false}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "health-none-passes",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":null,"none":true}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "health-text-1000-units-passes",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh","none":false}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "health-text-1001-units-rejects",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh","none":false}},
+      "expected": {"accepted":false,"errorRules":["text.too_long"],"warningRules":[]}
+    },
+    {
+      "name": "health-text-astral-at-1000-units-passes",
+      "note": "999 code points, 1,000 UTF-16 code units.",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\ud834\udd1e","none":false}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "health-text-astral-counts-as-2-rejects",
+      "note": "1,000 code points, 1,001 UTF-16 code units.",
+      "input": {"referenceYear":2026,"section":"health_limitations","values":{"text":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\ud834\udd1e","none":false}},
+      "expected": {"accepted":false,"errorRules":["text.too_long"],"warningRules":[]}
+    },
+    {
+      "name": "notes-unset-passes",
+      "input": {"referenceYear":2026,"section":"general_notes","values":{"text":null}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "notes-text-2000-units-passes",
+      "input": {"referenceYear":2026,"section":"general_notes","values":{"text":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "notes-text-2001-units-rejects",
+      "input": {"referenceYear":2026,"section":"general_notes","values":{"text":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}},
+      "expected": {"accepted":false,"errorRules":["text.too_long"],"warningRules":[]}
+    },
+    {
+      "name": "wrong-json-types-are-skipped-as-unset",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":12,"birth_year":"1990","height":"tall"}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "wrong-json-type-lists-are-skipped-as-unset",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":"dumbbell","days_per_week":"4","session_minutes":true}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "wrong-json-type-goals-list-is-skipped-as-unset",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":"strength"}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "wrong-json-type-levels-list-is-skipped-as-unset",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":{"focus_id":"focus-a","level":"beginner"}}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "wrong-json-type-text-is-skipped-as-unset",
+      "input": {"referenceYear":2026,"section":"general_notes","values":{"text":12}},
+      "expected": {"accepted":true,"errorRules":[],"warningRules":[]}
+    },
+    {
+      "name": "height-with-a-non-numeric-value-rejects",
+      "note": "A height object must carry a number to be compared.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":"tall","unit":"cm"}}},
+      "expected": {"accepted":false,"errorRules":["height.non_positive"],"warningRules":[]}
+    },
+    {
+      "name": "height-with-a-non-string-unit-rejects",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":180,"unit":1}}},
+      "expected": {"accepted":false,"errorRules":["height.unit"],"warningRules":[]}
+    },
+    {
+      "name": "goal-entry-of-the-wrong-type-rejects",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":[1]}},
+      "expected": {"accepted":false,"errorRules":["goals.unknown"],"warningRules":[]}
+    },
+    {
+      "name": "equipment-entry-of-the-wrong-type-rejects",
+      "input": {"referenceYear":2026,"section":"training_setup","values":{"equipment":[1],"days_per_week":null,"session_minutes":null}},
+      "expected": {"accepted":false,"errorRules":["equipment.invalid"],"warningRules":[]}
+    },
+    {
+      "name": "level-entry-of-the-wrong-type-rejects",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":["beginner"]}},
+      "expected": {"accepted":false,"errorRules":["levels.unknown_level","levels.invalid_focus"],"warningRules":[]}
+    },
+    {
+      "name": "each-rule-is-reported-once-per-field",
+      "input": {"referenceYear":2026,"section":"training_goals","values":{"goals":["world_domination","time_travel"]}},
+      "expected": {"accepted":false,"errorRules":["goals.unknown"],"warningRules":[]}
+    },
+    {
+      "name": "list-rules-are-in-table-order",
+      "input": {"referenceYear":2026,"section":"experience","values":{"levels":[{"focus_id":"","level":"elite"},{"focus_id":"focus-a","level":"beginner"},{"focus_id":"focus-a","level":"beginner"}]}},
+      "expected": {"accepted":false,"errorRules":["levels.unknown_level","levels.invalid_focus","levels.duplicate_focus"],"warningRules":[]}
+    }
+  ]
+}

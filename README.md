@@ -66,19 +66,38 @@ through it; devices stay in sync.
 - **Plan layer**: workout templates, routines with optional cadences, capture from a
   finished workout, an up-next suggestion.
 - **Nutrition**: foods, meals, nutrient targets, and file import from several trackers.
-- **Protocols**: a neutral logbook for supplements and their observed effect on metrics.
+- **Protocols**: plans for what you take (supplements, peptides, hormones, medications)
+  with reminders, a neutral dose log, and its observed effect on metrics.
 - **Sync**: offline-first replica, delta sync, last-writer-wins with a recoverable
   activity log.
 - **Agent surface**: the OpenAPI REST API, an in-process MCP server, and agent keys.
 
-## Self-hosting
+## Hosted or self-hosted
 
-A Docker image plus Postgres. The app can point at any server — a build carries no
-default server, so you enter your own — and a self-hosted deployment gets the same
-agent API and MCP surface as any other.
+The app from the app stores signs in to the **Official Service**,
+`https://api.perennia.fit`, operated by the maintainers. A build from this
+repository carries no default server: you enter your own on the sign-in screen,
+or bake one in at build time, so a self-built app never contacts the maintainers'
+infrastructure unless you point it there.
+
+Self-hosting is a Docker image plus Postgres, and a self-hosted deployment gets the
+same agent API and MCP surface as the Official Service.
 
 See **[docs/self-hosting.md](docs/self-hosting.md)** for the runbook: configuration,
 sign-in providers, migrations, and connecting the app.
+
+## Connecting an AI agent
+
+An agent needs a server URL and an agent key.
+
+- **Server URL**: the server your app signs in to — `https://api.perennia.fit` if
+  you use the app from the stores, or your own server's address if you self-host.
+- **Agent key**: create one in the app's account settings (you must be signed
+  in). It is shown once; give it to the agent as a bearer token.
+
+MCP clients connect to `<server URL>/mcp` with an `Authorization: Bearer <agent
+key>` header. Agents that run code can use the skill in
+[agent-skills/perennia](agent-skills/perennia/SKILL.md) instead.
 
 ## Documentation
 
@@ -89,6 +108,7 @@ sign-in providers, migrations, and connecting the app.
 | [DESIGN.md](DESIGN.md) | The visual design system |
 | [docs/development.md](docs/development.md) | Build and run from source; the CI gate |
 | [docs/self-hosting.md](docs/self-hosting.md) | Running your own server |
+| [docs/releasing.md](docs/releasing.md) | Cutting a release, and the rules that keep installs updatable |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The CLA, the gate, and what a good pull request looks like |
 
 ## Contributing

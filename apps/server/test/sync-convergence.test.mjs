@@ -4,10 +4,18 @@ import test from "node:test";
 
 import { inArray } from "drizzle-orm";
 
-import { createApp, createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createApp,
+  createMigratedServerApp,
+  createUuidV7,
+  dayStatuses,
+  planDays,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
-const protocolVersion = 1;
+const protocolVersion = SYNC_PROTOCOL_VERSION;
 const entity = "logged_sets";
 const scenarioSeed = 0x5eed2026;
 
@@ -397,6 +405,1066 @@ test(
   }
 );
 
+test(
+  "two offline devices insert same-day Schedule Versions; both reach every replica and every replica applies the larger id",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = ["a", "b", "c"].map(
+        (name) =>
+          new PlanTreeReplica({
+            name: `Protocol Replica ${name.toUpperCase()}`,
+            deviceId: `device-${name}`,
+            server,
+            entityOrder: protocolPlanEntityOrder
+          })
+      );
+      const [replicaA, replicaB, replicaC] = replicas;
+      const updatedAt = "2026-10-01T08:00:00.000Z";
+      const compoundId = createUuidV7(new Date(updatedAt));
+      const protocolId = createUuidV7(new Date(updatedAt));
+      const memberId = createUuidV7(new Date(updatedAt));
+      const baselineVersion = protocolPlanRow("schedules", createUuidV7(new Date(updatedAt)), updatedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-09-01",
+        rule: timedDailyRule(["09:00"]),
+        ...creatineAmount
+      });
+      for (const row of [
+        protocolPlanRow("compounds", compoundId, updatedAt, {
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          strength: null
+        }),
+        protocolPlanRow("protocols", protocolId, updatedAt, {
+          name: "Daily",
+          start_local_date: "2026-09-01",
+          end_local_date: null,
+          // As the app pushes it: JSON text, here a Pause before the edits.
+          period: JSON.stringify({
+            v: 1,
+            cycle: null,
+            pauses: [{ from: "2026-09-10", to: "2026-09-12" }]
+          }),
+          reminders_enabled: true,
+          archived_on: null
+        }),
+        protocolPlanRow("protocol_compounds", memberId, updatedAt, {
+          protocol_id: protocolId,
+          compound_id: compoundId,
+          position: 0,
+          archived_on: null
+        }),
+        baselineVersion
+      ]) {
+        replicaA.stageChange(row.entity, {
+          id: row.id,
+          payload: row.payload,
+          updatedAt,
+          deletedAt: null
+        });
+      }
+      await settlePlanReplicas(replicas);
+
+      // Both devices edit the same member offline on the same day. Each edit
+      // is a new version row with its own id, so neither overwrites the
+      // other: last-writer-wins never has to choose between them.
+      const editedAt = "2026-10-19T06:30:00.000Z";
+      const versionA = protocolPlanRow("schedules", createUuidV7(new Date(editedAt)), editedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-10-19",
+        rule: timedDailyRule(["07:00"]),
+        ...creatineAmount
+      });
+      // The app pushes `rule` as JSON text; an Agent write stores an object.
+      // Both forms sync, and every reader plans them the same.
+      const versionB = protocolPlanRow("schedules", createUuidV7(new Date(editedAt)), editedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-10-19",
+        rule: JSON.stringify(timedDailyRule(["21:00"])),
+        ...creatineAmount
+      });
+      for (const [replica, version] of [
+        [replicaA, versionA],
+        [replicaB, versionB]
+      ]) {
+        replica.stageChange(version.entity, {
+          id: version.id,
+          payload: version.payload,
+          updatedAt: editedAt,
+          deletedAt: null
+        });
+      }
+      await replicaB.pushPending();
+      await replicaA.pushPending();
+      await settlePlanReplicas(replicas);
+
+      const winner = versionA.id > versionB.id ? versionA : versionB;
+      for (const replica of replicas) {
+        for (const version of [baselineVersion, versionA, versionB]) {
+          assert.notEqual(
+            replica.row("schedules", version.id),
+            undefined,
+            `${replica.name} is missing Schedule Version ${version.id}`
+          );
+        }
+        const [day] = planDays([planProtocolFrom(replica, protocolId)], "2026-10-19", "2026-10-19");
+        assert.equal(day.state, "planned", replica.name);
+        assert.deepEqual(
+          day.planned.map((dose) => dose.localTime),
+          storedJson(winner.payload.rule).times,
+          `${replica.name} applies the larger version id`
+        );
+        assert.equal(
+          typeof replica.row("schedules", versionB.id).payload.rule,
+          "string",
+          `${replica.name} receives the app's rule as it was pushed`
+        );
+        const [paused] = planDays([planProtocolFrom(replica, protocolId)], "2026-09-11", "2026-09-11");
+        assert.equal(paused.state, "paused", `${replica.name} reads the period pushed as text`);
+        const [before] = planDays([planProtocolFrom(replica, protocolId)], "2026-10-18", "2026-10-18");
+        assert.deepEqual(
+          before.planned.map((dose) => dose.localTime),
+          ["09:00"],
+          `${replica.name} keeps the earlier version for earlier days`
+        );
+      }
+      assert.equal(
+        replicaC.stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+
+      // A version-1 client would push incomplete plan rows and erase the
+      // fields it doesn't know, so sync protocol 2 refuses it outright.
+      for (const path of ["/sync/push", "/sync/pull"]) {
+        const response = await server.app.request(path, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${server.sessionToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(
+            path === "/sync/push"
+              ? {
+                  protocolVersion: 1,
+                  deviceId: "device-v1",
+                  entity: "schedules",
+                  changes: []
+                }
+              : { protocolVersion: 1, cursor: null, limit: 10 }
+          )
+        });
+        assert.equal(response.status, 400, `${path} accepted protocol version 1`);
+      }
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "a Protocol delete on one replica converges on the others, which then plan nothing for it; its child rows are unchanged",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server);
+      const [replicaA] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+
+      // D8: a delete writes the one Protocol row, as undoing its creation
+      // leaves it: deleted_at and updated_at now, archived_on null.
+      const deletedAt = "2026-10-20T07:00:00.000Z";
+      replicaA.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaA.row("protocols", plan.protocolId).payload,
+          archived_on: null,
+          updated_at: deletedAt,
+          deleted_at: deletedAt
+        },
+        updatedAt: deletedAt,
+        deletedAt
+      });
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        const protocol = replica.row("protocols", plan.protocolId);
+        assert.notEqual(protocol.deletedAt, null, replica.name);
+        assert.equal(protocol.payload.archived_on, null, replica.name);
+        // Nothing cascades: the member and its version are as they were.
+        assert.equal(replica.row("protocol_compounds", plan.memberId).deletedAt, null);
+        assert.equal(replica.row("schedules", plan.versionId).deletedAt, null);
+        // A reader reaches them only through a live Protocol, so it plans nothing.
+        assert.deepEqual(
+          planDays(livePlanProtocols(replica), "2026-10-20", "2026-10-21"),
+          [],
+          `${replica.name} still plans the deleted Protocol`
+        );
+      }
+      assert.equal(
+        replicas[2].stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "two devices editing different User Profile sections offline both survive",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = userProfileReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const aboutYouId = randomUUID();
+      const goalsId = randomUUID();
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: aboutYouId,
+          section: "about_you",
+          values: { sex: "female", birth_year: 1990, height: null },
+          updatedAt: "2026-10-20T07:00:00.000Z"
+        })
+      );
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: goalsId,
+          section: "training_goals",
+          values: { goals: ["strength"] },
+          updatedAt: "2026-10-20T07:00:01.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+
+      // Offline: A edits About you, then B edits Training Goals later. A section
+      // is its own row, so B's later write can't overwrite A's edit.
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: aboutYouId,
+          section: "about_you",
+          values: { sex: "female", birth_year: 1991, height: null },
+          updatedAt: "2026-10-20T08:00:00.000Z"
+        })
+      );
+      replicaB.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: goalsId,
+          section: "training_goals",
+          values: { goals: ["mobility"] },
+          updatedAt: "2026-10-20T09:00:00.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.equal(
+          newestProfileSection(replica, "about_you").payload.values.birth_year,
+          1991,
+          replica.name
+        );
+        assert.deepEqual(
+          newestProfileSection(replica, "training_goals").payload.values.goals,
+          ["mobility"],
+          replica.name
+        );
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(userProfileEntityOrder),
+        replicaB.stateSignatureFor(userProfileEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "two devices that each filled one User Profile section converge on the newer row, keeping the older unread",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = userProfileReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const olderId = randomUUID();
+      const newerId = randomUUID();
+
+      // Each install mints its own random id before it has a user id, so the
+      // same section arrives as two rows and neither overwrites the other.
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: olderId,
+          section: "about_you",
+          values: { sex: "male", birth_year: 1980, height: null },
+          updatedAt: "2026-10-20T07:00:00.000Z"
+        })
+      );
+      replicaB.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: newerId,
+          section: "about_you",
+          values: { sex: "male", birth_year: 1981, height: null },
+          updatedAt: "2026-10-20T08:00:00.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.equal(
+          newestProfileSection(replica, "about_you").id,
+          newerId,
+          replica.name
+        );
+        assert.equal(replica.row("user_profile_sections", olderId).deletedAt, null);
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(userProfileEntityOrder),
+        replicaB.stateSignatureFor(userProfileEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "a Protocol delete against another replica's later rename converges to the live Protocol with all its members",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+
+      // Offline: A deletes the Protocol, then B renames it later. B pushes
+      // first; A's older delete then loses last-writer-wins, so the whole
+      // Protocol comes back with its children, never half-deleted.
+      const deletedAt = "2026-10-20T07:00:00.000Z";
+      const renamedAt = "2026-10-20T08:00:00.000Z";
+      replicaA.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaA.row("protocols", plan.protocolId).payload,
+          archived_on: null,
+          updated_at: deletedAt,
+          deleted_at: deletedAt
+        },
+        updatedAt: deletedAt,
+        deletedAt
+      });
+      replicaB.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaB.row("protocols", plan.protocolId).payload,
+          name: "Renamed",
+          updated_at: renamedAt,
+          deleted_at: null
+        },
+        updatedAt: renamedAt,
+        deletedAt: null
+      });
+      await replicaB.pushPending();
+      await replicaA.pushPending();
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        const protocol = replica.row("protocols", plan.protocolId);
+        assert.equal(protocol.deletedAt, null, replica.name);
+        assert.equal(protocol.payload.name, "Renamed", replica.name);
+        assert.equal(replica.row("protocol_compounds", plan.memberId).deletedAt, null);
+        const days = planDays(livePlanProtocols(replica), "2026-10-20", "2026-10-20");
+        assert.deepEqual(
+          days.map((day) => [day.protocolId, day.compoundId, day.state]),
+          [[plan.protocolId, plan.compoundId, "planned"]],
+          replica.name
+        );
+      }
+      assert.equal(
+        replicas[2].stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "fresh and resynced replicas converge when parents are edited after their children were received",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+    assert.notEqual(server.database, null);
+
+    try {
+      const writer = new ForeignKeyCheckedReplica({
+        name: "Writer",
+        deviceId: "device-a",
+        server
+      });
+      const metricId = randomUUID();
+      const rows = foreignKeyGraphRows({
+        metricId,
+        updatedAt: "2026-07-02T08:00:00.000Z"
+      });
+      for (const row of rows) {
+        writer.writeRow({
+          row,
+          updatedAt: row.payload.updated_at,
+          revision: "created"
+        });
+      }
+      await writer.pushPending();
+
+      // Metrics and their Readings are pull-only: an integration import
+      // writes them on the server.
+      const readingIds = [randomUUID(), randomUUID(), randomUUID()];
+      await insertServerMetric(server, { metricId, readingIds });
+
+      // Every parent is edited after its children were received, so a
+      // receive-ordered pull puts each child on an earlier page than the
+      // parent its Drift FK needs. The Metric is renamed by a later import.
+      for (const row of rows) {
+        if (deviceForeignKeys.some((reference) => reference.parent === row.entity)) {
+          writer.writeRow({
+            row,
+            updatedAt: "2026-07-02T09:00:00.000Z",
+            revision: "edited-after-children"
+          });
+        }
+      }
+      await writer.pushPending();
+      await server.database.db
+        .update(schema.metrics)
+        .set({
+          name: "Body Weight (renamed)",
+          updatedAt: new Date("2026-07-02T09:00:00.000Z"),
+          receivedAt: new Date(Date.now() + 1000)
+        })
+        .where(inArray(schema.metrics.id, [metricId]));
+
+      const fresh = new ForeignKeyCheckedReplica({
+        name: "Fresh Replica",
+        deviceId: "device-b",
+        server
+      });
+      await fresh.pullUntilSettled({ limit: 2 });
+      const resynced = new ForeignKeyCheckedReplica({
+        name: "Resynced Replica",
+        deviceId: "device-c",
+        server
+      });
+      await resynced.pullSnapshot({ limit: 2 });
+      await writer.pullUntilSettled({ limit: 2 });
+
+      const finalState = writer.stateSignature();
+      assert.deepEqual(
+        [fresh.stateSignature(), resynced.stateSignature()],
+        [finalState, finalState]
+      );
+      for (const row of rows) {
+        const observed = fresh.row(row.entity, row.id);
+        assert.notEqual(observed, undefined, row.entity);
+        assert.equal(
+          observed.payload.revision,
+          deviceForeignKeys.some((reference) => reference.parent === row.entity)
+            ? "edited-after-children"
+            : "created",
+          row.entity
+        );
+      }
+      assert.equal(
+        fresh.row("metrics", metricId)?.payload.name,
+        "Body Weight (renamed)"
+      );
+      for (const readingId of readingIds) {
+        assert.notEqual(fresh.row("metric_readings", readingId), undefined);
+      }
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "body tracker replicas that each seeded Body Weight converge on one, with every reading",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicaA = new BodyTrackerReplica({
+        name: "Body Tracker A",
+        deviceId: "device-a",
+        server
+      });
+      const replicaB = new BodyTrackerReplica({
+        name: "Body Tracker B",
+        deviceId: "device-b",
+        server
+      });
+      const replicas = [replicaA, replicaB];
+
+      // Each install seeds its own Body Weight under a random id, logs
+      // readings against it, and B also keeps a measurement of its own.
+      const bodyWeightA = replicaA.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:00.000Z"
+      });
+      const bodyWeightB = replicaB.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:01.000Z"
+      });
+      const waistB = replicaB.createMeasurement({
+        name: "Waist",
+        unit: "centimeter",
+        at: "2026-07-01T08:00:02.000Z"
+      });
+      const readingIds = [
+        replicaA.logReading(bodyWeightA, 80.1, "2026-07-01T09:00:00.000Z"),
+        replicaA.logReading(bodyWeightA, 80.4, "2026-07-02T09:00:00.000Z"),
+        replicaB.logReading(bodyWeightB, 79.8, "2026-07-03T09:00:00.000Z"),
+        replicaB.logReading(bodyWeightB, 79.5, "2026-07-04T09:00:00.000Z")
+      ];
+      const waistReadingId = replicaB.logReading(
+        waistB,
+        84,
+        "2026-07-04T09:05:00.000Z"
+      );
+
+      // Both devices come online at once: the first push of Body Weight
+      // must not race the second into two server rows.
+      await Promise.all(replicas.map((replica) => replica.pushPending()));
+      for (let round = 0; round < 3; round += 1) {
+        await settlePlanReplicas(replicas);
+      }
+
+      const observer = new BodyTrackerReplica({
+        name: "Body Tracker Observer",
+        deviceId: "device-observer",
+        server
+      });
+      await observer.pullUntilSettled({ limit: 3 });
+
+      const bodyWeights = observer.liveMetrics("Body Weight");
+      assert.equal(bodyWeights.length, 1, "one Body Weight survives");
+      const survivor = bodyWeights[0];
+      assert.equal(
+        [bodyWeightA, bodyWeightB].includes(survivor.id),
+        true,
+        "the survivor is one of the devices' own ids"
+      );
+      assert.equal(survivor.payload.pinned, true);
+      assert.deepEqual(
+        observer
+          .liveReadings(survivor.id)
+          .map((reading) => reading.id)
+          .sort(),
+        [...readingIds].sort(),
+        "every Body Weight reading from both devices hangs off the survivor"
+      );
+      assert.deepEqual(
+        observer.liveReadings(waistB).map((reading) => reading.id),
+        [waistReadingId],
+        "a measurement of one device's own syncs as itself"
+      );
+
+      const finalState = observer.liveStateSignature();
+      for (const replica of replicas) {
+        assert.equal(replica.pending.length, 0, `${replica.name} is settled`);
+        assert.equal(
+          replica.liveStateSignature(),
+          finalState,
+          `${replica.name} converged on the observer's state`
+        );
+      }
+
+      // The folded id was never stored as a Metric on the server.
+      const loserId = survivor.id === bodyWeightA ? bodyWeightB : bodyWeightA;
+      const loserRows = await server.database.db
+        .select({ id: schema.metrics.id })
+        .from(schema.metrics)
+        .where(inArray(schema.metrics.id, [loserId]));
+      assert.deepEqual(loserRows, []);
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "a device's Body Weight folds into a canonical-import copy and its curation reaches the server",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      // Canonical import made the server's own Body Weight first, with the
+      // catalog's defaults: unpinned and disabled.
+      const importedId = `metric-${randomUUID()}`;
+      await server.database.db.insert(schema.metrics).values({
+        id: importedId,
+        userId: server.userId,
+        deviceId: "server-import",
+        name: "Body Weight",
+        unit: "kilogram",
+        valueShape: "scalar",
+        metricGroup: "bodyComposition",
+        goalType: "decrease",
+        enabled: false,
+        pinned: false,
+        sortOrder: 0,
+        updatedAt: new Date("2026-07-05T08:00:00.000Z")
+      });
+
+      const replica = new BodyTrackerReplica({
+        name: "Body Tracker",
+        deviceId: "device-a",
+        server
+      });
+      const deviceBodyWeight = replica.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:00.000Z"
+      });
+      const readingId = replica.logReading(
+        deviceBodyWeight,
+        80.1,
+        "2026-07-01T09:00:00.000Z"
+      );
+
+      for (let round = 0; round < 3; round += 1) {
+        await settlePlanReplicas([replica]);
+      }
+
+      const [bodyWeight] = replica.liveMetrics("Body Weight");
+      assert.equal(bodyWeight.id, importedId);
+      assert.equal(replica.liveMetrics("Body Weight").length, 1);
+      assert.deepEqual(
+        replica.liveReadings(importedId).map((reading) => reading.id),
+        [readingId]
+      );
+
+      const [stored] = await server.database.db
+        .select({ pinned: schema.metrics.pinned, enabled: schema.metrics.enabled })
+        .from(schema.metrics)
+        .where(inArray(schema.metrics.id, [importedId]));
+      assert.deepEqual(
+        stored,
+        { pinned: true, enabled: true },
+        "the device's Body Tracker curation replaced the import's defaults"
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "two replicas that skip the same timed planned dose offline converge on both Skips and one skipped dose; removing it on one removes both everywhere",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server, protocolSkipEntityOrder);
+      const [replicaA, replicaB, observer] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+      const day = "2026-10-20";
+
+      // Offline, both devices skip the day's 09:00 dose: no unique key, so
+      // two rows with their own ids (D8, Alternative AB).
+      const skipA = skipChange(plan, { localDate: day, at: "2026-10-20T07:00:00.000Z" });
+      const skipB = skipChange(plan, { localDate: day, at: "2026-10-20T07:05:00.000Z" });
+      replicaA.stageChange("protocol_skips", skipA);
+      replicaB.stageChange("protocol_skips", skipB);
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      const [marking] = [skipA.id, skipB.id].sort();
+      for (const replica of replicas) {
+        assert.deepEqual(
+          liveSkips(replica)
+            .map((skip) => skip.skipId)
+            .sort(),
+          [skipA.id, skipB.id].sort(),
+          `${replica.name} holds both Skips`
+        );
+        // Matching marks the one timed planned dose once; the other Skip is inert.
+        const [status] = replicaDayStatuses(replica, day);
+        assert.equal(status.status, "skipped", replica.name);
+        assert.deepEqual(
+          [status.plannedCount, status.skippedCount],
+          [1, 1],
+          replica.name
+        );
+        assert.equal(status.fills[0].skipId, marking, replica.name);
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+      assert.equal(
+        replicaB.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+
+      // B removes the Skip its row shows. As the app's Undo skip does, the
+      // write tombstones every live Skip with the same timed key, so the
+      // inert one can't take over and leave the row Skipped.
+      const removedAt = "2026-10-20T08:00:00.000Z";
+      for (const skip of liveSkips(replicaB).filter(
+        (candidate) =>
+          candidate.protocolId === plan.protocolId &&
+          candidate.compoundId === plan.compoundId &&
+          candidate.localDate === day &&
+          candidate.plannedLocalTime === "09:00"
+      )) {
+        const row = replicaB.row("protocol_skips", skip.skipId);
+        replicaB.stageChange("protocol_skips", {
+          id: skip.skipId,
+          payload: { ...row.payload, updated_at: removedAt, deleted_at: removedAt },
+          updatedAt: removedAt,
+          deletedAt: removedAt
+        });
+      }
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.deepEqual(liveSkips(replica), [], `${replica.name} kept a Skip`);
+        const [status] = replicaDayStatuses(replica, day);
+        assert.equal(status.status, "pending", replica.name);
+        assert.equal(status.skippedCount, 0, replica.name);
+      }
+      const stored = await server.database.db
+        .select({ id: schema.protocolSkips.id, deletedAt: schema.protocolSkips.deletedAt })
+        .from(schema.protocolSkips)
+        .where(inArray(schema.protocolSkips.id, [skipA.id, skipB.id]));
+      assert.equal(stored.length, 2);
+      assert.ok(stored.every((row) => row.deletedAt !== null));
+      assert.equal(
+        replicaA.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+for (const scenario of [
+  {
+    entity: "meals",
+    table: "meals",
+    base: { name: "Lunch", meal_type_id: "meal-type-lunch" },
+    keys: { timezone_offset_minutes: 600, time_precision: "date" },
+    replacement: { timezone_offset_minutes: null, time_precision: "instant" }
+  },
+  {
+    entity: "food_entries",
+    table: "foodEntries",
+    base: { meal_id: "meal-1", position: 0 },
+    keys: { import_source: "fitnotes", import_external_id: "fn-42" },
+    replacement: { import_source: "cronometer", import_external_id: null }
+  }
+]) {
+  test(
+    `a ${scenario.entity} push without its later-added keys keeps the stored values; a push that sends them replaces them; per-row LWW is unchanged`,
+    { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+    async () => {
+      const server = await createConvergenceServer();
+      const table = schema[scenario.table];
+      const id = randomUUID();
+      const push = (deviceId, updatedAt, fields, beforeFields) => {
+        const payload = planImage(id, updatedAt, {
+          ...scenario.base,
+          ...fields
+        });
+        const activityLogId = randomUUID();
+        const change = {
+          id,
+          payload,
+          updatedAt,
+          deletedAt: null,
+          activityLogId,
+          actor: "app",
+          batchId: `meal-logging-carry-${activityLogId}`,
+          beforeImage:
+            beforeFields === undefined
+              ? null
+              : planImage(id, "2026-07-01T08:00:00.000Z", {
+                  ...scenario.base,
+                  ...beforeFields
+                }),
+          afterImage: payload,
+          occurredAt: updatedAt
+        };
+        return syncRequest(server, "/sync/push", {
+          protocolVersion,
+          deviceId,
+          entity: scenario.entity,
+          changes: [change]
+        }).then((response) => ({ response, activityLogId }));
+      };
+      const storedPayload = async () => {
+        const [row] = await server.database.db
+          .select({ payload: table.payload })
+          .from(table)
+          .where(inArray(table.id, [id]));
+        return row.payload;
+      };
+      const loggedImages = async (activityLogId) => {
+        const [row] = await server.database.db
+          .select({
+            beforeImage: schema.activityLog.beforeImage,
+            afterImage: schema.activityLog.afterImage
+          })
+          .from(schema.activityLog)
+          .where(inArray(schema.activityLog.id, [activityLogId]));
+        return row;
+      };
+      const pick = (payload, keys) =>
+        Object.fromEntries(Object.keys(keys).map((key) => [key, payload[key]]));
+
+      try {
+        // A newer device creates the row with the later-added keys.
+        await push("device-new", "2026-07-01T08:00:00.000Z", scenario.keys);
+        assert.deepEqual(
+          pick(await storedPayload(), scenario.keys),
+          scenario.keys
+        );
+
+        // An older app edits it without knowing the keys: they are carried
+        // forward into the stored payload and both Activity Log images.
+        const older = await push(
+          "device-old",
+          "2026-07-01T09:00:00.000Z",
+          { revision: "older-app-edit" },
+          {}
+        );
+        assert.deepEqual(older.response.accepted, [id]);
+        const afterOlder = await storedPayload();
+        assert.equal(afterOlder.revision, "older-app-edit");
+        assert.deepEqual(pick(afterOlder, scenario.keys), scenario.keys);
+        const olderLog = await loggedImages(older.activityLogId);
+        assert.deepEqual(pick(olderLog.afterImage, scenario.keys), scenario.keys);
+        assert.deepEqual(pick(olderLog.beforeImage, scenario.keys), scenario.keys);
+        assert.deepEqual(olderLog.afterImage, afterOlder);
+
+        // A push that sends the keys, null included, replaces them.
+        const replacing = await push(
+          "device-new",
+          "2026-07-01T10:00:00.000Z",
+          { revision: "replaced", ...scenario.replacement },
+          scenario.keys
+        );
+        assert.deepEqual(replacing.response.accepted, [id]);
+        const afterReplace = await storedPayload();
+        assert.deepEqual(
+          pick(afterReplace, scenario.replacement),
+          scenario.replacement
+        );
+        assert.deepEqual(
+          pick(
+            (await loggedImages(replacing.activityLogId)).afterImage,
+            scenario.replacement
+          ),
+          scenario.replacement
+        );
+
+        // Per-row last-writer-wins: an older clock loses, is still accepted,
+        // and its write is logged for recovery; the stored row is untouched.
+        const stale = await push(
+          "device-old",
+          "2026-07-01T09:30:00.000Z",
+          { revision: "stale-edit" },
+          {}
+        );
+        assert.deepEqual(stale.response.accepted, [id]);
+        assert.deepEqual(stale.response.applied, []);
+        assert.deepEqual(await storedPayload(), afterReplace);
+        const staleLog = await loggedImages(stale.activityLogId);
+        assert.equal(staleLog.afterImage.revision, "stale-edit");
+      } finally {
+        await server.close();
+      }
+    }
+  );
+}
+
+test(
+  "a kept exercise converges across one account's devices: the same retired id at the same stamp by device id, then a later rename with the loser in the Activity Log",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+    assert.notEqual(server.database, null);
+
+    try {
+      const replicas = ["a", "b", "c"].map(
+        (suffix) =>
+          new PlanTreeReplica({
+            name: `Kept Exercise Replica ${suffix}`,
+            deviceId: `device-${suffix}`,
+            server,
+            entityOrder: ["exercises"]
+          })
+      );
+      const [replicaA, replicaB, replicaC] = replicas;
+      const keptId = "01910000-0000-7000-8000-000000000105";
+      const stageKept = (replica, { updatedAt, fields, activityLogId }) => {
+        const before = replica.row("exercises", keptId)?.payload;
+        const payload = {
+          ...(before ?? keptExercisePayload(keptId)),
+          ...fields,
+          updated_at: updatedAt,
+          deleted_at: null
+        };
+        const change = { id: keptId, payload, updatedAt, deletedAt: null };
+        if (activityLogId !== undefined) {
+          Object.assign(change, {
+            activityLogId,
+            actor: "app",
+            batchId: `kept-exercise-${activityLogId}`,
+            beforeImage: before,
+            afterImage: payload,
+            occurredAt: updatedAt
+          });
+        }
+        replica.stageChange("exercises", change);
+      };
+      const assertConverged = ({ deviceId, updatedAt, fields }) => {
+        for (const replica of replicas) {
+          const kept = replica.row("exercises", keptId);
+          assert.equal(kept.deviceId, deviceId, replica.name);
+          assert.equal(kept.updatedAt, updatedAt, replica.name);
+          assert.equal(kept.deletedAt, null, replica.name);
+          for (const [field, value] of Object.entries(fields)) {
+            assert.equal(kept.payload[field], value, `${replica.name} ${field}`);
+          }
+        }
+        assert.equal(replicaA.stateSignature(), replicaC.stateSignature());
+        assert.equal(replicaB.stateSignature(), replicaC.stateSignature());
+      };
+
+      // Each device keeps the retired id on its own, stamped with the record's
+      // retired_at: same id, same stamp. Only the favorite flag differs, so the
+      // winner is visible. Device A pushes first, and the device-id tie-break
+      // still settles every replica on device B's row.
+      const retiredAt = "2026-11-05T00:00:00.000Z";
+      stageKept(replicaA, { updatedAt: retiredAt, fields: { is_favorite: true } });
+      stageKept(replicaB, { updatedAt: retiredAt, fields: { is_favorite: false } });
+      await settlePlanReplicas(replicas);
+      assertConverged({
+        deviceId: "device-b",
+        updatedAt: retiredAt,
+        fields: { name: "Plank", is_favorite: false }
+      });
+
+      // Both devices rename it before seeing each other's edit, A later than B.
+      // B's rename loses to A's and stays recoverable from the Activity Log.
+      const winningAt = "2026-11-05T12:00:00.000Z";
+      const losingAt = "2026-11-05T11:00:00.000Z";
+      const loserActivityId = randomUUID();
+      stageKept(replicaA, { updatedAt: winningAt, fields: { name: "Front Plank" } });
+      stageKept(replicaB, {
+        updatedAt: losingAt,
+        fields: { name: "Hollow Hold" },
+        activityLogId: loserActivityId
+      });
+      await settlePlanReplicas(replicas);
+      assertConverged({
+        deviceId: "device-a",
+        updatedAt: winningAt,
+        fields: { name: "Front Plank" }
+      });
+
+      const [loserEntry] = await server.database.db
+        .select()
+        .from(schema.activityLog)
+        .where(inArray(schema.activityLog.id, [loserActivityId]));
+      assert.equal(loserEntry.entityTable, "exercises");
+      assert.equal(loserEntry.entityId, keptId);
+      assert.equal(loserEntry.beforeImage.name, "Plank");
+      assert.equal(loserEntry.afterImage.name, "Hollow Hold");
+
+      // One account, so one stored row however many devices kept the id.
+      const stored = await server.database.db
+        .select()
+        .from(schema.exercises)
+        .where(inArray(schema.exercises.userId, [server.userId]));
+      assert.deepEqual(
+        stored.map((row) => [row.id, row.payload.name]),
+        [[keptId, "Front Plank"]]
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+const userProfileEntityOrder = ["user_profile_sections"];
+
+function profileSectionChange({ id, section, values, updatedAt }) {
+  return {
+    id,
+    payload: { id, section, values, updated_at: updatedAt, deleted_at: null },
+    updatedAt,
+    deletedAt: null
+  };
+}
+
+/** The newest live row for a section, as every read takes it. */
+function newestProfileSection(replica, section) {
+  return [...replica.rows.values()]
+    .filter(
+      (row) =>
+        row.entity === "user_profile_sections" &&
+        row.deletedAt === null &&
+        row.payload.section === section
+    )
+    .sort(
+      (left, right) =>
+        left.updatedAt.localeCompare(right.updatedAt) ||
+        left.id.localeCompare(right.id)
+    )
+    .at(-1);
+}
+
+function userProfileReplicas(server) {
+  return ["a", "b"].map(
+    (name) =>
+      new PlanTreeReplica({
+        name: `Profile Replica ${name.toUpperCase()}`,
+        deviceId: `device-${name}`,
+        server,
+        entityOrder: userProfileEntityOrder
+      })
+  );
+}
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({
@@ -404,10 +1472,11 @@ async function createConvergenceServer() {
       logger: { info() {}, error() {} },
       auth: false
     });
-    const { sessionToken } = await createSignedInUser(serverApp);
+    const { sessionToken, userId } = await createSignedInUser(serverApp);
     return {
       app: serverApp.app,
       sessionToken,
+      userId,
       database: serverApp.database,
       close: () => serverApp.database.close()
     };
@@ -506,6 +1575,13 @@ class SyncReplicaHarness {
         const row = this.row(entityName, id);
         if (row !== undefined) {
           row.previouslySynced = true;
+        }
+      }
+      // A row the server stored under another id is still device-only.
+      for (const merged of response.merged ?? []) {
+        const row = this.row(entityName, merged.id);
+        if (row !== undefined) {
+          row.previouslySynced = false;
         }
       }
       for (const applied of response.applied) {
@@ -714,12 +1790,12 @@ class SimulatedReplica extends SyncReplicaHarness {
 }
 
 class PlanTreeReplica extends SyncReplicaHarness {
-  constructor({ name, deviceId, server }) {
+  constructor({ name, deviceId, server, entityOrder = planEntityOrder }) {
     super({
       name,
       deviceId,
       server,
-      entityOrder: planEntityOrder,
+      entityOrder,
       keyFor: planRowKey
     });
   }
@@ -752,6 +1828,22 @@ class PlanTreeReplica extends SyncReplicaHarness {
     this.stageChange(row.entity, change);
   }
 
+  stateSignatureFor(entityNames) {
+    return JSON.stringify(
+      [...this.rows.values()]
+        .filter((row) => entityNames.includes(row.entity))
+        .map((row) => ({
+          entity: row.entity,
+          id: row.id,
+          deletedAt: row.deletedAt,
+          payload: canonicalize(row.payload)
+        }))
+        .sort((left, right) =>
+          `${left.entity}:${left.id}`.localeCompare(`${right.entity}:${right.id}`)
+        )
+    );
+  }
+
   stateSignature() {
     return JSON.stringify(
       [...this.rows.values()]
@@ -770,6 +1862,279 @@ class PlanTreeReplica extends SyncReplicaHarness {
         )
     );
   }
+}
+
+/**
+ * A replica that applies each pull page the way the device does: in one
+ * transaction with every Drift FK enforced. A page whose row references a
+ * parent neither stored nor in the same page would roll back and leave the
+ * cursor where it was, so the simulation fails it as a stall.
+ */
+class ForeignKeyCheckedReplica extends PlanTreeReplica {
+  constructor({ name, deviceId, server }) {
+    super({ name, deviceId, server, entityOrder: foreignKeyEntityOrder });
+  }
+
+  async pullUntilSettled({ limit = 100 } = {}) {
+    this.cursor = await this.pullPages({ cursor: this.cursor, limit, mode: "delta" });
+  }
+
+  async pullSnapshot({ limit = 100 } = {}) {
+    this.cursor = await this.pullPages({ cursor: null, limit, mode: "snapshot" });
+  }
+
+  async pullPages({ cursor, limit, mode }) {
+    while (true) {
+      const response = await syncRequest(this.server, "/sync/pull", {
+        protocolVersion,
+        cursor,
+        limit,
+        mode
+      });
+      assert.equal(response.fullResyncRequired, false);
+      if (response.changes.length === 0) {
+        return response.nextCursor;
+      }
+
+      const staged = new Set(this.rows.keys());
+      for (const change of response.changes) {
+        staged.add(this.keyFor(change.entity, change.id));
+      }
+      for (const change of response.changes) {
+        for (const reference of deviceForeignKeys) {
+          const parentId = change.payload[reference.key];
+          if (reference.child !== change.entity || typeof parentId !== "string") {
+            continue;
+          }
+          assert.ok(
+            staged.has(this.keyFor(reference.parent, parentId)),
+            `${this.name} stalled: a ${change.entity} page arrived without its ${reference.parent}`
+          );
+        }
+      }
+
+      const ordered = [...response.changes].sort(
+        (left, right) =>
+          this.entityOrder.indexOf(left.entity) -
+          this.entityOrder.indexOf(right.entity)
+      );
+      for (const change of ordered) {
+        this.applyPulledChange(change);
+      }
+      cursor = response.nextCursor;
+    }
+  }
+}
+
+const bodyTrackerEntityOrder = ["metrics", "metric_readings"];
+const defaultMeasurementNames = new Set(["Body Weight", "Body Fat"]);
+
+// A device's Body Tracker as the app keeps it: Metrics and their readings,
+// pushed metrics-first, and on pull the fold of a device-only default
+// measurement into the server's copy of it
+// (`MeasurementRepository.adoptSyncedDefaultMeasurement`). The survivor
+// takes the copy's curation and the copy is archived, both as changes the
+// device pushes; readings move over in place, because the server already
+// stores them under the survivor (or has yet to receive them, and then
+// receives them re-pointed).
+class BodyTrackerReplica extends SyncReplicaHarness {
+  constructor({ name, deviceId, server }) {
+    super({
+      name,
+      deviceId,
+      server,
+      entityOrder: bodyTrackerEntityOrder,
+      keyFor: planRowKey
+    });
+    this.tick = 0;
+  }
+
+  seedDefault({ name, unit, at }) {
+    return this.createMeasurement({ name, unit, at, goalType: "decrease" });
+  }
+
+  createMeasurement({ name, unit, at, goalType = "increase" }) {
+    const id = randomUUID();
+    this.stageChange("metrics", {
+      id,
+      payload: {
+        id,
+        name,
+        unit,
+        value_shape: "scalar",
+        metric_group: "bodyComposition",
+        goal_type: goalType,
+        goal_target_value: null,
+        enabled: true,
+        pinned: true,
+        sort_order: 0,
+        updated_at: at,
+        deleted_at: null
+      },
+      updatedAt: at,
+      deletedAt: null
+    });
+    return id;
+  }
+
+  logReading(metricId, value, at) {
+    const id = randomUUID();
+    this.stageChange("metric_readings", {
+      id,
+      payload: {
+        id,
+        metric_id: metricId,
+        // The app stores the value as JSON text.
+        value_json: JSON.stringify({ value }),
+        scalar_value: value,
+        scalar_entered: String(value),
+        at_time: at,
+        window_started_at: null,
+        window_ended_at: null,
+        provenance: "manual",
+        source: "manual",
+        external_id: null,
+        comment: null,
+        updated_at: at,
+        deleted_at: null
+      },
+      updatedAt: at,
+      deletedAt: null
+    });
+    return id;
+  }
+
+  applyPulledChange(change) {
+    super.applyPulledChange(change);
+    if (change.entity === "metrics") {
+      this.foldOwnCopiesInto(change.id);
+    }
+  }
+
+  foldOwnCopiesInto(survivorId) {
+    const survivor = this.row("metrics", survivorId);
+    if (!isLiveDefault(survivor)) {
+      return;
+    }
+    const copies = [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metrics" &&
+        row.id !== survivorId &&
+        !row.previouslySynced &&
+        isLiveDefault(row) &&
+        row.payload.name === survivor.payload.name &&
+        row.payload.unit === survivor.payload.unit
+    );
+    if (copies.length === 0) {
+      return;
+    }
+
+    const at = this.nextTimestamp();
+    const curation = copies[0].payload;
+    this.restage("metrics", survivor, at, {
+      goal_type: curation.goal_type,
+      goal_target_value: curation.goal_target_value,
+      enabled: curation.enabled,
+      pinned: curation.pinned,
+      sort_order: curation.sort_order
+    });
+    const copyIds = new Set(copies.map((copy) => copy.id));
+    const readingImages = [
+      ...[...this.rows.values()].filter(
+        (row) => row.entity === "metric_readings"
+      ),
+      ...this.pending
+        .filter((pending) => pending.entity === "metric_readings")
+        .map((pending) => pending.change)
+    ];
+    for (const image of readingImages) {
+      if (copyIds.has(image.payload.metric_id)) {
+        image.payload = { ...image.payload, metric_id: survivorId };
+      }
+    }
+    for (const copy of copies) {
+      this.restage("metrics", copy, at, {}, at);
+    }
+  }
+
+  restage(entityName, row, at, fields, deletedAt = row.deletedAt) {
+    this.stageChange(entityName, {
+      id: row.id,
+      payload: {
+        ...row.payload,
+        ...fields,
+        updated_at: at,
+        deleted_at: deletedAt
+      },
+      updatedAt: at,
+      deletedAt
+    });
+  }
+
+  nextTimestamp() {
+    this.tick += 1;
+    return new Date(
+      Date.UTC(2026, 7, 1, 0, 0, this.tick)
+    ).toISOString();
+  }
+
+  liveMetrics(name) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metrics" &&
+        row.deletedAt === null &&
+        row.payload.name === name
+    );
+  }
+
+  liveReadings(metricId) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metric_readings" &&
+        row.deletedAt === null &&
+        row.payload.metric_id === metricId
+    );
+  }
+
+  // What a user sees in Body Tracker, independent of how each replica
+  // happens to encode a payload it wrote itself.
+  liveStateSignature() {
+    return JSON.stringify(
+      [...this.rows.values()]
+        .filter((row) => row.deletedAt === null)
+        .map((row) =>
+          row.entity === "metrics"
+            ? {
+                entity: row.entity,
+                id: row.id,
+                name: row.payload.name,
+                unit: row.payload.unit,
+                pinned: row.payload.pinned,
+                enabled: row.payload.enabled
+              }
+            : {
+                entity: row.entity,
+                id: row.id,
+                metricId: row.payload.metric_id,
+                value: row.payload.scalar_value
+              }
+        )
+        .sort((left, right) =>
+          `${left.entity}:${left.id}`.localeCompare(`${right.entity}:${right.id}`)
+        )
+    );
+  }
+}
+
+function isLiveDefault(row) {
+  return (
+    row !== undefined &&
+    row.deletedAt === null &&
+    row.payload.value_shape === "scalar" &&
+    row.payload.metric_group === "bodyComposition" &&
+    row.payload.goal_type !== null &&
+    defaultMeasurementNames.has(row.payload.name)
+  );
 }
 
 class InMemorySyncStore {
@@ -963,6 +2328,189 @@ function loggedSetPayload({ id, repsEntered, updatedAt, deletedAt, writeId }) {
   };
 }
 
+// The Protocol plan entities, parents first.
+const protocolPlanEntityOrder = [
+  "compounds",
+  "protocols",
+  "protocol_compounds",
+  "schedules"
+];
+
+const creatineAmount = {
+  dose_amount_value: 5,
+  dose_amount_entered: "5",
+  dose_unit: "gram",
+  route: "oral"
+};
+
+function timedDailyRule(times) {
+  return { v: 1, kind: "timed", days: { kind: "daily" }, times };
+}
+
+function protocolPlanRow(entityName, id, updatedAt, fields) {
+  return { entity: entityName, id, payload: planImage(id, updatedAt, fields) };
+}
+
+/** A synced `rule` or `period`: JSON text from the app, an object from an Agent write. */
+function storedJson(value) {
+  return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+function protocolReplicas(server, entityOrder = protocolPlanEntityOrder) {
+  return ["a", "b", "c"].map(
+    (name) =>
+      new PlanTreeReplica({
+        name: `Protocol Replica ${name.toUpperCase()}`,
+        deviceId: `device-${name}`,
+        server,
+        entityOrder
+      })
+  );
+}
+
+const protocolSkipEntityOrder = [...protocolPlanEntityOrder, "protocol_skips"];
+
+/** A new Skip of the staged plan's one timed planned dose, as the app writes it. */
+function skipChange(plan, { localDate, at, plannedLocalTime = "09:00" }) {
+  const id = createUuidV7(new Date(at));
+  return {
+    id,
+    payload: {
+      id,
+      protocol_id: plan.protocolId,
+      compound_id: plan.compoundId,
+      local_date: localDate,
+      planned_local_time: plannedLocalTime,
+      updated_at: at,
+      deleted_at: null
+    },
+    updatedAt: at,
+    deletedAt: null
+  };
+}
+
+/** A replica's live Skips, as the shared core reads them. */
+function liveSkips(replica) {
+  return [...replica.rows.values()]
+    .filter((row) => row.entity === "protocol_skips" && row.deletedAt === null)
+    .map((row) => ({
+      skipId: row.id,
+      protocolId: row.payload.protocol_id,
+      compoundId: row.payload.compound_id,
+      localDate: row.payload.local_date,
+      plannedLocalTime: row.payload.planned_local_time
+    }));
+}
+
+/** One date's Day Statuses on a replica, that date being its today. */
+function replicaDayStatuses(replica, localDate) {
+  return dayStatuses(
+    planDays(livePlanProtocols(replica), localDate, localDate),
+    [],
+    liveSkips(replica),
+    localDate
+  );
+}
+
+/** A one-member Protocol, written on the first replica and settled on all. */
+async function stageProtocolPlan(replicas) {
+  const updatedAt = "2026-10-01T08:00:00.000Z";
+  const at = new Date(updatedAt);
+  const ids = {
+    compoundId: createUuidV7(at),
+    protocolId: createUuidV7(at),
+    memberId: createUuidV7(at),
+    versionId: createUuidV7(at)
+  };
+  for (const row of [
+    protocolPlanRow("compounds", ids.compoundId, updatedAt, {
+      name: "Creatine",
+      default_unit: "gram",
+      default_route: "oral",
+      strength: null
+    }),
+    protocolPlanRow("protocols", ids.protocolId, updatedAt, {
+      name: "Daily",
+      start_local_date: "2026-09-01",
+      end_local_date: null,
+      period: null,
+      reminders_enabled: false,
+      archived_on: null
+    }),
+    protocolPlanRow("protocol_compounds", ids.memberId, updatedAt, {
+      protocol_id: ids.protocolId,
+      compound_id: ids.compoundId,
+      position: 0,
+      archived_on: null
+    }),
+    protocolPlanRow("schedules", ids.versionId, updatedAt, {
+      protocol_compound_id: ids.memberId,
+      effective_from: "2026-09-01",
+      rule: timedDailyRule(["09:00"]),
+      ...creatineAmount
+    })
+  ]) {
+    replicas[0].stageChange(row.entity, {
+      id: row.id,
+      payload: row.payload,
+      updatedAt,
+      deletedAt: null
+    });
+  }
+  await settlePlanReplicas(replicas);
+  return ids;
+}
+
+/**
+ * Every Protocol a reader plans from, as the app's plan query reads them
+ * (D1, D8): any Protocol but one tombstoned by undo or deleted
+ * (`deleted_at` with no `archived_on`), whose children it hides.
+ */
+function livePlanProtocols(replica) {
+  return [...replica.rows.values()]
+    .filter(
+      (row) =>
+        row.entity === "protocols" &&
+        (row.deletedAt === null || row.payload.archived_on !== null)
+    )
+    .map((row) => planProtocolFrom(replica, row.id));
+}
+
+/** One Protocol as the shared plan core reads it, from a replica's rows. */
+function planProtocolFrom(replica, protocolId) {
+  const rows = (entityName) =>
+    [...replica.rows.values()].filter(
+      (row) => row.entity === entityName && row.deletedAt === null
+    );
+  const protocol = replica.row("protocols", protocolId).payload;
+  return {
+    protocolId,
+    startLocalDate: protocol.start_local_date,
+    endLocalDate: protocol.end_local_date,
+    period: storedJson(protocol.period),
+    archivedOn: protocol.archived_on,
+    remindersEnabled: protocol.reminders_enabled,
+    members: rows("protocol_compounds")
+      .filter((member) => member.payload.protocol_id === protocolId)
+      .map((member) => ({
+        memberId: member.id,
+        compoundId: member.payload.compound_id,
+        archivedOn: member.payload.archived_on,
+        versions: rows("schedules")
+          .filter((version) => version.payload.protocol_compound_id === member.id)
+          .map((version) => ({
+            id: version.id,
+            effectiveFrom: version.payload.effective_from,
+            rule: storedJson(version.payload.rule),
+            amountValue: version.payload.dose_amount_value,
+            amountEntered: version.payload.dose_amount_entered,
+            unit: version.payload.dose_unit,
+            route: version.payload.route
+          }))
+      }))
+  };
+}
+
 const planEntityOrder = [
   "workout_templates",
   "template_exercises",
@@ -973,6 +2521,182 @@ const planEntityOrder = [
   "routine_entries",
   "template_links"
 ];
+
+// The device's Drift FKs between synced tables (`.references(` in
+// apps/mobile/lib/data/local/app_database.dart).
+const deviceForeignKeys = [
+  ["exercises", "category_id", "exercise_categories"],
+  ["workout_exercises", "workout_id", "workout_sessions"],
+  ["workout_exercises", "exercise_id", "exercises"],
+  ["exercise_groups", "workout_id", "workout_sessions"],
+  ["exercise_group_members", "group_id", "exercise_groups"],
+  ["exercise_group_members", "workout_exercise_id", "workout_exercises"],
+  ["logged_sets", "workout_id", "workout_sessions"],
+  ["logged_sets", "exercise_id", "exercises"],
+  ["food_entries", "meal_id", "meals"],
+  ["metric_readings", "metric_id", "metrics"],
+  ["protocol_compounds", "protocol_id", "protocols"],
+  ["protocol_compounds", "compound_id", "compounds"],
+  ["schedules", "protocol_compound_id", "protocol_compounds"],
+  ["protocol_target_outcomes", "protocol_id", "protocols"],
+  ["protocol_target_outcomes", "metric_id", "metrics"],
+  ["template_exercises", "workout_template_id", "workout_templates"],
+  ["template_exercises", "exercise_id", "exercises"],
+  ["prescriptions", "template_exercise_id", "template_exercises"],
+  ["template_groups", "workout_template_id", "workout_templates"],
+  ["template_group_members", "group_id", "template_groups"],
+  ["template_group_members", "template_exercise_id", "template_exercises"],
+  ["routine_entries", "routine_id", "routines"],
+  ["routine_entries", "workout_template_id", "workout_templates"],
+  ["template_links", "workout_id", "workout_sessions"],
+  ["template_links", "workout_template_id", "workout_templates"],
+  ["template_links", "routine_id", "routines"]
+].map(([child, key, parent]) => ({ child, key, parent }));
+
+// Parents before children, as the device's `_syncApplyOrder` sorts a page.
+const foreignKeyEntityOrder = [
+  "exercise_categories",
+  "exercises",
+  "workout_sessions",
+  "workout_exercises",
+  "exercise_groups",
+  "exercise_group_members",
+  "meals",
+  "food_entries",
+  "metrics",
+  "metric_readings",
+  "compounds",
+  "protocols",
+  "protocol_compounds",
+  "protocol_target_outcomes",
+  "schedules",
+  ...planEntityOrder.filter((entityName) => entityName !== "template_links"),
+  "logged_sets",
+  "template_links"
+];
+
+/** One row of every pushable entity a Drift FK touches, wired together. */
+function foreignKeyGraphRows({ metricId, updatedAt }) {
+  const id = () => randomUUID();
+  const ids = {
+    category: id(),
+    exercise: id(),
+    workout: id(),
+    workoutExercise: id(),
+    group: id(),
+    member: id(),
+    meal: id(),
+    compound: id(),
+    protocol: id(),
+    protocolCompound: id(),
+    schedule: id(),
+    outcome: id()
+  };
+  const row = (entityName, rowId, fields) => ({
+    entity: entityName,
+    id: rowId,
+    payload: planImage(rowId, updatedAt, fields)
+  });
+  return [
+    row("exercise_categories", ids.category, { name: "Legs" }),
+    row("exercises", ids.exercise, {
+      name: "Back Squat",
+      category_id: ids.category
+    }),
+    row("workout_sessions", ids.workout, {
+      started_at: "2026-07-02T07:00:00.000Z",
+      local_date: "2026-07-02"
+    }),
+    row("workout_exercises", ids.workoutExercise, {
+      workout_id: ids.workout,
+      exercise_id: ids.exercise,
+      position: 0
+    }),
+    row("exercise_groups", ids.group, {
+      workout_id: ids.workout,
+      name: "Main circuit",
+      position: 0
+    }),
+    row("exercise_group_members", ids.member, {
+      group_id: ids.group,
+      workout_exercise_id: ids.workoutExercise,
+      position: 0
+    }),
+    ...[0, 1, 2].map((position) =>
+      row("logged_sets", id(), {
+        workout_id: ids.workout,
+        exercise_id: ids.exercise,
+        position
+      })
+    ),
+    row("meals", ids.meal, { name: "Breakfast" }),
+    ...[0, 1].map((position) =>
+      row("food_entries", id(), { meal_id: ids.meal, position })
+    ),
+    row("compounds", ids.compound, { name: "Creatine" }),
+    row("protocols", ids.protocol, { name: "Loading phase" }),
+    row("protocol_compounds", ids.protocolCompound, {
+      protocol_id: ids.protocol,
+      compound_id: ids.compound
+    }),
+    row("schedules", ids.schedule, {
+      protocol_compound_id: ids.protocolCompound
+    }),
+    row("protocol_target_outcomes", ids.outcome, {
+      protocol_id: ids.protocol,
+      metric_id: metricId
+    }),
+    ...planTreeRows(
+      { ...createPlanTreeIds(), workout: ids.workout, exercise: ids.exercise },
+      updatedAt,
+      "foreign-key"
+    )
+  ];
+}
+
+async function insertServerMetric(server, { metricId, readingIds }) {
+  const [{ userId }] = await server.database.db
+    .select({ userId: schema.session.userId })
+    .from(schema.session)
+    .where(inArray(schema.session.token, [server.sessionToken]));
+  await server.database.db.insert(schema.metrics).values({
+    id: metricId,
+    userId,
+    deviceId: "integration:garmin",
+    name: "Body Weight",
+    unit: "kilogram",
+    valueShape: "scalar",
+    metricGroup: "body",
+    enabled: true,
+    pinned: false,
+    sortOrder: 0,
+    updatedAt: new Date("2026-07-02T08:00:00.000Z"),
+    deletedAt: null,
+    receivedAt: new Date()
+  });
+  for (const [index, readingId] of readingIds.entries()) {
+    const atTime = new Date(Date.UTC(2026, 6, 2, 6, index));
+    await server.database.db.insert(schema.metricReadings).values({
+      id: readingId,
+      userId,
+      deviceId: "integration:garmin",
+      metricId,
+      valueJson: { value: 80 + index, unit: "kilogram" },
+      scalarValue: 80 + index,
+      scalarEntered: String(80 + index),
+      atTime,
+      windowStartedAt: null,
+      windowEndedAt: null,
+      provenance: "imported",
+      source: "garmin",
+      updatedAt: atTime,
+      deletedAt: null,
+      // Server writers stamp receivedAt from the JS clock (millisecond
+      // precision, like the cursor); a Postgres default would not be.
+      receivedAt: new Date()
+    });
+  }
+}
 
 function createPlanTreeIds() {
   return {
@@ -1123,6 +2847,24 @@ function planChange({ row, updatedAt, revision, deletedAt = null }) {
     },
     updatedAt,
     deletedAt
+  };
+}
+
+function keptExercisePayload(id) {
+  return {
+    id,
+    library_origin: "user",
+    name: "Plank",
+    dimension_ids: JSON.stringify(["duration"]),
+    default_load_unit: "kilogram",
+    load_mode: "added",
+    record_profile: "maxDuration",
+    is_favorite: false,
+    is_unilateral: false,
+    uses_rpe: false,
+    category_id: "01910000-0000-7000-8000-000000000012",
+    equipment_ids: JSON.stringify(["bodyweight"]),
+    notes: null
   };
 }
 

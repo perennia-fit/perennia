@@ -20,7 +20,9 @@ const client = await createOwlAgentClient();
 ```
 
 Set `PRN_BASE_URL` and `PRN_AGENT_API_KEY` in the execution environment. Do not
-put the agent key on argv.
+put the agent key on argv. `PRN_BASE_URL` is `https://api.perennia.fit` for a user
+of the app from the app stores, or the user's own server for a self-hosted one
+(see Setup in `SKILL.md`).
 
 When `@perennia/contract/agent-client` is importable by the current
 JavaScript/TypeScript runtime, the helper uses the generated

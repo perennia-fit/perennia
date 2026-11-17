@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocols_lock_controller.dart';
 import '../services/biometric_authenticator.dart';
@@ -47,6 +48,42 @@ class ProtocolsLockGate extends ConsumerWidget {
   }
 }
 
+/// Hides a modal route's Compound/Dose content when the app locks.
+/// [ProtocolsLockGate] swaps only its own route, so a sheet or dialog above it
+/// would stay on screen, names and all. Wrap the content of every Protocols
+/// sheet and dialog in this.
+///
+/// While the state is locked or unavailable it renders nothing and removes its
+/// own route after the frame. It uses `removeRoute`, not `pop`, because a
+/// `pop` removes whatever is on top: with nested sheets each guard must remove
+/// the route it sits in. The route's future completes with null, as a dismissal
+/// does.
+///
+/// While the lock state is still loading it renders [child], unlike the gate:
+/// a sheet is only reachable from a screen the gate has already let through.
+class ProtocolsLockSheetGuard extends ConsumerWidget {
+  const ProtocolsLockSheetGuard({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lockState = ref.watch(protocolsLockControllerProvider).value;
+    if (lockState == null || !(lockState.isLocked || lockState.isUnavailable)) {
+      return child;
+    }
+
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route != null && route.isActive) {
+        navigator.removeRoute(route);
+      }
+    });
+    return const SizedBox.shrink();
+  }
+}
+
 class _ProtocolsLockUnavailableScreen extends StatelessWidget {
   const _ProtocolsLockUnavailableScreen({super.key});
 
@@ -57,7 +94,7 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: const Text('Supplements'),
+        title: Text(context.l10n.protocolsDomainTitle),
       ),
       body: SafeArea(
         child: Center(
@@ -73,15 +110,14 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements lock unavailable',
+                  context.l10n.protocolsLockUnavailableTitle,
                   textAlign: TextAlign.center,
                   style:
                       context.textStyles.h2.copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements stays hidden because the device secure storage '
-                  'could not be read.',
+                  context.l10n.protocolsLockUnavailableMessage,
                   textAlign: TextAlign.center,
                   style: context.textStyles.body
                       .copyWith(color: colors.textSecondary),
@@ -105,7 +141,7 @@ class _ProtocolsLockScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: const Text('Supplements'),
+        title: Text(context.l10n.protocolsDomainTitle),
       ),
       // A locked surface renders NO Dose/Compound content whatsoever — only
       // this neutral unlock prompt (hide-at-a-glance: a lent phone, a
@@ -121,7 +157,7 @@ class _ProtocolsLockScreen extends StatelessWidget {
                 Icon(Icons.lock_outline, size: 48, color: colors.textSecondary),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements is locked',
+                  context.l10n.protocolsLockedTitle,
                   style:
                       context.textStyles.h2.copyWith(color: colors.textPrimary),
                 ),

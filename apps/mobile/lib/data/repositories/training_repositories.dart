@@ -7,15 +7,32 @@ import 'package:archive/archive.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
+import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
+import '../../domain/common/local_clock.dart';
 import '../../domain/effect/effect.dart';
+import '../../domain/metrics/reading_normalization.dart';
+import '../../domain/nutrition/meal_type_proposal.dart';
+import '../../domain/nutrition/meal_validation.dart';
 import '../../domain/nutrition/nutrition.dart';
+import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
+import '../../domain/profile/user_profile.dart';
+import '../../domain/profile/user_profile_validation.dart';
+import '../../domain/protocols/compound_purposes.dart';
 import '../../domain/protocols/dose_validation.dart';
+import '../../domain/protocols/protocol_plan.dart';
+import '../../domain/protocols/protocol_plan_days.dart'
+    show dayStatuses, planDays, protocolCycleFromStart, scheduleDaysFromStart;
+import '../../domain/protocols/protocol_plan_validation.dart';
+import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
+import '../../domain/settings/settings_validation.dart';
+import '../../domain/training/exercise_catalog_merge.dart';
+import '../../domain/training/plan_logging.dart'
+    show carryForwardFor, defaultRestAfter;
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -24,7 +41,14 @@ import '../../domain/training/template_divergence.dart';
 import '../../domain/training/template_materialize.dart';
 import '../../domain/training/training_day.dart';
 import '../../domain/training/training_dimensions.dart';
+import '../../domain/training/training_progress.dart';
+import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
+import '../../domain/training/workout_share_summary.dart';
+import '../app_version.dart';
+import '../infra/activity_log_writer.dart';
+import '../infra/id_factory.dart';
+import '../infra/write_context.dart';
 import '../local/app_database.dart';
 import '../local/uuid_v7.dart';
 import '../seeds/otc_compound_seed.dart';
@@ -39,8 +63,17 @@ export '../../domain/body_tracker/measurement_validation.dart'
         MeasurementValueException,
         MeasurementValueValidation;
 export '../../domain/effect/effect.dart';
+export '../../domain/nutrition/meal_validation.dart'
+    show
+        MealTimeInput,
+        MealValidationException,
+        MealValidationIssue,
+        MealValidationLimits,
+        MealValidationResult,
+        validateMealTime;
 export '../../domain/nutrition/nutrition.dart';
 export '../../domain/nutrition/nutrition_import.dart';
+export '../../domain/protocols/compound_purposes.dart';
 export '../../domain/protocols/dose_validation.dart'
     show
         DoseValidationException,
@@ -49,6 +82,7 @@ export '../../domain/protocols/dose_validation.dart'
         DoseValidationResult,
         DoseUnitLimit,
         validateDose;
+export '../../domain/protocols/protocol_plan.dart';
 export '../../domain/protocols/protocols.dart';
 export '../../domain/training/routine_cadence.dart';
 export '../../domain/training/routine_up_next.dart'
@@ -67,6 +101,7 @@ export '../../domain/training/template_divergence.dart'
         TemplateDivergencePrescriptionMode,
         TemplateDivergencePrescriptionSnapshot,
         TemplateDivergenceResult;
+export '../../domain/training/training_records.dart';
 export '../../domain/training/workout_capture.dart';
 export '../../domain/training/set_validation.dart'
     show
@@ -80,12 +115,16 @@ export '../../domain/training/set_validation.dart'
         validateNutritionGoalTargets;
 
 part 'csv_export_repository.dart';
+part 'focus_repository.dart';
+part 'purpose_repository.dart';
 part 'portable_archive_repository.dart';
 part 'plan_sync_repository.dart';
+part 'protocol_plan_repository.dart';
 part 'routine_plan_repository.dart';
 part 'routine_up_next_repository.dart';
 part 'template_divergence_repository.dart';
 part 'template_materialize_repository.dart';
+part 'user_profile_repository.dart';
 part 'workout_capture_repository.dart';
 part 'workout_template_repository.dart';
 
@@ -99,8 +138,6 @@ final trainingRepositoriesProvider = Provider<TrainingRepositories>((ref) {
   return TrainingRepositories(ref.watch(appDatabaseProvider));
 });
 
-const defaultOpenFoodFactsMaxCacheEntries = 5000;
-
 class TrainingRepositories {
   TrainingRepositories(
     this.database, {
@@ -108,16 +145,13 @@ class TrainingRepositories {
     PlatformExerciseSeedSource? platformSeedSource,
     UsdaFoodSeedSource? usdaFoodSeedSource,
     OtcCompoundSeedSource? otcCompoundSeedSource,
-    Uri? openFoodFactsBaseUrl,
-    http.Client? openFoodFactsHttpClient,
-    int openFoodFactsMaxCacheEntries = defaultOpenFoodFactsMaxCacheEntries,
-    DateTime Function()? openFoodFactsClock,
   }) : uuidGenerator = uuidGenerator ?? UuidV7Generator() {
     activityLog = ActivityLogRepository._(this);
     catalog = CatalogRepository._(
       this,
       platformSeedSource ?? const AssetPlatformExerciseSeedSource(),
     );
+    focuses = FocusRepository._(this);
     exercises = ExerciseRepository._(this);
     workoutSessions = WorkoutSessionRepository._(this);
     workoutExercises = WorkoutExerciseRepository._(this);
@@ -126,22 +160,16 @@ class TrainingRepositories {
     workoutTemplates = WorkoutTemplateRepository._(this);
     routinePlans = RoutinePlanRepository._(this);
     routineUpNext = RoutineUpNextRepository._(this);
+    protocolPlan = ProtocolPlanRepository._(this);
     templateMaterialize = TemplateMaterializeRepository._(this);
     templateDivergence = TemplateDivergenceRepository._(this);
     sets = LoggedSetRepository._(this);
     platformFoods = PlatformFoodRepository._(
       usdaFoodSeedSource ?? const AssetUsdaFoodSeedSource(),
     );
-    openFoodFacts = OpenFoodFactsRepository._(
-      this,
-      baseUrl:
-          openFoodFactsBaseUrl ?? Uri.parse('https://world.openfoodfacts.org/'),
-      httpClient: openFoodFactsHttpClient ?? http.Client(),
-      maxCacheEntries: openFoodFactsMaxCacheEntries,
-      clock: openFoodFactsClock,
-    );
     nutrition = NutritionRepository._(this);
     accountSettings = AccountSettingsRepository._(this);
+    userProfile = UserProfileRepository._(this);
     protocols = ProtocolsRepository._(
       this,
       otcCompoundSeedSource ?? const DefaultOtcCompoundSeedSource(),
@@ -157,8 +185,16 @@ class TrainingRepositories {
   final AppDatabase database;
   final UuidV7Generator uuidGenerator;
 
+  // The shared write plumbing. Every repository reaches it through this
+  // facade for now; constructor injection replaces that in a later phase.
+  late final IdFactory _ids = IdFactory(uuidGenerator);
+  late final WriteContextFactory _writeContexts = WriteContextFactory(_ids);
+  late final ActivityLogWriter _activityLogWriter =
+      ActivityLogWriter(database, _ids);
+
   late final ActivityLogRepository activityLog;
   late final CatalogRepository catalog;
+  late final FocusRepository focuses;
   late final ExerciseRepository exercises;
   late final WorkoutSessionRepository workoutSessions;
   late final WorkoutExerciseRepository workoutExercises;
@@ -167,13 +203,14 @@ class TrainingRepositories {
   late final WorkoutTemplateRepository workoutTemplates;
   late final RoutinePlanRepository routinePlans;
   late final RoutineUpNextRepository routineUpNext;
+  late final ProtocolPlanRepository protocolPlan;
   late final TemplateMaterializeRepository templateMaterialize;
   late final TemplateDivergenceRepository templateDivergence;
   late final LoggedSetRepository sets;
   late final PlatformFoodRepository platformFoods;
-  late final OpenFoodFactsRepository openFoodFacts;
   late final NutritionRepository nutrition;
   late final AccountSettingsRepository accountSettings;
+  late final UserProfileRepository userProfile;
   late final ProtocolsRepository protocols;
   late final EffectRepository effect;
   late final RestTimerRepository restTimers;
@@ -182,224 +219,143 @@ class TrainingRepositories {
   late final CsvExportRepository csvExports;
   late final PortableArchiveRepository portableArchives;
 
-  static const starterWeightRepsExerciseName = 'Barbell Squat';
-  static const starterTimedExerciseName = 'Plank';
+  /// Every table "Erase all data" clears, children before parents. A test
+  /// pins this list plus the kept tables (Settings, integration consents, the
+  /// Activity Log, caches, sync bookkeeping) to the whole schema, so a new
+  /// table cannot be silently left out of the erase.
+  static const eraseTableNames = <String>[
+    AppDatabase.loggedSetsTable,
+    AppDatabase.restTimersTable,
+    AppDatabase.intervalTimersTable,
+    AppDatabase.exerciseGroupMembersTable,
+    AppDatabase.exerciseGroupsTable,
+    AppDatabase.workoutExercisesTable,
+    AppDatabase.templateLinksTable,
+    AppDatabase.workoutSessionsTable,
+    AppDatabase.routineEntriesTable,
+    AppDatabase.planRoutinesTable,
+    AppDatabase.templateGroupMembersTable,
+    AppDatabase.templateGroupsTable,
+    AppDatabase.prescriptionsTable,
+    AppDatabase.templateExercisesTable,
+    AppDatabase.workoutTemplatesTable,
+    AppDatabase.exercisesTable,
+    AppDatabase.exerciseCategoriesTable,
+    AppDatabase.focusesTable,
+    AppDatabase.foodEntriesTable,
+    AppDatabase.mealsTable,
+    AppDatabase.foodsTable,
+    AppDatabase.mealTypesTable,
+    AppDatabase.nutritionGoalsTable,
+    AppDatabase.userProfileSectionsTable,
+    AppDatabase.measurementEntriesTable,
+    AppDatabase.measurementsTable,
+    AppDatabase.metricReadingsTable,
+    AppDatabase.metricsTable,
+    AppDatabase.dosesTable,
+    AppDatabase.protocolSkipsTable,
+    AppDatabase.schedulesTable,
+    AppDatabase.protocolTargetOutcomesTable,
+    AppDatabase.protocolCompoundsTable,
+    AppDatabase.protocolsTable,
+    AppDatabase.compoundsTable,
+    AppDatabase.purposesTable,
+  ];
 
-  Future<List<ExerciseRecord>> ensureStarterExercises({
-    String actor = 'app',
-  }) async {
-    await catalog.ensurePlatformLibrarySeeded(actor: actor);
-    return exercises.listActive();
-  }
-
-  Future<LogWorkoutResult> logDefaultWeightRepsSet({
-    DateTime? now,
-    String? timezone,
-    String actor = 'app',
-  }) async {
-    final starterExercises = await ensureStarterExercises(actor: actor);
-    final exercise = _defaultWeightRepsExercise(starterExercises);
-    final localNow = (now ?? DateTime.now()).toLocal();
-    final localDate = TrainingDayDate.fromDateTime(localNow);
-    final context = _createWriteContext(actor: actor);
-
-    return database.transaction(() async {
-      final workout = await _findWorkoutForLocalDate(localDate);
-      final workoutId = workout == null
-          ? await workoutSessions._create(
-              WorkoutSessionDraft(
-                startedAt: localNow,
-                timezone: timezone ?? localNow.timeZoneName,
-                localDate: localDate,
-              ),
-              context,
-            )
-          : workout.id;
-      final existingSets = await sets.listActiveForWorkout(workoutId);
-      final setId = await sets._create(
-        LoggedSetDraft(
-          workoutId: workoutId,
-          exerciseId: exercise.id,
-          position: existingSets.length,
-          values: LoggedSet.fromValues(
-            const <SetDimensionValue>[
-              SetDimensionValue(
-                dimension: DimensionId.load,
-                entered: '100',
-                unit: TrainingUnit.kilogram,
-              ),
-              SetDimensionValue(
-                dimension: DimensionId.reps,
-                entered: '5',
-                unit: TrainingUnit.repetition,
-              ),
-            ],
-          ),
-        ),
-        context,
-      );
-
-      return LogWorkoutResult(
-        batchId: context.batchId,
-        workoutSessionId: workoutId,
-        loggedSetId: setId,
-      );
+  /// Erases every authored domain (the [eraseTableNames] tables) on this
+  /// device and, through Synced Mode, everywhere else.
+  ///
+  /// Each erased row is soft-deleted and gets an Activity Log tombstone in one
+  /// batch. Sync push reads only the Activity Log, so a row without one would
+  /// stay on the server and on other devices; the batch also keeps the erase
+  /// recoverable with an undo. Settings and integration consents are not
+  /// authored log data and stay. So do rows the bundled seeds own. Platform
+  /// Library rows stay because a hidden one must keep resolving for a Set that
+  /// arrives later, and the launch pass would reinstate an erased one. The OTC
+  /// Compounds, starter Purposes, starter Focuses, seed categories and default
+  /// Meal Types stay because those seeds skip ids they have already written, so
+  /// an erased seed row would never return.
+  Future<void> eraseAllData() async {
+    final seedOwnedIds = await _seedOwnedIdsForErase();
+    final context = _writeContexts.create(actor: 'settings');
+    await database.transaction(() async {
+      for (final table in eraseTableNames) {
+        await _eraseTable(
+          table,
+          context,
+          keepIds: seedOwnedIds[table] ?? const <String>{},
+        );
+      }
     });
   }
 
-  Future<void> eraseAllData() {
-    final context = _createWriteContext(actor: 'settings');
-    return database.transaction(() async {
-      await _appendLoggedSetEraseTombstones(context);
-      await _softDeleteDomainRowsForErase(context.timestamp);
-    });
-  }
-
-  Future<void> _appendLoggedSetEraseTombstones(_WriteContext context) async {
-    final rows = await (database.select(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
+  Future<Map<String, Set<String>>> _seedOwnedIdsForErase() async {
+    final platformSeed = await catalog._platformSeedSource.load();
+    final platformExercises = await (database.select(database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
         .get();
-    for (final before in rows) {
-      await (database.update(database.loggedSets)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        LoggedSetsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
+    return <String, Set<String>>{
+      AppDatabase.exercisesTable:
+          platformExercises.map((row) => row.id).toSet(),
+      AppDatabase.exerciseCategoriesTable:
+          platformSeed.categories.map((category) => category.id).toSet(),
+      AppDatabase.focusesTable:
+          platformSeed.focuses.map((focus) => focus.id).toSet(),
+      AppDatabase.mealTypesTable: NutritionRepository._defaultMealTypes
+          .map((mealType) => mealType.id)
+          .toSet(),
+      AppDatabase.compoundsTable:
+          protocols._otcSeedSource.load().map((seed) => seed.id).toSet(),
+      AppDatabase.purposesTable:
+          starterPurposes.map((purpose) => purpose.id).toSet(),
+    };
+  }
+
+  Future<void> _eraseTable(
+    String entityTable,
+    WriteContext context, {
+    required Set<String> keepIds,
+  }) async {
+    final table = database.allTables.singleWhere(
+      (candidate) => candidate.actualTableName == entityTable,
+    );
+    final liveRows = await database.customSelect(
+      'SELECT id FROM $entityTable WHERE deleted_at IS NULL',
+      readsFrom: <TableInfo<Table, Object?>>{table},
+    ).get();
+    for (final liveRow in liveRows) {
+      final id = liveRow.read<String>('id');
+      if (keepIds.contains(id)) {
+        continue;
+      }
+      final before = await activityLog._currentImageFor(
+        entityTable: entityTable,
+        entityId: id,
       );
-      final after = await sets._requireRow(before.id);
-      await activityLog._append(
+      await database.customUpdate(
+        'UPDATE $entityTable SET updated_at = ?, deleted_at = ? WHERE id = ?',
+        variables: <Variable<Object>>[
+          Variable<DateTime>(context.timestamp),
+          Variable<DateTime>(context.timestamp),
+          Variable<String>(id),
+        ],
+        updates: <TableInfo<Table, Object?>>{table},
+        updateKind: UpdateKind.update,
+      );
+      await _activityLogWriter.append(
         context,
-        entityTable: AppDatabase.loggedSetsTable,
-        entityId: before.id,
-        beforeImage: _loggedSetImage(before),
-        afterImage: _loggedSetImage(after),
+        entityTable: entityTable,
+        entityId: id,
+        beforeImage: before,
+        afterImage: await activityLog._currentImageFor(
+          entityTable: entityTable,
+          entityId: id,
+        ),
       );
     }
-  }
-
-  Future<void> _softDeleteDomainRowsForErase(DateTime timestamp) async {
-    await (database.update(database.intervalTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      IntervalTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.restTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      RestTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      LoggedSetsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foodEntries)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodEntriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foods)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.mealTypes)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealTypesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.meals)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metricReadings)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricReadingsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metrics)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroupMembers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupMembersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroups)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutExercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutSessions)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutSessionsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseCategories)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseCategoriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
   }
 
   Future<LogWorkoutResult> logWorkoutWithSet(
@@ -407,7 +363,7 @@ class TrainingRepositories {
     LoggedSetDraft set, {
     String actor = 'app',
   }) {
-    final context = _createWriteContext(actor: actor);
+    final context = _writeContexts.create(actor: actor);
 
     return database.transaction(() async {
       final workoutId = await workoutSessions._create(workout, context);
@@ -437,7 +393,7 @@ class TrainingRepositories {
       );
     }
 
-    final context = _createWriteContext(actor: actor);
+    final context = _writeContexts.create(actor: actor);
 
     return database.transaction(() async {
       final workoutId = await workoutSessions._create(workout, context);
@@ -480,49 +436,7 @@ class TrainingRepositories {
     });
   }
 
-  _WriteContext _createWriteContext({required String actor, String? batchId}) {
-    final timestamp = DateTime.now().toUtc();
-    return _WriteContext(
-      actor: actor,
-      batchId: batchId ?? uuidGenerator.generate(timestamp: timestamp),
-      timestamp: timestamp,
-    );
-  }
-
-  String createId(DateTime timestamp) {
-    return uuidGenerator.generate(timestamp: timestamp);
-  }
-
-  ExerciseRecord _defaultWeightRepsExercise(List<ExerciseRecord> exercises) {
-    return exercises.firstWhere(
-      (exercise) => exercise.name == starterWeightRepsExerciseName,
-      orElse: () => exercises.firstWhere(
-        (exercise) => exercise.type.accepts(
-          LoggedSet.fromValues(
-            const <SetDimensionValue>[
-              SetDimensionValue(
-                dimension: DimensionId.load,
-                entered: '100',
-                unit: TrainingUnit.kilogram,
-              ),
-              SetDimensionValue(
-                dimension: DimensionId.reps,
-                entered: '5',
-                unit: TrainingUnit.repetition,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<WorkoutSessionRecord?> _findWorkoutForLocalDate(
-    TrainingDayDate localDate,
-  ) async {
-    final sessions = await workoutSessions.listActiveForLocalDate(localDate);
-    return sessions.isEmpty ? null : sessions.first;
-  }
+  String createId(DateTime timestamp) => _ids.create(timestamp);
 }
 
 class CatalogRepository {
@@ -562,19 +476,18 @@ class CatalogRepository {
     required String actor,
   }) async {
     final seed = await _platformSeedSource.load();
-    if (seed.categories.isEmpty && seed.exercises.isEmpty) {
+    if (seed.categories.isEmpty &&
+        seed.focuses.isEmpty &&
+        seed.exercises.isEmpty &&
+        seed.retired.isEmpty) {
       return;
     }
 
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
       final existingCategoryIds =
           (await _database.select(_database.exerciseCategories).get())
-              .map((row) => row.id)
-              .toSet();
-      final existingExerciseIds =
-          (await _database.select(_database.exercises).get())
               .map((row) => row.id)
               .toSet();
 
@@ -593,7 +506,7 @@ class CatalogRepository {
               ),
             );
         final after = await _requireCategoryRow(category.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseCategoriesTable,
           entityId: category.id,
@@ -602,236 +515,373 @@ class CatalogRepository {
         );
       }
 
-      for (final exercise in seed.exercises) {
-        if (existingExerciseIds.contains(exercise.id)) {
-          continue;
-        }
+      await _reconcilePlatformExercises(seed, context);
 
-        final exerciseType = ExerciseType(exercise.dimensions);
-        const loadMode = ExerciseLoadMode.added;
-        await _database.into(_database.exercises).insert(
-              ExercisesCompanion.insert(
-                id: exercise.id,
-                libraryOrigin: Value<String>(
-                  ExerciseLibraryOrigin.platform.name,
-                ),
-                name: exercise.name,
-                dimensionIds: _encodeDimensions(exerciseType),
-                loadMode: Value<String>(loadMode.name),
-                recordProfile: Value<String>(
-                  defaultRecordProfileFor(
-                    type: exerciseType,
-                    loadMode: loadMode,
-                  ).name,
-                ),
-                defaultLoadUnit: Value<String>(
-                  TrainingUnit.kilogram.name,
-                ),
-                isUnilateral: const Value<bool>(false),
-                usesRpe: const Value<bool>(false),
-                categoryId: Value<String?>(exercise.categoryId),
-                equipmentIds:
-                    Value<String>(_encodeEquipment(exercise.equipment)),
-                notes: Value<String?>(exercise.notes),
-                updatedAt: exercise.updatedAt,
-              ),
-            );
-        final after = await _requireExerciseRow(exercise.id);
-        await _repositories.activityLog._append(
-          context,
-          entityTable: AppDatabase.exercisesTable,
-          entityId: exercise.id,
-          beforeImage: null,
-          afterImage: _exerciseImage(after),
-        );
-      }
-
-      await _applyPlatformExerciseRedirects(seed, context);
-
-      await _sanitizeLegacyWgerAttributionNotes(context);
-      await _backfillExistingPlatformSeedEquipment(seed, context);
+      await _repositories.focuses._seedStarterFocuses(seed.focuses, context);
     });
   }
 
-  Future<void> _applyPlatformExerciseRedirects(
+  /// Makes this device's exercise rows agree with the bundled seed, by the
+  /// table in `docs/designs/platform-library-updates.md`: a live seed id gets
+  /// the seed's fields, a retired one is kept if used and hidden otherwise.
+  ///
+  /// It compares fields and not versions, so it is idempotent: with nothing to
+  /// change it writes nothing, and a new library needs no new migration code.
+  /// Only written rows are re-read, so a launch with no change does no per-row
+  /// reads. A User Library row is never touched, whatever its id, and neither
+  /// is a Platform row in neither list.
+  ///
+  /// `isFavorite`, `loadMode`, `defaultLoadUnit`, `isUnilateral` and `usesRpe`
+  /// are never written on an existing row, and a live row's Exercise Type is
+  /// never corrected in place: changing one means retiring the id. The one
+  /// exception is a stored value no reader can parse, which an imported archive
+  /// can write, because it would otherwise fail every read of the row.
+  Future<void> _reconcilePlatformExercises(
     PlatformExerciseSeed seed,
-    _WriteContext context,
+    WriteContext context,
   ) async {
-    if (seed.redirects.isEmpty) {
-      return;
+    final rowsById = <String, ExerciseRow>{
+      for (final row in await _database.select(_database.exercises).get())
+        row.id: row,
+    };
+    final usedIds = await _usedRetiredExerciseIds(<String>[
+      for (final retired in seed.retired)
+        if (rowsById[retired.id]?.libraryOrigin ==
+            ExerciseLibraryOrigin.platform.name)
+          retired.id,
+    ]);
+
+    // The bundled seed is not guaranteed to be id-sorted, so sort copies. The
+    // write order is what fixes the order of the Activity Log entries.
+    final exercises = seed.exercises.toList()
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (final exercise in exercises) {
+      final row = rowsById[exercise.id];
+      if (row == null) {
+        await _insertPlatformExercise(
+          exercise,
+          deletedAt: null,
+          context: context,
+        );
+        continue;
+      }
+      if (row.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
+        continue;
+      }
+      if (row.deletedAt == null && _platformFieldsMatch(row, exercise)) {
+        continue;
+      }
+      await _writeReconciledExercise(
+        row,
+        _withUnreadableFieldsRepaired(
+          _seedFieldsCompanion(exercise),
+          row,
+          exercise,
+        ).copyWith(
+          updatedAt: Value<DateTime>(exercise.updatedAt),
+          deletedAt: const Value<DateTime?>(null),
+        ),
+        context,
+      );
     }
 
-    final exercisesById = <String, SeedExercise>{
-      for (final exercise in seed.exercises) exercise.id: exercise,
-    };
-    for (final redirect in seed.redirects) {
-      final canonical = exercisesById[redirect.toExerciseId];
-      if (canonical == null) {
-        throw StateError(
-          'Platform exercise redirect ${redirect.fromExerciseId} points to '
-          'missing exercise ${redirect.toExerciseId}.',
+    final retiredExercises = seed.retired.toList()
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (final retired in retiredExercises) {
+      final row = rowsById[retired.id];
+      if (row == null) {
+        // Hidden, not absent: logged_sets, workout_exercises and
+        // template_exercises all have foreign keys to exercises, and a Set for
+        // this id can still arrive from another device or an old backup.
+        await _insertPlatformExercise(
+          retired,
+          deletedAt: retired.retiredAt,
+          context: context,
         );
+        continue;
       }
+      if (row.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
+        continue;
+      }
+      if (usedIds.contains(retired.id)) {
+        await _keepRetiredExercise(row, retired, context);
+      } else {
+        await _hideRetiredExercise(row, retired, context);
+      }
+    }
+  }
 
-      final existing = await (_database.select(_database.exercises)
-            ..where((row) => row.id.equals(redirect.fromExerciseId)))
-          .getSingleOrNull();
-      if (existing != null) {
-        if (existing.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
-          throw StateError(
-            'Platform exercise redirect ${redirect.fromExerciseId} conflicts '
-            'with a User Library Exercise.',
-          );
-        }
-        if (existing.deletedAt != null) {
-          continue;
-        }
+  /// The retired [candidateIds] that a live Set, Workout entry or Template
+  /// entry names. Each branch checks only its own row's `deleted_at`: a Planned
+  /// Set counts because a Workout naming the exercise must keep working, and a
+  /// live entry in an archived Template counts because that Template can be
+  /// restored. A deleted Workout soft-deletes its children, so it does not count.
+  Future<Set<String>> _usedRetiredExerciseIds(List<String> candidateIds) async {
+    // Also the fresh-install case, and `IN ()` is not valid SQL.
+    if (candidateIds.isEmpty) {
+      return const <String>{};
+    }
+    final placeholders = List<String>.filled(
+      candidateIds.length,
+      '?',
+    ).join(', ');
+    final rows = await _database.customSelect(
+      'SELECT exercise_id FROM logged_sets '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders) '
+      'UNION '
+      'SELECT exercise_id FROM workout_exercises '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders) '
+      'UNION '
+      'SELECT exercise_id FROM template_exercises '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders)',
+      variables: <Variable<Object>>[
+        for (var branch = 0; branch < 3; branch += 1)
+          for (final id in candidateIds) Variable<String>(id),
+      ],
+    ).get();
+    return rows.map((row) => row.read<String>('exercise_id')).toSet();
+  }
 
-        await (_database.update(_database.exercises)
-              ..where((row) => row.id.equals(redirect.fromExerciseId)))
-            .write(
-          ExercisesCompanion(
-            updatedAt: Value<DateTime>(canonical.updatedAt),
-            deletedAt: Value<DateTime?>(canonical.updatedAt),
+  Future<void> _insertPlatformExercise(
+    SeedExercise record, {
+    required DateTime? deletedAt,
+    required WriteContext context,
+  }) async {
+    final exerciseType = ExerciseType(record.dimensions);
+    const loadMode = _insertedLoadMode;
+    await _database.into(_database.exercises).insert(
+          ExercisesCompanion.insert(
+            id: record.id,
+            libraryOrigin: Value<String>(
+              ExerciseLibraryOrigin.platform.name,
+            ),
+            name: record.name,
+            dimensionIds: _encodeDimensions(exerciseType),
+            loadMode: Value<String>(loadMode.name),
+            recordProfile: Value<String>(
+              defaultRecordProfileFor(
+                type: exerciseType,
+                loadMode: loadMode,
+              ).name,
+            ),
+            defaultLoadUnit: Value<String>(
+              TrainingUnit.kilogram.name,
+            ),
+            isUnilateral: const Value<bool>(false),
+            usesRpe: const Value<bool>(false),
+            categoryId: Value<String?>(record.categoryId),
+            equipmentIds: Value<String>(_encodeEquipment(record.equipment)),
+            focusIds: Value<String>(_encodeFocusIds(record.focusIds)),
+            notes: Value<String?>(record.notes),
+            updatedAt: record.updatedAt,
+            deletedAt: Value<DateTime?>(deletedAt),
           ),
         );
-        final after = await _requireExerciseRow(redirect.fromExerciseId);
-        await _repositories.activityLog._append(
-          context,
-          entityTable: AppDatabase.exercisesTable,
-          entityId: redirect.fromExerciseId,
-          beforeImage: _exerciseImage(existing),
-          afterImage: _exerciseImage(after),
-        );
-        continue;
-      }
+    final after = await _requireExerciseRow(record.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.exercisesTable,
+      entityId: record.id,
+      beforeImage: null,
+      afterImage: _exerciseImage(after),
+    );
+  }
 
-      final exerciseType = ExerciseType(canonical.dimensions);
-      const loadMode = ExerciseLoadMode.added;
-      await _database.into(_database.exercises).insert(
-            ExercisesCompanion.insert(
-              id: redirect.fromExerciseId,
-              libraryOrigin: Value<String>(
-                ExerciseLibraryOrigin.platform.name,
-              ),
-              name: canonical.name,
-              dimensionIds: _encodeDimensions(exerciseType),
-              loadMode: Value<String>(loadMode.name),
-              recordProfile: Value<String>(
+  /// Hides an unused Retired Exercise, a Platform row shown nowhere. The stamps
+  /// are part of the comparison because a hidden row's stamp must hold even if
+  /// a favorite wrote a later one: `setFavorite` stamps the current time on a
+  /// Platform row, and a stamp later than `retired_at` would beat a kept row
+  /// pulled from another device.
+  Future<void> _hideRetiredExercise(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
+    WriteContext context,
+  ) async {
+    final deletedAt = row.deletedAt;
+    if (deletedAt != null &&
+        _sameStoredInstant(deletedAt, retired.retiredAt) &&
+        _sameStoredInstant(row.updatedAt, retired.updatedAt) &&
+        row.dimensionIds ==
+            _encodeDimensions(ExerciseType(retired.dimensions)) &&
+        _platformFieldsMatch(row, retired)) {
+      return;
+    }
+    await _writeReconciledExercise(
+      row,
+      _retiredRecordCompanion(row, retired).copyWith(
+        updatedAt: Value<DateTime>(retired.updatedAt),
+        deletedAt: Value<DateTime?>(retired.retiredAt),
+      ),
+      context,
+    );
+  }
+
+  /// Keeps a used Retired Exercise as the user's own, in place: the id does not
+  /// change, so no Set, Workout or Template is rewritten.
+  ///
+  /// `updatedAt` is the record's fixed `retired_at`, never the clock, so every
+  /// device computes the same stamp. A clock stamp would let a device updating
+  /// later overwrite the user's rename from a device that updated first.
+  ///
+  /// Entries this row queued while it was a Platform row are acknowledged here.
+  /// The sync guard reads the row's current origin, so from now on it would let
+  /// them through, and only the kept image should go out.
+  Future<void> _keepRetiredExercise(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
+    WriteContext context,
+  ) async {
+    await (_database.update(_database.activityLog)
+          ..where(
+            (entry) =>
+                entry.entityTable.equals(AppDatabase.exercisesTable) &
+                entry.entityId.equals(row.id) &
+                entry.syncAcknowledgedAt.isNull(),
+          ))
+        .write(
+      ActivityLogCompanion(
+        syncAcknowledgedAt: Value<DateTime?>(context.timestamp),
+      ),
+    );
+    await _writeReconciledExercise(
+      row,
+      _retiredRecordCompanion(row, retired).copyWith(
+        libraryOrigin: Value<String>(ExerciseLibraryOrigin.user.name),
+        updatedAt: Value<DateTime>(retired.retiredAt),
+        deletedAt: const Value<DateTime?>(null),
+      ),
+      context,
+    );
+  }
+
+  /// The fields a Retired Exercise's record sets, whether it is kept or hidden.
+  /// `recordProfile` follows the dimensions, so it is recalculated only when
+  /// they differ, and from the row's own `loadMode`, which is never written.
+  ExercisesCompanion _retiredRecordCompanion(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
+  ) {
+    final type = ExerciseType(retired.dimensions);
+    final dimensionIds = _encodeDimensions(type);
+    return _withUnreadableFieldsRepaired(
+      _seedFieldsCompanion(retired).copyWith(
+        dimensionIds: Value<String>(dimensionIds),
+        recordProfile: dimensionIds == row.dimensionIds
+            ? const Value<String>.absent()
+            : Value<String>(
                 defaultRecordProfileFor(
-                  type: exerciseType,
-                  loadMode: loadMode,
+                  type: type,
+                  loadMode: _storedLoadMode(row) ?? _insertedLoadMode,
                 ).name,
               ),
-              defaultLoadUnit: Value<String>(TrainingUnit.kilogram.name),
-              isUnilateral: const Value<bool>(false),
-              usesRpe: const Value<bool>(false),
-              categoryId: Value<String?>(canonical.categoryId),
-              equipmentIds:
-                  Value<String>(_encodeEquipment(canonical.equipment)),
-              notes: Value<String?>(canonical.notes),
-              updatedAt: canonical.updatedAt,
-              deletedAt: Value<DateTime?>(canonical.updatedAt),
+      ),
+      row,
+      retired,
+    );
+  }
+
+  /// [changes] plus a value for each field of [row] no reader can parse. Valid
+  /// values stay, so a bad `recordProfile` is recalculated from the row's own
+  /// Exercise Type and `loadMode`. The values are what an insert would write.
+  ExercisesCompanion _withUnreadableFieldsRepaired(
+    ExercisesCompanion changes,
+    ExerciseRow row,
+    SeedExercise record,
+  ) {
+    final storedType = _storedExerciseType(row.dimensionIds);
+    final storedLoadMode = _storedLoadMode(row);
+    final writesRecordType = changes.dimensionIds.present || storedType == null;
+    return changes.copyWith(
+      dimensionIds: storedType == null && !changes.dimensionIds.present
+          ? Value<String>(_encodeDimensions(ExerciseType(record.dimensions)))
+          : null,
+      loadMode:
+          storedLoadMode == null ? Value<String>(_insertedLoadMode.name) : null,
+      defaultLoadUnit: _isReadableLoadUnit(row)
+          ? null
+          : Value<String>(TrainingUnit.kilogram.name),
+      recordProfile: _isReadableRecordProfile(row)
+          ? null
+          : Value<String>(
+              defaultRecordProfileFor(
+                type: writesRecordType
+                    ? ExerciseType(record.dimensions)
+                    : storedType,
+                loadMode: storedLoadMode ?? _insertedLoadMode,
+              ).name,
             ),
-          );
-      final alias = await _requireExerciseRow(redirect.fromExerciseId);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: redirect.fromExerciseId,
-        beforeImage: null,
-        afterImage: _exerciseImage(alias),
-      );
-    }
+    );
   }
 
-  Future<void> _backfillExistingPlatformSeedEquipment(
-    PlatformExerciseSeed seed,
-    _WriteContext context,
-  ) async {
-    for (final exercise in seed.exercises) {
-      if (exercise.equipment.isEmpty) {
-        continue;
-      }
-
-      final before = await (_database.select(_database.exercises)
-            ..where((row) => row.id.equals(exercise.id)))
-          .getSingleOrNull();
-      if (before == null ||
-          before.libraryOrigin != ExerciseLibraryOrigin.platform.name ||
-          _decodeEquipment(before.equipmentIds).isNotEmpty) {
-        continue;
-      }
-
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(exercise.id)))
-          .write(
-        ExercisesCompanion(
-          equipmentIds: Value<String>(_encodeEquipment(exercise.equipment)),
-          updatedAt: Value<DateTime>(exercise.updatedAt),
-        ),
-      );
-      final after = await _requireExerciseRow(exercise.id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: exercise.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(after),
-      );
-    }
+  /// The fields a seed record sets on an existing row, from either list.
+  ExercisesCompanion _seedFieldsCompanion(SeedExercise record) {
+    return ExercisesCompanion(
+      name: Value<String>(record.name),
+      categoryId: Value<String?>(record.categoryId),
+      equipmentIds: Value<String>(_encodeEquipment(record.equipment)),
+      focusIds: Value<String>(_encodeFocusIds(record.focusIds)),
+      notes: Value<String?>(record.notes),
+    );
   }
 
-  Future<void> _sanitizeLegacyWgerAttributionNotes(
-    _WriteContext context,
-  ) async {
-    final rows = await _database.select(_database.exercises).get();
-    for (final before in rows) {
-      if (before.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
-        continue;
-      }
-
-      final migration = _legacyEquipmentMigrationFromNote(before.notes);
-      final cleanedNote = migration != null
-          ? migration.notes
-          : _cleanLegacyWgerAttributionNote(before.notes);
-      final existingEquipment = _decodeEquipment(before.equipmentIds);
-      final migratedEquipment =
-          migration?.equipment ?? const <ExerciseEquipment>[];
-      final nextEquipment =
-          existingEquipment.isEmpty && migratedEquipment.isNotEmpty
-              ? migratedEquipment
-              : existingEquipment;
-      if (cleanedNote == before.notes &&
-          _equipmentListEquals(nextEquipment, existingEquipment)) {
-        continue;
-      }
-
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        ExercisesCompanion(
-          equipmentIds: Value<String>(_encodeEquipment(nextEquipment)),
-          notes: Value<String?>(cleanedNote),
-          updatedAt: Value<DateTime>(context.timestamp),
-        ),
-      );
-      final after = await _requireExerciseRow(before.id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: before.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(after),
-      );
+  /// The fields shared by both lists of the seed. Equipment and Focuses compare
+  /// as sets, so a stored order alone never causes a write. A stored value no
+  /// reader can parse counts as a difference, so the pass writes over it instead
+  /// of failing on every launch and Sync Run.
+  bool _platformFieldsMatch(ExerciseRow row, SeedExercise record) {
+    final equipment = _storedJsonList(row.equipmentIds);
+    final focuses = _storedJsonList(row.focusIds);
+    if (equipment == null ||
+        focuses == null ||
+        _storedExerciseType(row.dimensionIds) == null ||
+        _storedLoadMode(row) == null ||
+        !_isReadableLoadUnit(row) ||
+        !_isReadableRecordProfile(row)) {
+      return false;
     }
+    return row.name == record.name &&
+        row.categoryId == record.categoryId &&
+        row.notes == record.notes &&
+        _sameStringSet(
+          equipment
+              .whereType<String>()
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toSet(),
+          _normalizedEquipmentIds(record.equipment).toSet(),
+        ) &&
+        _sameStringSet(
+          focuses.whereType<String>().toSet(),
+          record.focusIds.toSet(),
+        );
+  }
+
+  /// Writes [changes] over [before] and appends its Activity Log entry. The
+  /// after-image is read back from the stored row, so it shows a stamp as the
+  /// database holds it, in whole seconds.
+  Future<void> _writeReconciledExercise(
+    ExerciseRow before,
+    ExercisesCompanion changes,
+    WriteContext context,
+  ) async {
+    await (_database.update(_database.exercises)
+          ..where((row) => row.id.equals(before.id)))
+        .write(changes);
+    final after = await _requireExerciseRow(before.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.exercisesTable,
+      entityId: before.id,
+      beforeImage: _exerciseImage(before),
+      afterImage: _exerciseImage(after),
+    );
   }
 
   Future<List<ExerciseCatalogSectionRecord>> listMergedCatalog() async {
     final categories = await _activeCategoryQuery().get();
     final exercises = await _activeExerciseQuery().get();
 
-    return _catalogSectionsFrom(
+    return exerciseCatalogSections(
       categories.map(_exerciseCategoryFromRow).toList(growable: false),
       exercises.map(_exerciseFromRow).toList(growable: false),
     );
@@ -849,7 +899,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -863,7 +913,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -880,7 +930,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -896,7 +946,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -912,7 +962,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -927,23 +977,19 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final activeRows = await _activeCategoryQuery().get();
-      final activeIds = activeRows.map((row) => row.id).toSet();
-      if (categoryIds.length != activeIds.length ||
-          categoryIds.toSet().length != categoryIds.length ||
-          !categoryIds.every(activeIds.contains)) {
-        throw ArgumentError.value(
-          categoryIds,
-          'categoryIds',
-          'Ordering must include each active category exactly once.',
-        );
-      }
+      _requireEachActiveIdOnce(
+        categoryIds,
+        activeRows.map((row) => row.id),
+        name: 'categoryIds',
+        noun: 'category',
+      );
 
       final beforeById = <String, ExerciseCategoryRow>{
         for (final row in activeRows) row.id: row,
@@ -963,7 +1009,7 @@ class CatalogRepository {
           ),
         );
         final after = await _requireCategoryRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseCategoriesTable,
           entityId: id,
@@ -991,7 +1037,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1014,7 +1060,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -1040,7 +1086,7 @@ class CatalogRepository {
         return;
       }
 
-      controller.add(_catalogSectionsFrom(categories, exercises));
+      controller.add(exerciseCatalogSections(categories, exercises));
     }
 
     controller.onListen = () {
@@ -1144,14 +1190,14 @@ class CatalogRepository {
         'Unsupported catalog sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _catalogSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -1175,7 +1221,7 @@ class CatalogRepository {
               );
       }
 
-      final localAfterImage = await _catalogSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -1185,7 +1231,7 @@ class CatalogRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -1198,42 +1244,18 @@ class CatalogRepository {
     });
   }
 
-  Future<Map<String, Object?>?> _catalogSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.exerciseCategoriesTable:
-        final row = await (_database.select(_database.exerciseCategories)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _exerciseCategoryImage(row);
-      case AppDatabase.exercisesTable:
-        final row = await (_database.select(_database.exercises)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _exerciseImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported catalog sync entity.',
-        );
-    }
-  }
-
   Future<String> _createCategory(
     ExerciseCategoryDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveCategoryName(draft.name);
     final activeRows = await _activeCategoryQuery().get();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.exerciseCategories).insert(
           ExerciseCategoriesCompanion.insert(
             id: id,
             name: _normalizeCategoryNameForStorage(draft.name),
-            sortOrder: _nextSortOrder(activeRows),
+            sortOrder: _nextPosition(activeRows, (row) => row.sortOrder),
             colorHex: _normalizeColorHex(
               draft.colorHex ?? _nextCategoryColor(activeRows.length),
             ),
@@ -1242,7 +1264,7 @@ class CatalogRepository {
         );
 
     final after = await _requireCategoryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseCategoriesTable,
       entityId: id,
@@ -1270,12 +1292,15 @@ class CatalogRepository {
   }
 
   Future<int> _activeCategoryMemberCount(String categoryId) async {
-    final rows = await (_database.select(_database.exercises)
-          ..where(
-            (row) => row.deletedAt.isNull() & row.categoryId.equals(categoryId),
-          ))
-        .get();
-    return rows.length;
+    final count = countAll();
+    final query = _database.selectOnly(_database.exercises)
+      ..addColumns([count])
+      ..where(
+        _database.exercises.deletedAt.isNull() &
+            _database.exercises.categoryId.equals(categoryId),
+      );
+    final row = await query.getSingle();
+    return row.read(count) ?? 0;
   }
 }
 
@@ -1291,7 +1316,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) async {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1305,7 +1330,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1322,7 +1347,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1344,12 +1369,15 @@ class ExerciseRepository {
           usesRpe: Value<bool>(draft.usesRpe),
           categoryId: Value<String?>(draft.categoryId),
           equipmentIds: Value<String>(_encodeEquipment(draft.equipment)),
+          focusIds: draft.focusIds == null
+              ? const Value<String>.absent()
+              : Value<String>(_encodeFocusIds(draft.focusIds!)),
           notes: Value<String?>(draft.notes),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1365,7 +1393,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1383,7 +1411,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1398,7 +1426,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1415,7 +1443,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1430,7 +1458,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1451,7 +1479,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1467,7 +1495,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1486,7 +1514,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1502,7 +1530,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1530,11 +1558,12 @@ class ExerciseRepository {
             usesRpe: platform.usesRpe,
             categoryId: platform.categoryId,
             equipment: _decodeEquipment(platform.equipmentIds),
+            focusIds: _decodeFocusIds(platform.focusIds),
             notes: platform.notes,
           );
       await _ensureUniqueActiveUserName(customization.name);
 
-      final copyId = _repositories.createId(context.timestamp);
+      final copyId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.exercises).insert(
             ExercisesCompanion.insert(
               id: copyId,
@@ -1555,13 +1584,18 @@ class ExerciseRepository {
               equipmentIds: Value<String>(
                 _encodeEquipment(customization.equipment),
               ),
+              focusIds: Value<String>(
+                _encodeFocusIds(
+                  customization.focusIds ?? _decodeFocusIds(platform.focusIds),
+                ),
+              ),
               notes: Value<String?>(customization.notes),
               updatedAt: context.timestamp,
             ),
           );
 
       final after = await _requireRow(copyId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: copyId,
@@ -1578,7 +1612,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1604,7 +1638,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1680,10 +1714,10 @@ class ExerciseRepository {
 
   Future<ExerciseRow> _create(
     ExerciseDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.exercises).insert(
           ExercisesCompanion.insert(
             id: id,
@@ -1697,13 +1731,16 @@ class ExerciseRepository {
             usesRpe: Value<bool>(draft.usesRpe),
             categoryId: Value<String?>(draft.categoryId),
             equipmentIds: Value<String>(_encodeEquipment(draft.equipment)),
+            focusIds: Value<String>(
+              _encodeFocusIds(draft.focusIds ?? const <String>[]),
+            ),
             notes: Value<String?>(draft.notes),
             updatedAt: context.timestamp,
           ),
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exercisesTable,
       entityId: id,
@@ -1745,9 +1782,9 @@ class ExerciseRepository {
                 ),
           ))
         .get();
-    final normalizedName = _normalizeExerciseName(row.name);
+    final normalizedName = normalizeExerciseName(row.name);
     return platformRows.any(
-      (platform) => _normalizeExerciseName(platform.name) == normalizedName,
+      (platform) => normalizeExerciseName(platform.name) == normalizedName,
     );
   }
 
@@ -1755,7 +1792,7 @@ class ExerciseRepository {
     String name, {
     String? exceptId,
   }) async {
-    final normalizedName = _normalizeExerciseName(name);
+    final normalizedName = normalizeExerciseName(name);
     final rows = await (_database.select(_database.exercises)
           ..where(
             (row) =>
@@ -1767,7 +1804,7 @@ class ExerciseRepository {
     final duplicate = rows.any(
       (row) =>
           row.id != exceptId &&
-          _normalizeExerciseName(row.name) == normalizedName,
+          normalizeExerciseName(row.name) == normalizedName,
     );
     if (duplicate) {
       throw DuplicateExerciseNameException(name);
@@ -1787,7 +1824,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1801,7 +1838,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1829,7 +1866,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1846,7 +1883,7 @@ class WorkoutSessionRepository {
     String actor = 'app.autoFinish',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1889,7 +1926,7 @@ class WorkoutSessionRepository {
           ),
         );
         final after = await _requireRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.workoutSessionsTable,
           entityId: before.id,
@@ -1915,7 +1952,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1946,7 +1983,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1962,11 +1999,11 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
-    final normalizedComment = _normalizeWorkoutComment(comment);
+    final normalizedComment = _normalizeOptionalText(comment);
 
     return _database.transaction(() async {
       final before = await _requireRow(id);
@@ -1983,7 +2020,45 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.workoutSessionsTable,
+        entityId: id,
+        beforeImage: _workoutSessionImage(before),
+        afterImage: _workoutSessionImage(after),
+      );
+    });
+  }
+
+  /// Records the Focus the Workout is performed under, or clears it with
+  /// null. Changing it never touches the Workout's exercises or Sets.
+  Future<void> setFocus(
+    String id, {
+    required String? focusId,
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      if (before.focusId == focusId) {
+        return;
+      }
+
+      await (_database.update(_database.workoutSessions)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        WorkoutSessionsCompanion(
+          focusId: Value<String?>(focusId),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(id);
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1999,7 +2074,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2019,7 +2094,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -2037,7 +2112,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2058,7 +2133,7 @@ class WorkoutSessionRepository {
       final sourceDuration = source.endedAt?.difference(source.startedAt);
       final copyEndedAt =
           sourceDuration == null ? null : copyStartedAt.add(sourceDuration);
-      final copyId = _repositories.createId(context.timestamp);
+      final copyId = _repositories._ids.create(context.timestamp);
 
       await _database.into(_database.workoutSessions).insert(
             WorkoutSessionsCompanion.insert(
@@ -2068,11 +2143,12 @@ class WorkoutSessionRepository {
               localDate: Value<String>(localDate.storageValue),
               endedAt: Value<DateTime?>(copyEndedAt),
               comment: Value<String?>(source.comment),
+              focusId: Value<String?>(source.focusId),
               updatedAt: context.timestamp,
             ),
           );
       final copiedWorkout = await _requireRow(copyId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: copyId,
@@ -2081,7 +2157,8 @@ class WorkoutSessionRepository {
       );
 
       for (final sourceWorkoutExercise in sourceWorkoutExercises) {
-        final copyWorkoutExerciseId = _repositories.createId(context.timestamp);
+        final copyWorkoutExerciseId =
+            _repositories._ids.create(context.timestamp);
         await _database.into(_database.workoutExercises).insert(
               WorkoutExercisesCompanion.insert(
                 id: copyWorkoutExerciseId,
@@ -2093,7 +2170,7 @@ class WorkoutSessionRepository {
             );
         final after = await _repositories.workoutExercises
             ._requireRow(copyWorkoutExerciseId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.workoutExercisesTable,
           entityId: copyWorkoutExerciseId,
@@ -2103,7 +2180,7 @@ class WorkoutSessionRepository {
       }
 
       for (final sourceSet in sourceSets) {
-        final copySetId = _repositories.createId(context.timestamp);
+        final copySetId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.loggedSets).insert(
               _loggedSetInsertCompanion(
                 id: copySetId,
@@ -2125,7 +2202,7 @@ class WorkoutSessionRepository {
               ),
             );
         final after = await _repositories.sets._requireRow(copySetId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.loggedSetsTable,
           entityId: copySetId,
@@ -2163,7 +2240,7 @@ class WorkoutSessionRepository {
       for (final row in exerciseRows) row.id: _exerciseFromRow(row),
     };
 
-    return _workoutShareSummary(
+    return workoutShareSummary(
       workout: _workoutSessionFromRow(workout),
       workoutExercises:
           workoutExercises.map(_workoutExerciseFromRow).toList(growable: false),
@@ -2177,7 +2254,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2198,7 +2275,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -2260,6 +2337,82 @@ class WorkoutSessionRepository {
   ) {
     return _activeWorkoutSessionQuery(localDate: localDate).watch().map(
           (rows) => rows.map(_workoutSessionFromRow).toList(growable: false),
+        );
+  }
+
+  /// The facts the training progress core reads (docs/designs/
+  /// progress-overview.md, D0-D1) for every live Workout dated [from]
+  /// through [to], inclusive, Open Workouts included, by start then id.
+  ///
+  /// `performedSetCount` counts the Workout's Performed Sets: live and
+  /// completed. A Workout materialized from a template and left untouched
+  /// therefore counts 0, and the core does not treat it as a Logged Workout.
+  /// `linkedTemplateId` is the template of its live Template Link. A Workout
+  /// has at most one, which `template_links_workout_id_unique` enforces on
+  /// this device; the latest `updated_at`, then the highest id, decides
+  /// anyway, so this loader and the server's pick the same link (D1).
+  Stream<List<ProgressWorkout>> watchProgressWorkoutsBetween(
+    TrainingDayDate from,
+    TrainingDayDate to,
+  ) {
+    return _database
+        .customSelect(
+          '''
+          SELECT
+            workout_sessions.id AS workout_id,
+            workout_sessions.local_date AS local_date,
+            workout_sessions.started_at AS started_at,
+            workout_sessions.ended_at AS ended_at,
+            workout_sessions.focus_id AS focus_id,
+            (
+              SELECT template_links.workout_template_id
+              FROM template_links
+              WHERE template_links.workout_id = workout_sessions.id
+                AND template_links.deleted_at IS NULL
+              ORDER BY template_links.updated_at DESC, template_links.id DESC
+              LIMIT 1
+            ) AS linked_template_id,
+            (
+              SELECT COUNT(*)
+              FROM logged_sets
+              WHERE logged_sets.workout_id = workout_sessions.id
+                AND logged_sets.deleted_at IS NULL
+                AND logged_sets.is_completed = 1
+            ) AS performed_set_count
+          FROM workout_sessions
+          WHERE workout_sessions.deleted_at IS NULL
+            AND workout_sessions.local_date BETWEEN ? AND ?
+          ORDER BY workout_sessions.started_at, workout_sessions.id
+          ''',
+          variables: <Variable<Object>>[
+            Variable<String>(from.storageValue),
+            Variable<String>(to.storageValue),
+          ],
+          readsFrom: <ResultSetImplementation<HasResultSet, dynamic>>{
+            _database.workoutSessions,
+            _database.templateLinks,
+            _database.loggedSets,
+          },
+        )
+        .watch()
+        .map(
+          (rows) => List<ProgressWorkout>.unmodifiable(<ProgressWorkout>[
+            for (final row in rows)
+              // A synced row whose date cannot be read is left out, as the
+              // server's core ignores it, rather than failing every card.
+              if (_parseTrainingDayDate(row.read<String>('local_date'))
+                  case final localDate?)
+                ProgressWorkout(
+                  workoutId: row.read<String>('workout_id'),
+                  localDate: localDate,
+                  startedAt: row.read<DateTime>('started_at').toUtc(),
+                  endedAt: row.readNullable<DateTime>('ended_at')?.toUtc(),
+                  focusId: row.readNullable<String>('focus_id'),
+                  linkedTemplateId:
+                      row.readNullable<String>('linked_template_id'),
+                  performedSetCount: row.read<int>('performed_set_count'),
+                ),
+          ]),
         );
   }
 
@@ -2327,9 +2480,9 @@ class WorkoutSessionRepository {
 
   Future<String> _create(
     WorkoutSessionDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final localDate =
         draft.localDate ?? TrainingDayDate.fromDateTime(draft.startedAt);
     await _database.into(_database.workoutSessions).insert(
@@ -2339,13 +2492,14 @@ class WorkoutSessionRepository {
             timezone: draft.timezone,
             localDate: Value<String>(localDate.storageValue),
             endedAt: Value<DateTime?>(draft.endedAt?.toUtc()),
-            comment: Value<String?>(_normalizeWorkoutComment(draft.comment)),
+            comment: Value<String?>(_normalizeOptionalText(draft.comment)),
+            focusId: Value<String?>(draft.focusId),
             updatedAt: context.timestamp,
           ),
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutSessionsTable,
       entityId: id,
@@ -2358,7 +2512,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteWorkoutChildren(
     String workoutId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final restTimers = await (_database.select(_database.restTimers)
           ..where(
@@ -2390,7 +2544,7 @@ class WorkoutSessionRepository {
       final after = await (_database.select(_database.intervalTimers)
             ..where((row) => row.id.equals(before.id)))
           .getSingle();
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.intervalTimersTable,
         entityId: before.id,
@@ -2423,7 +2577,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteExerciseGroupMember(
     ExerciseGroupMemberRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.exerciseGroupMembers)
           ..where((row) => row.id.equals(before.id)))
@@ -2436,7 +2590,7 @@ class WorkoutSessionRepository {
     final after = await _repositories.exerciseGroups._requireMemberRow(
       before.id,
     );
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupMembersTable,
       entityId: before.id,
@@ -2447,7 +2601,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteExerciseGroup(
     ExerciseGroupRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.exerciseGroups)
           ..where((row) => row.id.equals(before.id)))
@@ -2458,7 +2612,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.exerciseGroups._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupsTable,
       entityId: before.id,
@@ -2469,7 +2623,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteWorkoutExercise(
     WorkoutExerciseRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.workoutExercises)
           ..where((row) => row.id.equals(before.id)))
@@ -2480,7 +2634,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.workoutExercises._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutExercisesTable,
       entityId: before.id,
@@ -2491,7 +2645,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteLoggedSet(
     LoggedSetRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.loggedSets)
           ..where((row) => row.id.equals(before.id)))
@@ -2502,7 +2656,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.sets._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.loggedSetsTable,
       entityId: before.id,
@@ -2564,198 +2718,17 @@ class PlatformFoodRepository {
   }
 }
 
-class OpenFoodFactsRepository {
-  OpenFoodFactsRepository._(
-    this._repositories, {
-    required Uri baseUrl,
-    required http.Client httpClient,
-    required int maxCacheEntries,
-    DateTime Function()? clock,
-  })  : _baseUrl = baseUrl,
-        _httpClient = httpClient,
-        _maxCacheEntries = maxCacheEntries,
-        _clock = clock ?? DateTime.now;
-
-  final TrainingRepositories _repositories;
-  final Uri _baseUrl;
-  final http.Client _httpClient;
-  final int _maxCacheEntries;
-  final DateTime Function() _clock;
-
-  AppDatabase get _database => _repositories.database;
-
-  Future<List<PlatformFoodRecord>> search(
-    String query, {
-    int limit = 50,
-  }) async {
-    if (limit <= 0) {
-      return const <PlatformFoodRecord>[];
-    }
-    final food = await lookup(query, limit: limit);
-    return food == null
-        ? const <PlatformFoodRecord>[]
-        : <PlatformFoodRecord>[food];
-  }
-
-  Future<PlatformFoodRecord?> lookup(
-    String query, {
-    int limit = 50,
-  }) async {
-    final normalizedQuery = query.trim();
-    if (normalizedQuery.isEmpty || limit <= 0) {
-      return null;
-    }
-
-    final lookupKey = _openFoodFactsLookupKey(normalizedQuery);
-    final cached = await _cachedLookup(lookupKey);
-    if (cached != null) {
-      final accessedAt = _clock().toUtc();
-      await (_database.update(_database.openFoodFactsCache)
-            ..where((row) => row.lookupKey.equals(lookupKey)))
-          .write(
-        OpenFoodFactsCacheCompanion(
-          lastAccessedAt: Value<DateTime>(accessedAt),
-        ),
-      );
-      return _openFoodFactsRecordFromCacheRow(cached);
-    }
-
-    final fetched = await _fetchOpenFoodFacts(normalizedQuery, limit: limit);
-    if (fetched == null) {
-      return null;
-    }
-
-    final timestamp = _clock().toUtc();
-    await _database.into(_database.openFoodFactsCache).insertOnConflictUpdate(
-          OpenFoodFactsCacheCompanion.insert(
-            lookupKey: lookupKey,
-            foodId: fetched.id,
-            name: fetched.name,
-            nutrientValuesJson: fetched.nutrientsPer100.toJsonString(),
-            isLiquid: Value<bool>(fetched.isLiquid),
-            servingLabel: Value<String?>(fetched.servingLabel),
-            servingSize: Value<double?>(fetched.servingSize),
-            packageSize: Value<double?>(fetched.packageSize),
-            fetchedAt: timestamp,
-            lastAccessedAt: timestamp,
-          ),
-        );
-    await _enforceCacheLimit();
-
-    return fetched;
-  }
-
-  Future<OpenFoodFactsCacheRow?> _cachedLookup(String lookupKey) {
-    return (_database.select(_database.openFoodFactsCache)
-          ..where((row) => row.lookupKey.equals(lookupKey)))
-        .getSingleOrNull();
-  }
-
-  Future<PlatformFoodRecord?> _fetchOpenFoodFacts(
-    String query, {
-    required int limit,
-  }) async {
-    final barcode = _openFoodFactsBarcode(query);
-    final uri = barcode == null
-        ? _baseUrl.resolve('/cgi/search.pl').replace(
-            queryParameters: <String, String>{
-              'search_terms': query,
-              'search_simple': '1',
-              'action': 'process',
-              'json': '1',
-              'page_size': limit.toString(),
-              'fields':
-                  'code,product_name,generic_name,nutriments,serving_quantity,serving_quantity_unit,serving_size,product_quantity,product_quantity_unit,quantity,categories_tags',
-            },
-          )
-        : _baseUrl.resolve('/api/v2/product/$barcode.json').replace(
-            queryParameters: const <String, String>{
-              'fields':
-                  'code,product_name,generic_name,nutriments,serving_quantity,serving_quantity_unit,serving_size,product_quantity,product_quantity_unit,quantity,categories_tags',
-            },
-          );
-    final response = await _httpClient.get(
-      uri,
-      headers: const <String, String>{'accept': 'application/json'},
-    );
-    if (response.statusCode == 404) {
-      return null;
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw http.ClientException(
-        'Open Food Facts lookup failed with HTTP ${response.statusCode}.',
-        uri,
-      );
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw FormatException('Expected Open Food Facts JSON object.');
-    }
-    final body = Map<String, Object?>.from(decoded);
-
-    if (barcode != null) {
-      if (body['status'] == 0) {
-        return null;
-      }
-      final product = body['product'];
-      if (product is! Map) {
-        return null;
-      }
-      return _openFoodFactsRecordFromProduct(
-        Map<String, Object?>.from(product),
-        fallbackCode: barcode,
-      );
-    }
-
-    final products = body['products'];
-    if (products is! List<Object?>) {
-      return null;
-    }
-    for (final product in products) {
-      if (product is! Map) {
-        continue;
-      }
-      final record = _openFoodFactsRecordFromProduct(
-        Map<String, Object?>.from(product),
-      );
-      if (record != null) {
-        return record;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _enforceCacheLimit() async {
-    if (_maxCacheEntries < 0) {
-      throw ArgumentError.value(
-        _maxCacheEntries,
-        'openFoodFactsMaxCacheEntries',
-        'Open Food Facts cache size must be non-negative.',
-      );
-    }
-    final query = _database.select(_database.openFoodFactsCache)
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.lastAccessedAt),
-        (row) => OrderingTerm.asc(row.lookupKey),
-      ]);
-    final rows = await query.get();
-    final overflow = rows.length - _maxCacheEntries;
-    if (overflow <= 0) {
-      return;
-    }
-
-    final evictedKeys =
-        rows.take(overflow).map((row) => row.lookupKey).toList(growable: false);
-    await (_database.delete(_database.openFoodFactsCache)
-          ..where((row) => row.lookupKey.isIn(evictedKeys)))
-        .go();
-  }
-}
-
 class NutritionRepository {
   const NutritionRepository._(this._repositories);
 
   final TrainingRepositories _repositories;
+
+  /// How far back Food History counts entries and Meal History considers
+  /// Meals: a Meal that started exactly this long before `now` still counts
+  /// (docs/designs/unified-food-search.md § Food History,
+  /// docs/designs/meal-logging.md §5). The server's twin is
+  /// `FOOD_HISTORY_WINDOW_MS` in apps/server/src/food-history.ts.
+  static const Duration foodHistoryWindow = Duration(days: 90);
 
   static const _defaultMealTypes = <_DefaultMealTypeSeed>[
     _DefaultMealTypeSeed(
@@ -2804,14 +2777,14 @@ class NutritionRepository {
         'Unsupported nutrition sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _nutritionSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -2854,7 +2827,7 @@ class NutritionRepository {
               );
       }
 
-      final localAfterImage = await _nutritionSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -2864,7 +2837,7 @@ class NutritionRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -2877,62 +2850,165 @@ class NutritionRepository {
     });
   }
 
+  /// Creates [meal] with no Food Entries (`Add foods later`) through the same
+  /// target resolution as every logging write (docs/designs/meal-logging.md
+  /// §3): a null time is the time of the write, a null Meal Type is proposed
+  /// from it (§4), and an id that already exists, active or archived, throws
+  /// [MealAlreadyExistsException] and writes nothing. Returns the Meal id.
   Future<String> createMeal(
-    MealDraft draft, {
+    PendingMeal meal, {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
-    return _database.transaction(() => _createMeal(draft, context));
+    return _database.transaction(
+      () => _resolveMealTarget(NewMealTarget(meal), context),
+    );
   }
 
-  Future<Map<String, Object?>?> _nutritionSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.mealsTable:
-        final row = await (_database.select(_database.meals)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _mealImage(row);
-      case AppDatabase.foodEntriesTable:
-        final row = await (_database.select(_database.foodEntries)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _foodEntryImage(row);
-      case AppDatabase.nutritionGoalsTable:
-        final row = await (_database.select(_database.nutritionGoals)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _nutritionGoalImage(row);
-      case AppDatabase.foodsTable:
-        final row = await (_database.select(_database.foods)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _foodImage(row);
-      case AppDatabase.mealTypesTable:
-        final row = await (_database.select(_database.mealTypes)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _mealTypeImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported nutrition sync entity.',
-        );
-    }
+  /// A fresh Meal id for a [PendingMeal], minted by the repository's id
+  /// factory so a controller never touches it. The Meal screen mints one when
+  /// it opens, so a second write of the same pending Meal (a double tap) is
+  /// detected as [MealAlreadyExistsException].
+  String newMealId() => _repositories._ids.create(DateTime.now().toUtc());
+
+  /// Moves a Meal to [startedAt], following the Dose time edit (`_editDose`;
+  /// docs/designs/meal-logging.md §1): the stored UTC offset is kept, so the
+  /// new time is read where the Meal was eaten and `local_date` is derived
+  /// again from it (23:50 → 00:10 moves the Meal to the next Nutrition Day).
+  /// A Meal written before offsets were recorded (a null offset) freezes the
+  /// offset, and its zone label, at the new instant. Setting a time makes a
+  /// `date` Meal an `instant` one.
+  ///
+  /// Rejects an archived Meal, and runs the shared [validateMealTime] against
+  /// the Meal as it will be stored: a hard reject throws; the future-time
+  /// warning never blocks the write. Returns the Batch id.
+  Future<String> updateMealTime(
+    String mealId,
+    DateTime startedAt, {
+    String actor = 'app',
+  }) {
+    return _editMeal(mealId, actor, (before) {
+      final startedAtUtc = startedAt.toUtc();
+      final String timezone;
+      final int timezoneOffsetMinutes;
+      if (before.timezoneOffsetMinutes case final offset?) {
+        // A new time on a Meal with a frozen offset corrects when it was
+        // eaten WHERE it was eaten: the Meal keeps its offset and its zone
+        // label, and only the local date is derived again.
+        timezone = before.timezone;
+        timezoneOffsetMinutes = offset;
+      } else {
+        // A Meal written before offsets were recorded: freeze the offset and
+        // the label from the device zone at the new instant, exactly as
+        // logging it would.
+        final deviceZone = _deviceZoneAt(startedAt);
+        timezone = deviceZone.label;
+        timezoneOffsetMinutes = deviceZone.offsetMinutes;
+      }
+      final localDate = _nutritionDayDateAtOffset(
+        startedAtUtc,
+        timezoneOffsetMinutes,
+      );
+      return (
+        input: MealTimeInput(
+          startedAt: startedAtUtc,
+          endedAt: before.endedAt?.toUtc(),
+          mealType: before.mealType,
+        ),
+        changes: () => MealsCompanion(
+              startedAt: Value<DateTime>(startedAtUtc),
+              timezone: Value<String>(timezone),
+              localDate: Value<String>(localDate.storageValue),
+              timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
+              timePrecision: Value<String>(MealTimePrecision.instant.name),
+            ),
+      );
+    });
+  }
+
+  /// Stores [mealTypeName] as a Meal's Meal Type label
+  /// (docs/designs/meal-logging.md §3). Rejects an archived Meal, and runs the
+  /// shared [validateMealTime] against the Meal as it will be stored, so an
+  /// empty label is a hard reject. Returns the Batch id.
+  ///
+  /// This edits one Meal; [editMealType] edits a Meal Type entity.
+  Future<String> updateMealType(
+    String mealId,
+    String mealTypeName, {
+    String actor = 'app',
+  }) {
+    return _editMeal(
+      mealId,
+      actor,
+      (before) => (
+        input: MealTimeInput(
+          startedAt: before.startedAt.toUtc(),
+          endedAt: before.endedAt?.toUtc(),
+          mealType: mealTypeName,
+        ),
+        changes: () => MealsCompanion(
+              mealType:
+                  Value<String>(_normalizeMealTypeForStorage(mealTypeName)),
+            ),
+      ),
+    );
+  }
+
+  /// The one write path for an edit of a stored Meal ([updateMealTime],
+  /// [updateMealType]). [build] reads the Meal as it is and returns the
+  /// [MealTimeInput] the Meal will be stored as, plus the columns to change.
+  /// An archived Meal is rejected; the shared [validateMealTime] runs on the
+  /// input, and a hard reject throws before anything is written (the
+  /// future-time warning never blocks). `changes` is called only after the
+  /// validation passes, so an empty Meal Type is a [MealValidationException]
+  /// and never the storage normalizer's [ArgumentError]. `updated_at` is set
+  /// to the write's timestamp here, the change is recorded in the Activity
+  /// Log, and the Batch id is returned.
+  Future<String> _editMeal(
+    String mealId,
+    String actor,
+    ({MealTimeInput input, MealsCompanion Function() changes}) Function(
+      MealRow before,
+    ) build,
+  ) {
+    final context = _repositories._writeContexts.create(actor: actor);
+
+    return _database.transaction(() async {
+      final before = await _requireMealRow(mealId);
+      if (before.deletedAt != null) {
+        throw StateError('Cannot edit an archived Meal: $mealId.');
+      }
+      final edit = build(before);
+      validateMealTime(edit.input, now: context.timestamp).throwIfRejected();
+
+      await (_database.update(_database.meals)
+            ..where((row) => row.id.equals(mealId)))
+          .write(
+        edit.changes().copyWith(
+              updatedAt: Value<DateTime>(context.timestamp),
+            ),
+      );
+      final after = await _requireMealRow(mealId);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.mealsTable,
+        entityId: mealId,
+        beforeImage: _mealImage(before),
+        afterImage: _mealImage(after),
+      );
+      return context.batchId;
+    });
   }
 
   Future<void> ensureDefaultMealTypes({
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       for (final seed in _defaultMealTypes) {
@@ -2949,7 +3025,7 @@ class NutritionRepository {
               ),
             );
         final after = await _requireMealTypeRow(seed.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.mealTypesTable,
           entityId: seed.id,
@@ -2965,7 +3041,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2973,13 +3049,16 @@ class NutritionRepository {
     return _database.transaction(() => _createMealType(draft, context));
   }
 
-  Future<void> updateMealType(
+  /// Edits a Meal Type entity (its name and sort order). Named apart from
+  /// [updateMealType], which stores one Meal's Meal Type label: Dart has no
+  /// overloading (docs/designs/meal-logging.md §3).
+  Future<void> editMealType(
     String id,
     MealTypeDraft draft, {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2991,7 +3070,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(id)))
           .write(_mealTypeCompanionFromDraft(draft, context.timestamp));
       final after = await _requireMealTypeRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealTypesTable,
         entityId: id,
@@ -3006,7 +3085,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3022,7 +3101,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireMealTypeRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealTypesTable,
         entityId: id,
@@ -3038,7 +3117,7 @@ class NutritionRepository {
     String? batchId,
   }) async {
     await ensureDefaultMealTypes(actor: actor);
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3075,7 +3154,7 @@ class NutritionRepository {
           ),
         );
         final after = await _requireMealTypeRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.mealTypesTable,
           entityId: id,
@@ -3120,7 +3199,7 @@ class NutritionRepository {
   }) {
     validateNutritionGoalTargets(<NutritionGoalTarget>[target])
         .throwIfRejected();
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3128,13 +3207,13 @@ class NutritionRepository {
     return _database.transaction(() async {
       final existing = await _activeNutritionGoalRowFor(target.nutrient);
       if (existing == null) {
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.nutritionGoals).insert(
               _nutritionGoalCompanionFromTarget(target, context.timestamp)
                   .copyWith(id: Value<String>(id)),
             );
         final after = await _requireNutritionGoalRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.nutritionGoalsTable,
           entityId: id,
@@ -3149,7 +3228,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(existing.id)))
           .write(_nutritionGoalCompanionFromTarget(target, context.timestamp));
       final after = await _requireNutritionGoalRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.nutritionGoalsTable,
         entityId: existing.id,
@@ -3168,7 +3247,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3188,7 +3267,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireNutritionGoalRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.nutritionGoalsTable,
         entityId: existing.id,
@@ -3255,18 +3334,19 @@ class NutritionRepository {
     );
   }
 
+  /// Logs a Quick Entry into [target] (docs/designs/meal-logging.md §3). A
+  /// [NewMealTarget] creates its Meal in the same transaction and Batch, so
+  /// undo and a crash both treat the Meal and its first entry as one action.
   Future<LogQuickEntryResult> logQuickEntry({
-    required MealDraft meal,
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
-    final validation = validateFoodEntryNutrition(nutrients: entry.nutrients);
-    validation.throwIfRejected();
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
-      final mealId = await _createMeal(meal, context);
-      final foodEntryId = await _createQuickEntry(
+      final mealId = await _resolveMealTarget(target, context);
+      final created = await _createQuickEntry(
         mealId: mealId,
         draft: entry,
         context: context,
@@ -3274,32 +3354,8 @@ class NutritionRepository {
       return LogQuickEntryResult(
         batchId: context.batchId,
         mealId: mealId,
-        foodEntryId: foodEntryId,
-        warnings: validation.warnings,
-      );
-    });
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-    String actor = 'app',
-  }) {
-    final context = _repositories._createWriteContext(actor: actor);
-    final validation = validateFoodEntryNutrition(nutrients: entry.nutrients);
-    validation.throwIfRejected();
-
-    return _database.transaction(() async {
-      final foodEntryId = await _createQuickEntry(
-        mealId: mealId,
-        draft: entry,
-        context: context,
-      );
-      return LogQuickEntryResult(
-        batchId: context.batchId,
-        mealId: mealId,
-        foodEntryId: foodEntryId,
-        warnings: validation.warnings,
+        foodEntryId: created.foodEntryId,
+        warnings: created.warnings,
       );
     });
   }
@@ -3309,7 +3365,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3322,7 +3378,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3343,7 +3399,7 @@ class NutritionRepository {
       throw StateError('USDA Food not found: $usdaFoodId.');
     }
 
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3365,7 +3421,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3379,7 +3435,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(id)))
           .write(_userFoodCompanionFromDraft(draft, context.timestamp));
       final after = await _requireFoodRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodsTable,
         entityId: id,
@@ -3394,7 +3450,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3411,7 +3467,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireFoodRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodsTable,
         entityId: id,
@@ -3425,7 +3481,7 @@ class NutritionRepository {
     required FoodEntryDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final created = await _createFoodEntry(
@@ -3441,13 +3497,20 @@ class NutritionRepository {
     });
   }
 
+  /// Logs a Food Entry snapshot into [target] (docs/designs/meal-logging.md
+  /// §3). A [NewMealTarget] creates its Meal in the same transaction and
+  /// Batch. The draft's `mealId` must be the target's Meal id; a mismatch
+  /// throws [ArgumentError] before anything is written.
   Future<LogFoodEntryResult> logFoodEntrySnapshot({
+    required MealTarget target,
     required FoodEntrySnapshotDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    _requireEntryInTarget(entry.mealId, target);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
+      await _resolveMealTarget(target, context);
       final created = await _createFoodEntrySnapshot(
         draft: entry,
         context: context,
@@ -3461,6 +3524,199 @@ class NutritionRepository {
     });
   }
 
+  /// Logs a source Meal again (`Your meals`; docs/designs/meal-logging.md
+  /// §3): copies [sourceMealId]'s active Food Entries, in position order, into
+  /// [target], all in one transaction and one Batch, so a crash leaves all of
+  /// the copy or none of it and one undo removes it.
+  ///
+  /// The copy rule, per source entry:
+  /// - a Food Entry of a User Food that is still active, whose Portion unit
+  ///   is still allowed for that Food, is re-read through the `logFoodEntry`
+  ///   path, so the user's own edits to the Food apply;
+  /// - every other Food-backed entry (USDA, Open Food Facts, an imported
+  ///   observation, an archived User Food, a Portion no longer allowed)
+  ///   copies its stored snapshot through the `logFoodEntrySnapshot` path;
+  /// - a Quick Entry is copied as a Quick Entry;
+  /// - import keys (`import_source`, `import_external_id`,
+  ///   `import_provider`) are never copied, so a later re-import can't treat
+  ///   the copies as already imported;
+  /// - the copies take the target Meal's time (Food Entries carry none).
+  ///
+  /// A missing or archived source Meal throws [StateError]; an archived
+  /// [ExistingMealTarget] is rejected as for any write.
+  Future<LogMealAgainResult> logMealAgain(
+    String sourceMealId,
+    MealTarget target, {
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(actor: actor);
+
+    return _database.transaction(() async {
+      final source = await (_database.select(_database.meals)
+            ..where((row) => row.id.equals(sourceMealId)))
+          .getSingleOrNull();
+      if (source == null) {
+        throw StateError('Meal not found: $sourceMealId.');
+      }
+      if (source.deletedAt != null) {
+        throw StateError('Cannot log an archived Meal again: $sourceMealId.');
+      }
+      // Read before the target resolves, so logging a Meal again into itself
+      // copies only what it held.
+      final sourceEntries = await _activeFoodEntryQuery(
+        mealIds: <String>{sourceMealId},
+      ).get();
+      final mealId = await _resolveMealTarget(target, context);
+
+      final foodEntryIds = <String>[];
+      final warnings = <NutrientValidationIssue>[];
+      for (final row in sourceEntries) {
+        final sourceEntry = _foodEntryFromRow(row);
+        final _CreatedFoodEntry created;
+        if (sourceEntry.kind == FoodEntryKind.quickEntry) {
+          created = await _createQuickEntry(
+            mealId: mealId,
+            draft: QuickFoodEntryDraft(
+              name: sourceEntry.name,
+              nutrients: sourceEntry.nutrients,
+            ),
+            context: context,
+          );
+        } else {
+          final portion = sourceEntry.portion;
+          if (portion == null) {
+            throw StateError(
+              'Food Entry is missing a Portion: ${sourceEntry.id}.',
+            );
+          }
+          final userFood = await _reReadableUserFood(sourceEntry, portion);
+          created = await _createFoodEntrySnapshot(
+            draft: userFood != null
+                ? _userFoodEntryDraft(
+                    userFood,
+                    mealId: mealId,
+                    portion: portion,
+                  )
+                : FoodEntrySnapshotDraft(
+                    mealId: mealId,
+                    foodId: sourceEntry.foodId,
+                    name: sourceEntry.name,
+                    foodSource: sourceEntry.foodSource ?? FoodSource.user,
+                    // A Food-backed entry stores its per-100 snapshot.
+                    nutrientsPer100: sourceEntry.nutrients,
+                    isLiquid: sourceEntry.isLiquid ?? false,
+                    portion: portion,
+                    servingLabel: sourceEntry.servingLabel,
+                    servingSize: sourceEntry.servingSize,
+                    packageSize: sourceEntry.packageSize,
+                    reviewFlags: sourceEntry.reviewFlags,
+                  ),
+            context: context,
+          );
+        }
+        foodEntryIds.add(created.foodEntryId);
+        warnings.addAll(created.warnings);
+      }
+
+      return LogMealAgainResult(
+        batchId: context.batchId,
+        mealId: mealId,
+        foodEntryIds: foodEntryIds,
+        warnings: warnings,
+      );
+    });
+  }
+
+  /// The User Food Log again re-reads [entry] from, or null when the entry
+  /// is copied as its stored snapshot instead: the Food must be a User Food
+  /// that is still active, and [portion]'s unit must still be among the
+  /// Food's allowed Portion units (docs/designs/meal-logging.md §3).
+  Future<UserFoodRecord?> _reReadableUserFood(
+    FoodEntryRecord entry,
+    Portion portion,
+  ) async {
+    final foodId = entry.foodId;
+    if (foodId == null || entry.foodSource != FoodSource.user) {
+      return null;
+    }
+    final food = await (_database.select(_database.foods)
+          ..where((row) => row.id.equals(foodId)))
+        .getSingleOrNull();
+    if (food == null ||
+        food.deletedAt != null ||
+        food.foodSource != FoodSource.user.name) {
+      return null;
+    }
+    final userFood = _userFoodFromRow(food);
+    return userFood.availablePortionUnits.contains(portion.unit)
+        ? userFood
+        : null;
+  }
+
+  /// Throws [ArgumentError] when an entry draft names a different Meal than
+  /// the [target] it is written into.
+  void _requireEntryInTarget(String entryMealId, MealTarget target) {
+    if (entryMealId != target.mealId) {
+      throw ArgumentError.value(
+        entryMealId,
+        'entry.mealId',
+        'The entry draft names a different Meal than its target '
+            '(${target.mealId}).',
+      );
+    }
+  }
+
+  /// The one resolver for every write that takes a [MealTarget]
+  /// (docs/designs/meal-logging.md §3), run inside the write's transaction
+  /// with its [WriteContext], so a created Meal joins the write's Batch.
+  ///
+  /// - [ExistingMealTarget]: the Meal must exist and not be archived.
+  /// - [NewMealTarget]: an id that already exists, active or archived, throws
+  ///   [MealAlreadyExistsException] before anything is written (a double
+  ///   tap). A null time resolves to the time of the write, and a null Meal
+  ///   Type to the proposal at that time, read at the offset the Meal will
+  ///   freeze (§4); the proposal is stored, never recomputed.
+  ///
+  /// Returns the Meal id.
+  Future<String> _resolveMealTarget(
+    MealTarget target,
+    WriteContext context,
+  ) async {
+    switch (target) {
+      case ExistingMealTarget(:final mealId):
+        final meal = await _requireMealRow(mealId);
+        if (meal.deletedAt != null) {
+          throw StateError(
+            'Cannot add a Food Entry to an archived Meal: $mealId.',
+          );
+        }
+        return mealId;
+      case NewMealTarget(:final meal):
+        final existing = await (_database.select(_database.meals)
+              ..where((row) => row.id.equals(meal.id)))
+            .getSingleOrNull();
+        if (existing != null) {
+          throw MealAlreadyExistsException(meal.id);
+        }
+        final startedAt = meal.startedAt ?? context.timestamp;
+        final mealTypeName = meal.mealTypeName ??
+            proposeMealType(
+              clockAtOffset(
+                startedAt,
+                _deviceZoneAt(startedAt).offsetMinutes,
+              ),
+              (await _activeMealTypeQuery().get())
+                  .map(_mealTypeFromRow)
+                  .toList(growable: false),
+            );
+        return _createMeal(
+          MealDraft(mealType: mealTypeName, startedAt: startedAt),
+          context,
+          id: meal.id,
+        );
+    }
+  }
+
   /// Lands a provider-neutral [NutritionImportBatch] at the edge as ONE
   /// reversible Activity Log batch (NUTRITION.md §9; INTEGRATIONS.md §7):
   ///
@@ -3470,6 +3726,11 @@ class NutritionRepository {
   ///   placement rule). No hosted-service path calls this.
   /// - **Idempotent by `(source, externalId)`**: a row already imported under
   ///   the same key is updated in place (last-import-wins), never duplicated.
+  /// - **Merge-only Meal placement** (meal-logging.md §7): an updated entry
+  ///   stays in the Meal that holds it and is reported in `mealIds`; only a
+  ///   created entry looks for a Meal, through [_findOrCreateImportMeal],
+  ///   which never reuses a Meal the user created or added a food to. A batch
+  ///   that only updates entries creates no Meal.
   /// - **Tombstone-respecting**: a previously-deleted imported entry is NOT
   ///   resurrected on re-import.
   /// - **Read-only observations**: entries land with [importSource] set so the
@@ -3498,7 +3759,7 @@ class NutritionRepository {
     final importSource = resolution.importSource;
     final importProvider = resolution.preservedProvider;
 
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final landedMealIds = <String>[];
@@ -3549,16 +3810,15 @@ class NutritionRepository {
               .toList(growable: false);
           reviewFlagCount += reviewFlags.length;
 
-          // Create the grouping Meal lazily, only once a row will actually land.
-          mealId ??= await _findOrCreateImportMeal(importMeal, context);
-          if (!landedMealIds.contains(mealId)) {
-            landedMealIds.add(mealId);
-          }
-
           if (existing != null) {
+            // An updated entry stays in the Meal that holds it: re-import
+            // never moves a Food Entry out of a Meal the user edited, and a
+            // row that only updates creates no Meal (meal-logging.md §7).
+            if (!landedMealIds.contains(existing.mealId)) {
+              landedMealIds.add(existing.mealId);
+            }
             await _updateImportedFoodEntry(
               existing: existing,
-              mealId: mealId,
               importEntry: importEntry,
               foodSource: foodSource,
               importSource: importSource,
@@ -3569,9 +3829,16 @@ class NutritionRepository {
             updatedCount += 1;
             landedEntryIds.add(existing.id);
           } else {
+            // Find or create the grouping Meal lazily, only once a new row
+            // will actually land.
+            final targetMealId =
+                mealId ??= await _findOrCreateImportMeal(importMeal, context);
+            if (!landedMealIds.contains(targetMealId)) {
+              landedMealIds.add(targetMealId);
+            }
             final created = await _createFoodEntrySnapshot(
               draft: FoodEntrySnapshotDraft(
-                mealId: mealId,
+                mealId: targetMealId,
                 foodId: null,
                 name: importEntry.name,
                 foodSource: foodSource,
@@ -3622,37 +3889,64 @@ class NutritionRepository {
         .getSingleOrNull();
   }
 
+  /// Picks the Meal a newly imported Food Entry lands in. Called only when
+  /// the import creates a Food Entry; an updated entry stays where it is.
+  ///
+  /// Candidates are the active Meals on [NutritionImportMeal.localDate] with
+  /// the stored (normalized) Meal Type, ordered by `started_at`, then `id`.
+  /// The first one that holds at least one active Food Entry, all of them
+  /// carrying an `import_source` (from any source), is reused. A Meal the user
+  /// created, or added a food to, is never reused, so an import only ever
+  /// adds rows next to other imported rows (merge-only; meal-logging.md §7).
+  /// Otherwise a new Meal is created with the import's time precision.
   Future<String> _findOrCreateImportMeal(
     NutritionImportMeal importMeal,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final mealTypeForStorage =
         _normalizeMealTypeForStorage(importMeal.mealType);
-    final existing = await (_activeMealQuery(localDate: importMeal.localDate)
-          ..where((row) => row.mealType.equals(mealTypeForStorage)))
+    final candidates = await (_activeMealQuery(
+      localDate: importMeal.localDate,
+    )..where((row) => row.mealType.equals(mealTypeForStorage)))
         .get();
-    if (existing.isNotEmpty) {
-      return existing.first.id;
+    if (candidates.isNotEmpty) {
+      // One read for every candidate's active entries. The query is skipped
+      // with no candidates: an empty `mealIds` reads every active entry.
+      final entriesByMeal = <String, List<FoodEntryRow>>{};
+      for (final row in await _activeFoodEntryQuery(
+        mealIds: candidates.map((candidate) => candidate.id),
+      ).get()) {
+        (entriesByMeal[row.mealId] ??= <FoodEntryRow>[]).add(row);
+      }
+      for (final candidate in candidates) {
+        final activeEntries = entriesByMeal[candidate.id];
+        if (activeEntries != null &&
+            activeEntries.every((row) => row.importSource != null)) {
+          return candidate.id;
+        }
+      }
     }
     return _createMeal(
       MealDraft(
         mealType: importMeal.mealType,
         startedAt: importMeal.startedAt,
-        localDate: importMeal.localDate,
+        timePrecision: importMeal.timePrecision,
       ),
       context,
     );
   }
 
+  /// Rewrites an already-imported Food Entry from its re-imported row
+  /// (last-import-wins). It never writes `mealId`: the entry stays in the
+  /// Meal that holds it, even one the user edited (meal-logging.md §7).
   Future<void> _updateImportedFoodEntry({
     required FoodEntryRow existing,
-    required String mealId,
     required NutritionImportFoodEntry importEntry,
     required FoodSource foodSource,
     required String importSource,
     required String? importProvider,
     required List<NutritionReviewFlag> reviewFlags,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final normalizedServing = _normalizeServing(
       label: importEntry.servingLabel,
@@ -3667,7 +3961,6 @@ class NutritionRepository {
           ..where((row) => row.id.equals(existing.id)))
         .write(
       FoodEntriesCompanion(
-        mealId: Value<String>(mealId),
         entryKind: Value<String>(FoodEntryKind.food.name),
         name: Value<String>(
           _normalizeFoodEntryNameForStorage(importEntry.name),
@@ -3692,7 +3985,7 @@ class NutritionRepository {
       ),
     );
     final after = await _requireFoodEntryRow(existing.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: existing.id,
@@ -3714,7 +4007,7 @@ class NutritionRepository {
     required Portion portion,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireFoodEntryRow(id);
@@ -3766,7 +4059,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireFoodEntryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodEntriesTable,
         entityId: id,
@@ -3787,7 +4080,7 @@ class NutritionRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final beforeMeal = await _requireMealRow(id);
@@ -3811,7 +4104,7 @@ class NutritionRepository {
         ),
       );
       final afterMeal = await _requireMealRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealsTable,
         entityId: id,
@@ -3827,7 +4120,7 @@ class NutritionRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireFoodEntryRow(id);
@@ -3911,49 +4204,205 @@ class NutritionRepository {
     return rows.map(_foodEntryFromRow).toList(growable: false);
   }
 
-  Future<List<FoodEntryRecord>> listRecentFoodEntries({
-    int limit = 50,
-  }) async {
-    if (limit <= 0) {
-      return const <FoodEntryRecord>[];
-    }
-    final query = _database.select(_database.foodEntries)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.entryKind.equals(FoodEntryKind.food.name) &
-            row.foodId.isNotNull(),
+  /// The user's **Food History**, in Food History order
+  /// (docs/designs/unified-food-search.md § Food History). Computed on each
+  /// call and never stored: it is an ordering signal for the add-food
+  /// picker, and a Food's facts come from the current Food, not from here.
+  ///
+  /// One record per (Food Source, Food id) over the active `food` entries
+  /// with a Food and a liquid flag, in active Meals. Ordered by the number of
+  /// entries whose Meal started in the 90 days before [now] (an entry exactly
+  /// 90 days back counts), then by the latest Meal start, then by the latest
+  /// entry's position in its Meal, then Food Source name, then Food id. The
+  /// golden vectors `m37-food-history.json` pin this order against the
+  /// server's `buildFoodHistory`. Times compare in whole seconds, as Drift
+  /// stores them; the server rounds down to seconds to agree.
+  ///
+  /// Entries of an archived User Food are left out: archiving is the
+  /// user-facing delete, and the picker logs through [logFoodEntrySnapshot],
+  /// which does not check archive state, so an archived Food listed here
+  /// would log without complaint. Its entries themselves are kept. A User
+  /// Food entry whose Foods row has not arrived yet still counts.
+  Future<List<FoodHistoryRecord>> listFoodHistory({DateTime? now}) async {
+    final cutoff = (now ?? DateTime.now()).subtract(foodHistoryWindow);
+    final rows = await _database.customSelect(
+      '''
+      WITH active AS (
+        SELECT e.food_source, e.food_id, m.started_at, e.updated_at, e.id,
+               e.position, e.portion_json
+        FROM food_entries e
+        JOIN meals m ON m.id = e.meal_id
+        LEFT JOIN foods f ON e.food_source = 'user' AND f.id = e.food_id
+        WHERE e.deleted_at IS NULL AND m.deleted_at IS NULL
+          AND e.entry_kind = 'food' AND e.food_id IS NOT NULL
+          AND e.food_source IS NOT NULL AND e.is_liquid IS NOT NULL
+          AND f.deleted_at IS NULL
+      ), ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY food_source, food_id
+            ORDER BY started_at DESC, updated_at DESC, id DESC) AS latest_rank,
+          ROW_NUMBER() OVER (PARTITION BY food_source, food_id
+            ORDER BY portion_json IS NULL, started_at DESC, updated_at DESC,
+              id DESC) AS portion_rank
+        FROM active
       )
-      ..orderBy([
-        (row) => OrderingTerm.desc(row.updatedAt),
-        (row) => OrderingTerm.desc(row.id),
-      ])
-      ..limit(limit);
-    final rows = await query.get();
-    return rows.map(_foodEntryFromRow).toList(growable: false);
+      SELECT food_source, food_id,
+        SUM(CASE WHEN started_at >= ?1 THEN 1 ELSE 0 END) AS recent_count,
+        MAX(started_at) AS last_logged_at,
+        MAX(CASE WHEN latest_rank = 1 THEN id END) AS latest_entry_id,
+        MAX(CASE WHEN latest_rank = 1 THEN position END) AS latest_position,
+        MAX(CASE WHEN portion_rank = 1 THEN portion_json END)
+          AS last_portion_json
+      FROM ranked
+      GROUP BY food_source, food_id
+      ORDER BY recent_count DESC, last_logged_at DESC, latest_position ASC,
+        food_source ASC, food_id ASC
+      ''',
+      variables: [Variable<DateTime>(cutoff)],
+      readsFrom: {_database.foodEntries, _database.meals, _database.foods},
+    ).get();
+    return [
+      for (final row in rows)
+        FoodHistoryRecord(
+          foodSource: FoodSource.values.byName(row.read<String>('food_source')),
+          foodId: row.read<String>('food_id'),
+          recentCount: row.read<int>('recent_count'),
+          lastLoggedAt: row.read<DateTime>('last_logged_at').toUtc(),
+          latestPosition: row.read<int>('latest_position'),
+          latestEntryId: row.read<String>('latest_entry_id'),
+          lastPortion: switch (row.readNullable<String>('last_portion_json')) {
+            final json? => Portion.fromJsonString(json),
+            null => null,
+          },
+        ),
+    ];
   }
 
-  Future<Portion?> lastPortionForFood({
-    required String foodId,
-    required FoodSource foodSource,
+  /// The user's **Meal History**: the distinct meals they repeat, in Meal
+  /// History order (docs/designs/meal-logging.md §5). Computed on each call
+  /// and never stored or synced; the Meal screen's Your meals reads it once
+  /// when it opens.
+  ///
+  /// The rows considered are the active `food` entries with a Food Source, a
+  /// Food id and a liquid flag, leaving out entries of archived User Foods,
+  /// in active Meals with `time_precision = 'instant'` that started at or
+  /// after [now] minus [foodHistoryWindow] (a Meal exactly 90 days back
+  /// counts). A Meal qualifies when those rows hold two or more distinct
+  /// Foods; Quick Entries don't count toward its identity and don't stop it
+  /// qualifying. Its identity is the canonical string: the distinct
+  /// `food_source:food_id` keys in ordinal (byte) order, joined with `|`, so
+  /// Portions don't count.
+  ///
+  /// One record per identity: its Foods in canonical order, each named as
+  /// its first entry (lowest position, then id) in the most recent Meal with
+  /// that identity (latest start, then greatest Meal id), which is also
+  /// `lastMealId`; and the count of qualifying Meals. Ordered by count
+  /// descending, then the latest start descending, then the canonical string
+  /// ascending, and capped at [limit]. The golden vectors
+  /// `m38-meal-history.json` pin this against the server's
+  /// `buildMealHistory`. Times compare in whole seconds, as Drift stores
+  /// them.
+  ///
+  /// One query. `group_concat(... ORDER BY ...)` needs SQLite 3.44 or later;
+  /// the bundled library is newer, and meal_history_golden_test.dart asserts
+  /// it. `DISTINCT` can't take a separator, so the distinct keys come from
+  /// their own CTE first.
+  Future<List<MealHistoryRecord>> listMealHistory({
+    DateTime? now,
+    int limit = 20,
   }) async {
-    final query = _database.select(_database.foodEntries)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.entryKind.equals(FoodEntryKind.food.name) &
-            row.foodId.equals(foodId) &
-            row.foodSource.equals(foodSource.name) &
-            row.portionJson.isNotNull(),
+    if (limit <= 0) {
+      return const <MealHistoryRecord>[];
+    }
+    final cutoff = (now ?? DateTime.now()).subtract(foodHistoryWindow);
+    final rows = await _database.customSelect(
+      '''
+      WITH considered AS (
+        SELECT m.id AS meal_id, m.started_at, e.id AS entry_id, e.position,
+               e.name, e.food_source, e.food_id,
+               e.food_source || ':' || e.food_id AS food_key
+        FROM food_entries e
+        JOIN meals m ON m.id = e.meal_id
+        LEFT JOIN foods f ON e.food_source = 'user' AND f.id = e.food_id
+        WHERE e.deleted_at IS NULL AND m.deleted_at IS NULL
+          AND e.entry_kind = 'food' AND e.food_id IS NOT NULL
+          AND e.food_source IS NOT NULL AND e.is_liquid IS NOT NULL
+          AND f.deleted_at IS NULL
+          AND m.time_precision = 'instant' AND m.started_at >= ?1
+      ), meal_keys AS (
+        SELECT DISTINCT meal_id, started_at, food_key FROM considered
+      ), meal_identities AS (
+        SELECT meal_id, started_at,
+          group_concat(food_key, '|' ORDER BY food_key) AS identity
+        FROM meal_keys
+        GROUP BY meal_id, started_at
+        HAVING COUNT(*) >= 2
+      ), ranked AS (
+        SELECT meal_id, started_at, identity,
+          COUNT(*) OVER (PARTITION BY identity) AS meal_count,
+          ROW_NUMBER() OVER (PARTITION BY identity
+            ORDER BY started_at DESC, meal_id DESC) AS latest_rank
+        FROM meal_identities
+      ), latest AS (
+        SELECT meal_id, started_at, identity, meal_count
+        FROM ranked
+        WHERE latest_rank = 1
+        ORDER BY meal_count DESC, started_at DESC, identity ASC
+        LIMIT ?2
+      ), named AS (
+        SELECT c.meal_id, c.food_source, c.food_id, c.food_key, c.name,
+          ROW_NUMBER() OVER (PARTITION BY c.meal_id, c.food_key
+            ORDER BY c.position ASC, c.entry_id ASC) AS name_rank
+        FROM considered c
+        JOIN latest l ON l.meal_id = c.meal_id
       )
-      ..orderBy([
-        (row) => OrderingTerm.desc(row.updatedAt),
-        (row) => OrderingTerm.desc(row.id),
-      ])
-      ..limit(1);
-    final row = await query.getSingleOrNull();
-    final portionJson = row?.portionJson;
-    return portionJson == null ? null : Portion.fromJsonString(portionJson);
+      SELECT l.meal_id, l.started_at, l.identity, l.meal_count,
+        n.food_source, n.food_id, n.name
+      FROM latest l
+      JOIN named n ON n.meal_id = l.meal_id AND n.name_rank = 1
+      ORDER BY l.meal_count DESC, l.started_at DESC, l.identity ASC,
+        n.food_key ASC
+      ''',
+      variables: [Variable<DateTime>(cutoff), Variable<int>(limit)],
+      readsFrom: {_database.foodEntries, _database.meals, _database.foods},
+    ).get();
+
+    // One row per Food. Each Meal's rows are adjacent, in item order, and a
+    // map keeps insertion order.
+    final byMeal = <String, (QueryRow, List<MealHistoryFood>)>{};
+    for (final row in rows) {
+      final (_, foods) = byMeal.putIfAbsent(
+        row.read<String>('meal_id'),
+        () => (row, <MealHistoryFood>[]),
+      );
+      foods.add(
+        MealHistoryFood(
+          foodSource: FoodSource.values.byName(row.read<String>('food_source')),
+          foodId: row.read<String>('food_id'),
+          name: row.read<String>('name'),
+        ),
+      );
+    }
+    return [
+      for (final (row, foods) in byMeal.values)
+        MealHistoryRecord(
+          foods: foods,
+          count: row.read<int>('meal_count'),
+          lastMealId: row.read<String>('meal_id'),
+          lastStartedAt: row.read<DateTime>('started_at').toUtc(),
+        ),
+    ];
+  }
+
+  /// The Food Entries with [ids], in any order; ids with no row are absent.
+  Future<List<FoodEntryRecord>> listFoodEntriesByIds(List<String> ids) async {
+    if (ids.isEmpty) {
+      return const <FoodEntryRecord>[];
+    }
+    final rows = await (_database.select(_database.foodEntries)
+          ..where((row) => row.id.isIn(ids)))
+        .get();
+    return rows.map(_foodEntryFromRow).toList(growable: false);
   }
 
   Future<NutritionDayRecord> nutritionDay(NutritionDayDate localDate) async {
@@ -3982,6 +4431,26 @@ class NutritionRepository {
         entryRows,
         mealTypeRows,
       ),
+    );
+  }
+
+  /// One active Meal with its active Food Entries in position order, re-read
+  /// whenever either changes; null while the Meal is missing or archived.
+  ///
+  /// The Meal screen follows one Meal, not one day
+  /// (docs/designs/meal-logging.md §3, §6): a time edit across midnight moves
+  /// the Meal to another Nutrition Day (§1), and [watchNutritionDay] would
+  /// lose it there. Delete meal archives it, so the screen sees null and
+  /// closes.
+  Stream<NutritionDayMealRecord?> watchMeal(String mealId) {
+    return _watchNutritionRows(
+      _activeMealQuery(id: mealId).watch(),
+      (mealRows, entryRows, _) => mealRows.isEmpty
+          ? null
+          : NutritionDayMealRecord(
+              meal: _mealFromRow(mealRows.first),
+              entries: entryRows.map(_foodEntryFromRow),
+            ),
     );
   }
 
@@ -4080,12 +4549,16 @@ class NutritionRepository {
   }
 
   SimpleSelectStatement<$MealsTable, MealRow> _activeMealQuery({
+    String? id,
     NutritionDayDate? localDate,
     NutritionDayRange? range,
   }) {
     final query = _database.select(_database.meals)
       ..where((row) {
         var predicate = row.deletedAt.isNull();
+        if (id != null) {
+          predicate = predicate & row.id.equals(id);
+        }
         if (localDate != null) {
           predicate = predicate & row.localDate.equals(localDate.storageValue);
         }
@@ -4187,53 +4660,78 @@ class NutritionRepository {
     return query;
   }
 
-  Future<String> _createMeal(MealDraft draft, _WriteContext context) async {
+  /// Creates the Meal row for [draft]. [id] is the id a [PendingMeal]
+  /// minted (through [_resolveMealTarget]); a new id is minted when null.
+  Future<String> _createMeal(
+    MealDraft draft,
+    WriteContext context, {
+    String? id,
+  }) async {
     final startedAt = draft.startedAt;
     final endedAt = draft.endedAt;
-    if (endedAt != null && !endedAt.isAfter(startedAt)) {
-      throw ArgumentError.value(
-        endedAt,
-        'endedAt',
-        'Meal end must be after start.',
-      );
-    }
 
-    final id = _repositories.createId(context.timestamp);
-    final localDate =
-        draft.localDate ?? NutritionDayDate.fromDateTime(startedAt);
-    final timezone = _normalizeOptionalText(draft.timezone) ??
-        startedAt.toLocal().timeZoneName;
+    // The SHARED two-tier validator (docs/designs/meal-logging.md §8), as the
+    // Dose write runs `validateDose`: a hard reject (an end not after the
+    // start, an empty Meal Type) throws here so nothing is persisted. The
+    // `meal_time_in_future` soft warning never blocks the write: the Meal
+    // screen asks the user to confirm a future time before it saves (§6).
+    validateMealTime(
+      MealTimeInput(
+        startedAt: startedAt,
+        endedAt: endedAt,
+        mealType: draft.mealType,
+      ),
+      now: context.timestamp,
+    ).throwIfRejected();
+
+    final mealId = id ?? _repositories._ids.create(context.timestamp);
+    final deviceZone = _deviceZoneAt(startedAt);
+    // The offset frozen at the Meal's own instant, not at the moment of
+    // logging, so a summer Meal back-filled in winter keeps its own day
+    // (docs/designs/meal-logging.md §1).
+    final timezoneOffsetMinutes =
+        draft.timezoneOffsetMinutes ?? deviceZone.offsetMinutes;
+    // The local date is always derived from the instant and the frozen
+    // offset; `localDateAtOffset` is the single rule that writes
+    // `meals.local_date` (docs/designs/meal-logging.md §1).
+    final localDate = _nutritionDayDateAtOffset(
+      startedAt,
+      timezoneOffsetMinutes,
+    );
+    final timezone = _normalizeOptionalText(draft.timezone) ?? deviceZone.label;
 
     await _database.into(_database.meals).insert(
           MealsCompanion.insert(
-            id: id,
+            id: mealId,
             mealType: _normalizeMealTypeForStorage(draft.mealType),
             startedAt: startedAt.toUtc(),
             timezone: timezone,
             localDate: Value<String>(localDate.storageValue),
+            timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
+            timePrecision: Value<String>(draft.timePrecision.name),
             endedAt: Value<DateTime?>(endedAt?.toUtc()),
             updatedAt: context.timestamp,
           ),
         );
 
-    final after = await _requireMealRow(id);
-    await _repositories.activityLog._append(
+    final after = await _requireMealRow(mealId);
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.mealsTable,
-      entityId: id,
+      entityId: mealId,
       beforeImage: null,
       afterImage: _mealImage(after),
     );
 
-    return id;
+    return mealId;
   }
 
   Future<String> _createMealType(
     MealTypeDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveMealTypeName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.mealTypes).insert(
           _mealTypeCompanionFromDraft(
             draft,
@@ -4242,7 +4740,7 @@ class NutritionRepository {
         );
 
     final after = await _requireMealTypeRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.mealTypesTable,
       entityId: id,
@@ -4271,10 +4769,10 @@ class NutritionRepository {
 
   Future<String> _createUserFood(
     UserFoodDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserFoodName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.foods).insert(
           _userFoodCompanionFromDraft(
             draft,
@@ -4283,7 +4781,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodsTable,
       entityId: id,
@@ -4296,11 +4794,11 @@ class NutritionRepository {
 
   Future<String> _createRecipe(
     RecipeDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserFoodName(draft.name);
     final normalized = await _normalizeRecipeDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.foods).insert(
           _recipeFoodCompanionFromDraft(
             name: draft.name,
@@ -4310,7 +4808,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodsTable,
       entityId: id,
@@ -4336,17 +4834,24 @@ class NutritionRepository {
     }
   }
 
-  Future<String> _createQuickEntry({
+  /// Writes a Quick Entry into [mealId] after the shared
+  /// [validateFoodEntryNutrition]: a hard reject throws, and the caller's
+  /// transaction rolls back anything it wrote first (a Meal a
+  /// [NewMealTarget] created). Returns the id and the soft warnings.
+  Future<_CreatedFoodEntry> _createQuickEntry({
     required String mealId,
     required QuickFoodEntryDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
+    final validation = validateFoodEntryNutrition(nutrients: draft.nutrients);
+    validation.throwIfRejected();
+
     final meal = await _requireMealRow(mealId);
     if (meal.deletedAt != null) {
       throw StateError('Cannot add a Food Entry to an archived Meal: $mealId.');
     }
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final activeEntries = await _activeFoodEntryQuery(
       mealIds: <String>{mealId},
     ).get();
@@ -4371,7 +4876,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: id,
@@ -4379,40 +4884,57 @@ class NutritionRepository {
       afterImage: _foodEntryImage(after),
     );
 
-    return id;
+    return _CreatedFoodEntry(
+      foodEntryId: id,
+      warnings: validation.warnings,
+    );
   }
 
   Future<_CreatedFoodEntry> _createFoodEntry({
     required FoodEntryDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final food = await _requireFoodRow(draft.foodId);
     if (food.deletedAt != null) {
       throw StateError('Cannot log an archived User Food: ${draft.foodId}.');
     }
     _ensureUserFood(food);
-    final snapshot = _userFoodFromRow(food);
 
     return _createFoodEntrySnapshot(
-      draft: FoodEntrySnapshotDraft(
+      draft: _userFoodEntryDraft(
+        _userFoodFromRow(food),
         mealId: draft.mealId,
-        foodId: snapshot.id,
-        name: snapshot.name,
-        foodSource: snapshot.foodSource,
-        nutrientsPer100: snapshot.nutrientsPer100,
-        isLiquid: snapshot.isLiquid,
-        servingLabel: snapshot.servingLabel,
-        servingSize: snapshot.servingSize,
-        packageSize: snapshot.packageSize,
         portion: draft.portion,
       ),
       context: context,
     );
   }
 
+  /// The snapshot a Food Entry of [food] stores: the User Food as it reads
+  /// now, at [portion], in [mealId]. Shared by [logFoodEntry] and Log again's
+  /// re-read of a User Food (docs/designs/meal-logging.md §3).
+  FoodEntrySnapshotDraft _userFoodEntryDraft(
+    UserFoodRecord food, {
+    required String mealId,
+    required Portion portion,
+  }) {
+    return FoodEntrySnapshotDraft(
+      mealId: mealId,
+      foodId: food.id,
+      name: food.name,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      portion: portion,
+    );
+  }
+
   Future<_CreatedFoodEntry> _createFoodEntrySnapshot({
     required FoodEntrySnapshotDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final meal = await _requireMealRow(draft.mealId);
     if (meal.deletedAt != null) {
@@ -4446,7 +4968,7 @@ class NutritionRepository {
     );
     validation.throwIfRejected();
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final activeEntries = await _activeFoodEntryQuery(
       mealIds: <String>{draft.mealId},
     ).get();
@@ -4479,7 +5001,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: id,
@@ -4495,7 +5017,7 @@ class NutritionRepository {
 
   Future<void> _deleteFoodEntryRow(
     FoodEntryRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.foodEntries)
           ..where((row) => row.id.equals(before.id)))
@@ -4506,7 +5028,7 @@ class NutritionRepository {
       ),
     );
     final after = await _requireFoodEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: before.id,
@@ -4831,12 +5353,16 @@ class AccountSettingsRepository {
   /// Upserts the singleton to [settings]. Creates the row (minting a stable
   /// UUIDv7 id) on first write, otherwise LWW-updates the existing row. The
   /// change is recorded as one Activity Log entry so Synced Mode replicates it.
+  ///
+  /// Throws [SettingsValidationException] for a value the shared validator
+  /// hard-rejects, before anything is written.
   Future<void> save(
     AccountSettings settings, {
     String actor = 'app',
     String? batchId,
-  }) {
-    final context = _repositories._createWriteContext(
+  }) async {
+    validateAccountSettings(settings).throwIfRejected();
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -4844,13 +5370,13 @@ class AccountSettingsRepository {
     return _database.transaction(() async {
       final existing = await _activeRow();
       if (existing == null) {
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.userSettings).insert(
               _companionFromSettings(settings, context.timestamp)
                   .copyWith(id: Value<String>(id)),
             );
         final after = await _requireRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.userSettingsTable,
           entityId: id,
@@ -4860,15 +5386,18 @@ class AccountSettingsRepository {
         return;
       }
 
+      // Compare before writing: the write always stamps `updatedAt`, so an
+      // unchanged save would otherwise log (and sync) a spurious change.
+      if (_accountSettingsFromRow(existing) == settings) {
+        return;
+      }
+
       final before = _userSettingsImage(existing);
       await (_database.update(_database.userSettings)
             ..where((row) => row.id.equals(existing.id)))
           .write(_companionFromSettings(settings, context.timestamp));
       final after = await _requireRow(existing.id);
-      if (_activityImagesEqual(before, _userSettingsImage(after))) {
-        return;
-      }
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.userSettingsTable,
         entityId: existing.id,
@@ -4888,7 +5417,7 @@ class AccountSettingsRepository {
     Map<String, Object?>? activityAfterImage,
     DateTime? activityOccurredAt,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -4912,7 +5441,7 @@ class AccountSettingsRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.userSettingsTable,
         entityId: id,
@@ -4966,9 +5495,10 @@ class AccountSettingsRepository {
 /// from a controller), local-first with no network (set save confirms without
 /// blocking).
 ///
-/// Subtle by construction: the model never names or categorizes a
-/// `Compound` by substance type or legality. A `Dose` is authored intake, never
-/// a `Metric`; the `Protocol Day` is derived on read, nothing stored.
+/// Subtle by construction: the model never classifies a `Compound` by what it
+/// is or whether it is legal; only the OTC built-ins come tagged with `Purpose`s
+/// (`compound_purposes.dart`). A `Dose` is authored intake, never a `Metric`; the
+/// `Protocol Day` is derived on read, nothing stored.
 ///
 class ProtocolsRepository {
   ProtocolsRepository._(this._repositories, this._otcSeedSource);
@@ -4983,16 +5513,23 @@ class ProtocolsRepository {
 
   AppDatabase get _database => _repositories.database;
 
+  /// The user's `Purpose` labels for Compounds.
+  late final PurposeRepository purposes = PurposeRepository._(_repositories);
+
   /// Idempotently loads the tiny OTC seed `Compound` library (PROTOCOLS.md §3,
   ///). Mirrors the platform-exercise / usda-food seed precedent: each
   /// seed row carries a STABLE id, so a row already present is skipped — running
   /// the seed twice never duplicates a `Compound`. Each new row is inserted with
-  /// its default unit/route (and optional strength) and recorded in the Activity
-  /// Log like any other write.
+  /// its default unit/route (and optional strength) and its Purpose tags, and
+  /// recorded in the Activity Log like any other write. The starter Purposes are
+  /// seeded the same way, even when the OTC source is empty.
   ///
-  /// Neutral by construction: the seed carries no substance
-  /// type/legality field — it is a handful of generic starter rows, not a typed
-  /// catalogue.
+  /// Every row is stamped with [compoundSeedTimestamp], not the current time, so
+  /// a device that seeds before its first pull can't win last-writer-wins over a
+  /// rename made on another device (docs/designs/compound-purposes.md, D3).
+  ///
+  /// Neutral by construction: the seed carries no substance type/legality field.
+  /// It is a handful of generic starter rows, not a typed catalogue.
   Future<void> ensureOtcLibrarySeeded({
     String actor = 'otc_seed',
   }) {
@@ -5017,14 +5554,16 @@ class ProtocolsRepository {
   Future<void> _ensureOtcLibrarySeeded({
     required String actor,
   }) async {
-    final rows = _otcSeedSource.load();
-    if (rows.isEmpty) {
-      return;
-    }
-
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
+      await purposes._seedStarterPurposes(context);
+
+      final rows = _otcSeedSource.load();
+      if (rows.isEmpty) {
+        return;
+      }
+
       // Idempotency is by the seed's STABLE id: a Compound already present
       // (including one the user has since archived) is left untouched. The seed
       // never resurrects an archived row or overwrites user edits.
@@ -5044,15 +5583,116 @@ class ProtocolsRepository {
                 defaultUnit: seed.defaultUnit.name,
                 defaultRoute: seed.defaultRoute.name,
                 strength: Value<String?>(seed.strength?.storageValue),
-                updatedAt: context.timestamp,
+                purposeIds: Value<String>(
+                  _encodePurposeIds(
+                    seedCompoundPurposeIds[seed.id] ?? const <String>[],
+                  ),
+                ),
+                updatedAt: compoundSeedTimestamp,
               ),
             );
         final after = await _requireCompoundRow(seed.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.compoundsTable,
           entityId: seed.id,
           beforeImage: null,
+          afterImage: _compoundImage(after),
+        );
+      }
+    });
+  }
+
+  /// Tags the seed Compounds an upgrading device already holds untagged
+  /// (docs/designs/compound-purposes.md, D3). A row is tagged only while it is
+  /// **untouched**: its name equals the seed name, its `purpose_ids` is `[]`, it
+  /// has at least one Activity Log entry, and every entry has actor `otc_seed`.
+  ///
+  /// The Activity Log is the "already ran" record, so no device setting is
+  /// needed. The entry this writes makes the row touched, and so does any edit
+  /// by the user, an Agent or another device, since a pulled change logs an entry
+  /// with its origin actor. An entry pulled with actor `otc_seed` is another
+  /// device's seed, which leaves the row untouched. A list the user emptied has
+  /// a `manual` entry, so it stays empty, and Erase all data keeps the Activity
+  /// Log, so that survives an Erase too.
+  ///
+  /// Each row gets a new `updatedAt` (the current time, or as [onlyNeverSynced]
+  /// says) and an entry with actor `otc_purpose_seed`, so the change syncs and
+  /// can be undone. A fresh install inserts the rows tagged and this does
+  /// nothing. It is cheap (six rows, one Activity Log query) and does nothing
+  /// once every row is touched.
+  ///
+  /// [onlyNeverSynced] is the signed-out call. A signed-out device can't see
+  /// edits made elsewhere, and a Sync Run pushes before it pulls, so a fresh
+  /// stamp would beat those edits when it signs in. Two things differ:
+  ///
+  ///  * A row the server already holds waits for the next signed-in Sync Run,
+  ///    which backfills it after its pull.
+  ///  * A row that never synced may still have a server copy, because seed ids
+  ///    are shared across an account's devices. It is stamped one second past
+  ///    its own `updatedAt`, not the current time. That beats only this device's
+  ///    pending `otc_seed` entry, which would drop an unchanged stamp as a tie,
+  ///    and loses to any edit made since this device seeded. One second, because
+  ///    Drift stores a DateTime as whole seconds.
+  Future<void> backfillSeedPurposes({bool onlyNeverSynced = false}) {
+    final context = _repositories._writeContexts.create(
+      actor: 'otc_purpose_seed',
+    );
+    return _database.transaction(() async {
+      final candidateQuery = _database.select(_database.compounds)
+        ..where(
+          (row) =>
+              row.id.isIn(seedCompoundPurposeIds.keys) &
+              row.purposeIds.equals('[]'),
+        );
+      if (onlyNeverSynced) {
+        candidateQuery.where((row) => row.syncPreviouslySynced.equals(false));
+      }
+      final candidates = await candidateQuery.get();
+      if (candidates.isEmpty) {
+        return;
+      }
+      final seedNames = <String, String>{
+        for (final seed in _otcSeedSource.load()) seed.id: seed.name,
+      };
+      final entries = await (_database.select(_database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.compoundsTable) &
+                  row.entityId.isIn(candidates.map((row) => row.id)),
+            ))
+          .get();
+      final actorsByCompoundId = <String, Set<String>>{};
+      for (final entry in entries) {
+        (actorsByCompoundId[entry.entityId] ??= <String>{}).add(entry.actor);
+      }
+      for (final before in candidates) {
+        final actors = actorsByCompoundId[before.id];
+        if (before.name != seedNames[before.id] ||
+            actors == null ||
+            actors.any((actor) => actor != 'otc_seed')) {
+          continue;
+        }
+        await (_database.update(_database.compounds)
+              ..where((row) => row.id.equals(before.id)))
+            .write(
+          CompoundsCompanion(
+            purposeIds: Value<String>(
+              _encodePurposeIds(seedCompoundPurposeIds[before.id]!),
+            ),
+            updatedAt: Value<DateTime>(
+              onlyNeverSynced
+                  ? before.updatedAt.add(const Duration(seconds: 1))
+                  : context.timestamp,
+            ),
+          ),
+        );
+        final after = await _requireCompoundRow(before.id);
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.compoundsTable,
+          entityId: before.id,
+          beforeImage: _compoundImage(before),
           afterImage: _compoundImage(after),
         );
       }
@@ -5066,7 +5706,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5083,18 +5723,26 @@ class ProtocolsRepository {
   /// Logs a self-describing `Dose` (PROTOCOLS.md §1.1/§1.2). Snapshots the
   /// Compound's name now; captures the timezone and freezes the local date at
   /// log time. One reversible Activity Log batch; local-first.
+  ///
+  /// With [unskipId] (Save from a "Skipped" row, D8 and CUJ 16), the same
+  /// transaction and batch also does [unskipPlannedDose]'s writes for that
+  /// Skip, so the row reads "Logged" with no stray Skip behind it.
   Future<LogDoseResult> logDose(
     DoseSnapshotDraft draft, {
     String actor = 'manual',
     String? batchId,
+    String? unskipId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final outcome = await _logDose(draft, context);
+      if (unskipId != null) {
+        await _unskipPlannedDose(unskipId, context);
+      }
       return LogDoseResult(
         batchId: context.batchId,
         doseId: outcome.doseId,
@@ -5103,22 +5751,193 @@ class ProtocolsRepository {
     });
   }
 
+  /// Logs several self-describing `Dose`s at once ("Log all planned"): one
+  /// transaction and one reversible Activity Log batch, so either every Dose
+  /// is written or none is. Each runs the same shared two-tier validator as
+  /// [logDose]; a hard-reject on any one throws and rolls the whole write
+  /// back. The results share [LogDoseResult.batchId], in [drafts] order.
+  Future<List<LogDoseResult>> logDoses(
+    List<DoseSnapshotDraft> drafts, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final results = <LogDoseResult>[];
+      for (final draft in drafts) {
+        final outcome = await _logDose(draft, context);
+        results.add(
+          LogDoseResult(
+            batchId: context.batchId,
+            doseId: outcome.doseId,
+            warnings: outcome.warnings,
+          ),
+        );
+      }
+      return List<LogDoseResult>.unmodifiable(results);
+    });
+  }
+
+  /// Writes a Skip (D8): "not taken, on purpose" for the planned dose
+  /// [draft] names. Runs the shared `validateProtocolSkip` first, so a
+  /// malformed planned time or a date after [today] throws before anything
+  /// is written. Throws a [StateError] when the Protocol row is missing or
+  /// tombstoned by undo or delete (`deleted_at` without `archived_on`); an
+  /// archived Protocol is accepted, because a Skip records without editing
+  /// the Protocol. It doesn't check that the Skip names a planned dose: the
+  /// plan can change after a Skip is written, and a Skip that marks nothing
+  /// is valid. One row and one Activity Log entry in one transaction and
+  /// batch; returns the batch id.
+  Future<String> skipPlannedDose(
+    ProtocolSkipDraft draft, {
+    required ProtocolDayDate today,
+    String actor = 'manual',
+    String? batchId,
+  }) async {
+    validateProtocolSkip(
+      localDate: draft.localDate,
+      plannedLocalTime: draft.plannedLocalTime,
+      today: today,
+    ).throwIfRejected();
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final protocol = await _requireProtocolRow(draft.protocolId);
+      if (protocol.deletedAt != null && protocol.archivedOn == null) {
+        throw StateError('Protocol is deleted: ${draft.protocolId}.');
+      }
+      final id = _repositories._ids.create(context.timestamp);
+      await _database.into(_database.protocolSkips).insert(
+            ProtocolSkipsCompanion.insert(
+              id: id,
+              protocolId: draft.protocolId,
+              compoundId: draft.compoundId,
+              localDate: draft.localDate.storageValue,
+              plannedLocalTime: Value<String?>(draft.plannedLocalTime),
+              updatedAt: context.timestamp,
+            ),
+          );
+      final after = await _requireProtocolSkipRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolSkipsTable,
+        entityId: id,
+        beforeImage: null,
+        afterImage: _protocolSkipImage(after),
+      );
+      return context.batchId;
+    });
+  }
+
+  /// Removes a Skip (D8's Undo skip): tombstones [skipId]. When it is timed,
+  /// the same write also tombstones every other non-tombstoned Skip with
+  /// the same Protocol, Compound, date and time: two devices can each write
+  /// one, only one marks the planned dose, and removing just that one would
+  /// leave the row "Skipped". An untimed Skip is removed alone, because each
+  /// one answers a different planned dose. Each row gets its own Activity
+  /// Log entry, all in one transaction and batch; returns the batch id.
+  /// Throws a [StateError] for an unknown id.
+  Future<String> unskipPlannedDose(
+    String skipId, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      await _unskipPlannedDose(skipId, context);
+      return context.batchId;
+    });
+  }
+
+  /// [unskipPlannedDose]'s writes, inside the caller's transaction. A Skip
+  /// already tombstoned (another device removed it first) is not written
+  /// again, but a timed one still sweeps its siblings: the row the caller
+  /// read as "Skipped" may be marked by one of them, and removing the Skip
+  /// the user tapped must leave it unmarked. Never brings a tombstoned Skip
+  /// back.
+  Future<void> _unskipPlannedDose(String skipId, WriteContext context) async {
+    final target = await _requireProtocolSkipRow(skipId);
+    final plannedLocalTime = target.plannedLocalTime;
+    final rows = <ProtocolSkipRow>[
+      if (target.deletedAt == null) target,
+      if (plannedLocalTime != null)
+        ...await (_database.select(_database.protocolSkips)
+              ..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.id.equals(skipId).not() &
+                    row.protocolId.equals(target.protocolId) &
+                    row.compoundId.equals(target.compoundId) &
+                    row.localDate.equals(target.localDate) &
+                    row.plannedLocalTime.equals(plannedLocalTime),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+            .get(),
+    ];
+    for (final before in rows) {
+      await (_database.update(_database.protocolSkips)
+            ..where((row) => row.id.equals(before.id)))
+          .write(
+        ProtocolSkipsCompanion(
+          updatedAt: Value<DateTime>(context.timestamp),
+          deletedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      final after = await _requireProtocolSkipRow(before.id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolSkipsTable,
+        entityId: before.id,
+        beforeImage: _protocolSkipImage(before),
+        afterImage: _protocolSkipImage(after),
+      );
+    }
+  }
+
+  Future<ProtocolSkipRow> _requireProtocolSkipRow(String id) async {
+    final row = await (_database.select(_database.protocolSkips)
+          ..where((row) => row.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) {
+      throw StateError('Skip not found: $id.');
+    }
+    return row;
+  }
+
   /// Edits a logged `Dose` in place (amount/unit/route/time), keeping its
   /// identity ('s review surface: tap a Dose to open it for edit).
   /// Runs the SAME shared two-tier validator as [logDose] (PROTOCOLS.md §6) —
-  /// a hard-reject throws before anything is written. The Dose's local date
-  /// is NEVER re-derived from the device's CURRENT timezone here: when
+  /// a hard-reject throws before anything is written. While the Dose's time
+  /// is unchanged, its local date, timezone label and UTC offset are NEVER
+  /// re-derived from the device's CURRENT timezone: when
   /// [draft.localDate]/[draft.timezone] are omitted, the ALREADY-FROZEN values
-  /// on the existing row carry over untouched, so editing a Dose can never
-  /// silently move it to a different `Protocol Day` after the device travels.
-  /// One reversible Activity Log batch; never bypasses it.
+  /// on the existing row carry over untouched (a null offset stays null), so
+  /// editing a Dose can never silently move it to a different `Protocol Day`
+  /// after the device travels. When the time changes on a Dose with a frozen
+  /// UTC offset, the new time is read at that offset, which is kept with the
+  /// timezone label, and only the local date is frozen again from it (D6):
+  /// an edit corrects when the Dose was taken where it was taken. A Dose
+  /// with a null offset has all three frozen again from the device's zone,
+  /// as a new log would freeze them. One reversible Activity Log batch;
+  /// never bypasses it.
   Future<String> editDose(
     String doseId,
     DoseSnapshotDraft draft, {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5144,7 +5963,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5158,21 +5977,25 @@ class ProtocolsRepository {
   /// Edits a `Compound`'s catalogue fields (name, default unit/route, strength)
   /// in place. This mutates the live `Compound` row ONLY — by design it never
   /// touches any previously logged `Dose`, whose snapshot is frozen (§1.1).
-  /// One reversible Activity Log batch.
-  Future<String> editCompound(
+  /// One reversible Activity Log batch, whose id is returned.
+  ///
+  /// A save that changes nothing writes no row and no Activity Log entry, and
+  /// returns null: the editor sheet saves whatever its fields hold, so an
+  /// unchanged Save must not leave an entry for the user to undo.
+  Future<String?> editCompound(
     String compoundId,
     CompoundDraft draft, {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
-      await _editCompound(compoundId, draft, context);
-      return context.batchId;
+      final changed = await _editCompound(compoundId, draft, context);
+      return changed ? context.batchId : null;
     });
   }
 
@@ -5184,7 +6007,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5203,7 +6026,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5225,7 +6048,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5239,7 +6062,7 @@ class ProtocolsRepository {
   Future<void> _setDoseDeletedAt(
     String doseId,
     DateTime deletedAt,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
     await (_database.update(_database.doses)
@@ -5252,7 +6075,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5269,6 +6092,7 @@ class ProtocolsRepository {
   static const _syncEntityTables = <String>{
     AppDatabase.compoundsTable,
     AppDatabase.dosesTable,
+    AppDatabase.protocolSkipsTable,
     AppDatabase.protocolsTable,
     AppDatabase.protocolCompoundsTable,
     AppDatabase.schedulesTable,
@@ -5293,14 +6117,14 @@ class ProtocolsRepository {
         'Unsupported protocols sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _protocolsSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -5316,6 +6140,13 @@ class ProtocolsRepository {
         case AppDatabase.dosesTable:
           await _database.into(_database.doses).insertOnConflictUpdate(
                 _doseSyncCompanionFromImage(
+                  image,
+                  syncDeviceId: deviceId,
+                ),
+              );
+        case AppDatabase.protocolSkipsTable:
+          await _database.into(_database.protocolSkips).insertOnConflictUpdate(
+                _protocolSkipSyncCompanionFromImage(
                   image,
                   syncDeviceId: deviceId,
                 ),
@@ -5354,7 +6185,7 @@ class ProtocolsRepository {
               );
       }
 
-      final localAfterImage = await _protocolsSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -5364,7 +6195,7 @@ class ProtocolsRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -5377,53 +6208,9 @@ class ProtocolsRepository {
     });
   }
 
-  Future<Map<String, Object?>?> _protocolsSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.compoundsTable:
-        final row = await (_database.select(_database.compounds)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _compoundImage(row);
-      case AppDatabase.dosesTable:
-        final row = await (_database.select(_database.doses)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _doseImage(row);
-      case AppDatabase.protocolsTable:
-        final row = await (_database.select(_database.protocols)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolImage(row);
-      case AppDatabase.protocolCompoundsTable:
-        final row = await (_database.select(_database.protocolCompounds)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolCompoundImage(row);
-      case AppDatabase.schedulesTable:
-        final row = await (_database.select(_database.schedules)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _scheduleImage(row);
-      case AppDatabase.protocolTargetOutcomesTable:
-        final row = await (_database.select(_database.protocolTargetOutcomes)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolTargetOutcomeImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported protocols sync entity.',
-        );
-    }
-  }
-
   Future<String> _createCompound(
     CompoundDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final name = draft.name.trim();
     if (name.isEmpty) {
@@ -5432,7 +6219,7 @@ class ProtocolsRepository {
     // The structured strength serializes to its canonical curated label; storage
     // never carries a free-text strength.
     final strength = draft.strength?.storageValue;
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
 
     await _database.into(_database.compounds).insert(
           CompoundsCompanion.insert(
@@ -5441,12 +6228,15 @@ class ProtocolsRepository {
             defaultUnit: draft.defaultUnit.name,
             defaultRoute: draft.defaultRoute.name,
             strength: Value<String?>(strength),
+            purposeIds: Value<String>(
+              _encodePurposeIds(draft.purposeIds ?? const <String>[]),
+            ),
             updatedAt: context.timestamp,
           ),
         );
 
     final after = await _requireCompoundRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: id,
@@ -5457,10 +6247,11 @@ class ProtocolsRepository {
     return id;
   }
 
-  Future<void> _editCompound(
+  /// Returns whether anything was written.
+  Future<bool> _editCompound(
     String compoundId,
     CompoundDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     final name = draft.name.trim();
@@ -5468,6 +6259,18 @@ class ProtocolsRepository {
       throw ArgumentError.value(draft.name, 'name', 'Compound name is empty.');
     }
     final strength = draft.strength?.storageValue;
+    // Null leaves the stored list alone: an editor that doesn't show Purposes
+    // must not clear them.
+    final draftPurposeIds = draft.purposeIds;
+    final purposeIds =
+        draftPurposeIds == null ? null : _encodePurposeIds(draftPurposeIds);
+    if (before.name == name &&
+        before.defaultUnit == draft.defaultUnit.name &&
+        before.defaultRoute == draft.defaultRoute.name &&
+        before.strength == strength &&
+        (purposeIds == null || before.purposeIds == purposeIds)) {
+      return false;
+    }
 
     await (_database.update(_database.compounds)
           ..where((row) => row.id.equals(compoundId)))
@@ -5477,24 +6280,28 @@ class ProtocolsRepository {
         defaultUnit: Value<String>(draft.defaultUnit.name),
         defaultRoute: Value<String>(draft.defaultRoute.name),
         strength: Value<String?>(strength),
+        purposeIds: purposeIds == null
+            ? const Value<String>.absent()
+            : Value<String>(purposeIds),
         updatedAt: Value<DateTime>(context.timestamp),
       ),
     );
 
     final after = await _requireCompoundRow(compoundId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
       beforeImage: _compoundImage(before),
       afterImage: _compoundImage(after),
     );
+    return true;
   }
 
   Future<void> _setCompoundDeletedAt(
     String compoundId,
     DateTime deletedAt,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     await (_database.update(_database.compounds)
@@ -5507,7 +6314,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireCompoundRow(compoundId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
@@ -5518,14 +6325,14 @@ class ProtocolsRepository {
 
   Future<void> _deleteCompound(
     String compoundId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     await (_database.delete(_database.compounds)
           ..where((row) => row.id.equals(compoundId)))
         .go();
 
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
@@ -5536,7 +6343,7 @@ class ProtocolsRepository {
 
   Future<({String doseId, List<String> warnings})> _logDose(
     DoseSnapshotDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final compoundName = draft.compoundName.trim();
     if (compoundName.isEmpty) {
@@ -5577,9 +6384,15 @@ class ProtocolsRepository {
         draft.tookAt.toLocal().timeZoneName;
     final localDate =
         draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
+    // The UTC offset at the dose instant, frozen beside the local date: with
+    // `took_at` it gives the Dose's local clock time for good, which the
+    // `timezone` abbreviation cannot. Read from the original value, since
+    // `tookAtUtc` carries no zone.
+    final timezoneOffsetMinutes =
+        draft.tookAt.toLocal().timeZoneOffset.inMinutes;
     final protocolTag = _validateDoseProtocolTag(draft);
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.doses).insert(
           DosesCompanion.insert(
             id: id,
@@ -5594,6 +6407,7 @@ class ProtocolsRepository {
             tookAt: tookAtUtc,
             timezone: timezone,
             localDate: Value<String>(localDate.storageValue),
+            timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
             provenance: Value<String>(draft.provenance.name),
             protocolId: Value<String?>(protocolTag.protocolId),
             protocolName: Value<String?>(protocolTag.protocolName),
@@ -5602,7 +6416,7 @@ class ProtocolsRepository {
         );
 
     final after = await _requireDoseRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: id,
@@ -5616,7 +6430,7 @@ class ProtocolsRepository {
   Future<void> _editDose(
     String doseId,
     DoseSnapshotDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
     final compoundName = draft.compoundName.trim();
@@ -5645,13 +6459,39 @@ class ProtocolsRepository {
     validation.throwIfRejected();
 
     final tookAtUtc = draft.tookAt.toUtc();
-    // Never re-derive the local date/timezone from the (possibly-changed)
-    // device timezone on edit — an omitted value stays pinned to whatever was
-    // ALREADY FROZEN on the row, so an edit can never silently move
-    // a Dose to a different Protocol Day after the device travels.
-    final timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
-    final localDate =
-        draft.localDate ?? ProtocolDayDate.parse(before.localDate);
+    final String timezone;
+    final ProtocolDayDate localDate;
+    final int? timezoneOffsetMinutes;
+    if (tookAtUtc == before.tookAt.toUtc()) {
+      // Never re-derive the local date/timezone/offset from the
+      // (possibly-changed) device timezone while the time stands — an
+      // omitted value stays pinned to whatever was ALREADY FROZEN on the
+      // row, so an edit can never silently move a Dose to a different
+      // Protocol Day after the device travels.
+      timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
+      localDate = draft.localDate ?? ProtocolDayDate.parse(before.localDate);
+      timezoneOffsetMinutes = before.timezoneOffsetMinutes;
+    } else if (before.timezoneOffsetMinutes case final offset?) {
+      // A new time on a Dose with a frozen offset corrects when it was taken
+      // WHERE it was taken (D6): the time is read at that offset, which the
+      // Dose keeps, as it keeps its timezone label, and only the local date
+      // is frozen again, from the new time at that offset. Reading it in
+      // the device's current zone would move a Dose logged abroad by the
+      // difference between the two zones.
+      timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
+      final local = clockAtOffset(tookAtUtc, offset);
+      localDate = draft.localDate ??
+          ProtocolDayDate(year: local.year, month: local.month, day: local.day);
+      timezoneOffsetMinutes = offset;
+    } else {
+      // A new time on a Dose with no frozen offset (logged before offsets
+      // were recorded): freeze all three again from the device's zone,
+      // exactly as logging it would.
+      timezone = _normalizeOptionalText(draft.timezone) ??
+          draft.tookAt.toLocal().timeZoneName;
+      localDate = draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
+      timezoneOffsetMinutes = draft.tookAt.toLocal().timeZoneOffset.inMinutes;
+    }
     final protocolTag = _validateDoseProtocolTag(draft);
 
     await (_database.update(_database.doses)
@@ -5668,6 +6508,7 @@ class ProtocolsRepository {
         tookAt: Value<DateTime>(tookAtUtc),
         timezone: Value<String>(timezone),
         localDate: Value<String>(localDate.storageValue),
+        timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
         provenance: Value<String>(draft.provenance.name),
         protocolId: Value<String?>(protocolTag.protocolId),
         protocolName: Value<String?>(protocolTag.protocolName),
@@ -5676,7 +6517,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5716,7 +6557,7 @@ class ProtocolsRepository {
   Future<void> _tagDoseToProtocol(
     String doseId,
     String? protocolId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
 
@@ -5746,7 +6587,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5795,11 +6636,26 @@ class ProtocolsRepository {
         .distinct(_sameCompoundOptionRecords);
   }
 
-  /// Reactive variant of [listCompoundScheduleOptions]. It emits when the
-  /// visible schedule seed data changes (id/name/default unit/default route),
-  /// while suppressing strength/favorite/detail-only Compound edits.
-  Stream<List<CompoundScheduleOptionRecord>> watchCompoundScheduleOptions() {
-    return _activeCompoundQuery()
+  /// The Compounds named by [ids], archived ones included with `isArchived`
+  /// set, for a Protocol editor naming its members: a Protocol keeps a member
+  /// whose Compound was archived. Re-emits when an archive changes, unlike
+  /// [watchCompoundNamesByIds], which reads active Compounds only.
+  Stream<List<CompoundScheduleOptionRecord>> watchCompoundsByIds(
+    Set<String> ids,
+  ) {
+    if (ids.isEmpty) {
+      return Stream<List<CompoundScheduleOptionRecord>>.value(
+        const <CompoundScheduleOptionRecord>[],
+      );
+    }
+
+    final query = _database.select(_database.compounds)
+      ..where((row) => row.id.isIn(ids))
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.name),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
+    return query
         .watch()
         .map(_compoundScheduleOptionsFromRows)
         .distinct(_sameCompoundScheduleOptionRecords);
@@ -5827,7 +6683,7 @@ class ProtocolsRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5846,7 +6702,7 @@ class ProtocolsRepository {
         ),
       );
       final after = await _requireCompoundRow(compoundId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.compoundsTable,
         entityId: compoundId,
@@ -5862,7 +6718,7 @@ class ProtocolsRepository {
   /// history view. A Compound with no Doses never appears; an archived
   /// Compound is excluded (mirrors [watchCompounds]).
   Future<List<CompoundRecord>> recentCompounds({int limit = 5}) async {
-    final rows = await _recentCompoundRows(limit: limit);
+    final rows = await _recentCompoundQuery(limit: limit).get();
     return rows.map(_compoundFromRow).toList(growable: false);
   }
 
@@ -5886,13 +6742,7 @@ class ProtocolsRepository {
   /// come from both `doses` and `compounds` so archives are reflected, but
   /// unrelated Compound detail edits are filtered out by id-list equality.
   Stream<List<String>> watchRecentCompoundIds({int limit = 5}) {
-    return _recentCompoundIdQuery(limit: limit)
-        .watch()
-        .distinct(_sameStringList);
-  }
-
-  Future<List<CompoundRow>> _recentCompoundRows({required int limit}) {
-    return _recentCompoundQuery(limit: limit).get();
+    return _recentCompoundIdQuery(limit: limit).watch().distinct(_sameRowList);
   }
 
   Selectable<String> _recentCompoundIdQuery({required int limit}) {
@@ -5998,16 +6848,35 @@ class ProtocolsRepository {
   /// The derived `Protocol Day` for [localDate]: the day's `Dose`s grouped by
   /// their frozen local date, computed on read (nothing stored).
   Future<ProtocolDayRecord> protocolDay(ProtocolDayDate localDate) async {
-    final rows = await _activeDoseQuery(localDate: localDate).get();
-    return _protocolDayFromRows(localDate, rows);
+    final rows = await _activeDoseQuery(
+      (row) => row.localDate.equals(localDate.storageValue),
+    ).get();
+    final skipRows = await _activeProtocolSkipQuery(
+      (row) => row.localDate.equals(localDate.storageValue),
+    ).get();
+    return _protocolDayFromRows(localDate, rows, skipRows);
   }
 
   /// Reactive variant of [protocolDay]: re-emits whenever any `Dose` changes,
   /// so the derived day-view invalidates mechanically (no recalculate path).
+  /// The day's Doses are listed in clock order, then id
+  /// ([_compareDosesByClock]): matching's order (D6 step 2) whenever every
+  /// Dose's clock falls on the Protocol Day, so the day's log and the Planned
+  /// list then take them in the same order.
+  ///
+  /// The day's Skips (D8) are read too, from a second watch combined with
+  /// the Doses', so a Skip written or removed re-emits the day.
   Stream<ProtocolDayRecord> watchProtocolDay(ProtocolDayDate localDate) {
-    return _activeDoseQuery(localDate: localDate).watch().map(
-          (rows) => _protocolDayFromRows(localDate, rows),
-        );
+    return _combineLatest2(
+      _activeDoseQuery(
+        (row) => row.localDate.equals(localDate.storageValue),
+      ).watch(),
+      _activeProtocolSkipQuery(
+        (row) => row.localDate.equals(localDate.storageValue),
+      ).watch(),
+      (List<DoseRow> rows, List<ProtocolSkipRow> skipRows) =>
+          _protocolDayFromRows(localDate, rows, skipRows),
+    );
   }
 
   SimpleSelectStatement<$CompoundsTable, CompoundRow> _activeCompoundQuery({
@@ -6027,31 +6896,76 @@ class ProtocolsRepository {
       ]);
   }
 
-  SimpleSelectStatement<$DosesTable, DoseRow> _activeDoseQuery({
-    ProtocolDayDate? localDate,
-  }) {
-    final query = _database.select(_database.doses)
-      ..where((row) {
-        var predicate = row.deletedAt.isNull();
-        if (localDate != null) {
-          predicate = predicate & row.localDate.equals(localDate.storageValue);
-        }
-        return predicate;
-      })
+  /// The non-archived Doses that [filter] keeps, in the day log's order
+  /// (time, then id). The Protocol Day and the Consistency read
+  /// (`ProtocolPlanRepository.watchConsistency`) both read Doses here, so
+  /// they share one tombstone filter and one order.
+  SimpleSelectStatement<$DosesTable, DoseRow> _activeDoseQuery(
+    Expression<bool> Function($DosesTable row) filter,
+  ) {
+    return _database.select(_database.doses)
+      ..where((row) => row.deletedAt.isNull() & filter(row))
       ..orderBy([
         (row) => OrderingTerm.asc(row.tookAt),
         (row) => OrderingTerm.asc(row.id),
       ]);
-    return query;
   }
 
+  /// The Skips that aren't tombstoned (D8) that [filter] keeps, ordered by
+  /// id: matching's order (D8, step 3). The Protocol Day and the
+  /// Consistency reads share it, so they share one tombstone filter.
+  SimpleSelectStatement<$ProtocolSkipsTable, ProtocolSkipRow>
+      _activeProtocolSkipQuery(
+    Expression<bool> Function($ProtocolSkipsTable row) filter,
+  ) {
+    return _database.select(_database.protocolSkips)
+      ..where((row) => row.deletedAt.isNull() & filter(row))
+      ..orderBy([(row) => OrderingTerm.asc(row.id)]);
+  }
+
+  /// A stored Skip as the reads take it, or null for a row they can't read:
+  /// a `local_date` that isn't a real `YYYY-MM-DD` date, or a
+  /// `planned_local_time` that isn't `HH:MM`. The sync push stores a Skip
+  /// as sent, so such a row can arrive from another writer, and a text
+  /// range (`isBetweenValues`) can still match a malformed date. Dropping it
+  /// keeps the Protocol Day and Consistency reads alive, and matches the
+  /// server's `readPlanSkips`, so the app and the Agent read one Day Status.
+  ProtocolSkipRecord? _protocolSkipFromRow(ProtocolSkipRow row) {
+    final ProtocolDayDate localDate;
+    try {
+      localDate = ProtocolDayDate.parse(row.localDate);
+    } on FormatException {
+      return null;
+    }
+    final plannedLocalTime = row.plannedLocalTime;
+    if (plannedLocalTime != null && !isPlanLocalTime(plannedLocalTime)) {
+      return null;
+    }
+    return ProtocolSkipRecord(
+      id: row.id,
+      protocolId: row.protocolId,
+      compoundId: row.compoundId,
+      localDate: localDate,
+      plannedLocalTime: plannedLocalTime,
+    );
+  }
+
+  /// The day's Doses, sorted after the read into clock order, then id
+  /// ([_compareDosesByClock]), which is matching's order (D6 step 2) whenever
+  /// every Dose's clock falls on the Protocol Day. The query keeps its instant
+  /// order, because a Dose's clock depends on its own frozen offset, which
+  /// SQL doesn't apply; Doses logged at different offsets on one Protocol Day
+  /// then read in clock order, not instant order.
   ProtocolDayRecord _protocolDayFromRows(
     ProtocolDayDate localDate,
     List<DoseRow> rows,
+    List<ProtocolSkipRow> skipRows,
   ) {
     return ProtocolDayRecord(
       localDate: localDate,
-      doses: rows.map(_doseFromRow).toList(growable: false),
+      doses: rows.map(_doseFromRow).toList(growable: false)
+        ..sort(_compareDosesByClock),
+      skips: skipRows.map(_protocolSkipFromRow).nonNulls,
     );
   }
 
@@ -6065,6 +6979,7 @@ class ProtocolsRepository {
       defaultRoute: doseRouteFromName(row.defaultRoute),
       strength: CompoundStrength.tryParse(row.strength),
       isFavorite: row.isFavorite,
+      purposeIds: _decodePurposeIds(row.purposeIds),
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
     );
@@ -6094,6 +7009,8 @@ class ProtocolsRepository {
       name: row.name,
       defaultUnit: doseUnitFromName(row.defaultUnit),
       defaultRoute: doseRouteFromName(row.defaultRoute),
+      isArchived: row.deletedAt != null,
+      purposeIds: _decodePurposeIds(row.purposeIds),
     );
   }
 
@@ -6112,6 +7029,7 @@ class ProtocolsRepository {
       tookAt: row.tookAt,
       timezone: row.timezone,
       localDate: ProtocolDayDate.parse(row.localDate),
+      timezoneOffsetMinutes: row.timezoneOffsetMinutes,
       provenance: DoseProvenance.values.byName(row.provenance),
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
@@ -6141,69 +7059,202 @@ class ProtocolsRepository {
   }
 
   // ---------------------------------------------------------------------
-  // `Protocol` (PROTOCOLS.md §1.4): the Routine analog — a named,
-  // time-bounded plan grouping one or more Compounds (a stack). A MUTABLE
-  // PLAN: every write below touches only `protocols`/`protocol_compounds`/
-  // `protocol_target_outcomes`, NEVER a logged `Dose`. Schedules
-  // and target outcomes + the Dose tag (seeding the later Effect
-  // view — no analysis here) have landed; sync is still a later M28 slice —
-  // this stays local-first like the rest of the domain until then.
+  // `Protocol`: a named course grouping one or more Compounds (a stack). A
+  // MUTABLE PLAN: every write below touches only `protocols`,
+  // `protocol_compounds`, `schedules` and `protocol_target_outcomes`, NEVER a
+  // logged `Dose`.
+  //
+  // Schedules keep their history (Schedule Versions): every changed save
+  // inserts a version row and none is ever edited, so an edit never rewrites
+  // how past days read. "Today", which dates a version, is the device's local
+  // date when the write happens; a caller may pass it explicitly, as an
+  // Agent write does on the server.
   // ---------------------------------------------------------------------
 
   /// Creates a `Protocol` (one or more Compounds — a stack). One reversible
-  /// Activity Log batch covering the Protocol row and every member row.
+  /// Activity Log batch covering the Protocol row, every member row and each
+  /// member's first Schedule Version, which applies from the Protocol's start
+  /// (so a Protocol created today with a past start plans those past days).
+  /// [today] defaults to the device's local date.
   Future<CreateProtocolResult> createProtocol(
     ProtocolDraft draft, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
-      final id = await _createProtocol(draft, context);
+      final id = await _createProtocol(
+        draft,
+        context,
+        today: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
       return CreateProtocolResult(batchId: context.batchId, protocolId: id);
     });
   }
 
-  /// Edits a `Protocol`'s name/window and reconciles its membership to
-  /// exactly [ProtocolDraft.compoundIds] (added/removed/reordered). Mutates
-  /// the live Protocol plan ONLY — by design it never reads or writes a
-  /// logged `Dose` (§1.4). One reversible Activity Log batch.
+  /// Edits a `Protocol`'s name, bounds, Period and reminders flag, and
+  /// reconciles its membership to exactly [ProtocolDraft.compoundIds]
+  /// (added/removed/reordered) and each member's Schedule. Mutates the live
+  /// Protocol plan ONLY — by design it never reads or writes a logged `Dose`.
+  /// A Schedule that changed gets a new Schedule Version; one that didn't
+  /// gets nothing. One reversible Activity Log batch. [today] defaults to the
+  /// device's local date.
   Future<String> editProtocol(
     String protocolId,
     ProtocolDraft draft, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
-      await _editProtocol(protocolId, draft, context);
+      await _editProtocol(
+        protocolId,
+        draft,
+        context,
+        today: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
       return context.batchId;
     });
   }
 
-  /// Archives a `Protocol` (soft-delete via `deletedAt`): it drops from the
-  /// active list but its history survives, and this never cascades to a
-  /// logged `Dose` (PROTOCOLS.md §7). One reversible Activity Log batch.
+  /// Archives a `Protocol` (soft-delete via `deletedAt`, freezing the local
+  /// date of the archive as `archived_on`): it drops from the active list but
+  /// its history survives, its Schedule Versions stay, past days still count
+  /// it up to and including that date, and this never cascades to a logged
+  /// `Dose`. One reversible Activity Log batch. [today] defaults to the
+  /// device's local date.
   Future<String> archiveProtocol(
     String protocolId, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
-      await _setProtocolDeletedAt(protocolId, context.timestamp, context);
+      await _setProtocolDeletedAt(
+        protocolId,
+        context.timestamp,
+        context,
+        archivedOn: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
+      return context.batchId;
+    });
+  }
+
+  /// Whether the Protocol has history (D8): at least one Dose that isn't
+  /// tombstoned is tagged to it, or is of one of its member Compounds
+  /// (archived members included, undo-tombstoned ones not) with a local
+  /// date from its start through the earliest of its end date and its
+  /// archive date. Skips are never history. False for an unknown id.
+  ///
+  /// The editor reads it to offer Delete or Archive; [deleteProtocol]
+  /// checks it again inside its transaction.
+  Future<bool> protocolHasHistory(String protocolId) =>
+      _protocolHasHistoryQuery(protocolId).getSingle();
+
+  /// Reactive [protocolHasHistory]: re-emits on writes to `doses`,
+  /// `protocols` and `protocol_compounds`, so a Dose synced in from another
+  /// device turns Delete into Archive.
+  Stream<bool> watchProtocolHasHistory(String protocolId) =>
+      _protocolHasHistoryQuery(protocolId).watchSingle().distinct();
+
+  /// D8's two conditions as two `EXISTS` over `doses` in one query. The
+  /// member half joins through `doses_compound_id_index`; the tagged half
+  /// scans one user's Doses, which are few, so no index is added. Dates are
+  /// `YYYY-MM-DD` text, so text order is date order.
+  Selectable<bool> _protocolHasHistoryQuery(String protocolId) {
+    return _database.customSelect(
+      '''
+      SELECT (
+        EXISTS (
+          SELECT 1 FROM doses d
+          WHERE d.deleted_at IS NULL AND d.protocol_id = ?1
+        )
+        OR EXISTS (
+          SELECT 1 FROM protocols p
+          INNER JOIN protocol_compounds m
+            ON m.protocol_id = p.id
+            AND (m.deleted_at IS NULL OR m.archived_on IS NOT NULL)
+          INNER JOIN doses d ON d.compound_id = m.compound_id
+          WHERE p.id = ?1
+            AND d.deleted_at IS NULL
+            AND d.local_date >= p.start_local_date
+            AND (p.end_local_date IS NULL OR d.local_date <= p.end_local_date)
+            AND (p.archived_on IS NULL OR d.local_date <= p.archived_on)
+        )
+      ) AS has_history
+      ''',
+      variables: [Variable<String>(protocolId)],
+      readsFrom: {
+        _database.doses,
+        _database.protocols,
+        _database.protocolCompounds,
+      },
+    ).map((row) => row.read<bool>('has_history'));
+  }
+
+  /// Deletes a Protocol with no history (D8): one `protocols` row written to
+  /// the state undoing its creation leaves (`deleted_at` and `updated_at` =
+  /// now, `archived_on` = null) and one Activity Log entry, in one
+  /// transaction and one Batch. Not a cascading delete: no member, Schedule
+  /// Version, target outcome or Dose changes, and every reader hides them
+  /// through the tombstoned Protocol. `undoBatch` restores it exactly,
+  /// archived or not.
+  ///
+  /// An archived Protocol with no history is accepted, and deleting it
+  /// clears its `archived_on`, so its past days stop counting. Throws a
+  /// [StateError] for an unknown id or one already deleted, and
+  /// [ProtocolHasHistoryException] when [protocolHasHistory] is true inside
+  /// the transaction. Returns the batch id.
+  Future<String> deleteProtocol(
+    String protocolId, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireProtocolRow(protocolId);
+      if (before.deletedAt != null && before.archivedOn == null) {
+        throw StateError('Protocol is deleted: $protocolId.');
+      }
+      if (await protocolHasHistory(protocolId)) {
+        throw ProtocolHasHistoryException(protocolId);
+      }
+      await (_database.update(_database.protocols)
+            ..where((row) => row.id.equals(protocolId)))
+          .write(
+        ProtocolsCompanion(
+          archivedOn: const Value<String?>(null),
+          updatedAt: Value<DateTime>(context.timestamp),
+          deletedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      final after = await _requireProtocolRow(protocolId);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolsTable,
+        entityId: protocolId,
+        beforeImage: _protocolImage(before),
+        afterImage: _protocolImage(after),
+      );
       return context.batchId;
     });
   }
@@ -6578,29 +7629,33 @@ class ProtocolsRepository {
 
   Future<String> _createProtocol(
     ProtocolDraft draft,
-    _WriteContext context,
-  ) async {
-    final name = _validateProtocolName(draft.name);
-    _validateProtocolWindow(draft.startDate, draft.endDate);
-    final compoundIds = _validateProtocolMembership(draft.compoundIds);
+    WriteContext context, {
+    required ProtocolDayDate today,
+  }) async {
+    final name = validateProtocolName(draft.name);
+    final compoundIds = validateProtocolMembership(draft.compoundIds);
     final compoundRows = await _requireActiveCompoundRows(compoundIds);
-    final targetOutcomes = _validateProtocolTargetOutcomes(
+    final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
+    final start = draft.startLocalDate;
+    final period = _validatedPeriodColumn(draft, start);
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.protocols).insert(
           ProtocolsCompanion.insert(
             id: id,
             name: name,
-            startDate: draft.startDate.toUtc(),
-            endDate: Value<DateTime?>(draft.endDate?.toUtc()),
+            startLocalDate: start.storageValue,
+            endLocalDate: Value<String?>(draft.endLocalDate?.storageValue),
+            period: Value<String?>(period),
+            remindersEnabled: Value<bool>(draft.remindersEnabled),
             updatedAt: context.timestamp,
           ),
         );
     final after = await _requireProtocolRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolsTable,
       entityId: id,
@@ -6616,10 +7671,14 @@ class ProtocolsRepository {
         position: index,
         context: context,
       );
+      // A member created with its Protocol plans from the Protocol's start.
       await _reconcileSchedule(
         memberId,
         draft.schedulesByCompoundId[compoundId],
         context,
+        protocolStart: start,
+        firstVersionFrom: start,
+        today: today,
       );
     }
 
@@ -6631,38 +7690,46 @@ class ProtocolsRepository {
   Future<void> _editProtocol(
     String protocolId,
     ProtocolDraft draft,
-    _WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate today,
+  }) async {
     final before = await _requireProtocolRow(protocolId);
     if (before.deletedAt != null) {
       throw StateError('Protocol is archived: $protocolId.');
     }
-    final name = _validateProtocolName(draft.name);
-    _validateProtocolWindow(draft.startDate, draft.endDate);
-    final compoundIds = _validateProtocolMembership(draft.compoundIds);
-    final compoundRows = await _requireActiveCompoundRows(compoundIds);
-    final targetOutcomes = _validateProtocolTargetOutcomes(
+    final name = validateProtocolName(draft.name);
+    final compoundIds = validateProtocolMembership(draft.compoundIds);
+    final compoundRows = await _requireEditedMemberCompoundRows(
+      protocolId,
+      compoundIds,
+    );
+    final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
+    final start = draft.startLocalDate;
+    final period = _validatedPeriodColumn(draft, start);
+    final endLocalDate = draft.endLocalDate?.storageValue;
 
-    final startDate = draft.startDate.toUtc();
-    final endDate = draft.endDate?.toUtc();
     if (before.name != name ||
-        before.startDate != startDate ||
-        before.endDate != endDate) {
+        before.startLocalDate != start.storageValue ||
+        before.endLocalDate != endLocalDate ||
+        _canonicalPeriodColumn(before.period, start) != period ||
+        before.remindersEnabled != draft.remindersEnabled) {
       await (_database.update(_database.protocols)
             ..where((row) => row.id.equals(protocolId)))
           .write(
         ProtocolsCompanion(
           name: Value<String>(name),
-          startDate: Value<DateTime>(startDate),
-          endDate: Value<DateTime?>(endDate),
+          startLocalDate: Value<String>(start.storageValue),
+          endLocalDate: Value<String?>(endLocalDate),
+          period: Value<String?>(period),
+          remindersEnabled: Value<bool>(draft.remindersEnabled),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
       final after = await _requireProtocolRow(protocolId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.protocolsTable,
         entityId: protocolId,
@@ -6671,33 +7738,69 @@ class ProtocolsRepository {
       );
     }
 
+    final previousStart = ProtocolDayDate.parse(before.startLocalDate);
+    if (previousStart != start) {
+      await _redateVersionsForStartMove(
+        protocolId,
+        previousStart: previousStart,
+        start: start,
+        context: context,
+      );
+    }
+
     await _replaceProtocolMembers(
       protocolId,
       compoundRows.map((row) => row.id).toList(growable: false),
       draft.schedulesByCompoundId,
       context,
+      protocolStart: start,
+      today: today,
     );
 
     await _replaceProtocolTargetOutcomes(protocolId, targetOutcomes, context);
   }
 
+  /// The `period` column for [draft]: its cycle anchor moved to [start] when
+  /// the anchor was left at its default, judged by the shared plan validator
+  /// (D7 `cycle_lengths`, `bounds_order`, the Pause checks) together with the
+  /// bounds, and null when there is no cycle and no Pause.
+  String? _validatedPeriodColumn(
+    ProtocolDraft draft,
+    ProtocolDayDate start,
+  ) {
+    final period = _normalizedPeriod(draft.period, start);
+    validateProtocolPeriod(
+      startLocalDate: start,
+      endLocalDate: draft.endLocalDate,
+      period: period?.toJson(),
+    ).throwIfRejected();
+    return period == null ? null : jsonEncode(period.toJson());
+  }
+
   Future<void> _setProtocolDeletedAt(
     String protocolId,
     DateTime deletedAt,
-    _WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate archivedOn,
+  }) async {
     final before = await _requireProtocolRow(protocolId);
+    // Archiving again would re-date the frozen `archived_on` and reclassify
+    // past days; an archived Protocol is never edited (D1).
+    if (before.deletedAt != null) {
+      throw StateError('Protocol is archived: $protocolId.');
+    }
     await (_database.update(_database.protocols)
           ..where((row) => row.id.equals(protocolId)))
         .write(
       ProtocolsCompanion(
+        archivedOn: Value<String?>(archivedOn.storageValue),
         updatedAt: Value<DateTime>(context.timestamp),
         deletedAt: Value<DateTime?>(deletedAt),
       ),
     );
 
     final after = await _requireProtocolRow(protocolId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolsTable,
       entityId: protocolId,
@@ -6710,9 +7813,9 @@ class ProtocolsRepository {
     required String protocolId,
     required String compoundId,
     required int position,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
-    final memberId = _repositories.createId(context.timestamp);
+    final memberId = _repositories._ids.create(context.timestamp);
     await _database.into(_database.protocolCompounds).insert(
           ProtocolCompoundsCompanion.insert(
             id: memberId,
@@ -6723,7 +7826,7 @@ class ProtocolsRepository {
           ),
         );
     final member = await _requireProtocolCompoundRow(memberId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolCompoundsTable,
       entityId: memberId,
@@ -6734,17 +7837,26 @@ class ProtocolsRepository {
   }
 
   /// Reconciles a `Protocol`'s membership to exactly [compoundIds] (mirrors
-  /// `_replaceRoutineExerciseGroupMembers`): removed members are tombstoned
-  /// (along with their `Schedule`, if any), new ones inserted, and
-  /// kept ones repositioned in place. [schedulesByCompoundId] reconciles each
-  /// KEPT/NEW member's optional `Schedule` too, regardless of whether its
-  /// position changed.
+  /// `_replaceRoutineExerciseGroupMembers`): removed members are archived,
+  /// new ones inserted, and kept ones repositioned in place.
+  /// [schedulesByCompoundId] reconciles each KEPT/NEW member's optional
+  /// `Schedule` too, regardless of whether its position changed.
+  ///
+  /// A removed member's archive (`deleted_at`, plus `archived_on` frozen as
+  /// [today]) is the one record of the removal: its Schedule Versions stay
+  /// as they are, and on the archive day its planned doses count only if a
+  /// Dose fills them (D8). A member added while the Protocol's start is
+  /// still ahead plans from the start; one added to a Protocol that has
+  /// already started plans from [today], so its past days don't turn into
+  /// "Not logged".
   Future<void> _replaceProtocolMembers(
     String protocolId,
     List<String> compoundIds,
     Map<String, ScheduleDraft?> schedulesByCompoundId,
-    _WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate protocolStart,
+    required ProtocolDayDate today,
+  }) async {
     final activeRows = await _activeProtocolCompoundQuery(
       protocolId: protocolId,
     ).get();
@@ -6759,24 +7871,24 @@ class ProtocolsRepository {
               ..where((table) => table.id.equals(row.id)))
             .write(
           ProtocolCompoundsCompanion(
+            archivedOn: Value<String?>(today.storageValue),
             updatedAt: Value<DateTime>(context.timestamp),
             deletedAt: Value<DateTime?>(context.timestamp),
           ),
         );
         final after = await _requireProtocolCompoundRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolCompoundsTable,
           entityId: row.id,
           beforeImage: _protocolCompoundImage(row),
           afterImage: _protocolCompoundImage(after),
         );
-        // The member is gone — its Schedule (if any) retires with it. No
-        // orphaned plan row (PROTOCOLS.md §1.4, §7).
-        await _reconcileSchedule(row.id, null, context);
       }
     }
 
+    final newMemberFrom =
+        protocolStart.compareTo(today) > 0 ? protocolStart : today;
     for (var index = 0; index < compoundIds.length; index += 1) {
       final compoundId = compoundIds[index];
       final existing = activeByCompoundId[compoundId];
@@ -6788,7 +7900,14 @@ class ProtocolsRepository {
           position: index,
           context: context,
         );
-        await _reconcileSchedule(memberId, desiredSchedule, context);
+        await _reconcileSchedule(
+          memberId,
+          desiredSchedule,
+          context,
+          protocolStart: protocolStart,
+          firstVersionFrom: newMemberFrom,
+          today: today,
+        );
         continue;
       }
 
@@ -6802,7 +7921,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolCompoundRow(existing.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolCompoundsTable,
           entityId: existing.id,
@@ -6811,157 +7930,338 @@ class ProtocolsRepository {
         );
       }
 
-      await _reconcileSchedule(existing.id, desiredSchedule, context);
+      await _reconcileSchedule(
+        existing.id,
+        desiredSchedule,
+        context,
+        protocolStart: protocolStart,
+        firstVersionFrom: newMemberFrom,
+        today: today,
+      );
     }
   }
 
-  /// Reconciles ONE member's optional `Schedule` to [desired]: null
-  /// tombstones an existing Schedule (or is a no-op with none); a non-null
-  /// draft creates a new Schedule row, or updates an existing one in place —
-  /// never a new identity. Runs the SAME shared two-tier validator as a
-  /// logged `Dose` (PROTOCOLS.md §6, `validateDose`) against the planned dose
-  /// amount/unit/route — a hard-reject throws before anything persists; there
-  /// is NO parallel Schedule validator. Purely plan-layer: never reads or
-  /// writes a logged `Dose`.
+  /// Reconciles ONE member's `Schedule` to [desired] by inserting a Schedule
+  /// Version only when it changed (D1). Versions are never edited in place.
+  ///
+  /// - A member with no versions gets its first one, dated
+  ///   [firstVersionFrom]; a null [desired] then inserts nothing.
+  /// - Otherwise [desired] is compared with the member's current version
+  ///   (the latest `effective_from`, then the larger id), which is the one in
+  ///   effect on the date a new version would take. An unchanged save
+  ///   inserts nothing; a null [desired] means "no Schedule" and compares as
+  ///   an `unscheduled` rule.
+  /// - A changed save is dated `max(today, the latest effective_from)`, so it
+  ///   takes effect that same day and can never land behind an existing
+  ///   version and be hidden by it.
+  ///
+  /// The draft is stored normalized: times and weekdays sorted, a default
+  /// every-N anchor at [protocolStart], and no amount for an `as_needed` or
+  /// `unscheduled` rule. It is then judged by the shared plan validator
+  /// (`validateScheduleRule`), whose `amount_required` runs the SAME
+  /// two-tier Dose validator as a logged `Dose` on the planned amount; a
+  /// hard-reject throws before anything persists. Purely plan-layer: never
+  /// reads or writes a logged `Dose`.
   Future<void> _reconcileSchedule(
     String protocolCompoundId,
     ScheduleDraft? desired,
-    _WriteContext context,
-  ) async {
-    final existing = await _activeScheduleQuery(
+    WriteContext context, {
+    required ProtocolDayDate protocolStart,
+    required ProtocolDayDate firstVersionFrom,
+    required ProtocolDayDate today,
+  }) async {
+    final versions = await _activeScheduleQuery(
       protocolCompoundId: protocolCompoundId,
-    ).getSingleOrNull();
+    ).get();
+    if (versions.isEmpty && desired == null) {
+      return;
+    }
 
-    if (desired == null) {
-      if (existing == null) {
+    final next = _normalizedScheduleVersion(
+      desired ?? const ScheduleDraft(rule: UnscheduledScheduleRule()),
+      protocolStart,
+    );
+    validateScheduleRule(
+      next.rule.toJson(),
+      amountValue: next.amount.amountValue,
+      amountEntered: next.amount.amountEntered,
+      unit: next.amount.unit?.name,
+      route: next.amount.route?.name,
+    ).throwIfRejected();
+
+    final ProtocolDayDate effectiveFrom;
+    if (versions.isEmpty) {
+      effectiveFrom = firstVersionFrom;
+    } else {
+      final current = _currentScheduleRow(versions)!;
+      if (_sameScheduleVersion(current, next, protocolStart: protocolStart)) {
         return;
       }
-      await (_database.update(_database.schedules)
-            ..where((row) => row.id.equals(existing.id)))
-          .write(
-        SchedulesCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
+      final latest = ProtocolDayDate.parse(current.effectiveFrom);
+      effectiveFrom = latest.compareTo(today) > 0 ? latest : today;
+    }
+
+    await _insertScheduleVersion(
+      protocolCompoundId,
+      effectiveFrom: effectiveFrom,
+      version: next,
+      context: context,
+    );
+  }
+
+  /// Moving a Protocol's start EARLIER inserts re-dated Schedule Version
+  /// copies, so versions are still never edited (D1); moving it later
+  /// inserts nothing, because the version that applies on the new start is
+  /// already the latest one dated on or before it, and the dates before the
+  /// new start read `outside`.
+  ///
+  /// On an earlier move, every member row of the Protocol whose earliest
+  /// version is dated on or before [previousStart] and after [start] gets a
+  /// copy of that version (the one in effect on its first date), dated from
+  /// [start], so it plans the new days. That includes archived members,
+  /// which were part of the course from its start and still cover those
+  /// days up to their `archived_on`, and so a member this same save removes:
+  /// this runs before the save's member changes, from the rows and versions
+  /// stored before it. It excludes:
+  ///
+  /// - rows tombstoned by undo (`deleted_at` without `archived_on`), which
+  ///   never existed;
+  /// - members with no versions, which already cover every date;
+  /// - members whose earliest version is after [previousStart]: a Compound
+  ///   added mid-course keeps its own first date, so the days before it was
+  ///   added don't turn into "Not logged";
+  /// - members removed before they planned anything: a stored `archived_on`
+  ///   before the earliest version, such as a member added while the start
+  ///   was still ahead and removed before it came. A copy would turn days
+  ///   that were never in its plan into "Not logged". `archived_on` is read
+  ///   as stored before the save, so a member this same save removes still
+  ///   gets its copy. The server's `finalizeProtocolPlanRows` skips exactly
+  ///   the same members.
+  ///
+  /// A copy is dated before every version its member has, and the save's
+  /// own edits on or after the latest, so a copy never shares a date with an
+  /// edit ("No ties"). A default anchor needs no rewriting, since it is read
+  /// as the start (D4); the copy still stores [start] there, as every app
+  /// write stores the start of the save.
+  Future<void> _redateVersionsForStartMove(
+    String protocolId, {
+    required ProtocolDayDate previousStart,
+    required ProtocolDayDate start,
+    required WriteContext context,
+  }) async {
+    if (start.compareTo(previousStart) >= 0) {
+      return;
+    }
+    final members = await _plannedProtocolCompoundQuery(
+      protocolId: protocolId,
+    ).get();
+    if (members.isEmpty) {
+      return;
+    }
+    final versionsByMember = <String, List<ScheduleRow>>{};
+    for (final row in await _activeScheduleQuery(
+      protocolCompoundIds: members.map((member) => member.id).toSet(),
+    ).get()) {
+      versionsByMember.putIfAbsent(row.protocolCompoundId, () => []).add(row);
+    }
+    for (final member in members) {
+      // Versions come in D1's order, so the first is the earliest.
+      final versions = versionsByMember[member.id];
+      if (versions == null) {
+        continue;
+      }
+      final firstDate = ProtocolDayDate.parse(versions.first.effectiveFrom);
+      if (firstDate.compareTo(previousStart) > 0 ||
+          firstDate.compareTo(start) <= 0) {
+        continue;
+      }
+      // A member removed before it planned anything: its stored
+      // `archived_on` is before its earliest version, so it planned no day
+      // and was never planned from the old start (D1).
+      final archivedOn = member.archivedOn;
+      if (archivedOn != null &&
+          ProtocolDayDate.parse(archivedOn).compareTo(firstDate) < 0) {
+        continue;
+      }
+      final copy = _scheduleVersionFromRow(
+        _scheduleRowInEffectOn(versions, firstDate)!,
+      );
+      await _insertScheduleVersion(
+        member.id,
+        effectiveFrom: start,
+        version: (
+          rule: _mapRule(
+            copy.rule,
+            days: (days) => scheduleDaysFromStart(days, start),
+          ),
+          amount: copy.amount,
         ),
-      );
-      final after = await _requireScheduleRow(existing.id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.schedulesTable,
-        entityId: existing.id,
-        beforeImage: _scheduleImage(existing),
-        afterImage: _scheduleImage(after),
-      );
-      return;
-    }
-
-    final amountEntered = desired.doseAmountEntered.trim();
-    if (amountEntered.isEmpty) {
-      throw ArgumentError.value(
-        desired.doseAmountEntered,
-        'doseAmountEntered',
-        'Entered Schedule dose amount must not be empty.',
+        context: context,
       );
     }
-    // PROTOCOLS.md §6: the SAME shared two-tier validator a logged Dose runs
-    // — a hard-reject (e.g. negative amount, absurd per-dose cap, malformed
-    // unit/route) throws here so nothing persists.
-    final validation = validateDose(
-      amount: amountEntered,
-      unit: desired.doseUnit.name,
-      route: desired.route.name,
-    );
-    validation.throwIfRejected();
+  }
 
-    if (existing == null) {
-      final scheduleId = _repositories.createId(context.timestamp);
-      await _database.into(_database.schedules).insert(
-            SchedulesCompanion.insert(
-              id: scheduleId,
-              protocolCompoundId: protocolCompoundId,
-              doseAmountValue: desired.doseAmountValue,
-              doseAmountEntered: amountEntered,
-              doseUnit: desired.doseUnit.name,
-              frequency: desired.frequency.name,
-              route: desired.route.name,
-              updatedAt: context.timestamp,
-            ),
-          );
-      final after = await _requireScheduleRow(scheduleId);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.schedulesTable,
-        entityId: scheduleId,
-        beforeImage: null,
-        afterImage: _scheduleImage(after),
-      );
-      return;
-    }
-
-    final unchanged = existing.doseAmountValue == desired.doseAmountValue &&
-        existing.doseAmountEntered == amountEntered &&
-        existing.doseUnit == desired.doseUnit.name &&
-        existing.frequency == desired.frequency.name &&
-        existing.route == desired.route.name;
-    if (unchanged) {
-      return;
-    }
-
-    await (_database.update(_database.schedules)
-          ..where((row) => row.id.equals(existing.id)))
-        .write(
-      SchedulesCompanion(
-        doseAmountValue: Value<double>(desired.doseAmountValue),
-        doseAmountEntered: Value<String>(amountEntered),
-        doseUnit: Value<String>(desired.doseUnit.name),
-        frequency: Value<String>(desired.frequency.name),
-        route: Value<String>(desired.route.name),
-        updatedAt: Value<DateTime>(context.timestamp),
-      ),
-    );
-    final after = await _requireScheduleRow(existing.id);
-    await _repositories.activityLog._append(
+  Future<void> _insertScheduleVersion(
+    String protocolCompoundId, {
+    required ProtocolDayDate effectiveFrom,
+    required _StoredScheduleVersion version,
+    required WriteContext context,
+  }) async {
+    final scheduleId = _repositories._ids.create(context.timestamp);
+    await _database.into(_database.schedules).insert(
+          SchedulesCompanion.insert(
+            id: scheduleId,
+            protocolCompoundId: protocolCompoundId,
+            effectiveFrom: effectiveFrom.storageValue,
+            rule: jsonEncode(version.rule.toJson()),
+            doseAmountValue: Value<double?>(version.amount.amountValue),
+            doseAmountEntered: Value<String?>(version.amount.amountEntered),
+            doseUnit: Value<String?>(version.amount.unit?.name),
+            route: Value<String?>(version.amount.route?.name),
+            updatedAt: context.timestamp,
+          ),
+        );
+    final after = await _requireScheduleRow(scheduleId);
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.schedulesTable,
-      entityId: existing.id,
-      beforeImage: _scheduleImage(existing),
+      entityId: scheduleId,
+      beforeImage: null,
       afterImage: _scheduleImage(after),
     );
   }
 
-  /// The identity key for ONE target outcome (kind + Metric id):
-  /// what [_replaceProtocolTargetOutcomes] diffs existing rows against, and
-  /// what [_validateProtocolTargetOutcomes] uses to reject a duplicate.
-  String _protocolTargetOutcomeKey(String kindName, String? metricId) {
-    return '$kindName|${metricId ?? ''}';
+  /// [draft] as it is stored (D7): times and weekdays sorted, an every-N
+  /// anchor left at its default moved to [protocolStart], the entered amount
+  /// trimmed, and no amount at all for a rule that plans nothing.
+  _StoredScheduleVersion _normalizedScheduleVersion(
+    ScheduleDraft draft,
+    ProtocolDayDate protocolStart,
+  ) {
+    // Times and weekdays in stored (sorted) order (D7): the codecs and
+    // validators accept any order; the writers sort.
+    final rule = _mapRule(
+      draft.rule,
+      days: (days) => scheduleDaysFromStart(
+        switch (days) {
+          WeekdayScheduleDays(:final weekdays) =>
+            WeekdayScheduleDays(List<int>.of(weekdays)..sort()),
+          _ => days,
+        },
+        protocolStart,
+      ),
+      times: (times) => List<String>.of(times)..sort(),
+    );
+    return switch (rule) {
+      AsNeededScheduleRule() || UnscheduledScheduleRule() => (
+          rule: rule,
+          amount: PlanAmount.none,
+        ),
+      TimedScheduleRule() || UntimedScheduleRule() => (
+          rule: rule,
+          amount: PlanAmount(
+            amountValue: draft.doseAmountValue,
+            amountEntered: _normalizeOptionalText(draft.doseAmountEntered),
+            unit: draft.doseUnit,
+            route: draft.route,
+          ),
+        ),
+    };
+  }
+
+  /// [rule] with its days mapped through [days] and its times through
+  /// [times]; a rule with no days (as needed, unscheduled) is unchanged.
+  ScheduleRule _mapRule(
+    ScheduleRule rule, {
+    required ScheduleDays Function(ScheduleDays days) days,
+    List<String> Function(List<String> times)? times,
+  }) {
+    return switch (rule) {
+      TimedScheduleRule() => TimedScheduleRule(
+          days: days(rule.days),
+          times: times == null ? rule.times : times(rule.times),
+        ),
+      UntimedScheduleRule() =>
+        UntimedScheduleRule(days: days(rule.days), count: rule.count),
+      _ => rule,
+    };
+  }
+
+  /// [period] as it is stored: null when it has no cycle and no Pause, and a
+  /// cycle anchor that was left at its default moved to [start] (D1).
+  ProtocolPeriod? _normalizedPeriod(
+    ProtocolPeriod? period,
+    ProtocolDayDate start,
+  ) {
+    if (period == null || (period.cycle == null && period.pauses.isEmpty)) {
+      return null;
+    }
+    final cycle = protocolCycleFromStart(period.cycle, start);
+    return identical(cycle, period.cycle)
+        ? period
+        : ProtocolPeriod(cycle: cycle, pauses: period.pauses);
+  }
+
+  /// Whether [row] stores [version]. The rule is compared decoded, never as
+  /// stored text: a version an Agent wrote reaches the device from the
+  /// server's jsonb with its keys in another order, and must still read as
+  /// unchanged (D1: a save that changes nothing inserts nothing).
+  ///
+  /// The stored date of a default every-N anchor is ignored: it is never
+  /// read, because a default anchor plans from the Protocol's start (D4).
+  /// Both sides read it as [protocolStart], so after a start move, which
+  /// writes nothing on a later move, an unchanged save still inserts
+  /// nothing.
+  bool _sameScheduleVersion(
+    ScheduleRow row,
+    _StoredScheduleVersion version, {
+    required ProtocolDayDate protocolStart,
+  }) {
+    String comparable(ScheduleRule rule) => jsonEncode(
+          _mapRule(
+            rule,
+            days: (days) => scheduleDaysFromStart(days, protocolStart),
+          ).toJson(),
+        );
+    return comparable(ScheduleRule.fromJson(jsonDecode(row.rule))) ==
+            comparable(version.rule) &&
+        row.doseAmountValue == version.amount.amountValue &&
+        row.doseAmountEntered == version.amount.amountEntered &&
+        row.doseUnit == version.amount.unit?.name &&
+        row.route == version.amount.route?.name;
+  }
+
+  _StoredScheduleVersion _scheduleVersionFromRow(ScheduleRow row) {
+    final record = _scheduleRecordFromRow(row);
+    return (rule: record.rule, amount: record.amount);
   }
 
   /// Reconciles a `Protocol`'s declared target outcomes to exactly [outcomes]
   /// (mirrors [_replaceProtocolMembers]): outcomes no longer present
   /// are tombstoned, new ones inserted, and kept ones repositioned in place.
-  /// [outcomes] must already be validated ([_validateProtocolTargetOutcomes])
+  /// [outcomes] must already be validated ([validateProtocolTargetOutcomes])
   /// and its Metric ids confirmed active ([_requireActiveMetricRows]). Purely
   /// plan-layer: never reads or writes a logged `Dose`, and computes NO
   /// `Effect` (that analysis is a later M29 slice).
   Future<void> _replaceProtocolTargetOutcomes(
     String protocolId,
     List<ProtocolTargetOutcomeDraft> outcomes,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final activeRows = await _activeProtocolTargetOutcomeQuery(
       protocolId: protocolId,
     ).get();
     final activeByKey = <String, ProtocolTargetOutcomeRow>{
       for (final row in activeRows)
-        _protocolTargetOutcomeKey(row.kind, row.metricId): row,
+        protocolTargetOutcomeKey(row.kind, row.metricId): row,
     };
     final desiredKeys = <String>{
       for (final outcome in outcomes)
-        _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId),
+        protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId),
     };
 
     for (final row in activeRows) {
-      final key = _protocolTargetOutcomeKey(row.kind, row.metricId);
+      final key = protocolTargetOutcomeKey(row.kind, row.metricId);
       if (!desiredKeys.contains(key)) {
         await (_database.update(_database.protocolTargetOutcomes)
               ..where((table) => table.id.equals(row.id)))
@@ -6972,7 +8272,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolTargetOutcomeRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: row.id,
@@ -6984,11 +8284,10 @@ class ProtocolsRepository {
 
     for (var index = 0; index < outcomes.length; index += 1) {
       final outcome = outcomes[index];
-      final key =
-          _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
+      final key = protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
       final existing = activeByKey[key];
       if (existing == null) {
-        final outcomeId = _repositories.createId(context.timestamp);
+        final outcomeId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.protocolTargetOutcomes).insert(
               ProtocolTargetOutcomesCompanion.insert(
                 id: outcomeId,
@@ -7000,7 +8299,7 @@ class ProtocolsRepository {
               ),
             );
         final after = await _requireProtocolTargetOutcomeRow(outcomeId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: outcomeId,
@@ -7020,7 +8319,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolTargetOutcomeRow(existing.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: existing.id,
@@ -7029,50 +8328,6 @@ class ProtocolsRepository {
         );
       }
     }
-  }
-
-  /// Hard-rejects an empty/blank name (structural validation — not the shared
-  /// Dose two-tier validator, which guards logging amounts, PROTOCOLS.md §6).
-  String _validateProtocolName(String name) {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(name, 'name', 'Protocol name is empty.');
-    }
-    return trimmed;
-  }
-
-  /// Hard-rejects an end date before the start date. A null [endDate] means
-  /// an open-ended (ongoing) course — always valid.
-  void _validateProtocolWindow(DateTime startDate, DateTime? endDate) {
-    if (endDate != null && endDate.isBefore(startDate)) {
-      throw ArgumentError.value(
-        endDate,
-        'endDate',
-        'Protocol end date must not be before its start date.',
-      );
-    }
-  }
-
-  /// Hard-rejects an empty or duplicated membership list. A Protocol
-  /// associates ONE OR MORE Compounds (PROTOCOLS.md §1.4); a repeated
-  /// Compound id is never a meaningful stack member.
-  List<String> _validateProtocolMembership(List<String> compoundIds) {
-    if (compoundIds.isEmpty) {
-      throw ArgumentError.value(
-        compoundIds,
-        'compoundIds',
-        'A Protocol requires at least one Compound.',
-      );
-    }
-    final uniqueIds = compoundIds.toSet();
-    if (uniqueIds.length != compoundIds.length) {
-      throw ArgumentError.value(
-        compoundIds,
-        'compoundIds',
-        'A Protocol cannot list the same Compound twice.',
-      );
-    }
-    return compoundIds;
   }
 
   /// Resolves + hard-rejects any [compoundIds] that doesn't reference an
@@ -7098,37 +8353,42 @@ class ProtocolsRepository {
     return <CompoundRow>[for (final id in compoundIds) rowsById[id]!];
   }
 
-  /// Hard-rejects a malformed or duplicated target-outcome list: a
-  /// `metric` outcome requires a non-blank [ProtocolTargetOutcomeDraft.metricId],
-  /// and no two outcomes may declare the SAME thing twice (the same Metric
-  /// twice, or `performance` twice). An EMPTY list is always valid — a
-  /// Protocol MAY declare target outcomes, never must (PROTOCOLS.md §1.4).
-  List<ProtocolTargetOutcomeDraft> _validateProtocolTargetOutcomes(
-    List<ProtocolTargetOutcomeDraft> outcomes,
-  ) {
-    final seenKeys = <String>{};
-    for (final outcome in outcomes) {
-      if (outcome.kind == ProtocolOutcomeKind.metric) {
-        final metricId = outcome.metricId?.trim() ?? '';
-        if (metricId.isEmpty) {
-          throw ArgumentError.value(
-            outcome.metricId,
-            'metricId',
-            'A metric target outcome requires a Metric id.',
-          );
-        }
-      }
-      final key =
-          _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
-      if (!seenKeys.add(key)) {
-        throw ArgumentError.value(
-          outcomes,
-          'targetOutcomes',
-          'A Protocol cannot declare the same target outcome twice.',
-        );
-      }
+  /// The Compound rows for an edited Protocol's [compoundIds], in the given
+  /// order, which [_replaceProtocolMembers] takes member positions from.
+  ///
+  /// An id that is already a live member may name an archived Compound; an id
+  /// being added must name an active one. The planner keeps planning a member
+  /// whose Compound was archived, so demanding an active Compound of every
+  /// member would make such a Protocol impossible to save at all.
+  Future<List<CompoundRow>> _requireEditedMemberCompoundRows(
+    String protocolId,
+    List<String> compoundIds,
+  ) async {
+    final memberRows = await _activeProtocolCompoundQuery(
+      protocolId: protocolId,
+    ).get();
+    final liveMemberIds = <String>{
+      for (final row in memberRows) row.compoundId,
+    };
+    final addedRows = await _requireActiveCompoundRows(<String>[
+      for (final id in compoundIds)
+        if (!liveMemberIds.contains(id)) id,
+    ]);
+    final keptIds = compoundIds.where(liveMemberIds.contains);
+    final keptRows = await (_database.select(_database.compounds)
+          ..where((row) => row.id.isIn(keptIds)))
+        .get();
+    final rowsById = <String, CompoundRow>{
+      for (final row in <CompoundRow>[...addedRows, ...keptRows]) row.id: row,
+    };
+    if (!compoundIds.every(rowsById.containsKey)) {
+      throw ArgumentError.value(
+        compoundIds,
+        'compoundIds',
+        'A Protocol must reference active catalogue Compounds.',
+      );
     }
-    return outcomes;
+    return <CompoundRow>[for (final id in compoundIds) rowsById[id]!];
   }
 
   /// The distinct [ProtocolOutcomeKind.metric] ids declared across [outcomes],
@@ -7176,6 +8436,27 @@ class ProtocolsRepository {
     return query;
   }
 
+  /// Member rows the plan reads: every row except those tombstoned by undo
+  /// (`deleted_at` without `archived_on`), which never existed (D1), so
+  /// archived members are included with their `archived_on`. Optionally
+  /// scoped to one Protocol.
+  SimpleSelectStatement<$ProtocolCompoundsTable, ProtocolCompoundRow>
+      _plannedProtocolCompoundQuery({String? protocolId}) {
+    return _database.select(_database.protocolCompounds)
+      ..where((row) {
+        Expression<bool> predicate =
+            row.deletedAt.isNull() | row.archivedOn.isNotNull();
+        if (protocolId != null) {
+          predicate = predicate & row.protocolId.equals(protocolId);
+        }
+        return predicate;
+      })
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.position),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
+  }
+
   SimpleSelectStatement<$ProtocolCompoundsTable, ProtocolCompoundRow>
       _activeProtocolCompoundQuery({String? protocolId}) {
     return _database.select(_database.protocolCompounds)
@@ -7189,8 +8470,9 @@ class ProtocolsRepository {
       ..orderBy([(row) => OrderingTerm.asc(row.position)]);
   }
 
-  /// Active (non-archived) `Schedule` rows, optionally scoped to one member
-  /// (`ProtocolCompound`) row.
+  /// Schedule Version rows not tombstoned by undo, optionally scoped to one
+  /// member (`ProtocolCompound`) row. A member has many: one per changed
+  /// save, none ever edited.
   SimpleSelectStatement<$SchedulesTable, ScheduleRow> _activeScheduleQuery({
     String? protocolCompoundId,
     Set<String>? protocolCompoundIds,
@@ -7204,6 +8486,7 @@ class ProtocolsRepository {
     }
     query.orderBy([
       (row) => OrderingTerm.asc(row.protocolCompoundId),
+      (row) => OrderingTerm.asc(row.effectiveFrom),
       (row) => OrderingTerm.asc(row.id),
     ]);
     return query;
@@ -7253,8 +8536,10 @@ class ProtocolsRepository {
       return ProtocolSummaryRecord(
         id: row.id,
         name: row.name,
-        startDate: row.startDate,
-        endDate: row.endDate,
+        startLocalDate: ProtocolDayDate.parse(row.startLocalDate),
+        endLocalDate: _nullableProtocolDay(row.endLocalDate),
+        period: _protocolPeriodFromColumn(row.period),
+        remindersEnabled: row.remindersEnabled,
         compoundIds: members.map((member) => member.compoundId).toList(
               growable: false,
             ),
@@ -7299,10 +8584,13 @@ class ProtocolsRepository {
     for (final member in memberRows) {
       membersByProtocolId.putIfAbsent(member.protocolId, () => []).add(member);
     }
-    final scheduleByProtocolCompoundId = <String, ScheduleRow>{
-      for (final schedule in scheduleRows)
-        schedule.protocolCompoundId: schedule,
-    };
+    final versionsByProtocolCompoundId = <String, List<ScheduleRow>>{};
+    for (final schedule in scheduleRows) {
+      versionsByProtocolCompoundId
+          .putIfAbsent(schedule.protocolCompoundId, () => [])
+          .add(schedule);
+    }
+    final today = ProtocolDayDate.fromDateTime(DateTime.now());
     final targetOutcomesByProtocolId =
         <String, List<ProtocolTargetOutcomeRow>>{};
     for (final outcome in targetOutcomeRows) {
@@ -7322,18 +8610,25 @@ class ProtocolsRepository {
       return ProtocolRecord(
         id: row.id,
         name: row.name,
-        startDate: row.startDate,
-        endDate: row.endDate,
+        startLocalDate: ProtocolDayDate.parse(row.startLocalDate),
+        endLocalDate: _nullableProtocolDay(row.endLocalDate),
+        period: _protocolPeriodFromColumn(row.period),
+        remindersEnabled: row.remindersEnabled,
         members: members.map(
           (member) {
-            final scheduleRow = scheduleByProtocolCompoundId[member.id];
+            final versions = versionsByProtocolCompoundId[member.id] ??
+                const <ScheduleRow>[];
+            final current = _currentScheduleRow(versions);
+            final inEffectToday = _scheduleRowInEffectOn(versions, today);
             return ProtocolMemberRecord(
               id: member.id,
               compoundId: member.compoundId,
               position: member.position,
-              schedule: scheduleRow == null
+              currentVersion:
+                  current == null ? null : _scheduleRecordFromRow(current),
+              versionInEffectToday: inEffectToday == null
                   ? null
-                  : _scheduleRecordFromRow(scheduleRow),
+                  : _scheduleRecordFromRow(inEffectToday),
             );
           },
         ).toList(growable: false),
@@ -7360,44 +8655,30 @@ class ProtocolsRepository {
     );
   }
 
-  /// Maps a persisted `Schedule` row to its read model, REJECTING a unit,
-  /// route, or frequency stored outside the curated registries (
-  /// the same registry chokepoint discipline as `DoseRecord`).
+  /// Maps a persisted Schedule Version row to its read model, REJECTING a
+  /// unit or route stored outside the curated registries (the same registry
+  /// chokepoint discipline as `DoseRecord`) and a rule its codec rejects.
   ScheduleRecord _scheduleRecordFromRow(ScheduleRow row) {
+    final unit = row.doseUnit;
+    final route = row.route;
     return ScheduleRecord(
       id: row.id,
       protocolCompoundId: row.protocolCompoundId,
+      effectiveFrom: ProtocolDayDate.parse(row.effectiveFrom),
+      rule: ScheduleRule.fromJson(jsonDecode(row.rule)),
       doseAmountValue: row.doseAmountValue,
       doseAmountEntered: row.doseAmountEntered,
-      doseUnit: doseUnitFromName(row.doseUnit),
-      frequency: scheduleFrequencyFromName(row.frequency),
-      route: doseRouteFromName(row.route),
+      doseUnit: unit == null ? null : doseUnitFromName(unit),
+      route: route == null ? null : doseRouteFromName(route),
       updatedAt: row.updatedAt,
-      deletedAt: row.deletedAt,
     );
-  }
-
-  bool _sameStringSet(Set<String> left, Set<String> right) {
-    return left.length == right.length && left.containsAll(right);
-  }
-
-  bool _sameStringList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
   }
 
   bool _sameCompoundOptionRecords(
     List<CompoundOptionRecord> left,
     List<CompoundOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameCompoundOptionRecord);
+    return _sameListBy(left, right, _sameCompoundOptionRecord);
   }
 
   bool _sameCompoundOptionRecord(
@@ -7411,7 +8692,7 @@ class ProtocolsRepository {
     List<CompoundScheduleOptionRecord> left,
     List<CompoundScheduleOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameCompoundScheduleOptionRecord);
+    return _sameListBy(left, right, _sameCompoundScheduleOptionRecord);
   }
 
   bool _sameCompoundScheduleOptionRecord(
@@ -7421,14 +8702,16 @@ class ProtocolsRepository {
     return left.id == right.id &&
         left.name == right.name &&
         left.defaultUnit == right.defaultUnit &&
-        left.defaultRoute == right.defaultRoute;
+        left.defaultRoute == right.defaultRoute &&
+        left.isArchived == right.isArchived &&
+        _sameListBy(left.purposeIds, right.purposeIds, (a, b) => a == b);
   }
 
   bool _sameProtocolOptionRecords(
     List<ProtocolOptionRecord> left,
     List<ProtocolOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolOptionRecord);
+    return _sameListBy(left, right, _sameProtocolOptionRecord);
   }
 
   bool _sameProtocolOptionRecord(
@@ -7442,7 +8725,7 @@ class ProtocolsRepository {
     List<ProtocolSummaryRecord> left,
     List<ProtocolSummaryRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolSummaryRecord);
+    return _sameListBy(left, right, _sameProtocolSummaryRecord);
   }
 
   bool _sameProtocolSummaryRecord(
@@ -7451,16 +8734,18 @@ class ProtocolsRepository {
   ) {
     return left.id == right.id &&
         left.name == right.name &&
-        left.startDate == right.startDate &&
-        left.endDate == right.endDate &&
-        _sameStringList(left.compoundIds, right.compoundIds);
+        left.startLocalDate == right.startLocalDate &&
+        left.endLocalDate == right.endLocalDate &&
+        _samePeriod(left.period, right.period) &&
+        left.remindersEnabled == right.remindersEnabled &&
+        _sameRowList(left.compoundIds, right.compoundIds);
   }
 
   bool _sameProtocolEffectOptionRecords(
     List<ProtocolEffectOptionRecord> left,
     List<ProtocolEffectOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolEffectOptionRecord);
+    return _sameListBy(left, right, _sameProtocolEffectOptionRecord);
   }
 
   bool _sameProtocolEffectOptionRecord(
@@ -7484,8 +8769,10 @@ class ProtocolsRepository {
     }
     return left.id == right.id &&
         left.name == right.name &&
-        left.startDate == right.startDate &&
-        left.endDate == right.endDate &&
+        left.startLocalDate == right.startLocalDate &&
+        left.endLocalDate == right.endLocalDate &&
+        _samePeriod(left.period, right.period) &&
+        left.remindersEnabled == right.remindersEnabled &&
         left.updatedAt == right.updatedAt &&
         left.deletedAt == right.deletedAt &&
         _sameProtocolMemberRecords(left.members, right.members) &&
@@ -7499,7 +8786,7 @@ class ProtocolsRepository {
     List<ProtocolMemberRecord> left,
     List<ProtocolMemberRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolMemberRecord);
+    return _sameListBy(left, right, _sameProtocolMemberRecord);
   }
 
   bool _sameProtocolMemberRecord(
@@ -7509,7 +8796,18 @@ class ProtocolsRepository {
     return left.id == right.id &&
         left.compoundId == right.compoundId &&
         left.position == right.position &&
-        _sameScheduleRecord(left.schedule, right.schedule);
+        _sameScheduleRecord(left.currentVersion, right.currentVersion) &&
+        _sameScheduleRecord(
+          left.versionInEffectToday,
+          right.versionInEffectToday,
+        );
+  }
+
+  bool _samePeriod(ProtocolPeriod? left, ProtocolPeriod? right) {
+    if (left == null || right == null) {
+      return left == right;
+    }
+    return jsonEncode(left.toJson()) == jsonEncode(right.toJson());
   }
 
   bool _sameScheduleRecord(ScheduleRecord? left, ScheduleRecord? right) {
@@ -7521,20 +8819,20 @@ class ProtocolsRepository {
     }
     return left.id == right.id &&
         left.protocolCompoundId == right.protocolCompoundId &&
+        left.effectiveFrom == right.effectiveFrom &&
+        jsonEncode(left.rule.toJson()) == jsonEncode(right.rule.toJson()) &&
         left.doseAmountValue == right.doseAmountValue &&
         left.doseAmountEntered == right.doseAmountEntered &&
         left.doseUnit == right.doseUnit &&
-        left.frequency == right.frequency &&
         left.route == right.route &&
-        left.updatedAt == right.updatedAt &&
-        left.deletedAt == right.deletedAt;
+        left.updatedAt == right.updatedAt;
   }
 
   bool _sameProtocolTargetOutcomeRecords(
     List<ProtocolTargetOutcomeRecord> left,
     List<ProtocolTargetOutcomeRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolTargetOutcomeRecord);
+    return _sameListBy(left, right, _sameProtocolTargetOutcomeRecord);
   }
 
   bool _sameProtocolTargetOutcomeRecord(
@@ -7545,22 +8843,6 @@ class ProtocolsRepository {
         left.kind == right.kind &&
         left.metricId == right.metricId &&
         left.position == right.position;
-  }
-
-  bool _sameProtocolList<T>(
-    List<T> left,
-    List<T> right,
-    bool Function(T left, T right) equals,
-  ) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!equals(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
   }
 
   Future<ProtocolRow> _requireProtocolRow(String id) async {
@@ -7606,6 +8888,36 @@ class ProtocolsRepository {
   }
 }
 
+/// The day's log order for Doses on one Protocol Day: the Dose's clock where
+/// it was taken ([DoseRecord.clock]), date and time to the minute, then id.
+/// The day's log and the Consistency view's day list sort by it, so the rows
+/// read in clock order.
+///
+/// The clock's date leads. That is matching's order (D6 step 2: local time,
+/// then id) whenever every clock falls on the Protocol Day, so the rows then
+/// take one day's Doses in the order matching numbers them. A Dose whose
+/// clock falls on another date (a draft that named its own local date, or a
+/// Dose with no offset read in a device zone it wasn't logged in) stays in
+/// clock order instead of being placed by its time of day alone, and there
+/// the two orders can differ; matching is left as D6 defines it. Sorting by
+/// time of day alone would list such a Dose out of clock order (08:00 the
+/// next morning before 17:00 the day before).
+int _compareDosesByClock(DoseRecord a, DoseRecord b) {
+  final byClock = _clockToTheMinute(a).compareTo(_clockToTheMinute(b));
+  return byClock != 0 ? byClock : a.id.compareTo(b.id);
+}
+
+DateTime _clockToTheMinute(DoseRecord dose) {
+  final clock = dose.clock;
+  return DateTime.utc(
+    clock.year,
+    clock.month,
+    clock.day,
+    clock.hour,
+    clock.minute,
+  );
+}
+
 /// Which entity an `Effect` window is anchored to (PROTOCOLS.md §1.4, §4,
 ///): a `Protocol` course, or a single `Compound`'s own logged Dose
 /// timeline (ad hoc — no Protocol required). Exactly one of
@@ -7648,16 +8960,27 @@ class EffectRepository {
 
   AppDatabase get _database => _repositories.database;
 
-  /// The `Effect` window for a `Protocol` (PROTOCOLS.md §1.4, §4): DURING is
-  /// the Protocol's own declared start/end — never the Schedule/plan, but a
-  /// Protocol's start/end ARE plan dates by definition (§1.4), which is why a
-  /// Compound-only window ([windowForCompound]) instead derives DURING from
-  /// the actual logged Doses.
+  /// The `Effect` window for a `Protocol`: DURING is the Protocol's own
+  /// declared start/end — never the Schedule/plan, but a Protocol's start/end
+  /// ARE plan dates by definition, which is why a Compound-only window
+  /// ([windowForCompound]) instead derives DURING from the actual logged
+  /// Doses.
+  ///
+  /// The bounds are local dates, so they become instants through
+  /// [effectBoundsFromLocalDates] at the device's current UTC offset: local
+  /// midnight of the start, and local midnight of the day after the
+  /// inclusive end. The Effect math itself is unchanged.
   EffectWindow windowForProtocol(ProtocolRecord protocol, {DateTime? now}) {
-    return EffectWindow(
-      duringStart: protocol.startDate,
-      duringEnd: protocol.endDate,
-      now: now ?? DateTime.now(),
+    final at = now ?? DateTime.now();
+    final bounds = effectBoundsFromLocalDates(
+      startLocalDate: protocol.startLocalDate,
+      endLocalDate: protocol.endLocalDate,
+      timezoneOffsetMinutes: at.toLocal().timeZoneOffset.inMinutes,
+    );
+    return effectWindowForProtocol(
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      now: at,
     );
   }
 
@@ -7671,13 +8994,8 @@ class EffectRepository {
     DateTime? now,
   }) async {
     final doses = await _repositories.protocols.dosesForCompound(compoundId);
-    if (doses.isEmpty) {
-      return null;
-    }
-    final tookAtTimes = doses.map((dose) => dose.tookAt).toList()..sort();
-    return EffectWindow(
-      duringStart: tookAtTimes.first,
-      duringEnd: tookAtTimes.length == 1 ? null : tookAtTimes.last,
+    return effectWindowForDoseTimes(
+      doses.map((dose) => dose.tookAt),
       now: now ?? DateTime.now(),
     );
   }
@@ -7779,9 +9097,10 @@ class EffectRepository {
   /// A read-only performance proxy (PROTOCOLS.md §4: "performance comes from
   /// Workout analytics") for the `Effect` view: one [EffectSample] per
   /// Workout session in `[from, to)` whose `at` is the session's start and
-  /// whose value is the session's total logged volume (Σ load × reps over
-  /// its completed, load-and-reps-bearing `LoggedSet`s). A session with no
-  /// such set is EXCLUDED (not fabricated as a zero) — e.g. an
+  /// whose value is the session's total logged volume in kilograms
+  /// ([sessionLoadVolumeKilograms] over its completed sets, so kg and lb add
+  /// up and assisted-load exercises are excluded). A session with no such
+  /// set is EXCLUDED (not fabricated as a zero) — e.g. an
   /// endurance/duration-only session contributes no volume sample.
   Future<List<EffectSample>> performanceVolumeSamples({
     required DateTime from,
@@ -7811,19 +9130,32 @@ class EffectRepository {
           ))
         .get();
 
-    final volumeBySessionId = <String, double>{};
+    // Archived exercises still count: archive keeps history.
+    final exerciseIds = setRows.map((row) => row.exerciseId).toSet();
+    final loadModeByExerciseId = <String, ExerciseLoadMode>{
+      for (final exercise in await (_database.select(_database.exercises)
+            ..where((row) => row.id.isIn(exerciseIds)))
+          .get())
+        exercise.id: ExerciseLoadMode.values.byName(exercise.loadMode),
+    };
+    final setsBySessionId = <String, List<SessionVolumeSet>>{};
     for (final row in setRows) {
-      final volume = row.loadValue! * row.repsValue!;
-      volumeBySessionId.update(
-        row.workoutId,
-        (existing) => existing + volume,
-        ifAbsent: () => volume,
-      );
+      setsBySessionId
+          .putIfAbsent(row.workoutId, () => <SessionVolumeSet>[])
+          .add(
+            SessionVolumeSet(
+              loadMode: loadModeByExerciseId[row.exerciseId] ??
+                  ExerciseLoadMode.added,
+              values: _loggedSetValuesFromRow(row),
+            ),
+          );
     }
 
     final samples = <EffectSample>[];
     for (final session in sessionRows) {
-      final volume = volumeBySessionId[session.id];
+      final sessionSets = setsBySessionId[session.id];
+      final volume =
+          sessionSets == null ? null : sessionLoadVolumeKilograms(sessionSets);
       if (volume == null) {
         continue;
       }
@@ -7887,7 +9219,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7931,7 +9263,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7948,11 +9280,11 @@ class WorkoutExerciseRepository {
         context,
       );
 
-      final sets = await _repositories.sets
-          ._activeLoggedSetQuery(workoutId: before.workoutId)
+      final sets = await (_repositories.sets
+              ._activeLoggedSetQuery(workoutId: before.workoutId)
+            ..where((row) => row.exerciseId.equals(before.exerciseId)))
           .get();
-      for (final set
-          in sets.where((row) => row.exerciseId == before.exerciseId)) {
+      for (final set in sets) {
         await _repositories.workoutSessions._softDeleteLoggedSet(set, context);
       }
     });
@@ -7964,7 +9296,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7986,35 +9318,207 @@ class WorkoutExerciseRepository {
         );
       }
 
-      for (var index = 0; index < orderedIds.length; index += 1) {
-        final row = rowById[orderedIds[index]]!;
-        if (row.position == index) {
-          continue;
-        }
-
-        await (_database.update(_database.workoutExercises)
-              ..where((table) => table.id.equals(row.id)))
-            .write(
-          WorkoutExercisesCompanion(
-            position: Value<int>(index),
-            updatedAt: Value<DateTime>(context.timestamp),
-          ),
-        );
-        final after = await _requireRow(row.id);
-        await _repositories.activityLog._append(
-          context,
-          entityTable: AppDatabase.workoutExercisesTable,
-          entityId: row.id,
-          beforeImage: _workoutExerciseImage(row),
-          afterImage: _workoutExerciseImage(after),
-        );
-      }
+      await _writePositions(
+        [for (final id in orderedIds) rowById[id]!],
+        [for (var index = 0; index < orderedIds.length; index += 1) index],
+        context,
+      );
 
       await _repositories.exerciseGroups._reconcileAfterWorkoutExerciseReorder(
         workoutId: workoutId,
         orderedWorkoutExerciseIds: orderedIds,
         context: context,
       );
+    });
+  }
+
+  /// Replaces the remaining plan of [workoutExerciseId] with the Exercise
+  /// [newExerciseId], and returns the new Workout Exercise's id.
+  ///
+  /// The new Workout Exercise takes the old one's place in the Workout order
+  /// and in its Exercise Group, and gets one Planned Set for each of the old
+  /// one's Planned Sets (same `position` and `plannedRestAfter`; values from
+  /// the new Exercise's last Performed Set before this Workout, or zero). The
+  /// old one keeps its Performed Sets: when it has any, it moves directly
+  /// after its group's last member (grouped) or after the new one
+  /// (ungrouped), outside the group; otherwise it is soft-deleted.
+  ///
+  /// Throws [AlreadyInWorkoutException] when [newExerciseId] is already
+  /// active in the Workout. That check comes first because `_create` quietly
+  /// returns the existing row, which would merge two exercises' plans.
+  ///
+  /// Writes every row at most once under [batchId], in one transaction, so
+  /// `undoBatch(batchId)` reverses the whole Replace without conflicts. That
+  /// is why it does not call [create], [reorderForWorkout] or
+  /// `exerciseGroups.update`: each writes its own entries, and the reorder's
+  /// group reconciliation rewrites rows the reorder just wrote. Every group's
+  /// members stay adjacent in the final order, so a later reorder's
+  /// reconciliation keeps the group whole.
+  Future<String> replace(
+    String workoutExerciseId,
+    String newExerciseId, {
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final old = await _requireRow(workoutExerciseId);
+      if (old.deletedAt != null) {
+        throw StateError('Workout exercise is deleted: $workoutExerciseId.');
+      }
+      final workoutId = old.workoutId;
+      final activeRows =
+          await _activeWorkoutExerciseQuery(workoutId: workoutId).get();
+      if (activeRows.any((row) => row.exerciseId == newExerciseId)) {
+        throw AlreadyInWorkoutException(
+          workoutId: workoutId,
+          exerciseId: newExerciseId,
+        );
+      }
+      // An archived Exercise is refused too: the picker offers only active
+      // ones, so it was archived (here or by a sync) after the pick.
+      final newExercise = await _repositories.exercises.getById(newExerciseId);
+      if (newExercise == null) {
+        throw StateError('Exercise not found: $newExerciseId.');
+      }
+      if (newExercise.deletedAt != null) {
+        throw StateError('Exercise is archived: $newExerciseId.');
+      }
+
+      // `_activeLoggedSetQuery` ignores `exerciseId` alongside `workoutId`,
+      // so the exercise is filtered here, as [softDelete] does.
+      final oldSets =
+          await (_repositories.sets._activeLoggedSetQuery(workoutId: workoutId)
+                ..where((row) => row.exerciseId.equals(old.exerciseId)))
+              .get();
+      final plannedSets =
+          oldSets.where((set) => !set.isCompleted).toList(growable: false);
+      final oldKeepsPerformedSet = oldSets.any((set) => set.isCompleted);
+
+      final membership = await (_database.select(
+        _database.exerciseGroupMembers,
+      )
+            ..where(
+              (row) =>
+                  row.deletedAt.isNull() & row.workoutExerciseId.equals(old.id),
+            )
+            ..orderBy([(row) => OrderingTerm.asc(row.position)])
+            ..limit(1))
+          .getSingleOrNull();
+      final groupMemberIds = membership == null
+          ? const <String>{}
+          : (await _repositories.exerciseGroups
+                  ._activeExerciseGroupMemberQuery(
+                    groupId: membership.groupId,
+                  )
+                  .get())
+              .map((row) => row.workoutExerciseId)
+              .toSet();
+
+      // 1. The final order, with the new Workout Exercise as a null slot.
+      final order = <String?>[
+        for (final row in activeRows) row.id == old.id ? null : row.id,
+      ];
+      final newIndex = activeRows.indexWhere((row) => row.id == old.id);
+      if (oldKeepsPerformedSet) {
+        // After the new one, or after the group's last member (old's own
+        // slot is null, so it never matches).
+        final lastMember = order.lastIndexWhere(groupMemberIds.contains);
+        order.insert(math.max(newIndex, lastMember) + 1, old.id);
+      }
+
+      // 2. Insert the new one at its place; write each other row whose
+      // position changes, once (`old` included when it moves). No group
+      // reconciliation: see above.
+      final rowById = <String, WorkoutExerciseRow>{
+        for (final row in activeRows) row.id: row,
+      };
+      final newId = await _insertAt(
+        workoutId: workoutId,
+        exerciseId: newExerciseId,
+        position: newIndex,
+        context: context,
+      );
+      final movedRows = <WorkoutExerciseRow>[];
+      final movedPositions = <int>[];
+      for (var index = 0; index < order.length; index += 1) {
+        final id = order[index];
+        if (id != null) {
+          movedRows.add(rowById[id]!);
+          movedPositions.add(index);
+        }
+      }
+      await _writePositions(movedRows, movedPositions, context);
+
+      // 3. The member row points at the new one: same group, same position.
+      if (membership != null) {
+        await (_database.update(_database.exerciseGroupMembers)
+              ..where((table) => table.id.equals(membership.id)))
+            .write(
+          ExerciseGroupMembersCompanion(
+            workoutExerciseId: Value<String>(newId),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after =
+            await _repositories.exerciseGroups._requireMemberRow(membership.id);
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.exerciseGroupMembersTable,
+          entityId: membership.id,
+          beforeImage: _exerciseGroupMemberImage(membership),
+          afterImage: _exerciseGroupMemberImage(after),
+        );
+      }
+
+      // 4. Each Planned Set moves to the new Exercise: tombstoned and
+      // recreated, since a Set's values belong to its own Exercise Type.
+      if (plannedSets.isNotEmpty) {
+        final dimensions = newExercise.type.dimensions;
+        final prior = await _repositories.sets.findLatestPriorForExercise(
+          exerciseId: newExerciseId,
+          beforeWorkoutId: workoutId,
+          dimensions: dimensions,
+        );
+        final values = prior?.values ??
+            zeroLoggedSetFor(
+              dimensions: dimensions,
+              defaultLoadUnit: newExercise.defaultLoadUnit,
+            );
+        for (final planned in plannedSets) {
+          await _repositories.workoutSessions._softDeleteLoggedSet(
+            planned,
+            context,
+          );
+          await _repositories.sets._create(
+            LoggedSetDraft(
+              workoutId: workoutId,
+              exerciseId: newExerciseId,
+              position: planned.position,
+              values: values,
+              plannedRestAfter: planned.plannedRestAfter == null
+                  ? null
+                  : Duration(seconds: planned.plannedRestAfter!),
+            ),
+            context,
+          );
+        }
+      }
+
+      // 5. With nothing performed, `old` leaves the Workout. Its Sets were
+      // handled in step 4 and its membership moved in step 3.
+      if (!oldKeepsPerformedSet) {
+        await _repositories.workoutSessions._softDeleteWorkoutExercise(
+          old,
+          context,
+        );
+      }
+
+      return newId;
     });
   }
 
@@ -8065,7 +9569,7 @@ class WorkoutExerciseRepository {
 
   Future<String> _create(
     WorkoutExerciseDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final existing = await (_database.select(_database.workoutExercises)
           ..where(
@@ -8082,19 +9586,36 @@ class WorkoutExerciseRepository {
 
     final activeRows =
         await _activeWorkoutExerciseQuery(workoutId: draft.workoutId).get();
-    final id = _repositories.createId(context.timestamp);
+    return _insertAt(
+      workoutId: draft.workoutId,
+      exerciseId: draft.exerciseId,
+      position: _nextPosition(activeRows, (row) => row.position),
+      context: context,
+    );
+  }
+
+  /// Inserts a Workout Exercise at [position] and logs it, writing no other
+  /// row. [_create] appends through it; [replace] calls it directly because
+  /// it must neither return an existing row nor append at the end.
+  Future<String> _insertAt({
+    required String workoutId,
+    required String exerciseId,
+    required int position,
+    required WriteContext context,
+  }) async {
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.workoutExercises).insert(
           WorkoutExercisesCompanion.insert(
             id: id,
-            workoutId: draft.workoutId,
-            exerciseId: draft.exerciseId,
-            position: _nextWorkoutExercisePosition(activeRows),
+            workoutId: workoutId,
+            exerciseId: exerciseId,
+            position: position,
             updatedAt: context.timestamp,
           ),
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutExercisesTable,
       entityId: id,
@@ -8105,9 +9626,42 @@ class WorkoutExerciseRepository {
     return id;
   }
 
+  /// Writes each of [rows] whose stored position differs from its entry in
+  /// [positions], once, and logs it; for [reorderForWorkout] and [replace].
+  Future<void> _writePositions(
+    List<WorkoutExerciseRow> rows,
+    List<int> positions,
+    WriteContext context,
+  ) async {
+    for (var index = 0; index < rows.length; index += 1) {
+      final row = rows[index];
+      final position = positions[index];
+      if (row.position == position) {
+        continue;
+      }
+
+      await (_database.update(_database.workoutExercises)
+            ..where((table) => table.id.equals(row.id)))
+          .write(
+        WorkoutExercisesCompanion(
+          position: Value<int>(position),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(row.id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.workoutExercisesTable,
+        entityId: row.id,
+        beforeImage: _workoutExerciseImage(row),
+        afterImage: _workoutExerciseImage(after),
+      );
+    }
+  }
+
   Future<void> _softDeleteAffectedExerciseGroupMemberships(
     WorkoutExerciseRow workoutExercise,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final memberships = await (_database.select(_database.exerciseGroupMembers)
           ..where(
@@ -8163,7 +9717,7 @@ class WorkoutExerciseRepository {
 
   Future<void> _writeExerciseGroupMemberPositions(
     List<ExerciseGroupMemberRow> members,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (var index = 0; index < members.length; index += 1) {
       final member = members[index];
@@ -8181,7 +9735,7 @@ class WorkoutExerciseRepository {
       );
       final after =
           await _repositories.exerciseGroups._requireMemberRow(member.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: member.id,
@@ -8214,7 +9768,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8230,7 +9784,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8259,7 +9813,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8335,7 +9889,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8536,54 +10090,6 @@ class ExerciseGroupRepository {
     return controller.stream;
   }
 
-  Future<String?> findNextWorkoutExerciseIdAfter(
-    String workoutExerciseId,
-  ) async {
-    final memberships = await (_database.select(_database.exerciseGroupMembers)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.workoutExerciseId.equals(workoutExerciseId),
-          )
-          ..orderBy([(row) => OrderingTerm.asc(row.position)]))
-        .get();
-
-    for (final membership in memberships) {
-      final group = await (_database.select(_database.exerciseGroups)
-            ..where(
-              (row) =>
-                  row.id.equals(membership.groupId) & row.deletedAt.isNull(),
-            ))
-          .getSingleOrNull();
-      if (group == null) {
-        continue;
-      }
-
-      final members =
-          await _activeExerciseGroupMemberQuery(groupId: group.id).get();
-      if (members.length < 2) {
-        continue;
-      }
-
-      final currentIndex = members.indexWhere(
-        (member) => member.workoutExerciseId == workoutExerciseId,
-      );
-      if (currentIndex == -1) {
-        continue;
-      }
-
-      final next = members[(currentIndex + 1) % members.length];
-      final nextWorkoutExercise =
-          await _repositories.workoutExercises.getById(next.workoutExerciseId);
-      if (nextWorkoutExercise != null &&
-          nextWorkoutExercise.deletedAt == null) {
-        return nextWorkoutExercise.id;
-      }
-    }
-
-    return null;
-  }
-
   SimpleSelectStatement<$ExerciseGroupsTable, ExerciseGroupRow>
       _activeExerciseGroupQuery({
     String? workoutId,
@@ -8630,7 +10136,7 @@ class ExerciseGroupRepository {
     required String name,
     required String colorHex,
     required List<String> workoutExerciseIds,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final before = await _requireRow(id);
     if (before.deletedAt != null) {
@@ -8657,7 +10163,7 @@ class ExerciseGroupRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupsTable,
         entityId: id,
@@ -8694,7 +10200,7 @@ class ExerciseGroupRepository {
 
   Future<void> _softDeleteGroup(
     String groupId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final group = await _requireRow(groupId);
     final members =
@@ -8712,7 +10218,7 @@ class ExerciseGroupRepository {
   Future<void> _reconcileAfterWorkoutExerciseReorder({
     required String workoutId,
     required List<String> orderedWorkoutExerciseIds,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final groups = await listActiveForWorkout(workoutId);
     for (final group in groups) {
@@ -8801,7 +10307,7 @@ class ExerciseGroupRepository {
 
   Future<String> _create(
     ExerciseGroupDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final workoutExerciseRows = await _requireActiveWorkoutExerciseRows(
       workoutId: draft.workoutId,
@@ -8809,7 +10315,7 @@ class ExerciseGroupRepository {
     );
     final activeGroups =
         await _activeExerciseGroupQuery(workoutId: draft.workoutId).get();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
 
     await _database.into(_database.exerciseGroups).insert(
           ExerciseGroupsCompanion.insert(
@@ -8817,12 +10323,12 @@ class ExerciseGroupRepository {
             workoutId: draft.workoutId,
             name: _normalizeGroupNameForStorage(draft.name),
             colorHex: _normalizeColorHex(draft.colorHex),
-            position: _nextExerciseGroupPosition(activeGroups),
+            position: _nextPosition(activeGroups, (row) => row.position),
             updatedAt: context.timestamp,
           ),
         );
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupsTable,
       entityId: id,
@@ -8831,7 +10337,7 @@ class ExerciseGroupRepository {
     );
 
     for (var index = 0; index < workoutExerciseRows.length; index += 1) {
-      final memberId = _repositories.createId(context.timestamp);
+      final memberId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.exerciseGroupMembers).insert(
             ExerciseGroupMembersCompanion.insert(
               id: memberId,
@@ -8842,7 +10348,7 @@ class ExerciseGroupRepository {
             ),
           );
       final member = await _requireMemberRow(memberId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: memberId,
@@ -8931,7 +10437,7 @@ class ExerciseGroupRepository {
   Future<void> _replaceMembers(
     String groupId,
     List<String> workoutExerciseIds,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final activeRows =
         await _activeExerciseGroupMemberQuery(groupId: groupId).get();
@@ -8951,7 +10457,7 @@ class ExerciseGroupRepository {
           ),
         );
         final after = await _requireMemberRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseGroupMembersTable,
           entityId: row.id,
@@ -8965,7 +10471,7 @@ class ExerciseGroupRepository {
       final workoutExerciseId = workoutExerciseIds[index];
       final existing = activeByWorkoutExerciseId[workoutExerciseId];
       if (existing == null) {
-        final memberId = _repositories.createId(context.timestamp);
+        final memberId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.exerciseGroupMembers).insert(
               ExerciseGroupMembersCompanion.insert(
                 id: memberId,
@@ -8976,7 +10482,7 @@ class ExerciseGroupRepository {
               ),
             );
         final after = await _requireMemberRow(memberId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseGroupMembersTable,
           entityId: memberId,
@@ -8999,7 +10505,7 @@ class ExerciseGroupRepository {
         ),
       );
       final after = await _requireMemberRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: existing.id,
@@ -9033,8 +10539,14 @@ class ExerciseGroupRepository {
 class RestTimerRepository {
   const RestTimerRepository._(this._repositories);
 
-  static const defaultDuration = Duration(seconds: 120);
+  /// The rest when nothing gives one; the Training Screen's Rest after
+  /// falls back to the same value (`restShownFor`).
+  static const defaultDuration = defaultRestAfter;
   static const defaultAlertVolume = 1.0;
+
+  /// How long before the deadline the 3-2-1 prepare cue plays; [adjust]
+  /// clears `prepareAlertFiredAt` when more than this remains.
+  static const prepareCueLead = Duration(seconds: 3);
 
   final TrainingRepositories _repositories;
 
@@ -9054,7 +10566,7 @@ class RestTimerRepository {
       );
     }
 
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9064,7 +10576,7 @@ class RestTimerRepository {
     return _database.transaction(() async {
       await _cancelCurrentForWorkout(draft.workoutId, context);
 
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.restTimers).insert(
             RestTimersCompanion.insert(
               id: id,
@@ -9080,7 +10592,7 @@ class RestTimerRepository {
           );
 
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -9092,14 +10604,25 @@ class RestTimerRepository {
     });
   }
 
-  Future<String> startForSet(
+  /// Starts the rest after [set], for its planned rest or [defaultDuration].
+  ///
+  /// A planned rest of zero means the plan wants no rest after this Set (the
+  /// first member of a superset, say), so no timer starts and this returns
+  /// null; a timer already running for the Workout is left as it is. The
+  /// Template editor accepts a zero rest, so this case must not reach
+  /// [start], which rejects it.
+  Future<String?> startForSet(
     LoggedSetRecord set, {
     Duration defaultDuration = RestTimerRepository.defaultDuration,
     double alertVolume = defaultAlertVolume,
     String actor = 'app',
     String? batchId,
     DateTime? now,
-  }) {
+  }) async {
+    final plannedRestAfter = set.plannedRestAfter;
+    if (plannedRestAfter != null && plannedRestAfter <= Duration.zero) {
+      return null;
+    }
     return start(
       RestTimerDraft(
         workoutId: set.workoutId,
@@ -9118,7 +10641,7 @@ class RestTimerRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9135,7 +10658,7 @@ class RestTimerRepository {
     String? batchId,
     DateTime? now,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9157,48 +10680,7 @@ class RestTimerRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.restTimersTable,
-        entityId: id,
-        beforeImage: _restTimerImage(before),
-        afterImage: _restTimerImage(after),
-      );
-    });
-  }
-
-  /// Marks the 3-2-1 prepare cue as fired for this rest timer.
-  ///
-  /// Unlike [markAlertFired] this never transitions status: the timer is still
-  /// running toward its deadline. Fire-once: a no-op if already set.
-  Future<void> markPrepareAlertFired(
-    String id, {
-    String actor = 'app',
-    String? batchId,
-    DateTime? now,
-  }) {
-    final context = _repositories._createWriteContext(
-      actor: actor,
-      batchId: batchId,
-    );
-    final firedAt = (now ?? DateTime.now()).toUtc();
-
-    return _database.transaction(() async {
-      final before = await _requireRow(id);
-      if (before.prepareAlertFiredAt != null) {
-        return;
-      }
-
-      await (_database.update(_database.restTimers)
-            ..where((row) => row.id.equals(id)))
-          .write(
-        RestTimersCompanion(
-          prepareAlertFiredAt: Value<DateTime?>(firedAt),
-          updatedAt: Value<DateTime>(context.timestamp),
-        ),
-      );
-      final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -9214,7 +10696,7 @@ class RestTimerRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9235,7 +10717,7 @@ class RestTimerRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -9243,6 +10725,77 @@ class RestTimerRepository {
         afterImage: _restTimerImage(after),
       );
     });
+  }
+
+  /// The rest strip's −15 s / +15 s: moves a running timer's `deadlineAt`
+  /// and `durationSeconds` by [delta].
+  ///
+  /// `durationSeconds` stays at least 1. A new deadline at or before [now]
+  /// becomes [now], rounded up to a whole second, so the strip plays and marks
+  /// the end at once, as for a timer that ran out. The column stores whole
+  /// seconds: rounded down, the deadline could land more than `cueArmLimit`
+  /// behind the clock by the time the row reaches the strip, and that end
+  /// would have no cue at all. When more than 3 s remain afterwards
+  /// `prepareAlertFiredAt` is cleared. A timer that is no longer running (it
+  /// expired or was stopped while the tap was in flight) is left as it is.
+  Future<void> adjust(
+    String id,
+    Duration delta, {
+    String actor = 'app',
+    String? batchId,
+    DateTime? now,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    final adjustedAt = (now ?? DateTime.now()).toUtc();
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      if (before.deletedAt != null ||
+          before.status != RestTimerStatus.running.name) {
+        return;
+      }
+
+      final shifted = before.deadlineAt.toUtc().add(delta);
+      final deadlineAt = shifted.isAfter(adjustedAt)
+          ? shifted
+          : _ceilToWholeSecond(adjustedAt);
+      final durationSeconds =
+          math.max(1, before.durationSeconds + delta.inSeconds);
+      final clearsPrepareCue =
+          deadlineAt.difference(adjustedAt) > prepareCueLead;
+
+      await (_database.update(_database.restTimers)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        RestTimersCompanion(
+          deadlineAt: Value<DateTime>(deadlineAt),
+          durationSeconds: Value<int>(durationSeconds),
+          prepareAlertFiredAt: clearsPrepareCue
+              ? const Value<DateTime?>(null)
+              : const Value<DateTime?>.absent(),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.restTimersTable,
+        entityId: id,
+        beforeImage: _restTimerImage(before),
+        afterImage: _restTimerImage(after),
+      );
+    });
+  }
+
+  static DateTime _ceilToWholeSecond(DateTime time) {
+    final past = time.microsecondsSinceEpoch % Duration.microsecondsPerSecond;
+    return past == 0
+        ? time
+        : time
+            .add(Duration(microseconds: Duration.microsecondsPerSecond - past));
   }
 
   Future<RestTimerRecord?> getById(String id) async {
@@ -9282,7 +10835,7 @@ class RestTimerRepository {
 
   Future<void> _cancelCurrentForWorkout(
     String? workoutId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     if (workoutId == null) {
       return;
@@ -9296,7 +10849,7 @@ class RestTimerRepository {
 
   Future<void> _writeCanceled(
     RestTimerRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     if (before.deletedAt != null ||
         before.status == RestTimerStatus.canceled.name) {
@@ -9313,7 +10866,7 @@ class RestTimerRepository {
       ),
     );
     final after = await _requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.restTimersTable,
       entityId: before.id,
@@ -9345,7 +10898,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9367,7 +10920,7 @@ class LoggedSetRepository {
     Map<String, Object?>? activityAfterImage,
     DateTime? activityOccurredAt,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9400,7 +10953,7 @@ class LoggedSetRepository {
           ? null
           : _loggedSetActivityImageFromSyncImage(activityAfterImage);
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9469,7 +11022,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9494,7 +11047,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9512,14 +11065,14 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final before = await _requireRow(id);
-      final normalizedComment = _normalizeSetComment(comment);
+      final normalizedComment = _normalizeOptionalText(comment);
       final normalizedSide = side?.name;
       final validation = await _validateValuesForExercise(
         exerciseId: before.exerciseId,
@@ -9528,11 +11081,10 @@ class LoggedSetRepository {
         side: normalizedSide,
       );
       validation.throwIfRejected();
-      final normalizedRpe = _normalizeRpe(rpe);
 
       if (before.comment == normalizedComment &&
           before.side == normalizedSide &&
-          before.rpe == normalizedRpe) {
+          before.rpe == rpe) {
         return;
       }
 
@@ -9542,12 +11094,12 @@ class LoggedSetRepository {
         LoggedSetsCompanion(
           comment: Value<String?>(normalizedComment),
           side: Value<String?>(normalizedSide),
-          rpe: Value<double?>(normalizedRpe),
+          rpe: Value<double?>(rpe),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9562,7 +11114,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9578,7 +11130,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9594,7 +11146,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9610,7 +11162,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9620,17 +11172,323 @@ class LoggedSetRepository {
     });
   }
 
-  Future<void> markComplete(
+  /// The Training Screen's Log set: performs the Current Set (or a new Set)
+  /// with the form's values and carries its new load, placeholder values or
+  /// changed rest forward to the later Planned Sets (`carryForwardFor`).
+  ///
+  /// One transaction, and every touched row gets exactly one update and one
+  /// Activity Log entry under [batchId], so `undoBatch(batchId)` reverses the
+  /// whole action (the Set back to planned, or a new one removed, and every
+  /// carry target restored) without conflicts.
+  ///
+  /// A Current Set that is already complete, deleted or gone is a silent
+  /// no-op (`alreadyLogged`): a second tap, or another device logged it.
+  /// `performedAt` becomes the completion time, unlike [setCompleted], which
+  /// leaves the time the Set was planned. `plannedRestAfter` is written only
+  /// when the rest changed, so an untouched Template rest of null stays null
+  /// and never shows as Template divergence.
+  Future<LogSetResult> logSet(
+    LogSetRequest request, {
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    final currentSetId = request.currentSetId;
+
+    return _database.transaction(() async {
+      if (currentSetId == null) {
+        final ids = await _appendToWorkout(
+          request.workoutId,
+          <LoggedSetDraft>[
+            LoggedSetDraft(
+              workoutId: request.workoutId,
+              exerciseId: request.exerciseId,
+              position: 0,
+              values: request.values,
+              plannedRestAfter: request.restChanged ? request.rest : null,
+              performedAt: context.timestamp,
+              isCompleted: true,
+              comment: request.comment,
+              side: request.side,
+              rpe: request.rpe,
+            ),
+          ],
+          context,
+        );
+        return LogSetResult(
+          setId: ids.single,
+          carriedCount: 0,
+          alreadyLogged: false,
+        );
+      }
+
+      final before = await (_database.select(_database.loggedSets)
+            ..where((row) => row.id.equals(currentSetId)))
+          .getSingleOrNull();
+      if (before == null || before.deletedAt != null || before.isCompleted) {
+        return LogSetResult(
+          setId: currentSetId,
+          carriedCount: 0,
+          alreadyLogged: true,
+        );
+      }
+      if (before.workoutId != request.workoutId ||
+          before.exerciseId != request.exerciseId) {
+        throw ArgumentError.value(
+          currentSetId,
+          'currentSetId',
+          'The Current Set must belong to the requested Workout and Exercise.',
+        );
+      }
+
+      final normalizedSide = request.side?.name;
+      final validation = await _validateValuesForExercise(
+        exerciseId: before.exerciseId,
+        values: request.values.values.values,
+        rpe: request.rpe,
+        side: normalizedSide,
+      );
+      validation.throwIfRejected();
+
+      final exerciseRowById = <String, LoggedSetRow>{
+        for (final row
+            in await _activeLoggedSetQuery(workoutId: request.workoutId).get())
+          if (row.exerciseId == before.exerciseId) row.id: row,
+      };
+      final targets = carryForwardFor(
+        exerciseSets: exerciseRowById.values
+            .map(_loggedSetFromRow)
+            .toList(growable: false),
+        logged: _loggedSetFromRow(before),
+        newValues: request.values,
+        restChanged: request.restChanged,
+        newRest: request.rest,
+      );
+
+      await (_database.update(_database.loggedSets)
+            ..where((row) => row.id.equals(currentSetId)))
+          .write(
+        _performedSetCompanion(
+          values: request.values,
+          comment: request.comment,
+          side: normalizedSide,
+          rpe: request.rpe,
+          restChanged: request.restChanged,
+          rest: request.rest,
+          updatedAt: context.timestamp,
+        ).copyWith(
+          isCompleted: const Value<bool>(true),
+          performedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      await _appendLoggedSetUpdate(before, context);
+
+      for (final target in targets) {
+        // A target takes only the carried dimensions; its others stay.
+        final targetBefore = exerciseRowById[target.setId]!;
+        final merged = LoggedSet.fromValues(<DimensionId, SetDimensionValue>{
+          ..._loggedSetValuesFromRow(targetBefore).values,
+          for (final value in target.values) value.dimension: value,
+        }.values);
+        await (_database.update(_database.loggedSets)
+              ..where((row) => row.id.equals(target.setId)))
+            .write(
+          _loggedSetValueCompanion(
+            _setColumns(merged),
+            updatedAt: context.timestamp,
+          ).copyWith(
+            plannedRestAfter: _plannedRestValue(
+              changed: target.restChanged,
+              rest: target.rest,
+            ),
+          ),
+        );
+        await _appendLoggedSetUpdate(targetBefore, context);
+      }
+
+      return LogSetResult(
+        setId: currentSetId,
+        carriedCount: targets.length,
+        alreadyLogged: false,
+      );
+    });
+  }
+
+  /// Update mode's save on a Performed Set: values, annotations and (only
+  /// when [restChanged]) `plannedRestAfter`, in one row update with one
+  /// Activity Log entry. Validated like [updateValues], with the new
+  /// annotations. No carry-forward and no timer: fixing a logged Set never
+  /// rewrites the plan after it.
+  Future<void> updatePerformed(
     String id, {
-    required bool isCompleted,
+    required LoggedSet values,
+    String? comment,
+    SetSide? side,
+    double? rpe,
+    required bool restChanged,
+    Duration? rest,
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      final normalizedSide = side?.name;
+      final validation = await _validateValuesForExercise(
+        exerciseId: before.exerciseId,
+        values: values.values.values,
+        rpe: rpe,
+        side: normalizedSide,
+      );
+      validation.throwIfRejected();
+
+      await (_database.update(_database.loggedSets)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        _performedSetCompanion(
+          values: values,
+          comment: comment,
+          side: normalizedSide,
+          rpe: rpe,
+          restChanged: restChanged,
+          rest: rest,
+          updatedAt: context.timestamp,
+        ),
+      );
+      await _appendLoggedSetUpdate(before, context);
+    });
+  }
+
+  /// The columns Log set and Update both write on a performed Set: its
+  /// values, annotations and, only when [restChanged], `plannedRestAfter`.
+  LoggedSetsCompanion _performedSetCompanion({
+    required LoggedSet values,
+    required String? comment,
+    required String? side,
+    required double? rpe,
+    required bool restChanged,
+    required Duration? rest,
+    required DateTime updatedAt,
+  }) {
+    return _loggedSetValueCompanion(
+      _setColumns(values),
+      updatedAt: updatedAt,
+    ).copyWith(
+      comment: Value<String?>(_normalizeOptionalText(comment)),
+      side: Value<String?>(side),
+      rpe: Value<double?>(rpe),
+      plannedRestAfter: _plannedRestValue(changed: restChanged, rest: rest),
+    );
+  }
+
+  /// `plannedRestAfter` as written by Log set, Update and carry-forward:
+  /// absent unless the rest changed, so an untouched null stays null.
+  Value<int?> _plannedRestValue({
+    required bool changed,
+    required Duration? rest,
+  }) {
+    return changed ? Value<int?>(rest?.inSeconds) : const Value<int?>.absent();
+  }
+
+  /// Adds [drafts] after the Workout's last Set, in order, in one
+  /// transaction under one write context (so one batch id): Add set, Add
+  /// round and Log set of a new Set. The next position is read once inside
+  /// the transaction and each draft takes the one after the previous, so
+  /// another writer cannot take a position between two of them and the
+  /// Sets stream shows the whole round at once. Each draft's own `position`
+  /// is ignored. Returns the new ids in the order of [drafts].
+  Future<List<String>> appendToWorkout(
+    String workoutId,
+    List<LoggedSetDraft> drafts, {
     String actor = 'app',
     String? batchId,
   }) {
-    return setCompleted(
-      id,
-      isCompleted: isCompleted,
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
+    );
+
+    return _database.transaction(
+      () => _appendToWorkout(workoutId, drafts, context),
+    );
+  }
+
+  Future<List<String>> _appendToWorkout(
+    String workoutId,
+    List<LoggedSetDraft> drafts,
+    WriteContext context,
+  ) async {
+    var position = await nextPositionForWorkout(workoutId);
+    final ids = <String>[];
+    for (final draft in drafts) {
+      if (draft.workoutId != workoutId) {
+        throw ArgumentError.value(
+          draft,
+          'drafts',
+          'Every appended Set must belong to the Workout.',
+        );
+      }
+      ids.add(await _create(draft.copyWith(position: position), context));
+      position += 1;
+    }
+    return ids;
+  }
+
+  /// The Remembered Rest of [exerciseId]: the `plannedRestAfter` of its
+  /// latest Performed Set that has one, or null.
+  ///
+  /// Latest by `performedAt` (nulls last), then the Workout's `startedAt`,
+  /// then `position`, then `id`, all descending, over Workouts that are not
+  /// deleted. A rest of zero is skipped: it is a statement about one plan (go
+  /// straight to the next superset member), not a preference for the
+  /// exercise, so Off is never remembered. Derived on every read and never
+  /// stored; Sets sync, so every device and an Agent see the same answer.
+  Future<Duration?> findRememberedRest(String exerciseId) async {
+    final sets = _database.loggedSets;
+    final workouts = _database.workoutSessions;
+    final query = _database.select(sets).join([
+      innerJoin(workouts, workouts.id.equalsExp(sets.workoutId)),
+    ])
+      ..where(
+        sets.deletedAt.isNull() &
+            sets.isCompleted.equals(true) &
+            sets.exerciseId.equals(exerciseId) &
+            sets.plannedRestAfter.isBiggerThanValue(0) &
+            workouts.deletedAt.isNull(),
+      )
+      ..orderBy([
+        OrderingTerm.asc(sets.performedAt.isNull()),
+        OrderingTerm.desc(sets.performedAt),
+        OrderingTerm.desc(workouts.startedAt),
+        OrderingTerm.desc(sets.position),
+        OrderingTerm.desc(sets.id),
+      ])
+      ..limit(1);
+    final row = await query.getSingleOrNull();
+    final seconds = row?.readTable(sets).plannedRestAfter;
+    return seconds == null ? null : Duration(seconds: seconds);
+  }
+
+  /// Appends the Activity Log entry for a Set row just updated from
+  /// [before].
+  Future<void> _appendLoggedSetUpdate(
+    LoggedSetRow before,
+    WriteContext context,
+  ) async {
+    final after = await _requireRow(before.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.loggedSetsTable,
+      entityId: before.id,
+      beforeImage: _loggedSetImage(before),
+      afterImage: _loggedSetImage(after),
     );
   }
 
@@ -9641,7 +11499,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9681,7 +11539,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9778,6 +11636,12 @@ class LoggedSetRepository {
     return rows.map(_loggedSetFromRow).toList(growable: false);
   }
 
+  /// The last Performed Set of [exerciseId] before [beforeWorkoutId], for
+  /// the Track prefill.
+  ///
+  /// Only completed Sets count: a placeholder a Workout Template left
+  /// incomplete in an abandoned Workout was never performed, and must not
+  /// become the prefill (the same rule copy-previous Prescriptions follow).
   Future<LoggedSetRecord?> findLatestPriorForExercise({
     required String exerciseId,
     required String beforeWorkoutId,
@@ -9798,18 +11662,6 @@ class LoggedSetRepository {
     );
   }
 
-  Future<LoggedSetRecord?> findLatestPriorForExerciseBefore({
-    required String exerciseId,
-    required DateTime beforeStartedAt,
-    required List<DimensionId> dimensions,
-  }) {
-    return _findLatestPriorForExercise(
-      exerciseId: exerciseId,
-      beforeStartedAt: beforeStartedAt,
-      dimensions: dimensions,
-    );
-  }
-
   Future<LoggedSetRecord?> _findLatestPriorForExercise({
     required String exerciseId,
     required DateTime beforeStartedAt,
@@ -9820,6 +11672,7 @@ class LoggedSetRepository {
           ..where(
             (row) =>
                 row.deletedAt.isNull() &
+                row.isCompleted.equals(true) &
                 row.exerciseId.equals(exerciseId) &
                 (excludeWorkoutId == null
                     ? const Constant(true)
@@ -9909,7 +11762,14 @@ class LoggedSetRepository {
       ..where((row) => row.deletedAt.isNull());
     if (workoutId != null) {
       query.where((row) => row.workoutId.equals(workoutId));
-      query.orderBy([(row) => OrderingTerm.asc(row.position)]);
+      // `id` breaks position ties (Materialize numbers each exercise from 0,
+      // and Agents supply their own), so every reader of one Workout's Sets
+      // gets the order the plan logging rules use (`compareSetsInPlanOrder`)
+      // and two reads never disagree.
+      query.orderBy([
+        (row) => OrderingTerm.asc(row.position),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
     } else if (workoutIds != null) {
       query.where((row) => row.workoutId.isIn(workoutIds));
       query.orderBy([
@@ -9934,7 +11794,7 @@ class LoggedSetRepository {
     return query;
   }
 
-  Future<String> _create(LoggedSetDraft draft, _WriteContext context) async {
+  Future<String> _create(LoggedSetDraft draft, WriteContext context) async {
     final workoutId = draft.workoutId;
     if (workoutId == null) {
       throw ArgumentError.value(
@@ -9946,7 +11806,7 @@ class LoggedSetRepository {
     final validation = await _validateDraft(draft);
     validation.throwIfRejected();
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final columns = _setColumns(draft.values);
     await _database.into(_database.loggedSets).insert(
           _loggedSetInsertCompanion(
@@ -9958,15 +11818,15 @@ class LoggedSetRepository {
             columns: columns,
             plannedRestAfter: draft.plannedRestAfter,
             performedAt: draft.performedAt ?? context.timestamp,
-            comment: _normalizeSetComment(draft.comment),
+            comment: _normalizeOptionalText(draft.comment),
             side: draft.side,
-            rpe: _normalizeRpe(draft.rpe),
+            rpe: draft.rpe,
             updatedAt: context.timestamp,
           ),
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.loggedSetsTable,
       entityId: id,
@@ -10012,7 +11872,7 @@ class LoggedSetRepository {
   Future<void> _writePositions(
     List<LoggedSetRow> rows,
     List<int> positions,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (var index = 0; index < rows.length; index += 1) {
       final row = rows[index];
@@ -10030,7 +11890,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(row.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: row.id,
@@ -10051,49 +11911,300 @@ class LoggedSetRepository {
   }
 }
 
+/// Whether [row] is a live default measurement (Body Weight or Body Fat) of
+/// the kind restore and sync merge across installs by name and unit: active,
+/// scalar, body composition, curated (it has a goal), and named exactly like
+/// a default.
+bool _isActiveDefaultMeasurementRow(MetricRow row) {
+  return row.deletedAt == null &&
+      row.valueShape == MetricValueShape.scalar.name &&
+      row.metricGroup == MetricGroup.bodyComposition.name &&
+      row.goalType != null &&
+      MeasurementRepository.defaultMeasurementNames.contains(row.name);
+}
+
+/// Returns the JSON Activity Log image [encoded] with the id under [idKey]
+/// mapped through [ids], or [encoded] itself when it names none of them.
+String? _repointActivityImage(
+  String? encoded,
+  String idKey,
+  Map<String, String> ids,
+) {
+  if (encoded == null) {
+    return null;
+  }
+  final image = _decodeJsonObject(encoded);
+  final id = image[idKey];
+  if (id is! String || !ids.containsKey(id)) {
+    return encoded;
+  }
+  return jsonEncode(<String, Object?>{...image, idKey: ids[id]});
+}
+
 class MeasurementRepository {
   const MeasurementRepository._(this._repositories);
 
   static const defaultBodyWeightName = 'Body Weight';
   static const defaultBodyFatName = 'Body Fat';
+  static const defaultMeasurementNames = <String>{
+    defaultBodyWeightName,
+    defaultBodyFatName,
+  };
 
   final TrainingRepositories _repositories;
 
   AppDatabase get _database => _repositories.database;
 
+  /// Seeds Body Weight and Body Fat into Body Tracker when it has no
+  /// measurement of that name. The ids are random, unlike the fixed ids of
+  /// the other seeded entities, so two installs' defaults are different
+  /// rows; backup restore and sync merge them by name and unit instead (see
+  /// `PortableArchiveRepository._adoptLocalDefaultMeasurementIds` and
+  /// [adoptSyncedDefaultMeasurement]).
+  ///
+  /// Body Tracker shows pinned measurements, so "has one" means an active,
+  /// pinned measurement of that name. An active but unpinned one with the
+  /// same name and unit is the server's copy from a canonical import (it
+  /// arrives through sync unpinned and disabled, as the server's catalog
+  /// defaults say), and is pinned and enabled here in place of seeding a
+  /// second row, so its imported readings show in Body Tracker; the pin is
+  /// a change that syncs, so every device sees it. A pinned one pulled from
+  /// another device counts as having one, so a second device seeds nothing.
+  /// Nothing in the app unpins a measurement, so this never overrides a
+  /// user's choice. One in a different unit is left alone and the default is seeded next to
+  /// it: a reading's value is stored in its measurement's unit.
   Future<void> ensureDefaultMeasurements({
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
       final existing = await _manageableMeasurementQuery().get();
-      final activeNames = existing.map((row) => row.name).toSet();
+      final defaults = <MeasurementDraft>[
+        MeasurementDraft(
+          name: defaultBodyWeightName,
+          unit: bodyWeightUnit,
+          goalType: MeasurementGoalType.decrease,
+          enabled: true,
+          sortOrder: 0,
+        ),
+        const MeasurementDraft(
+          name: defaultBodyFatName,
+          unit: MeasurementUnit.percent,
+          goalType: MeasurementGoalType.decrease,
+          enabled: true,
+          sortOrder: 1,
+        ),
+      ];
 
-      if (!activeNames.contains(defaultBodyWeightName)) {
-        await _createMeasurementMetric(
-          MeasurementDraft(
-            name: defaultBodyWeightName,
-            unit: bodyWeightUnit,
-            goalType: MeasurementGoalType.decrease,
-            enabled: true,
-            sortOrder: 0,
+      for (final draft in defaults) {
+        if (existing.any((row) => row.name == draft.name && row.pinned)) {
+          continue;
+        }
+        final synced = existing
+            .where(
+              (row) => row.name == draft.name && row.unit == draft.unit.name,
+            )
+            .firstOrNull;
+        if (synced == null) {
+          await _createMeasurementMetric(draft, context);
+          continue;
+        }
+        await (_database.update(_database.metrics)
+              ..where((row) => row.id.equals(synced.id)))
+            .write(
+          MetricsCompanion(
+            enabled: const Value<bool>(true),
+            pinned: const Value<bool>(true),
+            sortOrder: Value<int>(draft.sortOrder!),
+            updatedAt: Value<DateTime>(context.timestamp),
           ),
+        );
+        await _repositories._activityLogWriter.append(
           context,
+          entityTable: AppDatabase.metricsTable,
+          entityId: synced.id,
+          beforeImage: _metricImage(synced),
+          afterImage: _metricImage(await _requireMeasurementRow(synced.id)),
         );
       }
-      if (!activeNames.contains(defaultBodyFatName)) {
-        await _createMeasurementMetric(
-          const MeasurementDraft(
-            name: defaultBodyFatName,
-            unit: MeasurementUnit.percent,
-            goalType: MeasurementGoalType.decrease,
-            enabled: true,
-            sortOrder: 1,
-          ),
-          context,
+    });
+  }
+
+  /// Folds this device's own default measurement into the server's copy of
+  /// it, just pulled by sync as [syncedMetricId], so the device ends with one
+  /// Body Weight (or Body Fat) holding both histories instead of two.
+  ///
+  /// How the duplicate arises: every install seeds Body Weight and Body Fat
+  /// through [ensureDefaultMeasurements] under a fresh random id, so the
+  /// server's Body Weight (from another device, or one canonical import
+  /// created for a Garmin weigh-in, under a stable per-user id) never has
+  /// this device's id. When this device pushes its copy, the server folds it
+  /// into the existing one by name and unit and stores no row under its id
+  /// (`pushMetricsInTransaction` in the server's sync.ts; the response lists
+  /// it as `merged`). A copy pushed before the server had one of its own is
+  /// stored as itself and never needs this.
+  ///
+  /// Why the device gives up its id rather than the server's: the server's
+  /// id is the one every device, agent, and later import refers to, so it
+  /// has to survive. The device's id is in no server row: the server
+  /// aliased it to the survivor, so the readings and edits this device
+  /// pushed under it already sit on the survivor there. (The restore merge
+  /// keeps the local id for the opposite reason: both of its copies are
+  /// device ids, and the local one may already be on the server.)
+  ///
+  /// The identity rule matches the restore merge and the server: an active
+  /// curated measurement named exactly like a default, same name, same
+  /// unit. Units must agree because a reading's value is stored in its
+  /// measurement's unit; a pound Body Weight never folds into a kilogram
+  /// one, and both stay. Only copies the server holds no row for fold in:
+  /// `syncPreviouslySynced` false, which the push acknowledgement leaves
+  /// false for a `merged` row. Two rows that both live on the server are
+  /// the server's to reconcile; if each device folded its own into the
+  /// other's, both would end up archived.
+  ///
+  /// What the merged row keeps: the server's id, and the device copy's
+  /// Body Tracker settings (pinned, enabled, order, goal), with a fresh
+  /// `updatedAt`, as a change this device pushes. A canonical-import copy
+  /// carries the catalog's defaults (unpinned, disabled), and taking those
+  /// by LWW would drop Body Weight out of Body Tracker; pushing the
+  /// device's settings puts them on the server, so a later server-side edit
+  /// of the row (an agent setting a goal) no longer brings `pinned=false`
+  /// back. The server's version is the recoverable loser: it is the before
+  /// image of the merge's Activity Log row, as sync's LWW losers always
+  /// are, and no dialog asks about it.
+  ///
+  /// What follows the id: readings move over in place, with no change to
+  /// push, because the server already stores the ones it has under the
+  /// survivor; their Activity Log images are re-pointed, so the ones still
+  /// pending push against the survivor and an undo from Recent activity
+  /// acts on the merged measurement. Protocol target outcomes are re-pointed
+  /// as new, pushable changes, so other devices stop referencing an id only
+  /// this device had. The device copy itself is archived, not deleted:
+  /// history survives, and any older Activity Log image that still names it
+  /// keeps a row to point at. Its archive is pushed too, and the server
+  /// ignores it rather than archive the survivor.
+  Future<void> adoptSyncedDefaultMeasurement(
+    String syncedMetricId, {
+    String actor = 'sync',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final synced = await (_database.select(_database.metrics)
+            ..where((row) => row.id.equals(syncedMetricId)))
+          .getSingleOrNull();
+      if (synced == null || !_isActiveDefaultMeasurementRow(synced)) {
+        return;
+      }
+      final deviceCopies = await (_manageableMeasurementQuery()
+            ..where(
+              (row) =>
+                  row.name.equals(synced.name) &
+                  row.unit.equals(synced.unit) &
+                  row.id.equals(synced.id).not() &
+                  row.syncPreviouslySynced.equals(false),
+            ))
+          .get();
+      if (deviceCopies.isEmpty) {
+        return;
+      }
+
+      final settings = deviceCopies.first;
+      await (_database.update(_database.metrics)
+            ..where((row) => row.id.equals(synced.id)))
+          .write(
+        MetricsCompanion(
+          goalType: Value<String?>(settings.goalType),
+          goalTargetValue: Value<double?>(settings.goalTargetValue),
+          enabled: Value<bool>(settings.enabled),
+          pinned: Value<bool>(settings.pinned),
+          sortOrder: Value<int>(settings.sortOrder),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.metricsTable,
+        entityId: synced.id,
+        beforeImage: _metricImage(synced),
+        afterImage: _metricImage(await _requireMeasurementRow(synced.id)),
+      );
+
+      final syncedIdByDeviceId = <String, String>{
+        for (final copy in deviceCopies) copy.id: synced.id,
+      };
+      final deviceIds = syncedIdByDeviceId.keys.toList(growable: false);
+      await (_database.update(_database.metricReadings)
+            ..where((row) => row.metricId.isIn(deviceIds)))
+          .write(MetricReadingsCompanion(metricId: Value<String>(synced.id)));
+      final readingActivity = await (_database.select(_database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.metricReadingsTable) &
+                  Expression.or(<Expression<bool>>[
+                    for (final id in deviceIds) ...<Expression<bool>>[
+                      row.beforeImage.like('%$id%'),
+                      row.afterImage.like('%$id%'),
+                    ],
+                  ]),
+            ))
+          .get();
+      for (final row in readingActivity) {
+        final beforeImage = _repointActivityImage(
+          row.beforeImage,
+          'metric_id',
+          syncedIdByDeviceId,
         );
+        final afterImage = _repointActivityImage(
+          row.afterImage,
+          'metric_id',
+          syncedIdByDeviceId,
+        );
+        if (beforeImage == row.beforeImage && afterImage == row.afterImage) {
+          continue;
+        }
+        await (_database.update(_database.activityLog)
+              ..where((activity) => activity.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            beforeImage: Value<String?>(beforeImage),
+            afterImage: Value<String?>(afterImage),
+          ),
+        );
+      }
+
+      final outcomes = await (_database.select(_database.protocolTargetOutcomes)
+            ..where((row) => row.metricId.isIn(deviceIds)))
+          .get();
+      for (final before in outcomes) {
+        await (_database.update(_database.protocolTargetOutcomes)
+              ..where((row) => row.id.equals(before.id)))
+            .write(
+          ProtocolTargetOutcomesCompanion(
+            metricId: Value<String?>(synced.id),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after = await (_database.select(_database.protocolTargetOutcomes)
+              ..where((row) => row.id.equals(before.id)))
+            .getSingle();
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.protocolTargetOutcomesTable,
+          entityId: before.id,
+          beforeImage: _protocolTargetOutcomeImage(before),
+          afterImage: _protocolTargetOutcomeImage(after),
+        );
+      }
+
+      for (final copy in deviceCopies) {
+        await _softDeleteMeasurementRow(copy, context);
       }
     });
   }
@@ -10108,17 +12219,15 @@ class MeasurementRepository {
     return rows.map(_measurementRecordFromMetricRow).toList(growable: false);
   }
 
-  Future<List<MeasurementRecord>> listCuratedActive() async {
-    final rows = await _curatedMeasurementQuery().get();
-    return rows.map(_measurementRecordFromMetricRow).toList(growable: false);
-  }
-
   Stream<List<MeasurementRecord>> watchCuratedActive() async* {
     List<MeasurementRecord>? lastEmitted;
 
     await for (final rows in _curatedMeasurementQuery().watch()) {
-      final next =
-          rows.map(_measurementRecordFromMetricRow).toList(growable: false);
+      final next = <MeasurementRecord>[
+        for (final row in rows)
+          if (_readableMeasurementRecord(row) case final measurement?)
+            measurement,
+      ];
       if (_sameMeasurementRecords(lastEmitted, next)) {
         continue;
       }
@@ -10193,36 +12302,70 @@ class MeasurementRepository {
   ) {
     final measurementsById = <String, MeasurementRecord>{
       for (final row in measurementRows)
-        row.id: _measurementRecordFromMetricRow(row),
+        if (_readableMeasurementRecord(row) case final measurement?)
+          row.id: measurement,
     };
 
-    final rowsByMeasurementId = <String, List<MetricReadingRow>>{};
-    for (final row in rows) {
-      rowsByMeasurementId.putIfAbsent(row.metricId, () => []).add(row);
+    // A Reading whose value cannot be read has no entry, and the next
+    // readable one becomes its successor's predecessor.
+    final readable = <MeasurementEntryRecord>[
+      for (final row in rows)
+        if (measurementsById.containsKey(row.metricId))
+          if (_readableMeasurementEntry(row) case final entry?) entry,
+    ];
+    final entriesByMeasurementId = <String, List<MeasurementEntryRecord>>{};
+    for (final entry in readable) {
+      entriesByMeasurementId
+          .putIfAbsent(entry.measurementId, () => [])
+          .add(entry);
     }
+    // Each measurement's entries appear in `rows` order, so a per-measurement
+    // cursor finds an entry's predecessor without a search.
+    final nextIndexByMeasurementId = <String, int>{};
     final history = <MeasurementHistoryEntry>[];
-    for (final row in rows) {
-      final measurement = measurementsById[row.metricId];
-      if (measurement == null) {
-        continue;
-      }
-      final measurementRows = rowsByMeasurementId[row.metricId]!;
-      final index = measurementRows.indexWhere((entry) => entry.id == row.id);
-      final previousEntry = index == -1 || index + 1 >= measurementRows.length
-          ? null
-          : _measurementEntryRecordFromMetricReadingRow(
-              measurementRows[index + 1],
-            );
+    for (final entry in readable) {
+      final entries = entriesByMeasurementId[entry.measurementId]!;
+      final index = nextIndexByMeasurementId[entry.measurementId] ?? 0;
+      nextIndexByMeasurementId[entry.measurementId] = index + 1;
 
       history.add(
         MeasurementHistoryEntry(
-          measurement: measurement,
-          entry: _measurementEntryRecordFromMetricReadingRow(row),
-          previousEntry: previousEntry,
+          measurement: measurementsById[entry.measurementId]!,
+          entry: entry,
+          previousEntry: index + 1 < entries.length ? entries[index + 1] : null,
         ),
       );
     }
     return List<MeasurementHistoryEntry>.unmodifiable(history);
+  }
+
+  /// The Metric as a measurement, or null when its unit or goal type is one
+  /// this build does not know. Synced rows are opaque (a newer client or an
+  /// Agent may write either), so such a Metric is left out, with its
+  /// Readings, instead of failing the streams Body Tracker's track list and
+  /// history and Progress Overview's Body card read.
+  MeasurementRecord? _readableMeasurementRecord(MetricRow row) {
+    try {
+      return _measurementRecordFromMetricRow(row);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  /// The Reading as a measurement entry, or null when its value cannot be
+  /// read. Synced rows are opaque, so one malformed Reading is left out
+  /// instead of failing the streams Body Tracker's track list and history
+  /// and Progress Overview's Body card read.
+  MeasurementEntryRecord? _readableMeasurementEntry(MetricReadingRow row) {
+    try {
+      return _measurementEntryRecordFromMetricReadingRow(row);
+    } on StateError {
+      return null;
+    } on FormatException {
+      return null;
+    } on ArgumentError {
+      return null;
+    }
   }
 
   Stream<List<MeasurementTrackSummary>> watchTrackSummaries() {
@@ -10266,7 +12409,7 @@ class MeasurementRepository {
     void watchEntriesFor(List<MetricRow> measurements) {
       final measurementIds =
           measurements.map((row) => row.id).toList(growable: false);
-      if (_sameMeasurementIdList(watchedMeasurementIds, measurementIds)) {
+      if (_sameRowList(watchedMeasurementIds, measurementIds)) {
         emitIfReady();
         return;
       }
@@ -10343,21 +12486,28 @@ class MeasurementRepository {
     List<MetricRow> measurements,
     Map<String, List<MetricReadingRow>> entryRowsByMeasurementId,
   ) {
-    return List<MeasurementTrackSummary>.unmodifiable(
-      measurements.map((measurement) {
-        final entries = entryRowsByMeasurementId[measurement.id] ??
-            const <MetricReadingRow>[];
-        return MeasurementTrackSummary(
-          measurement: _measurementRecordFromMetricRow(measurement),
-          latestEntry: entries.isEmpty
-              ? null
-              : _measurementEntryRecordFromMetricReadingRow(entries.first),
-          previousEntry: entries.length < 2
-              ? null
-              : _measurementEntryRecordFromMetricReadingRow(entries[1]),
-        );
-      }),
-    );
+    final summaries = <MeasurementTrackSummary>[];
+    for (final row in measurements) {
+      final measurement = _readableMeasurementRecord(row);
+      if (measurement == null) {
+        continue;
+      }
+      // Of the two latest rows read, an unreadable one is skipped, so the
+      // summary may then have no previous entry.
+      final entries = <MeasurementEntryRecord>[
+        for (final entry
+            in entryRowsByMeasurementId[row.id] ?? const <MetricReadingRow>[])
+          if (_readableMeasurementEntry(entry) case final record?) record,
+      ];
+      summaries.add(
+        MeasurementTrackSummary(
+          measurement: measurement,
+          latestEntry: entries.isEmpty ? null : entries.first,
+          previousEntry: entries.length < 2 ? null : entries[1],
+        ),
+      );
+    }
+    return List<MeasurementTrackSummary>.unmodifiable(summaries);
   }
 
   Stream<List<MeasurementHistoryEntry>> watchHistoryEntries({
@@ -10401,7 +12551,7 @@ class MeasurementRepository {
     void watchEntriesFor(List<MetricRow> measurements) {
       final measurementIds =
           measurements.map((row) => row.id).toList(growable: false);
-      if (_sameMeasurementIdList(watchedMeasurementIds, measurementIds)) {
+      if (_sameRowList(watchedMeasurementIds, measurementIds)) {
         emitIfReady();
         return;
       }
@@ -10509,45 +12659,21 @@ class MeasurementRepository {
     List<MeasurementHistoryEntry>? left,
     List<MeasurementHistoryEntry> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementHistoryEntry(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementHistoryEntry);
   }
 
   bool _sameMeasurementRecords(
     List<MeasurementRecord>? left,
     List<MeasurementRecord> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementRecord);
   }
 
   bool _sameMeasurementTrackSummaries(
     List<MeasurementTrackSummary>? left,
     List<MeasurementTrackSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementTrackSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementTrackSummary);
   }
 
   bool _sameMeasurementTrackSummary(
@@ -10615,18 +12741,6 @@ class MeasurementRepository {
     return _sameMeasurementEntryRecord(left, right);
   }
 
-  bool _sameMeasurementIdList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   bool _sameMeasurementEntryRecord(
     MeasurementEntryRecord left,
     MeasurementEntryRecord right,
@@ -10648,13 +12762,14 @@ class MeasurementRepository {
     MeasurementDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
       return _createMeasurementMetric(
         draft.copyWith(
-          sortOrder: draft.sortOrder ?? _nextMeasurementSortOrder(activeRows),
+          sortOrder: draft.sortOrder ??
+              _nextPosition(activeRows, (row) => row.sortOrder),
         ),
         context,
       );
@@ -10666,7 +12781,7 @@ class MeasurementRepository {
     bool enabled, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveMeasurement(id);
@@ -10684,7 +12799,7 @@ class MeasurementRepository {
         ),
       );
       final after = await _requireMeasurementRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricsTable,
         entityId: id,
@@ -10698,7 +12813,7 @@ class MeasurementRepository {
     List<String> orderedIds, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
@@ -10728,7 +12843,7 @@ class MeasurementRepository {
           ),
         );
         final after = await _requireMeasurementRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricsTable,
           entityId: before.id,
@@ -10743,7 +12858,7 @@ class MeasurementRepository {
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
@@ -10788,7 +12903,7 @@ class MeasurementRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveMeasurement(id);
@@ -10800,7 +12915,7 @@ class MeasurementRepository {
     MeasurementEntryDraft draft, {
     String actor = 'app',
   }) async {
-    final comment = _normalizeMeasurementComment(draft.comment);
+    final comment = _normalizeOptionalText(draft.comment);
 
     final measurement = await _requireActiveMeasurement(draft.measurementId);
     final validation = _validateMeasurementEntryValue(
@@ -10824,7 +12939,7 @@ class MeasurementRepository {
     MeasurementEntryDraft draft, {
     String actor = 'app',
   }) async {
-    final comment = _normalizeMeasurementComment(draft.comment);
+    final comment = _normalizeOptionalText(draft.comment);
     final measurement = await _requireActiveMeasurement(draft.measurementId);
     final validation = _validateMeasurementEntryValue(
       draft,
@@ -10847,27 +12962,7 @@ class MeasurementRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
-
-    return _database.transaction(() async {
-      final before = await _requireActiveEntryRow(id);
-      await (_database.update(_database.metricReadings)
-            ..where((row) => row.id.equals(id)))
-          .write(
-        MetricReadingsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
-      );
-      final after = await _requireEntryRow(id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.metricReadingsTable,
-        entityId: id,
-        beforeImage: _metricReadingImage(before),
-        afterImage: _metricReadingImage(after),
-      );
-    });
+    return _repositories.metrics.softDeleteReading(id, actor: actor);
   }
 
   Future<MeasurementValueValidation> validateEntry(
@@ -10879,10 +12974,10 @@ class MeasurementRepository {
 
   Future<String> _createMeasurementMetric(
     MeasurementDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final normalized = _normalizeMeasurementDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.metrics).insert(
           MetricsCompanion.insert(
             id: id,
@@ -10899,7 +12994,7 @@ class MeasurementRepository {
           ),
         );
     final after = await _requireMeasurementRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: id,
@@ -10912,7 +13007,7 @@ class MeasurementRepository {
   Future<void> _upsertDefaultMeasurement({
     required MetricRow? existing,
     required MeasurementDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     if (existing == null) {
       await _createMeasurementMetric(draft, context);
@@ -10951,7 +13046,7 @@ class MeasurementRepository {
       ),
     );
     final after = await _requireMeasurementRow(existing.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: existing.id,
@@ -10962,7 +13057,7 @@ class MeasurementRepository {
 
   Future<void> _softDeleteMeasurementRow(
     MetricRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.metrics)
           ..where((row) => row.id.equals(before.id)))
@@ -10973,7 +13068,7 @@ class MeasurementRepository {
       ),
     );
     final after = await _requireMeasurementRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: before.id,
@@ -10998,26 +13093,6 @@ class MeasurementRepository {
         .getSingleOrNull();
     if (row == null) {
       throw StateError('Measurement not found: $id.');
-    }
-    return row;
-  }
-
-  Future<MetricReadingRow> _requireEntryRow(String id) async {
-    final row = await (_database.select(_database.metricReadings)
-          ..where((row) => row.id.equals(id)))
-        .getSingleOrNull();
-    if (row == null) {
-      throw StateError('Measurement entry not found: $id.');
-    }
-    return row;
-  }
-
-  Future<MetricReadingRow> _requireActiveEntryRow(String id) async {
-    final row = await (_database.select(_database.metricReadings)
-          ..where((row) => row.id.equals(id) & row.deletedAt.isNull()))
-        .getSingleOrNull();
-    if (row == null) {
-      throw StateError('Measurement entry not found: $id.');
     }
     return row;
   }
@@ -11110,16 +13185,6 @@ class MeasurementRepository {
     );
   }
 
-  int _nextMeasurementSortOrder(List<MetricRow> rows) {
-    var next = 0;
-    for (final row in rows) {
-      if (row.sortOrder >= next) {
-        next = row.sortOrder + 1;
-      }
-    }
-    return next;
-  }
-
   MeasurementRecord _measurementRecordFromMetricRow(MetricRow row) {
     return MeasurementRecord(
       id: row.id,
@@ -11198,11 +13263,6 @@ class MetricRepository {
 
   AppDatabase get _database => _repositories.database;
 
-  @Deprecated('Demo monitoring seed data is no longer ingested.')
-  Future<void> ensureDefaultMonitoringReadings({
-    String actor = 'integration-seed',
-  }) async {}
-
   Future<List<MetricRecord>> listActive() async {
     final rows = await _activeMetricQuery().get();
     return rows.map(_metricRecordFromRow).toList(growable: false);
@@ -11243,13 +13303,14 @@ class MetricRepository {
     MetricDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _activeMetricQuery().get();
       return _createMetric(
         draft.copyWith(
-          sortOrder: draft.sortOrder ?? _nextMetricSortOrder(activeRows),
+          sortOrder: draft.sortOrder ??
+              _nextPosition(activeRows, (row) => row.sortOrder),
         ),
         context,
       );
@@ -11519,30 +13580,11 @@ class MetricRepository {
     DateTime? from,
     DateTime? to,
   }) {
-    final query = _database.select(_database.metricReadings)
-      ..where(
-        (row) => row.deletedAt.isNull() & row.metricId.equals(metricId),
-      );
-    if (from != null) {
-      query.where(
-        (row) =>
-            row.atTime.isBiggerOrEqualValue(from) |
-            row.windowEndedAt.isBiggerOrEqualValue(from),
-      );
-    }
-    if (to != null) {
-      query.where(
-        (row) =>
-            row.atTime.isSmallerThanValue(to) |
-            row.windowStartedAt.isSmallerThanValue(to),
-      );
-    }
-    return query
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.atTime),
-        (row) => OrderingTerm.asc(row.windowEndedAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
+    return _enabledMetricSeriesReadingRows(
+      <String>[metricId],
+      from: from,
+      to: to,
+    );
   }
 
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
@@ -11675,7 +13717,7 @@ class MetricRepository {
 
     void watchReadingsFor(List<MetricRow> metricRows) {
       final metricIds = metricRows.map((row) => row.id).toList(growable: false);
-      if (_sameStringList(watchedMetricIds, metricIds)) {
+      if (_sameRowList(watchedMetricIds, metricIds)) {
         emitIfReady();
         return;
       }
@@ -11742,22 +13784,15 @@ class MetricRepository {
     DateTime? to,
   }) async {
     final metricRows = await _monitoringMetricQuery().get();
-    final series = <MetricSeriesData>[];
-    for (final metricRow in metricRows) {
-      final readings = await _metricSeriesReadingRows(
-        metricRow.id,
-        from: from,
-        to: to,
-      ).get();
-      series.add(
-        MetricSeriesData(
-          metric: _metricRecordFromRow(metricRow),
-          readings:
-              readings.map(_metricReadingRecordFromRow).toList(growable: false),
-        ),
-      );
+    if (metricRows.isEmpty) {
+      return const <MetricSeriesData>[];
     }
-    return List<MetricSeriesData>.unmodifiable(series);
+    final readingRows = await _enabledMetricSeriesReadingRows(
+      metricRows.map((row) => row.id).toList(growable: false),
+      from: from,
+      to: to,
+    ).get();
+    return _metricSeriesDataListFromRows(metricRows, readingRows);
   }
 
   /// Reactive [listEnabledMetricSeries] — re-emits when a metric or Reading
@@ -11794,7 +13829,7 @@ class MetricRepository {
 
     void watchReadingsFor(List<MetricRow> metricRows) {
       final metricIds = metricRows.map((row) => row.id).toList(growable: false);
-      if (_sameStringList(watchedMetricIds, metricIds)) {
+      if (_sameRowList(watchedMetricIds, metricIds)) {
         emitIfReady();
         return;
       }
@@ -11858,14 +13893,14 @@ class MetricRepository {
         'Unsupported metric sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _metricSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -11887,7 +13922,7 @@ class MetricRepository {
               );
       }
 
-      final localAfterImage = await _metricSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -11897,7 +13932,7 @@ class MetricRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -11914,12 +13949,12 @@ class MetricRepository {
     ManualMetricReadingDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final metric = await _requireActiveMetric(draft.metricId);
       final normalized = _normalizeManualReadingDraft(draft, metric: metric);
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.metricReadings).insert(
             MetricReadingsCompanion.insert(
               id: id,
@@ -11940,7 +13975,7 @@ class MetricRepository {
             ),
           );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -11956,7 +13991,7 @@ class MetricRepository {
     MetricReadingUpdateDraft draft, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveReadingRow(id);
@@ -11983,7 +14018,7 @@ class MetricRepository {
         updatedAt: context.timestamp,
       );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -12000,12 +14035,15 @@ class MetricRepository {
     if (drafts.isEmpty) {
       return Future<List<String>>.value(const <String>[]);
     }
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final ids = <String>[];
+      // A batch spans few metrics and never writes them, so look each up once.
+      final metricsById = <String, MetricRow>{};
       for (final draft in drafts) {
-        final metric = await _requireActiveMetric(draft.metricId);
+        final metric = metricsById[draft.metricId] ??=
+            await _requireActiveMetric(draft.metricId);
         final normalized = _normalizeIntegrationReadingDraft(
           draft,
           metric: metric,
@@ -12029,7 +14067,7 @@ class MetricRepository {
             updatedAt: context.timestamp,
           );
           final after = await _requireReadingRow(existing.id);
-          await _repositories.activityLog._append(
+          await _repositories._activityLogWriter.append(
             context,
             entityTable: AppDatabase.metricReadingsTable,
             entityId: existing.id,
@@ -12039,7 +14077,7 @@ class MetricRepository {
           continue;
         }
 
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.metricReadings).insert(
               MetricReadingsCompanion.insert(
                 id: id,
@@ -12060,7 +14098,7 @@ class MetricRepository {
               ),
             );
         final after = await _requireReadingRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricReadingsTable,
           entityId: id,
@@ -12077,7 +14115,7 @@ class MetricRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveReadingRow(id);
@@ -12090,7 +14128,7 @@ class MetricRepository {
         ),
       );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -12102,10 +14140,10 @@ class MetricRepository {
 
   Future<String> _createMetric(
     MetricDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final normalized = _normalizeMetricDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.metrics).insert(
           MetricsCompanion.insert(
             id: id,
@@ -12122,7 +14160,7 @@ class MetricRepository {
           ),
         );
     final after = await _requireMetricRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: id,
@@ -12281,26 +14319,6 @@ class MetricRepository {
       ..limit(1);
   }
 
-  Future<Map<String, Object?>?> _metricSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.metricsTable:
-        final row = await (_database.select(_database.metrics)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _metricImage(row);
-      case AppDatabase.metricReadingsTable:
-        final row = await (_database.select(_database.metricReadings)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _metricReadingImage(row);
-      default:
-        return null;
-    }
-  }
-
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
       _latestMetricReadingRows(
     String metricId, {
@@ -12381,15 +14399,7 @@ class MetricRepository {
     List<MetricOptionRecord>? left,
     List<MetricOptionRecord> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricOptionRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricOptionRecord);
   }
 
   bool _sameMetricOptionRecord(
@@ -12403,15 +14413,7 @@ class MetricRepository {
     List<MetricSummary>? left,
     List<MetricSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricSummary);
   }
 
   bool _sameMetricSummary(MetricSummary left, MetricSummary right) {
@@ -12430,15 +14432,7 @@ class MetricRepository {
     List<MonitoringMetricSummary>? left,
     List<MonitoringMetricSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMonitoringMetricSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMonitoringMetricSummary);
   }
 
   bool _sameMonitoringMetricSummary(
@@ -12499,15 +14493,7 @@ class MetricRepository {
     List<MetricReadingRecord> left,
     List<MetricReadingRecord> right,
   ) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricReadingRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricReadingRecord);
   }
 
   bool _sameMetricReadingRecord(
@@ -12557,27 +14543,7 @@ class MetricRepository {
     List<MetricSeriesData>? left,
     List<MetricSeriesData> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricSeriesData(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool _sameStringList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricSeriesData);
   }
 
   MetricDraft _normalizeMetricDraft(MetricDraft draft) {
@@ -12699,61 +14665,41 @@ class MetricRepository {
       throw StateError(shapeErrorMessage);
     }
 
-    final normalizedValueEntered = valueEntered.trim();
-    final scalarValue = double.tryParse(normalizedValueEntered);
-    if (scalarValue == null || !scalarValue.isFinite) {
-      throw ArgumentError.value(
-        valueEntered,
-        'valueEntered',
-        'Scalar Reading value must be finite.',
-      );
-    }
-
-    final normalizedAtTime = atTime?.toUtc();
-    final normalizedWindowStartedAt = windowStartedAt?.toUtc();
-    final normalizedWindowEndedAt = windowEndedAt?.toUtc();
-    final hasInstant = normalizedAtTime != null;
-    final hasWindow =
-        normalizedWindowStartedAt != null || normalizedWindowEndedAt != null;
-    if (hasInstant == hasWindow) {
-      throw ArgumentError(
-        'A Reading must have either atTime or a complete window, not both.',
-      );
-    }
-    if (hasWindow) {
-      if (normalizedWindowStartedAt == null ||
-          normalizedWindowEndedAt == null) {
-        throw ArgumentError('Window Readings require start and end times.');
-      }
-      if (!normalizedWindowEndedAt.isAfter(normalizedWindowStartedAt)) {
-        throw ArgumentError('Window end must be after window start.');
-      }
-    }
-
-    final valueJson = jsonEncode(<String, Object?>{
-      'shape': MetricValueShape.scalar.name,
-      'value': scalarValue,
-      'entered': normalizedValueEntered,
+    // The shared module is golden-vectored against the server, so a Reading
+    // stored here is byte-identical to one an agent writes. Its warnings
+    // (window preferred over an instant, reordered bounds) have no UI channel
+    // on this path; the normalized anchor already reflects them.
+    final normalized = normalizeMetricReading(<String, Object?>{
+      'metric': <String, Object?>{
+        'valueShape': metric.valueShape,
+        'unit': metric.unit,
+      },
+      'value': <String, Object?>{
+        'shape': metric.valueShape,
+        'entered': valueEntered,
+      },
+      'timeAnchor': <String, Object?>{
+        if (atTime != null) 'atTime': atTime.toUtc().toIso8601String(),
+        if (windowStartedAt != null)
+          'windowStartedAt': windowStartedAt.toUtc().toIso8601String(),
+        if (windowEndedAt != null)
+          'windowEndedAt': windowEndedAt.toUtc().toIso8601String(),
+      },
     });
+
     return _NormalizedMetricReadingValues(
-      valueJson: valueJson,
-      scalarValue: scalarValue,
-      scalarEntered: normalizedValueEntered,
-      atTime: normalizedAtTime,
-      windowStartedAt: normalizedWindowStartedAt,
-      windowEndedAt: normalizedWindowEndedAt,
+      valueJson: normalized['valueJson']! as String,
+      scalarValue: (normalized['scalarValue']! as num).toDouble(),
+      scalarEntered: valueEntered.trim(),
+      atTime: _parseOptionalUtc(normalized['atTime']),
+      windowStartedAt: _parseOptionalUtc(normalized['windowStartedAt']),
+      windowEndedAt: _parseOptionalUtc(normalized['windowEndedAt']),
       comment: _normalizeOptionalText(comment),
     );
   }
 
-  int _nextMetricSortOrder(List<MetricRow> rows) {
-    var next = 0;
-    for (final row in rows) {
-      if (row.sortOrder >= next) {
-        next = row.sortOrder + 1;
-      }
-    }
-    return next;
+  DateTime? _parseOptionalUtc(Object? value) {
+    return value == null ? null : DateTime.parse(value as String).toUtc();
   }
 }
 
@@ -12775,12 +14721,6 @@ class ActivityLogRepository {
       newestFirst: true,
     ).get();
     return rows.map(_activityLogEntryFromRow).toList(growable: false);
-  }
-
-  Stream<List<ActivityLogEntry>> watchEntries() {
-    return _activityLogQuery().watch().map(
-          (rows) => rows.map(_activityLogEntryFromRow).toList(growable: false),
-        );
   }
 
   Stream<List<ActivityLogEntry>> watchEntriesSince(DateTime cutoff) {
@@ -12847,6 +14787,8 @@ class ActivityLogRepository {
         conflicts.addAll(
           await _templateGroupMemberUndoConflicts(entries),
         );
+        conflicts.addAll(await _mealDependentUndoConflicts(entries));
+        conflicts.addAll(await _purposeUndoConflicts(entries));
       }
 
       if (conflicts.isNotEmpty) {
@@ -12858,7 +14800,7 @@ class ActivityLogRepository {
         );
       }
 
-      final context = _repositories._createWriteContext(actor: actor);
+      final context = _repositories._writeContexts.create(actor: actor);
       final appliedEntries = <ActivityLogEntry>[];
       final routineUndoScope = _routineUndoScope(entries);
       for (final entry in entries.reversed) {
@@ -12876,7 +14818,7 @@ class ActivityLogRepository {
           entityTable: entry.entityTable,
           entityId: entry.entityId,
         );
-        await _append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: entry.entityTable,
           entityId: entry.entityId,
@@ -12992,6 +14934,126 @@ class ActivityLogRepository {
     return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
   }
 
+  /// Refuses undoing the Batch that created a Meal once that Meal holds an
+  /// active Food Entry this Batch did not create (meal-logging.md §7).
+  ///
+  /// Undo is all-or-nothing, and archiving the Meal would leave such an entry
+  /// in an archived Meal, so the whole undo reports one
+  /// [ActivityLogUndoConflictReason.dependent] conflict on the Meal's entry
+  /// instead of a partial undo (Alternative G). Entries added by other local
+  /// Batches and entries that arrived by sync count alike; archived entries
+  /// don't. Edits by other Batches to an entry this Batch created are the
+  /// stale check's business, not this one's.
+  Future<List<ActivityLogUndoConflict>> _mealDependentUndoConflicts(
+    List<ActivityLogEntry> entries,
+  ) async {
+    final createdMealEntries = entries
+        .where(
+          (entry) =>
+              entry.entityTable == AppDatabase.mealsTable &&
+              entry.beforeImage == null,
+        )
+        .toList(growable: false);
+    if (createdMealEntries.isEmpty) {
+      return const <ActivityLogUndoConflict>[];
+    }
+    final createdFoodEntryIds = <String>{
+      for (final entry in entries)
+        if (entry.entityTable == AppDatabase.foodEntriesTable &&
+            entry.beforeImage == null)
+          entry.entityId,
+    };
+
+    final conflicts = <ActivityLogUndoConflict>[];
+    for (final mealEntry in createdMealEntries) {
+      final activeFoodEntries = await (_database.select(_database.foodEntries)
+            ..where(
+              (row) =>
+                  row.mealId.equals(mealEntry.entityId) &
+                  row.deletedAt.isNull(),
+            ))
+          .get();
+      final hasDependent = activeFoodEntries.any(
+        (row) => !createdFoodEntryIds.contains(row.id),
+      );
+      if (!hasDependent) {
+        continue;
+      }
+      conflicts.add(
+        ActivityLogUndoConflict(
+          entryId: mealEntry.id,
+          entityTable: mealEntry.entityTable,
+          entityId: mealEntry.entityId,
+          reason: ActivityLogUndoConflictReason.dependent,
+          expectedImage: mealEntry.afterImage,
+          currentImage: await _currentImageFor(
+            entityTable: mealEntry.entityTable,
+            entityId: mealEntry.entityId,
+          ),
+        ),
+      );
+    }
+    return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
+  }
+
+  /// Refuses an undo that would bring back a Purpose name another active
+  /// Purpose now holds: two active Purposes never share a name, trimmed and
+  /// case-insensitive (docs/designs/compound-purposes.md, D8). That covers
+  /// undoing an archive and undoing a rename. An entry that leaves the name as
+  /// it is (a reorder) brings nothing back, so it can't conflict, and undoing a
+  /// create only tombstones the row. Undo stays all-or-nothing, so one conflict
+  /// refuses the whole Batch.
+  Future<List<ActivityLogUndoConflict>> _purposeUndoConflicts(
+    List<ActivityLogEntry> entries,
+  ) async {
+    final purposeEntries = entries
+        .where((entry) => entry.entityTable == AppDatabase.purposesTable)
+        .toList(growable: false);
+    if (purposeEntries.isEmpty) {
+      return const <ActivityLogUndoConflict>[];
+    }
+    final batchIds = purposeEntries.map((entry) => entry.entityId).toSet();
+    final otherActive = await (_database.select(_database.purposes)
+          ..where((row) => row.deletedAt.isNull()))
+        .get();
+    final otherNameKeys = <String>{
+      for (final row in otherActive)
+        if (!batchIds.contains(row.id)) purposeNameKey(row.name),
+    };
+
+    final conflicts = <ActivityLogUndoConflict>[];
+    for (final entry in purposeEntries) {
+      final before = entry.beforeImage;
+      if (before == null ||
+          _activityNullableDateTime(before, 'deleted_at') != null) {
+        continue;
+      }
+      final restoredKey =
+          purposeNameKey(_activityRequiredString(before, 'name'));
+      final after = entry.afterImage;
+      final bringsNameBack = after == null ||
+          _activityNullableDateTime(after, 'deleted_at') != null ||
+          purposeNameKey(_activityRequiredString(after, 'name')) != restoredKey;
+      if (!bringsNameBack || !otherNameKeys.contains(restoredKey)) {
+        continue;
+      }
+      conflicts.add(
+        ActivityLogUndoConflict(
+          entryId: entry.id,
+          entityTable: entry.entityTable,
+          entityId: entry.entityId,
+          reason: ActivityLogUndoConflictReason.duplicatePurposeName,
+          expectedImage: after,
+          currentImage: await _currentImageFor(
+            entityTable: entry.entityTable,
+            entityId: entry.entityId,
+          ),
+        ),
+      );
+    }
+    return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
+  }
+
   _RoutineUndoScope _routineUndoScope(List<ActivityLogEntry> entries) {
     final routineIds = <String>{};
     final cadenceChangedRoutineIds = <String>{};
@@ -13031,7 +15093,7 @@ class ActivityLogRepository {
 
   Future<void> _normalizeRoutineEntriesAfterUndo(
     _RoutineUndoScope scope,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (final routineId in scope.routineIds.toList()..sort()) {
       final routine = await (_database.select(_database.planRoutines)
@@ -13055,8 +15117,8 @@ class ActivityLogRepository {
         final slot = scope.cadenceChangedRoutineIds.contains(routineId) &&
                 !(scope.entryIdsByRoutine[routineId]?.contains(before.id) ??
                     false)
-            ? _defaultRoutineEntrySlot(position, cadence)
-            : _reconciledRoutineEntrySlot(
+            ? defaultRoutineEntrySlot(position, cadence)
+            : reconciledRoutineEntrySlot(
                 before.slot,
                 position: position,
                 cadence: cadence,
@@ -13079,7 +15141,7 @@ class ActivityLogRepository {
         final after = await (_database.select(_database.routineEntries)
               ..where((row) => row.id.equals(before.id)))
             .getSingle();
-        await _append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.routineEntriesTable,
           entityId: before.id,
@@ -13124,39 +15186,6 @@ class ActivityLogRepository {
     return query;
   }
 
-  Future<void> _append(
-    _WriteContext context, {
-    required String entityTable,
-    required String entityId,
-    required Map<String, Object?>? beforeImage,
-    required Map<String, Object?>? afterImage,
-    String? id,
-    DateTime? occurredAt,
-    DateTime? syncAcknowledgedAt,
-  }) {
-    final activityLogId = id ?? _repositories.createId(context.timestamp);
-    final activityOccurredAt = occurredAt ?? context.timestamp;
-    return _database.into(_database.activityLog).insert(
-          ActivityLogCompanion.insert(
-            id: activityLogId,
-            actor: context.actor,
-            batchId: context.batchId,
-            entityTable: entityTable,
-            entityId: entityId,
-            beforeImage: Value<String?>(
-              beforeImage == null ? null : jsonEncode(beforeImage),
-            ),
-            afterImage: Value<String?>(
-              afterImage == null ? null : jsonEncode(afterImage),
-            ),
-            occurredAt: activityOccurredAt,
-            syncAcknowledgedAt: Value<DateTime?>(syncAcknowledgedAt),
-            updatedAt: context.timestamp,
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
-  }
-
   Future<Map<String, Object?>?> _currentImageFor({
     required String entityTable,
     required String entityId,
@@ -13167,6 +15196,10 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _exerciseCategoryImage(row);
+      case AppDatabase.focusesTable:
+        return _repositories.focuses._imageFor(entityId);
+      case AppDatabase.purposesTable:
+        return _repositories.protocols.purposes._imageFor(entityId);
       case AppDatabase.exercisesTable:
         final row = await (_database.select(_database.exercises)
               ..where((row) => row.id.equals(entityId)))
@@ -13202,6 +15235,11 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _nutritionGoalImage(row);
+      case AppDatabase.userProfileSectionsTable:
+        final row = await (_database.select(_database.userProfileSections)
+              ..where((row) => row.id.equals(entityId)))
+            .getSingleOrNull();
+        return row == null ? null : _userProfileSectionImage(row);
       case AppDatabase.workoutExercisesTable:
         final row = await (_database.select(_database.workoutExercises)
               ..where((row) => row.id.equals(entityId)))
@@ -13308,6 +15346,11 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _doseImage(row);
+      case AppDatabase.protocolSkipsTable:
+        final row = await (_database.select(_database.protocolSkips)
+              ..where((row) => row.id.equals(entityId)))
+            .getSingleOrNull();
+        return row == null ? null : _protocolSkipImage(row);
       case AppDatabase.protocolsTable:
         final row = await (_database.select(_database.protocols)
               ..where((row) => row.id.equals(entityId)))
@@ -13348,6 +15391,12 @@ class ActivityLogRepository {
         (_database.update(_database.exerciseCategories)
               ..where((row) => row.id.equals(entityId)))
             .write(_exerciseCategoryCompanionFromImage(image)),
+      AppDatabase.focusesTable => (_database.update(_database.focuses)
+            ..where((row) => row.id.equals(entityId)))
+          .write(_focusCompanionFromImage(image)),
+      AppDatabase.purposesTable => (_database.update(_database.purposes)
+            ..where((row) => row.id.equals(entityId)))
+          .write(_purposeCompanionFromImage(image)),
       AppDatabase.exercisesTable => (_database.update(_database.exercises)
             ..where((row) => row.id.equals(entityId)))
           .write(_exerciseCompanionFromImage(image)),
@@ -13371,6 +15420,10 @@ class ActivityLogRepository {
         (_database.update(_database.nutritionGoals)
               ..where((row) => row.id.equals(entityId)))
             .write(_nutritionGoalCompanionFromImage(image)),
+      AppDatabase.userProfileSectionsTable =>
+        (_database.update(_database.userProfileSections)
+              ..where((row) => row.id.equals(entityId)))
+            .write(_userProfileSectionCompanionFromImage(image)),
       AppDatabase.workoutExercisesTable =>
         (_database.update(_database.workoutExercises)
               ..where((row) => row.id.equals(entityId)))
@@ -13444,6 +15497,10 @@ class ActivityLogRepository {
       AppDatabase.dosesTable => (_database.update(_database.doses)
             ..where((row) => row.id.equals(entityId)))
           .write(_doseCompanionFromImage(image)),
+      AppDatabase.protocolSkipsTable =>
+        (_database.update(_database.protocolSkips)
+              ..where((row) => row.id.equals(entityId)))
+            .write(_protocolSkipCompanionFromImage(image)),
       AppDatabase.protocolsTable => (_database.update(_database.protocols)
             ..where((row) => row.id.equals(entityId)))
           .write(_protocolCompanionFromImage(image)),
@@ -13477,8 +15534,11 @@ class ExerciseDraft {
     this.usesRpe = false,
     this.categoryId,
     List<ExerciseEquipment> equipment = const <ExerciseEquipment>[],
+    Iterable<String>? focusIds,
     this.notes,
-  }) : equipment = List<ExerciseEquipment>.unmodifiable(equipment);
+  })  : equipment = List<ExerciseEquipment>.unmodifiable(equipment),
+        focusIds =
+            focusIds == null ? null : List<String>.unmodifiable(focusIds);
 
   final String name;
   final ExerciseType type;
@@ -13489,6 +15549,11 @@ class ExerciseDraft {
   final bool usesRpe;
   final String? categoryId;
   final List<ExerciseEquipment> equipment;
+
+  /// The Focuses the exercise belongs to. Null on an update leaves the
+  /// stored Focuses as they are, so an editor that does not show them cannot
+  /// clear them; on a create it means none.
+  final List<String>? focusIds;
   final String? notes;
 
   ExerciseLoadMode get effectiveLoadMode {
@@ -13524,6 +15589,7 @@ class WorkoutSessionDraft {
     this.localDate,
     this.endedAt,
     this.comment,
+    this.focusId,
   });
 
   final DateTime startedAt;
@@ -13531,6 +15597,7 @@ class WorkoutSessionDraft {
   final TrainingDayDate? localDate;
   final DateTime? endedAt;
   final String? comment;
+  final String? focusId;
 }
 
 class WorkoutExerciseDraft {
@@ -13609,6 +15676,56 @@ class LoggedSetDraft {
   }
 }
 
+/// What the Training Screen's Log set writes: the form, for one Exercise of
+/// one Workout.
+class LogSetRequest {
+  const LogSetRequest({
+    required this.workoutId,
+    required this.exerciseId,
+    this.currentSetId,
+    required this.values,
+    this.comment,
+    this.side,
+    this.rpe,
+    required this.restChanged,
+    this.rest,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+
+  /// The Current Set the form filled, or null to create a new Performed Set.
+  final String? currentSetId;
+  final LoggedSet values;
+  final String? comment;
+  final SetSide? side;
+  final double? rpe;
+
+  /// Whether the user changed Rest after since the form last loaded; only a
+  /// changed rest is written as `plannedRestAfter` and carried forward.
+  final bool restChanged;
+
+  /// The form's rest; written only when [restChanged].
+  final Duration? rest;
+}
+
+class LogSetResult {
+  const LogSetResult({
+    required this.setId,
+    required this.carriedCount,
+    required this.alreadyLogged,
+  });
+
+  final String setId;
+
+  /// How many later Planned Sets carry-forward rewrote.
+  final int carriedCount;
+
+  /// The Current Set was already complete, deleted or gone (a second tap, or
+  /// another device logged it), so nothing was written.
+  final bool alreadyLogged;
+}
+
 class WorkoutPlanExerciseDraft {
   WorkoutPlanExerciseDraft({
     required this.exerciseId,
@@ -13643,92 +15760,6 @@ class RestTimerDraft {
   final double alertVolume;
 }
 
-class ExerciseRecord {
-  ExerciseRecord({
-    required this.id,
-    required this.origin,
-    required this.name,
-    required this.type,
-    required this.defaultLoadUnit,
-    required this.loadMode,
-    required this.recordProfile,
-    this.isUnilateral = false,
-    this.usesRpe = false,
-    required this.categoryId,
-    List<ExerciseEquipment> equipment = const <ExerciseEquipment>[],
-    required this.notes,
-    required this.isFavorite,
-    required this.updatedAt,
-    this.shadowsPlatformExercise = false,
-    this.deletedAt,
-  }) : equipment = List<ExerciseEquipment>.unmodifiable(equipment);
-
-  final String id;
-  final ExerciseLibraryOrigin origin;
-  final String name;
-  final ExerciseType type;
-  final TrainingUnit defaultLoadUnit;
-  final ExerciseLoadMode loadMode;
-  final RecordProfile recordProfile;
-  final bool isUnilateral;
-  final bool usesRpe;
-  final String? categoryId;
-  final List<ExerciseEquipment> equipment;
-  final String? notes;
-  final bool isFavorite;
-  final DateTime updatedAt;
-  final bool shadowsPlatformExercise;
-  final DateTime? deletedAt;
-
-  bool get isReadOnly => origin == ExerciseLibraryOrigin.platform;
-
-  ExerciseRecord copyWith({
-    bool? shadowsPlatformExercise,
-  }) {
-    return ExerciseRecord(
-      id: id,
-      origin: origin,
-      name: name,
-      type: type,
-      defaultLoadUnit: defaultLoadUnit,
-      loadMode: loadMode,
-      recordProfile: recordProfile,
-      isUnilateral: isUnilateral,
-      usesRpe: usesRpe,
-      categoryId: categoryId,
-      equipment: equipment,
-      notes: notes,
-      isFavorite: isFavorite,
-      updatedAt: updatedAt,
-      shadowsPlatformExercise:
-          shadowsPlatformExercise ?? this.shadowsPlatformExercise,
-      deletedAt: deletedAt,
-    );
-  }
-}
-
-class WorkoutSessionRecord {
-  const WorkoutSessionRecord({
-    required this.id,
-    required this.startedAt,
-    required this.timezone,
-    required this.localDate,
-    required this.updatedAt,
-    this.endedAt,
-    this.comment,
-    this.deletedAt,
-  });
-
-  final String id;
-  final DateTime startedAt;
-  final String timezone;
-  final TrainingDayDate localDate;
-  final DateTime? endedAt;
-  final String? comment;
-  final DateTime updatedAt;
-  final DateTime? deletedAt;
-}
-
 class AutoFinishedWorkoutRecord {
   const AutoFinishedWorkoutRecord({
     required this.workoutId,
@@ -13739,24 +15770,6 @@ class AutoFinishedWorkoutRecord {
   final String workoutId;
   final DateTime lastInteractionAt;
   final DateTime endedAt;
-}
-
-class WorkoutExerciseRecord {
-  const WorkoutExerciseRecord({
-    required this.id,
-    required this.workoutId,
-    required this.exerciseId,
-    required this.position,
-    required this.updatedAt,
-    this.deletedAt,
-  });
-
-  final String id;
-  final String workoutId;
-  final String exerciseId;
-  final int position;
-  final DateTime updatedAt;
-  final DateTime? deletedAt;
 }
 
 class ExerciseGroupRecord {
@@ -13802,38 +15815,6 @@ class ExerciseGroupMemberRecord {
   final String workoutExerciseId;
   final int position;
   final DateTime updatedAt;
-  final DateTime? deletedAt;
-}
-
-class LoggedSetRecord {
-  const LoggedSetRecord({
-    required this.id,
-    required this.workoutId,
-    required this.exerciseId,
-    required this.position,
-    required this.values,
-    required this.plannedRestAfter,
-    this.performedAt,
-    required this.isCompleted,
-    required this.updatedAt,
-    this.comment,
-    this.side,
-    this.rpe,
-    this.deletedAt,
-  });
-
-  final String id;
-  final String workoutId;
-  final String exerciseId;
-  final int position;
-  final LoggedSet values;
-  final Duration? plannedRestAfter;
-  final DateTime? performedAt;
-  final bool isCompleted;
-  final DateTime updatedAt;
-  final String? comment;
-  final SetSide? side;
-  final double? rpe;
   final DateTime? deletedAt;
 }
 
@@ -14441,6 +16422,16 @@ enum ActivityLogUndoConflictReason {
   stale,
   missing,
   unsupported,
+
+  /// The Batch created a Meal that now holds an active Food Entry created by
+  /// a different Batch (another local Batch or a sync pull). Undo stays
+  /// all-or-nothing, so it is refused rather than orphaning that entry
+  /// (meal-logging.md §7, Alternative G).
+  dependent,
+
+  /// Undoing the Batch would bring back a Purpose name another active Purpose
+  /// now holds (compound-purposes.md, D8).
+  duplicatePurposeName,
 }
 
 class LogWorkoutResult {
@@ -14470,16 +16461,6 @@ class WorkoutPlanLogResult {
   final List<String> loggedSetIds;
 }
 
-enum ExerciseLibraryOrigin {
-  platform,
-  user,
-}
-
-enum SetSide {
-  left,
-  right,
-}
-
 enum RestTimerStatus {
   running,
   expired,
@@ -14498,6 +16479,21 @@ class DuplicateExerciseNameException implements Exception {
 
   @override
   String toString() => 'Duplicate user exercise name: $name.';
+}
+
+/// [WorkoutExerciseRepository.replace] was asked for an Exercise that is
+/// already active in the Workout; nothing was written.
+class AlreadyInWorkoutException implements Exception {
+  const AlreadyInWorkoutException({
+    required this.workoutId,
+    required this.exerciseId,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+
+  @override
+  String toString() => 'Exercise $exerciseId is already in workout $workoutId.';
 }
 
 class DuplicateExerciseCategoryNameException implements Exception {
@@ -14540,65 +16536,6 @@ class CategoryHasActiveExercisesException implements Exception {
   String toString() {
     return 'Category $categoryId has $activeExerciseCount active exercises.';
   }
-}
-
-class ExerciseCategoryRecord {
-  const ExerciseCategoryRecord({
-    required this.id,
-    required this.name,
-    required this.sortOrder,
-    required this.colorHex,
-    required this.updatedAt,
-    this.deletedAt,
-  });
-
-  final String id;
-  final String name;
-  final int sortOrder;
-  final String colorHex;
-  final DateTime updatedAt;
-  final DateTime? deletedAt;
-}
-
-final class ExerciseCatalogSectionRecord {
-  ExerciseCatalogSectionRecord({
-    required this.category,
-    required List<ExerciseRecord> exercises,
-    this.virtualId,
-    this.virtualTitle,
-  }) : exercises = List<ExerciseRecord>.unmodifiable(exercises);
-
-  ExerciseCatalogSectionRecord.virtualFavorites({
-    required List<ExerciseRecord> exercises,
-  })  : category = null,
-        exercises = List<ExerciseRecord>.unmodifiable(exercises),
-        virtualId = favoritesId,
-        virtualTitle = 'Favorites';
-
-  static const favoritesId = 'favorites';
-
-  final ExerciseCategoryRecord? category;
-  final List<ExerciseRecord> exercises;
-  final String? virtualId;
-  final String? virtualTitle;
-
-  String get id => virtualId ?? category?.id ?? 'uncategorized';
-
-  String get title => virtualTitle ?? category?.name ?? 'Uncategorized';
-
-  bool get isVirtual => virtualId != null;
-}
-
-class _WriteContext {
-  const _WriteContext({
-    required this.actor,
-    required this.batchId,
-    required this.timestamp,
-  });
-
-  final String actor;
-  final String batchId;
-  final DateTime timestamp;
 }
 
 class _DefaultMealTypeSeed {
@@ -14663,6 +16600,7 @@ ExerciseRecord _exerciseFromRow(ExerciseRow row) {
     usesRpe: row.usesRpe,
     categoryId: row.categoryId,
     equipment: _decodeEquipment(row.equipmentIds),
+    focusIds: _decodeFocusIds(row.focusIds),
     notes: row.notes,
     isFavorite: row.isFavorite,
     updatedAt: row.updatedAt.toUtc(),
@@ -14678,6 +16616,7 @@ WorkoutSessionRecord _workoutSessionFromRow(WorkoutSessionRow row) {
     localDate: TrainingDayDate.parse(row.localDate),
     endedAt: row.endedAt?.toUtc(),
     comment: row.comment,
+    focusId: row.focusId,
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
@@ -14690,9 +16629,33 @@ MealRecord _mealFromRow(MealRow row) {
     startedAt: row.startedAt.toUtc(),
     timezone: row.timezone,
     localDate: NutritionDayDate.parse(row.localDate),
+    timezoneOffsetMinutes: row.timezoneOffsetMinutes,
+    timePrecision: MealTimePrecision.fromStorage(row.timePrecision),
     endedAt: row.endedAt?.toUtc(),
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
+  );
+}
+
+/// The Nutrition Day of [instant] at the frozen [offsetMinutes] (the device
+/// zone for null), through `localDateAtOffset`, the single rule that writes
+/// `meals.local_date` (docs/designs/meal-logging.md §1).
+NutritionDayDate _nutritionDayDateAtOffset(
+  DateTime instant,
+  int? offsetMinutes,
+) {
+  final date = localDateAtOffset(instant, offsetMinutes);
+  return NutritionDayDate(year: date.year, month: date.month, day: date.day);
+}
+
+/// The device zone's label and UTC offset at [instant] itself, not at the
+/// moment of the write: what a Meal freezes when nothing else names its zone
+/// (docs/designs/meal-logging.md §1).
+({String label, int offsetMinutes}) _deviceZoneAt(DateTime instant) {
+  final local = instant.toLocal();
+  return (
+    label: local.timeZoneName,
+    offsetMinutes: local.timeZoneOffset.inMinutes,
   );
 }
 
@@ -14723,277 +16686,6 @@ UserFoodRecord _userFoodFromRow(FoodRow row) {
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
-}
-
-PlatformFoodRecord _openFoodFactsRecordFromCacheRow(
-  OpenFoodFactsCacheRow row,
-) {
-  return PlatformFoodRecord(
-    id: row.foodId,
-    name: row.name,
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: NutrientVector.fromJsonString(row.nutrientValuesJson),
-    isLiquid: row.isLiquid,
-    servingLabel: row.servingLabel,
-    servingSize: row.servingSize,
-    packageSize: row.packageSize,
-  );
-}
-
-PlatformFoodRecord? _openFoodFactsRecordFromProduct(
-  Map<String, Object?> product, {
-  String? fallbackCode,
-}) {
-  final code = _openFoodFactsString(product['code']) ?? fallbackCode;
-  final name = _firstOpenFoodFactsString(
-    product,
-    const <String>['product_name', 'product_name_en', 'generic_name'],
-  );
-  if (code == null || code.trim().isEmpty || name == null) {
-    return null;
-  }
-
-  final serving = _openFoodFactsQuantity(
-    value: product['serving_quantity'],
-    unit: product['serving_quantity_unit'],
-    fallbackText: product['serving_size'],
-  );
-  final package = _openFoodFactsQuantity(
-    value: product['product_quantity'],
-    unit: product['product_quantity_unit'],
-    fallbackText: product['quantity'],
-  );
-
-  return PlatformFoodRecord(
-    id: code.trim(),
-    name: name.trim(),
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: _openFoodFactsNutrientVector(product['nutriments']),
-    isLiquid: serving?.isLiquid ?? package?.isLiquid ?? false,
-    servingLabel: serving == null ? null : 'serving',
-    servingSize: serving?.baseQuantity,
-    packageSize: package?.baseQuantity,
-  );
-}
-
-NutrientVector _openFoodFactsNutrientVector(Object? value) {
-  if (value is! Map) {
-    return NutrientVector.full(const <NutrientId, NutrientAmount>{});
-  }
-  final nutriments = Map<String, Object?>.from(value);
-  final amounts = <NutrientId, NutrientAmount>{};
-
-  void add(
-    NutrientId id,
-    List<String> keys, {
-    double multiplier = 1,
-  }) {
-    final sourceValue = _firstOpenFoodFactsNumber(nutriments, keys);
-    if (sourceValue == null || sourceValue < 0) {
-      return;
-    }
-    final normalizedValue = sourceValue * multiplier;
-    amounts[id] = NutrientAmount.complete(
-      value: normalizedValue,
-      entered: _formatOpenFoodFactsNumber(normalizedValue),
-      unit: id.defaultUnit,
-    );
-  }
-
-  add(NutrientId.energy, const <String>[
-    'energy-kcal_100g',
-    'energy-kcal_value',
-  ]);
-  add(NutrientId.protein, const <String>['proteins_100g']);
-  add(NutrientId.carbohydrate, const <String>['carbohydrates_100g']);
-  add(NutrientId.sugar, const <String>['sugars_100g']);
-  add(NutrientId.fat, const <String>['fat_100g']);
-  add(NutrientId.saturatedFat, const <String>['saturated-fat_100g']);
-  add(NutrientId.monounsaturatedFat, const <String>[
-    'monounsaturated-fat_100g',
-    'mono-unsaturated-fat_100g',
-  ]);
-  add(NutrientId.polyunsaturatedFat, const <String>[
-    'polyunsaturated-fat_100g',
-    'poly-unsaturated-fat_100g',
-  ]);
-  add(NutrientId.fiber, const <String>['fiber_100g', 'fibers_100g']);
-  add(NutrientId.sodium, const <String>['sodium_100g'], multiplier: 1000);
-  add(
-    NutrientId.cholesterol,
-    const <String>['cholesterol_100g'],
-    multiplier: 1000,
-  );
-  add(NutrientId.caffeine, const <String>['caffeine_100g'], multiplier: 1000);
-
-  return NutrientVector.full(amounts);
-}
-
-String _openFoodFactsLookupKey(String query) {
-  final barcode = _openFoodFactsBarcode(query);
-  if (barcode != null) {
-    return 'barcode:$barcode';
-  }
-  final normalized = query.trim().toLowerCase().replaceAll(
-        RegExp(r'\s+'),
-        ' ',
-      );
-  return 'search:$normalized';
-}
-
-String? _openFoodFactsBarcode(String query) {
-  final compact = query.trim().replaceAll(RegExp(r'[\s-]'), '');
-  if (RegExp(r'^\d{6,18}$').hasMatch(compact)) {
-    return compact;
-  }
-  return null;
-}
-
-String? _firstOpenFoodFactsString(
-  Map<String, Object?> values,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = _openFoodFactsString(values[key]);
-    if (value != null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-String? _openFoodFactsString(Object? value) {
-  if (value is String && value.trim().isNotEmpty) {
-    return value.trim();
-  }
-  return null;
-}
-
-double? _firstOpenFoodFactsNumber(
-  Map<String, Object?> values,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = _openFoodFactsNumber(values[key]);
-    if (value != null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-double? _openFoodFactsNumber(Object? value) {
-  if (value is num && value.isFinite) {
-    return value.toDouble();
-  }
-  if (value is String) {
-    final normalized = value.trim().replaceAll(',', '.');
-    final parsed = double.tryParse(normalized);
-    if (parsed != null && parsed.isFinite) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-String _formatOpenFoodFactsNumber(double value) {
-  final fixed = value.toStringAsFixed(6);
-  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
-}
-
-_OpenFoodFactsQuantity? _openFoodFactsQuantity({
-  required Object? value,
-  required Object? unit,
-  required Object? fallbackText,
-}) {
-  final parsedValue = _openFoodFactsNumber(value);
-  final parsedUnit = _openFoodFactsString(unit);
-  if (parsedValue != null && parsedUnit != null) {
-    final quantity = _openFoodFactsQuantityFromValue(
-      parsedValue,
-      parsedUnit,
-    );
-    if (quantity != null) {
-      return quantity;
-    }
-  }
-
-  final text = _openFoodFactsString(fallbackText);
-  if (text == null) {
-    return null;
-  }
-  final match = RegExp(r'(-?\d+(?:[\.,]\d+)?)\s*([A-Za-z ]+)').firstMatch(
-    text,
-  );
-  if (match == null) {
-    return null;
-  }
-  final fallbackValue = _openFoodFactsNumber(match.group(1));
-  final fallbackUnit = match.group(2);
-  if (fallbackValue == null || fallbackUnit == null) {
-    return null;
-  }
-  return _openFoodFactsQuantityFromValue(fallbackValue, fallbackUnit);
-}
-
-_OpenFoodFactsQuantity? _openFoodFactsQuantityFromValue(
-  double value,
-  String unit,
-) {
-  if (!value.isFinite || value <= 0) {
-    return null;
-  }
-  final normalizedUnit = unit
-      .trim()
-      .toLowerCase()
-      .replaceAll('.', '')
-      .replaceAll(RegExp(r'\s+'), ' ');
-  return switch (normalizedUnit) {
-    'g' || 'gram' || 'grams' => _OpenFoodFactsQuantity(
-        baseQuantity: value,
-        isLiquid: false,
-      ),
-    'kg' || 'kilogram' || 'kilograms' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 1000,
-        isLiquid: false,
-      ),
-    'oz' || 'ounce' || 'ounces' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 28.349523125,
-        isLiquid: false,
-      ),
-    'ml' ||
-    'milliliter' ||
-    'milliliters' ||
-    'millilitre' ||
-    'millilitres' =>
-      _OpenFoodFactsQuantity(
-        baseQuantity: value,
-        isLiquid: true,
-      ),
-    'l' || 'liter' || 'liters' || 'litre' || 'litres' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 1000,
-        isLiquid: true,
-      ),
-    'fl oz' ||
-    'floz' ||
-    'fluid ounce' ||
-    'fluid ounces' =>
-      _OpenFoodFactsQuantity(
-        baseQuantity: value * 29.5735295625,
-        isLiquid: true,
-      ),
-    _ => null,
-  };
-}
-
-class _OpenFoodFactsQuantity {
-  const _OpenFoodFactsQuantity({
-    required this.baseQuantity,
-    required this.isLiquid,
-  });
-
-  final double baseQuantity;
-  final bool isLiquid;
 }
 
 MealTypeRecord _mealTypeFromRow(MealTypeRow row) {
@@ -15100,46 +16792,11 @@ NutritionDayRecord _nutritionDayFromRows(
   List<FoodEntryRow> entryRows,
   List<MealTypeRow> mealTypeRows,
 ) {
-  final entriesByMealId = <String, List<FoodEntryRecord>>{};
-  for (final row in entryRows) {
-    entriesByMealId
-        .putIfAbsent(row.mealId, () => <FoodEntryRecord>[])
-        .add(_foodEntryFromRow(row));
-  }
-  final mealTypeSortOrders = <String, int>{
-    for (final row in mealTypeRows) row.name: row.sortOrder,
-  };
-  final sortedMeals = List<MealRow>.of(mealRows)
-    ..sort((left, right) {
-      final leftSortOrder = mealTypeSortOrders[left.mealType] ?? 1 << 30;
-      final rightSortOrder = mealTypeSortOrders[right.mealType] ?? 1 << 30;
-      final orderComparison = leftSortOrder.compareTo(rightSortOrder);
-      if (orderComparison != 0) {
-        return orderComparison;
-      }
-      final startedComparison = left.startedAt.compareTo(right.startedAt);
-      if (startedComparison != 0) {
-        return startedComparison;
-      }
-      final typeComparison = left.mealType.compareTo(right.mealType);
-      if (typeComparison != 0) {
-        return typeComparison;
-      }
-      return left.id.compareTo(right.id);
-    });
-
-  return NutritionDayRecord(
+  return assembleNutritionDay(
     localDate: localDate,
-    meals: List<NutritionDayMealRecord>.unmodifiable(
-      sortedMeals.map(
-        (row) => NutritionDayMealRecord(
-          meal: _mealFromRow(row),
-          entries: List<FoodEntryRecord>.unmodifiable(
-            entriesByMealId[row.id] ?? const <FoodEntryRecord>[],
-          ),
-        ),
-      ),
-    ),
+    meals: mealRows.map(_mealFromRow).toList(growable: false),
+    entries: entryRows.map(_foodEntryFromRow).toList(growable: false),
+    mealTypes: mealTypeRows.map(_mealTypeFromRow).toList(growable: false),
   );
 }
 
@@ -15149,21 +16806,32 @@ List<NutritionDayRecord> _nutritionDaysInRangeFromRows(
   List<FoodEntryRow> entryRows,
   List<MealTypeRow> mealTypeRows,
 ) {
-  final mealsByDate = <String, List<MealRow>>{};
-  for (final row in mealRows) {
-    mealsByDate.putIfAbsent(row.localDate, () => <MealRow>[]).add(row);
-  }
-
-  return List<NutritionDayRecord>.unmodifiable(
-    range.days.map(
-      (date) => _nutritionDayFromRows(
-        date,
-        mealsByDate[date.storageValue] ?? const <MealRow>[],
-        entryRows,
-        mealTypeRows,
-      ),
-    ),
+  return assembleNutritionDaysInRange(
+    range: range,
+    meals: mealRows.map(_mealFromRow).toList(growable: false),
+    entries: entryRows.map(_foodEntryFromRow).toList(growable: false),
+    mealTypes: mealTypeRows.map(_mealTypeFromRow).toList(growable: false),
   );
+}
+
+bool _sameListBy<T>(
+  List<T>? left,
+  List<T> right,
+  bool Function(T left, T right) equals,
+) {
+  if (left == null || left.length != right.length) {
+    return false;
+  }
+  for (var index = 0; index < left.length; index += 1) {
+    if (!equals(left[index], right[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _sameStringSet(Set<String> left, Set<String> right) {
+  return left.length == right.length && left.containsAll(right);
 }
 
 bool _sameRowList<T>(List<T>? left, List<T> right) {
@@ -15359,6 +17027,7 @@ Map<String, Object?> _exerciseImage(ExerciseRow row) {
     'uses_rpe': row.usesRpe,
     'category_id': row.categoryId,
     'equipment_ids': row.equipmentIds,
+    'focus_ids': row.focusIds,
     'notes': row.notes,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -15449,6 +17118,7 @@ Map<String, Object?> _workoutSessionImage(WorkoutSessionRow row) {
     'local_date': row.localDate,
     'ended_at': row.endedAt == null ? null : _iso(row.endedAt!),
     'comment': row.comment,
+    'focus_id': row.focusId,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -15461,6 +17131,8 @@ Map<String, Object?> _mealImage(MealRow row) {
     'started_at': _iso(row.startedAt),
     'timezone': row.timezone,
     'local_date': row.localDate,
+    'timezone_offset_minutes': row.timezoneOffsetMinutes,
+    'time_precision': row.timePrecision,
     'ended_at': row.endedAt == null ? null : _iso(row.endedAt!),
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -15609,10 +17281,61 @@ Map<String, Object?> _compoundImage(CompoundRow row) {
     'default_route': row.defaultRoute,
     'strength': row.strength,
     'is_favorite': row.isFavorite,
+    'purpose_ids': row.purposeIds,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
 }
+
+/// One Schedule Version's stored content: its rule and planned amount.
+typedef _StoredScheduleVersion = ({ScheduleRule rule, PlanAmount amount});
+
+/// The member's current Schedule Version among [versions]: the latest
+/// `effective_from`, then the larger id (UUIDv7 ids sort by creation time,
+/// so that is the latest edit, and every device agrees). [versions] come
+/// from [ProtocolsRepository._activeScheduleQuery], which returns them
+/// in that order, so it is the last. Null when there is none.
+ScheduleRow? _currentScheduleRow(List<ScheduleRow> versions) =>
+    versions.lastOrNull;
+
+/// The Schedule Version that applies on [date] (D1), by the shared core's
+/// rule; [versions] are in [_currentScheduleRow]'s order. Null when none
+/// applies yet.
+ScheduleRow? _scheduleRowInEffectOn(
+  List<ScheduleRow> versions,
+  ProtocolDayDate date,
+) =>
+    applyingScheduleVersion(
+      versions,
+      date,
+      effectiveFrom: (row) => ProtocolDayDate.parse(row.effectiveFrom),
+    );
+
+/// A stored `period` column re-encoded in the codec's key order, so two
+/// columns that hold the same period compare equal however they were
+/// written; null stays null.
+///
+/// A default cycle anchor is read as [start], as `planDays` reads it (D4):
+/// its stored date is never read, so a column whose default anchor stores
+/// another date (an Agent's write, say) still compares equal to the save's
+/// period, and an unchanged save leaves the Protocol row alone.
+String? _canonicalPeriodColumn(String? column, ProtocolDayDate start) {
+  final period = _protocolPeriodFromColumn(column);
+  return period == null
+      ? null
+      : jsonEncode(
+          ProtocolPeriod(
+            cycle: protocolCycleFromStart(period.cycle, start),
+            pauses: period.pauses,
+          ).toJson(),
+        );
+}
+
+ProtocolDayDate? _nullableProtocolDay(String? value) =>
+    value == null ? null : ProtocolDayDate.parse(value);
+
+ProtocolPeriod? _protocolPeriodFromColumn(String? value) =>
+    value == null ? null : ProtocolPeriod.fromJson(jsonDecode(value));
 
 Map<String, Object?> _doseImage(DoseRow row) {
   return <String, Object?>{
@@ -15627,6 +17350,7 @@ Map<String, Object?> _doseImage(DoseRow row) {
     'took_at': _iso(row.tookAt),
     'timezone': row.timezone,
     'local_date': row.localDate,
+    'timezone_offset_minutes': row.timezoneOffsetMinutes,
     'provenance': row.provenance,
     'protocol_id': row.protocolId,
     'protocol_name': row.protocolName,
@@ -15635,12 +17359,32 @@ Map<String, Object?> _doseImage(DoseRow row) {
   };
 }
 
+/// The `protocol_skips` sync and Activity Log image (D8): the Data shapes'
+/// fields and nothing else, since a Skip carries no amount, note or reason.
+Map<String, Object?> _protocolSkipImage(ProtocolSkipRow row) {
+  return <String, Object?>{
+    'id': row.id,
+    'protocol_id': row.protocolId,
+    'compound_id': row.compoundId,
+    'local_date': row.localDate,
+    'planned_local_time': row.plannedLocalTime,
+    'updated_at': _iso(row.updatedAt),
+    'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
+  };
+}
+
+/// The `protocols` sync and Activity Log image. `period` rides JSON-encoded,
+/// exactly as the column stores it, like every other JSON column's image
+/// (`equipment_ids`, `recipe_ingredients_json`).
 Map<String, Object?> _protocolImage(ProtocolRow row) {
   return <String, Object?>{
     'id': row.id,
     'name': row.name,
-    'start_date': _iso(row.startDate),
-    'end_date': row.endDate == null ? null : _iso(row.endDate!),
+    'start_local_date': row.startLocalDate,
+    'end_local_date': row.endLocalDate,
+    'period': row.period,
+    'reminders_enabled': row.remindersEnabled,
+    'archived_on': row.archivedOn,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -15652,19 +17396,23 @@ Map<String, Object?> _protocolCompoundImage(ProtocolCompoundRow row) {
     'protocol_id': row.protocolId,
     'compound_id': row.compoundId,
     'position': row.position,
+    'archived_on': row.archivedOn,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
 }
 
+/// One Schedule Version's sync and Activity Log image. `rule` rides
+/// JSON-encoded, exactly as the column stores it.
 Map<String, Object?> _scheduleImage(ScheduleRow row) {
   return <String, Object?>{
     'id': row.id,
     'protocol_compound_id': row.protocolCompoundId,
+    'effective_from': row.effectiveFrom,
+    'rule': row.rule,
     'dose_amount_value': row.doseAmountValue,
     'dose_amount_entered': row.doseAmountEntered,
     'dose_unit': row.doseUnit,
-    'frequency': row.frequency,
     'route': row.route,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -15724,6 +17472,7 @@ Map<String, Object?> _workoutTemplateImage(WorkoutTemplateRow row) {
     'id': row.id,
     'name': row.name,
     'notes': row.notes,
+    'focus_id': row.focusId,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -15987,11 +17736,70 @@ const _templateLinkWorkoutSnapshotFields = <String>{
   'workout_exercise_group_members',
 };
 
+/// Image keys an entity gained after its first release, each with the value
+/// a row written before then means. An Activity Log entry from an older app
+/// has no such key, and undo must still find its image current, so undo
+/// compares images with these defaults filled in. The device decode leaves the
+/// column alone for a missing key, and the server's
+/// `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` carries the stored value forward.
+///
+/// A Compound's `is_favorite` is also absent from every Agent Compound write
+/// (the Agent API has no favourite field). The server carries a stored value
+/// forward, but an Agent-created Compound has none, and the device decode
+/// reads the missing key as false, so false is its default here.
+///
+/// A Meal's `timezone_offset_minutes` and `time_precision` arrived with schema
+/// 65 (docs/designs/meal-logging.md §10). A Meal written before then has a
+/// null offset and `instant` precision, so an image without the keys means
+/// exactly those values.
+///
+/// A Compound's `purpose_ids` arrived with schema 66
+/// (docs/designs/compound-purposes.md, D2), and its column default is `[]`.
+const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
+  AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
+  AppDatabase.compoundsTable: <String, Object?>{
+    'is_favorite': false,
+    'purpose_ids': '[]',
+  },
+  AppDatabase.mealsTable: <String, Object?>{
+    'timezone_offset_minutes': null,
+    'time_precision': 'instant',
+  },
+};
+
 bool _activityImagesEqualForEntity(
   String entityTable,
   Map<String, Object?> left,
   Map<String, Object?> right,
 ) {
+  final laterAddedDefaults = _activityLaterAddedKeyDefaults[entityTable];
+  if (laterAddedDefaults != null) {
+    left = <String, Object?>{...laterAddedDefaults, ...left};
+    right = <String, Object?>{...laterAddedDefaults, ...right};
+  }
+  if (entityTable == AppDatabase.userProfileSectionsTable) {
+    return _activityImagesEqual(
+      _userProfileSectionImageNormalized(left),
+      _userProfileSectionImageNormalized(right),
+    );
+  }
+  if (entityTable == AppDatabase.protocolTargetOutcomesTable) {
+    return _activityImagesEqual(
+      _protocolTargetOutcomeImageNormalized(left),
+      _protocolTargetOutcomeImageNormalized(right),
+    );
+  }
+  final strengthKey = switch (entityTable) {
+    AppDatabase.compoundsTable => 'strength',
+    AppDatabase.dosesTable => 'compound_strength',
+    _ => null,
+  };
+  if (strengthKey != null) {
+    return _activityImagesEqual(
+      _compoundStrengthImageNormalized(left, strengthKey),
+      _compoundStrengthImageNormalized(right, strengthKey),
+    );
+  }
   if (entityTable != AppDatabase.templateLinksTable) {
     return _activityImagesEqual(left, right);
   }
@@ -16007,9 +17815,31 @@ bool _activityImagesEqualForEntity(
   return _activityImagesEqual(normalizedLeft, normalizedRight);
 }
 
+/// Compares by value at any depth, because a User Profile image nests its
+/// `values`. A JSON number has one type, so `66` and `66.0` are equal: the server
+/// returns the first for what the device stored as the second.
 bool _activityImageValuesEqual(Object? left, Object? right) {
   if (left is num && right is num) {
     return left.toDouble() == right.toDouble();
+  }
+  if (left is Map && right is Map) {
+    return left.length == right.length &&
+        left.keys.every(
+          (key) =>
+              right.containsKey(key) &&
+              _activityImageValuesEqual(left[key], right[key]),
+        );
+  }
+  if (left is List && right is List) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index += 1) {
+      if (!_activityImageValuesEqual(left[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
   }
   return left == right;
 }
@@ -16046,6 +17876,7 @@ ExercisesCompanion _exerciseCompanionFromImage(Map<String, Object?> image) {
     equipmentIds: Value<String>(
       _activityNullableString(image, 'equipment_ids') ?? '[]',
     ),
+    focusIds: _imageFocusIds(image),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
@@ -16083,21 +17914,60 @@ WorkoutSessionsCompanion _workoutSessionCompanionFromImage(
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     comment: Value<String?>(_activityNullableString(image, 'comment')),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
 }
 
 MealsCompanion _mealCompanionFromImage(Map<String, Object?> image) {
+  final startedAt = _activityRequiredDateTime(image, 'started_at');
+  // Images from before schema 65 (an older device's push, an older undo) have
+  // neither key: an absent key leaves the column as stored on update and
+  // falls to the column default on insert (docs/designs/meal-logging.md §10).
+  final timezoneOffsetMinutes = _imageIntIfPresent(
+    image,
+    'timezone_offset_minutes',
+  );
   return MealsCompanion(
     mealType: Value<String>(_activityRequiredString(image, 'meal_type')),
-    startedAt: Value<DateTime>(_activityRequiredDateTime(image, 'started_at')),
+    startedAt: Value<DateTime>(startedAt),
     timezone: Value<String>(_activityRequiredString(image, 'timezone')),
-    localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    localDate: Value<String>(
+      _mealImageLocalDate(
+        image,
+        startedAt: startedAt,
+        timezoneOffsetMinutes:
+            timezoneOffsetMinutes.present ? timezoneOffsetMinutes.value : null,
+      ),
+    ),
+    timezoneOffsetMinutes: timezoneOffsetMinutes,
+    timePrecision: _imageNonNullStringIfPresent(image, 'time_precision'),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+/// A Meal image's `local_date`, or, when it is missing or not a valid
+/// `YYYY-MM-DD` date, the date re-derived from `started_at` and the image's
+/// offset (the device zone for null) by `localDateAtOffset`, so a bad server
+/// row no longer crashes pull (docs/designs/meal-logging.md §10).
+String _mealImageLocalDate(
+  Map<String, Object?> image, {
+  required DateTime startedAt,
+  required int? timezoneOffsetMinutes,
+}) {
+  final stored = image['local_date'];
+  if (stored is String) {
+    try {
+      return NutritionDayDate.parse(stored).storageValue;
+    } on FormatException {
+      // Fall through to the derived date.
+    }
+  }
+  return _nutritionDayDateAtOffset(startedAt, timezoneOffsetMinutes)
+      .storageValue;
 }
 
 MealsCompanion _mealSyncCompanionFromImage(
@@ -16255,14 +18125,85 @@ CompoundsCompanion _compoundCompanionFromImage(Map<String, Object?> image) {
     defaultRoute: Value<String>(
       _activityRequiredString(image, 'default_route'),
     ),
-    strength: Value<String?>(_activityNullableString(image, 'strength')),
+    strength: Value<String?>(_compoundStrengthImageField(image, 'strength')),
     // Nullable-with-default: older Activity Log images predating carry
     // no `is_favorite` key, and replaying/undoing them must not throw.
     isFavorite:
         Value<bool>(_activityNullableBool(image, 'is_favorite') ?? false),
+    // An image from before schema 66, or a push that omits the key, leaves the
+    // stored list alone, so an older device or an Agent edit can't erase tags.
+    purposeIds: _imageNonNullStringIfPresent(image, 'purpose_ids'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+/// A strength image field (a Compound's `strength`, a Dose's
+/// `compound_strength`) as the column stores it: the canonical label, such as
+/// `5 mg/capsule`, which [CompoundStrength.parse] reads.
+///
+/// The Agent write once stored `{value, massUnit, perUnit}` with registry unit
+/// names instead, and an Agent undo on the server can restore such a payload,
+/// so that object is read as the label it stands for. An object the label
+/// can't hold (a unit outside the registry, an amount that isn't positive)
+/// throws a [FormatException], which a sync pull quarantines instead of
+/// failing the whole page.
+String? _compoundStrengthImageField(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value is! Map) {
+    return _activityNullableString(image, key);
+  }
+  final amount = value['value'];
+  final massUnit = value['massUnit'];
+  final perUnit = value['perUnit'];
+  if (amount is! num || massUnit is! String || perUnit is! String) {
+    throw FormatException(
+      'Strength image field $key must be a label or a value with two units.',
+      value,
+    );
+  }
+  try {
+    return CompoundStrength(
+      amount: amount.toDouble(),
+      amountEntered: _compoundStrengthAmountText(amount),
+      massUnit: doseUnitFromName(massUnit),
+      perUnit: doseUnitFromName(perUnit),
+    ).storageValue;
+  } on ArgumentError catch (error) {
+    throw FormatException(error.message.toString(), value);
+  }
+}
+
+/// [amount] as the server writes it into a label (JavaScript's `String`), so
+/// an integral double reads `5`, not `5.0`.
+String _compoundStrengthAmountText(num amount) {
+  if (amount is double &&
+      amount.isFinite &&
+      amount == amount.truncateToDouble() &&
+      amount.abs() < 1e15) {
+    return amount.toInt().toString();
+  }
+  return amount.toString();
+}
+
+/// [image] with an Agent-written strength object read as the label the
+/// decoder stores, so undo compares it with the row the decoder wrote. An
+/// object the decoder can't read is left as it is.
+Map<String, Object?> _compoundStrengthImageNormalized(
+  Map<String, Object?> image,
+  String key,
+) {
+  if (image[key] is! Map) {
+    return image;
+  }
+  try {
+    return <String, Object?>{
+      ...image,
+      key: _compoundStrengthImageField(image, key),
+    };
+  } on FormatException {
+    return image;
+  }
 }
 
 DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
@@ -16270,8 +18211,9 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
     compoundId: Value<String?>(_activityNullableString(image, 'compound_id')),
     compoundName:
         Value<String>(_activityRequiredString(image, 'compound_name')),
-    compoundStrength:
-        Value<String?>(_activityNullableString(image, 'compound_strength')),
+    compoundStrength: Value<String?>(
+      _compoundStrengthImageField(image, 'compound_strength'),
+    ),
     amountValue: Value<double>(_activityRequiredDouble(image, 'amount_value')),
     amountEntered: Value<String>(
       _activityRequiredString(image, 'amount_entered'),
@@ -16281,6 +18223,12 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
     tookAt: Value<DateTime>(_activityRequiredDateTime(image, 'took_at')),
     timezone: Value<String>(_activityRequiredString(image, 'timezone')),
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    // Nullable-with-default: a Dose logged before the offset was recorded,
+    // and every image of one, carries no `timezone_offset_minutes` key. It
+    // applies with a null offset; it is never treated as malformed.
+    timezoneOffsetMinutes: Value<int?>(
+      _activityNullableInt(image, 'timezone_offset_minutes'),
+    ),
     provenance: Value<String>(_activityRequiredString(image, 'provenance')),
     // Nullable-with-default: Activity Log images predating carry no
     // `protocol_id`/`protocol_name` keys, and replaying/undoing them must not
@@ -16293,11 +18241,49 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
   );
 }
 
+ProtocolSkipsCompanion _protocolSkipCompanionFromImage(
+  Map<String, Object?> image,
+) {
+  return ProtocolSkipsCompanion(
+    protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
+    compoundId: Value<String>(_activityRequiredString(image, 'compound_id')),
+    localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    plannedLocalTime:
+        Value<String?>(_activityNullableString(image, 'planned_local_time')),
+    updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
+    deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
+  );
+}
+
+/// A `protocols` image in the plan shape. An image without
+/// `start_local_date` or `reminders_enabled` (every image written before
+/// the plan shape, which carried `start_date` instead), or with a bound or
+/// Period its codec rejects, is malformed: it throws a [FormatException],
+/// which a sync pull quarantines rather than applies.
 ProtocolsCompanion _protocolCompanionFromImage(Map<String, Object?> image) {
+  final period = _planImageJsonColumn(image, 'period');
+  if (period != null) {
+    ProtocolPeriod.fromJson(_planImageJson(period, 'period'));
+  }
+  final remindersEnabled = image['reminders_enabled'];
+  if (remindersEnabled is! bool) {
+    throw const FormatException(
+      'Protocol image field reminders_enabled must be a boolean.',
+    );
+  }
   return ProtocolsCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
-    startDate: Value<DateTime>(_activityRequiredDateTime(image, 'start_date')),
-    endDate: Value<DateTime?>(_activityNullableDateTime(image, 'end_date')),
+    startLocalDate: Value<String>(
+      _planImageLocalDate(image, 'start_local_date'),
+    ),
+    endLocalDate: Value<String?>(
+      _planImageNullableLocalDate(image, 'end_local_date'),
+    ),
+    period: Value<String?>(period),
+    remindersEnabled: Value<bool>(remindersEnabled),
+    archivedOn: Value<String?>(
+      _planImageNullableLocalDate(image, 'archived_on'),
+    ),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -16310,38 +18296,159 @@ ProtocolCompoundsCompanion _protocolCompoundCompanionFromImage(
     protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
     compoundId: Value<String>(_activityRequiredString(image, 'compound_id')),
     position: Value<int>(_activityRequiredInt(image, 'position')),
+    archivedOn: Value<String?>(
+      _planImageNullableLocalDate(image, 'archived_on'),
+    ),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
 }
 
+/// One Schedule Version's image in the plan shape. An image without
+/// `effective_from` or `rule` (every image written before the plan shape,
+/// which carried `frequency` instead), or with a value its codec rejects,
+/// is malformed: it throws a [FormatException], which a sync pull
+/// quarantines rather than applies.
 SchedulesCompanion _scheduleCompanionFromImage(Map<String, Object?> image) {
+  final rule = _planImageJsonColumn(image, 'rule');
+  if (rule == null) {
+    throw const FormatException('Schedule image field rule is missing.');
+  }
+  ScheduleRule.fromJson(_planImageJson(rule, 'rule'));
   return SchedulesCompanion(
     protocolCompoundId:
         Value<String>(_activityRequiredString(image, 'protocol_compound_id')),
+    effectiveFrom: Value<String>(
+      _planImageLocalDate(image, 'effective_from'),
+    ),
+    rule: Value<String>(rule),
     doseAmountValue:
-        Value<double>(_activityRequiredDouble(image, 'dose_amount_value')),
+        Value<double?>(_activityNullableDouble(image, 'dose_amount_value')),
     doseAmountEntered:
-        Value<String>(_activityRequiredString(image, 'dose_amount_entered')),
-    doseUnit: Value<String>(_activityRequiredString(image, 'dose_unit')),
-    frequency: Value<String>(_activityRequiredString(image, 'frequency')),
-    route: Value<String>(_activityRequiredString(image, 'route')),
+        Value<String?>(_activityNullableString(image, 'dose_amount_entered')),
+    doseUnit: Value<String?>(_activityNullableString(image, 'dose_unit')),
+    route: Value<String?>(_activityNullableString(image, 'route')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
 }
 
+String? _planImageNullableString(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value == null || value is String) {
+    return value as String?;
+  }
+  throw FormatException('Plan image field $key must be a string.', value);
+}
+
+/// A JSON column's image value (`rule`, `period`) as the column stores it:
+/// JSON text. The app writes JSON text, as it does for every JSON column;
+/// a writer that sent the decoded JSON object instead is read the same way.
+String? _planImageJsonColumn(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value is Map<String, Object?>) {
+    return jsonEncode(value);
+  }
+  return _planImageNullableString(image, key);
+}
+
+/// A required `YYYY-MM-DD` plan image field, as stored.
+String _planImageLocalDate(Map<String, Object?> image, String key) {
+  final value = _planImageNullableString(image, key);
+  if (value == null) {
+    throw FormatException('Plan image field $key is missing.');
+  }
+  return ProtocolDayDate.parse(value).storageValue;
+}
+
+String? _planImageNullableLocalDate(Map<String, Object?> image, String key) {
+  final value = _planImageNullableString(image, key);
+  return value == null ? null : ProtocolDayDate.parse(value).storageValue;
+}
+
+Object? _planImageJson(String encoded, String key) {
+  try {
+    return jsonDecode(encoded);
+  } on FormatException catch (error) {
+    throw FormatException(
+      'Plan image field $key is not JSON: ${error.message}',
+    );
+  }
+}
+
+/// One target outcome's image, as the app writes it or as an Agent stored it.
+/// Before docs/designs/protocol-target-outcome-sync-shape.md an Agent write
+/// stored the kind as `outcome_kind` and no `position`, and an Agent undo on
+/// the server can restore such a payload, so the kind and position are read
+/// through [_protocolTargetOutcomeImageKind] and
+/// [_protocolTargetOutcomeImagePosition]. A kind outside the registry throws
+/// an [ArgumentError] and a missing one a [FormatException], so a sync pull
+/// quarantines that one change instead of storing a row no Protocol read can
+/// resolve, or failing the whole page.
 ProtocolTargetOutcomesCompanion _protocolTargetOutcomeCompanionFromImage(
   Map<String, Object?> image,
 ) {
+  final kindName = _protocolTargetOutcomeImageKind(image);
+  if (kindName == null) {
+    throw const FormatException(
+      'Protocol target outcome image field kind is missing.',
+    );
+  }
   return ProtocolTargetOutcomesCompanion(
     protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
-    kind: Value<String>(_activityRequiredString(image, 'kind')),
+    kind: Value<String>(protocolOutcomeKindFromName(kindName).name),
     metricId: Value<String?>(_activityNullableString(image, 'metric_id')),
-    position: Value<int>(_activityRequiredInt(image, 'position')),
+    position: Value<int>(_protocolTargetOutcomeImagePosition(image)),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+/// The image's `kind` when it is a string, else the `outcome_kind` an Agent
+/// write stored before the app's shape was used, else null.
+String? _protocolTargetOutcomeImageKind(Map<String, Object?> image) {
+  final kind = image['kind'];
+  if (kind is String) {
+    return kind;
+  }
+  final legacyKind = image['outcome_kind'];
+  return legacyKind is String ? legacyKind : null;
+}
+
+/// The image's `position`, or 0 when it has none (an Agent write stored none
+/// before the app's shape was used). Any other non-integer throws a
+/// [FormatException], which a sync pull quarantines.
+int _protocolTargetOutcomeImagePosition(Map<String, Object?> image) {
+  final position = image['position'];
+  if (position == null) {
+    return 0;
+  }
+  if (position is int) {
+    return position;
+  }
+  if (position is num && position.toInt() == position) {
+    return position.toInt();
+  }
+  throw FormatException(
+    'Protocol target outcome image field position must be an integer.',
+    position,
+  );
+}
+
+/// [image] with an old Agent-written kind and position read as the decoder
+/// reads them, so undo compares it with the row the decoder stored.
+Map<String, Object?> _protocolTargetOutcomeImageNormalized(
+  Map<String, Object?> image,
+) {
+  final normalized = Map<String, Object?>.from(image)..remove('outcome_kind');
+  final kind = _protocolTargetOutcomeImageKind(image);
+  if (kind != null) {
+    normalized['kind'] = kind;
+  }
+  if (image['position'] == null) {
+    normalized['position'] = 0;
+  }
+  return normalized;
 }
 
 CompoundsCompanion _compoundSyncCompanionFromImage(
@@ -16360,6 +18467,17 @@ DosesCompanion _doseSyncCompanionFromImage(
   required String syncDeviceId,
 }) {
   return _doseCompanionFromImage(image).copyWith(
+    id: Value<String>(_activityRequiredString(image, 'id')),
+    syncDeviceId: Value<String?>(syncDeviceId),
+    syncPreviouslySynced: const Value<bool>(true),
+  );
+}
+
+ProtocolSkipsCompanion _protocolSkipSyncCompanionFromImage(
+  Map<String, Object?> image, {
+  required String syncDeviceId,
+}) {
+  return _protocolSkipCompanionFromImage(image).copyWith(
     id: Value<String>(_activityRequiredString(image, 'id')),
     syncDeviceId: Value<String?>(syncDeviceId),
     syncPreviouslySynced: const Value<bool>(true),
@@ -16455,6 +18573,7 @@ WorkoutTemplatesCompanion _workoutTemplateCompanionFromImage(
   return WorkoutTemplatesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -16893,132 +19012,6 @@ DateTime? _activityNullableDateTime(Map<String, Object?> image, String key) {
   );
 }
 
-List<ExerciseCatalogSectionRecord> _catalogSectionsFrom(
-  List<ExerciseCategoryRecord> categories,
-  List<ExerciseRecord> exercises,
-) {
-  final categoryById = <String, ExerciseCategoryRecord>{
-    for (final category in categories) category.id: category,
-  };
-  final shadowAwareExercises = _markShadowingUserExercises(exercises);
-  final selectedExercises = _mergedExercises(shadowAwareExercises);
-  final exercisesByCategoryId = <String?, List<ExerciseRecord>>{};
-  for (final exercise in selectedExercises) {
-    exercisesByCategoryId
-        .putIfAbsent(exercise.categoryId, () => <ExerciseRecord>[])
-        .add(exercise);
-  }
-
-  for (final exerciseList in exercisesByCategoryId.values) {
-    exerciseList.sort(_compareExerciseRecords);
-  }
-
-  final sections = <ExerciseCatalogSectionRecord>[];
-  final favoriteExercises = selectedExercises
-      .where((exercise) => exercise.isFavorite)
-      .toList(growable: false);
-  if (favoriteExercises.isNotEmpty) {
-    sections.add(
-      ExerciseCatalogSectionRecord.virtualFavorites(
-        exercises: List<ExerciseRecord>.unmodifiable(favoriteExercises),
-      ),
-    );
-  }
-
-  for (final category in categories) {
-    final exerciseList = exercisesByCategoryId.remove(category.id);
-    if (exerciseList == null || exerciseList.isEmpty) {
-      continue;
-    }
-
-    sections.add(
-      ExerciseCatalogSectionRecord(
-        category: category,
-        exercises: List<ExerciseRecord>.unmodifiable(exerciseList),
-      ),
-    );
-  }
-
-  final remainingCategoryIds = exercisesByCategoryId.keys.toList()
-    ..sort((left, right) {
-      if (left == null && right == null) {
-        return 0;
-      }
-      if (left == null) {
-        return 1;
-      }
-      if (right == null) {
-        return -1;
-      }
-      return left.compareTo(right);
-    });
-  for (final categoryId in remainingCategoryIds) {
-    final exerciseList = exercisesByCategoryId[categoryId]!;
-    sections.add(
-      ExerciseCatalogSectionRecord(
-        category: categoryId == null ? null : categoryById[categoryId],
-        exercises: List<ExerciseRecord>.unmodifiable(exerciseList),
-      ),
-    );
-  }
-
-  return List<ExerciseCatalogSectionRecord>.unmodifiable(sections);
-}
-
-List<ExerciseRecord> _mergedExercises(List<ExerciseRecord> exercises) {
-  final userNames = exercises
-      .where((exercise) => exercise.origin == ExerciseLibraryOrigin.user)
-      .map((exercise) => _normalizeExerciseName(exercise.name))
-      .toSet();
-  final selected = exercises
-      .where(
-        (exercise) =>
-            exercise.origin == ExerciseLibraryOrigin.user ||
-            !userNames.contains(_normalizeExerciseName(exercise.name)),
-      )
-      .toList(growable: false);
-
-  selected.sort(_compareExerciseRecords);
-  return selected;
-}
-
-List<ExerciseRecord> _markShadowingUserExercises(
-  List<ExerciseRecord> exercises,
-) {
-  final platformNames = exercises
-      .where((exercise) => exercise.origin == ExerciseLibraryOrigin.platform)
-      .map((exercise) => _normalizeExerciseName(exercise.name))
-      .toSet();
-
-  return exercises.map((exercise) {
-    final shadowsPlatform = exercise.origin == ExerciseLibraryOrigin.user &&
-        platformNames.contains(_normalizeExerciseName(exercise.name));
-    return exercise.copyWith(shadowsPlatformExercise: shadowsPlatform);
-  }).toList(growable: false);
-}
-
-int _compareExerciseRecords(ExerciseRecord left, ExerciseRecord right) {
-  final leftName = _normalizeExerciseName(left.name);
-  final rightName = _normalizeExerciseName(right.name);
-  final nameComparison = leftName.compareTo(rightName);
-  if (nameComparison != 0) {
-    return nameComparison;
-  }
-
-  return _originRank(left.origin).compareTo(_originRank(right.origin));
-}
-
-int _originRank(ExerciseLibraryOrigin origin) {
-  return switch (origin) {
-    ExerciseLibraryOrigin.user => 0,
-    ExerciseLibraryOrigin.platform => 1,
-  };
-}
-
-String _normalizeExerciseName(String name) {
-  return name.trim().toLowerCase();
-}
-
 String _normalizeExerciseNameForStorage(String name) {
   return name.trim();
 }
@@ -17029,6 +19022,26 @@ String _normalizeCategoryName(String name) {
 
 String _normalizeCategoryNameForStorage(String name) {
   return name.trim();
+}
+
+/// A reorder names each active row exactly once: no duplicates, no archived
+/// or unknown ids, none left out.
+void _requireEachActiveIdOnce(
+  List<String> orderedIds,
+  Iterable<String> activeIds, {
+  required String name,
+  required String noun,
+}) {
+  final active = activeIds.toSet();
+  if (orderedIds.length != active.length ||
+      orderedIds.toSet().length != orderedIds.length ||
+      !orderedIds.every(active.contains)) {
+    throw ArgumentError.value(
+      orderedIds,
+      name,
+      'Ordering must include each active $noun exactly once.',
+    );
+  }
 }
 
 String _normalizeGroupNameForStorage(String name) {
@@ -17142,31 +19155,12 @@ class _NormalizedRecipeDraft {
   final RecipeNutrition nutrition;
 }
 
-int _nextSortOrder(List<ExerciseCategoryRow> activeRows) {
+int _nextPosition<T>(Iterable<T> rows, int Function(T row) positionOf) {
   var next = 0;
-  for (final row in activeRows) {
-    if (row.sortOrder >= next) {
-      next = row.sortOrder + 1;
-    }
-  }
-  return next;
-}
-
-int _nextWorkoutExercisePosition(List<WorkoutExerciseRow> activeRows) {
-  var next = 0;
-  for (final row in activeRows) {
-    if (row.position >= next) {
-      next = row.position + 1;
-    }
-  }
-  return next;
-}
-
-int _nextExerciseGroupPosition(List<ExerciseGroupRow> activeRows) {
-  var next = 0;
-  for (final row in activeRows) {
-    if (row.position >= next) {
-      next = row.position + 1;
+  for (final row in rows) {
+    final position = positionOf(row);
+    if (position >= next) {
+      next = position + 1;
     }
   }
   return next;
@@ -17210,6 +19204,49 @@ ExerciseType _decodeDimensions(String encoded) {
   );
 }
 
+/// The `loadMode` a new Platform row gets.
+const ExerciseLoadMode _insertedLoadMode = ExerciseLoadMode.added;
+
+/// The stored JSON list in [encoded], or null if it is not one.
+List<Object?>? _storedJsonList(String encoded) {
+  try {
+    final decoded = jsonDecode(encoded);
+    return decoded is List ? decoded : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// The Exercise Type in [encoded], or null where `_decodeDimensions` would
+/// throw: anything but a JSON list of unique Dimension names.
+ExerciseType? _storedExerciseType(String encoded) {
+  final names = _storedJsonList(encoded);
+  if (names == null) {
+    return null;
+  }
+  final byName = DimensionId.values.asNameMap();
+  final dimensions = <DimensionId>{};
+  for (final name in names) {
+    final dimension = byName[name];
+    if (dimension == null || !dimensions.add(dimension)) {
+      return null;
+    }
+  }
+  return ExerciseType(dimensions);
+}
+
+ExerciseLoadMode? _storedLoadMode(ExerciseRow row) {
+  return ExerciseLoadMode.values.asNameMap()[row.loadMode];
+}
+
+bool _isReadableLoadUnit(ExerciseRow row) {
+  return TrainingUnit.values.asNameMap().containsKey(row.defaultLoadUnit);
+}
+
+bool _isReadableRecordProfile(ExerciseRow row) {
+  return RecordProfile.values.asNameMap().containsKey(row.recordProfile);
+}
+
 String _encodeEquipment(List<ExerciseEquipment> equipment) {
   return jsonEncode(_normalizedEquipmentIds(equipment));
 }
@@ -17234,115 +19271,6 @@ List<String> _normalizedEquipmentIds(Iterable<ExerciseEquipment> equipment) {
     ids.add(id);
   }
   return ids;
-}
-
-bool _equipmentListEquals(
-  List<ExerciseEquipment> left,
-  List<ExerciseEquipment> right,
-) {
-  final leftIds = _normalizedEquipmentIds(left);
-  final rightIds = _normalizedEquipmentIds(right);
-  if (leftIds.length != rightIds.length) {
-    return false;
-  }
-  final rightIdSet = rightIds.toSet();
-  return leftIds.every(rightIdSet.contains);
-}
-
-_LegacyEquipmentMigration? _legacyEquipmentMigrationFromNote(String? notes) {
-  if (notes == null || !notes.startsWith(_legacyWgerAttributionPrefix)) {
-    return null;
-  }
-
-  final cleanedNote = _cleanLegacyWgerAttributionNote(notes);
-  if (cleanedNote == null) {
-    return _LegacyEquipmentMigration(
-      equipment: const <ExerciseEquipment>[],
-      notes: null,
-    );
-  }
-
-  final match = RegExp(r'^Equipment:\s+(.+)\.$').firstMatch(cleanedNote);
-  if (match == null) {
-    return cleanedNote == notes
-        ? null
-        : _LegacyEquipmentMigration(
-            equipment: const <ExerciseEquipment>[],
-            notes: cleanedNote.isEmpty ? null : cleanedNote,
-          );
-  }
-
-  final equipment = match
-      .group(1)!
-      .split(',')
-      .map((name) => _equipmentFromLegacyName(name.trim()))
-      .whereType<ExerciseEquipment>()
-      .toList(growable: false);
-  return _LegacyEquipmentMigration(
-    equipment: equipment,
-    notes: null,
-  );
-}
-
-String? _cleanLegacyWgerAttributionNote(String? notes) {
-  if (notes == null || !notes.startsWith(_legacyWgerAttributionPrefix)) {
-    return notes;
-  }
-
-  final cleaned =
-      notes.substring(_legacyWgerAttributionPrefix.length).trimLeft();
-  return cleaned.isEmpty ? null : cleaned;
-}
-
-const _legacyWgerAttributionPrefix = 'Adapted from the wger exercise database.';
-
-ExerciseEquipment? _equipmentFromLegacyName(String name) {
-  final id = switch (name.toLowerCase()) {
-    'none (bodyweight exercise)' => 'bodyweight',
-    'resistance band' => 'band',
-    'pull-up bar' => 'pullUpBar',
-    'incline bench' => 'inclineBench',
-    'gym mat' => 'gymMat',
-    'swiss ball' => 'swissBall',
-    'sz-bar' => 'ezBar',
-    'barbell' => 'barbell',
-    'bench' => 'bench',
-    'dumbbell' => 'dumbbell',
-    'kettlebell' => 'kettlebell',
-    'plate' => 'plate',
-    _ => _equipmentIdFromLegacyName(name),
-  };
-  return id.isEmpty ? null : ExerciseEquipment.fromId(id);
-}
-
-String _equipmentIdFromLegacyName(String name) {
-  final words = name
-      .trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .toList(growable: false);
-  if (words.isEmpty) {
-    return '';
-  }
-
-  final buffer = StringBuffer(words.first);
-  for (final word in words.skip(1)) {
-    buffer.write(word[0].toUpperCase());
-    buffer.write(word.substring(1));
-  }
-  return buffer.toString();
-}
-
-class _LegacyEquipmentMigration {
-  const _LegacyEquipmentMigration({
-    required this.equipment,
-    required this.notes,
-  });
-
-  final List<ExerciseEquipment> equipment;
-  final String? notes;
 }
 
 LoggedSet _loggedSetValuesFromRow(LoggedSetRow row) {
@@ -17436,35 +19364,6 @@ _DimensionColumns _dimensionColumns(SetDimensionValue? value) {
   );
 }
 
-String? _normalizeWorkoutComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
-
-String? _normalizeSetComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
-
-String? _normalizeMeasurementComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
-
-double? _normalizeRpe(double? rpe) {
-  if (rpe == null) {
-    return null;
-  }
-  if (rpe < 0 || rpe > 10 || (rpe * 2).roundToDouble() != rpe * 2) {
-    throw ArgumentError.value(
-      rpe,
-      'rpe',
-      'RPE must be between 0 and 10 in half-step increments.',
-    );
-  }
-  return rpe;
-}
-
 double _normalizeAlertVolume(double volume) {
   if (volume.isNaN) {
     throw ArgumentError.value(
@@ -17549,123 +19448,11 @@ Map<String, Object?>? _decodeImage(String? encoded) {
 
 String _iso(DateTime value) => value.toUtc().toIso8601String();
 
-String _workoutShareSummary({
-  required WorkoutSessionRecord workout,
-  required List<WorkoutExerciseRecord> workoutExercises,
-  required List<LoggedSetRecord> sets,
-  required Map<String, ExerciseRecord> exercisesById,
-}) {
-  final buffer = StringBuffer()
-    ..writeln('Workout on ${workout.localDate.storageValue}');
-  final duration = _formatWorkoutDuration(
-    workout.endedAt?.difference(workout.startedAt),
-  );
-  if (duration != null) {
-    buffer.writeln('Duration: $duration');
-  }
-  final comment = _normalizeWorkoutComment(workout.comment);
-  if (comment != null) {
-    buffer.writeln('Comment: $comment');
-  }
-
-  final exerciseIds = <String>[
-    for (final workoutExercise in workoutExercises) workoutExercise.exerciseId,
-  ];
-  final knownIds = exerciseIds.toSet();
-  for (final set in sets) {
-    if (knownIds.add(set.exerciseId)) {
-      exerciseIds.add(set.exerciseId);
-    }
-  }
-
-  if (exerciseIds.isEmpty) {
-    buffer
-      ..writeln()
-      ..writeln('No exercises logged.');
-    return buffer.toString().trimRight();
-  }
-
-  for (final exerciseId in exerciseIds) {
-    final exercise = exercisesById[exerciseId];
-    final exerciseSets = sets
-        .where((set) => set.exerciseId == exerciseId)
-        .toList(growable: false);
-    buffer
-      ..writeln()
-      ..writeln(exercise?.name ?? 'Unknown exercise');
-    if (exerciseSets.isEmpty) {
-      buffer.writeln('- No sets logged');
-      continue;
-    }
-
-    for (var index = 0; index < exerciseSets.length; index += 1) {
-      final set = exerciseSets[index];
-      final parts = <String>[
-        'Set ${index + 1}: ${_formatSetSummary(set)}',
-        if (set.isCompleted) 'completed',
-        if (set.side != null) set.side!.name,
-        if (set.rpe != null) 'RPE ${_formatDecimal(set.rpe!)}',
-      ];
-      buffer.writeln('- ${parts.join(' | ')}');
-      final setComment = _normalizeSetComment(set.comment);
-      if (setComment != null) {
-        buffer.writeln('  Note: $setComment');
-      }
-    }
-  }
-
-  return buffer.toString().trimRight();
-}
-
-String? _formatWorkoutDuration(Duration? duration) {
-  if (duration == null || duration.isNegative) {
-    return null;
-  }
-
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
-  }
-  if (minutes > 0) {
-    return '${minutes}m';
-  }
-  return '${seconds}s';
-}
-
-String _formatSetSummary(LoggedSetRecord set) {
-  final load = set.values.load;
-  final reps = set.values.reps;
-  final duration = set.values.duration;
-  final distance = set.values.distance;
-  if (load != null && reps != null) {
-    return '${load.entered} ${_unitLabel(load.unit)} x '
-        '${reps.entered} ${_unitLabel(reps.unit)}';
-  }
-  if (distance != null && duration != null) {
-    return '${distance.entered} ${_unitLabel(distance.unit)} in '
-        '${duration.entered} ${_unitLabel(duration.unit)}';
-  }
-
-  final parts = set.values.values.values
-      .map((value) => '${value.entered} ${_unitLabel(value.unit)}')
-      .toList(growable: false);
-  return parts.isEmpty ? 'Completed' : parts.join(', ');
-}
-
-String _formatDecimal(double value) {
-  final rounded = value.roundToDouble();
-  return rounded == value ? rounded.toInt().toString() : value.toString();
-}
-
-String _unitLabel(TrainingUnit unit) {
-  return switch (unit) {
-    TrainingUnit.kilogram => 'kg',
-    TrainingUnit.pound => 'lb',
-    TrainingUnit.repetition => 'reps',
-    TrainingUnit.second => 'sec',
-    TrainingUnit.kilometer => 'km',
-    TrainingUnit.mile => 'mi',
-  };
+/// Whether two stamps are the same once stored. Drift keeps a DateTime as whole
+/// unix seconds here, and seed stamps can carry milliseconds, so a row read back
+/// never equals its parsed seed stamp exactly. Comparing them directly would
+/// rewrite and log those rows on every launch.
+bool _sameStoredInstant(DateTime left, DateTime right) {
+  return left.millisecondsSinceEpoch ~/ 1000 ==
+      right.millisecondsSinceEpoch ~/ 1000;
 }

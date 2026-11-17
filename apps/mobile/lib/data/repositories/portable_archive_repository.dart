@@ -4,7 +4,7 @@ class PortableArchiveRepository {
   PortableArchiveRepository._(this._repositories);
 
   static const archiveFormatVersion = 1;
-  static const appVersion = '0.1.0+1';
+  static const appVersion = perenniaAppVersion;
   static const importActor = 'portable_archive_import';
   static const manifestFileName = 'manifest.json';
   static const encryptedManifestFileName = 'encrypted_manifest.json';
@@ -106,6 +106,25 @@ class PortableArchiveRepository {
     return destination.writeAsBytes(bytes, flush: true);
   }
 
+  /// Whether [bytes] is an encrypted archive, so a restore flow knows to ask
+  /// for the passphrase first. False for anything that is not one, including
+  /// files that are not archives at all; [inspectPortableArchive] is what
+  /// rejects those.
+  bool isEncryptedPortableArchive(List<int> bytes) {
+    return _decodeZip(bytes).findFile(encryptedManifestFileName) != null;
+  }
+
+  /// The plaintext archive inside [bytes], or [bytes] itself when it is not
+  /// encrypted. Key derivation is slow by design, so a restore flow decrypts
+  /// once and passes the result to [inspectPortableArchive] and
+  /// [importPortableArchive] instead of deriving the key for each call.
+  Future<List<int>> decryptPortableArchive(
+    List<int> bytes, {
+    String? passphrase,
+  }) {
+    return _decryptArchiveIfNeeded(bytes, passphrase: passphrase);
+  }
+
   Future<PortableArchiveManifest> inspectPortableArchive(
     List<int> bytes, {
     String? passphrase,
@@ -122,7 +141,7 @@ class PortableArchiveRepository {
     final changedRowsByTable = <String, int>{};
     final skippedRowsByTable = <String, int>{};
     final changedExerciseIds = <String>{};
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
     final entities = _entities;
     final routineEntryEntity = entities.singleWhere(
       (entity) => entity.tableName == AppDatabase.routineEntriesTable,
@@ -135,13 +154,16 @@ class PortableArchiveRepository {
     final sourceWonRoutineEntryIds = <String>{};
 
     await _database.transaction(() async {
+      final rowsByTable = await _adoptLocalDefaultMeasurementIds(
+        snapshot.rowsByTable,
+      );
       final localCadencesByRoutineId = <String, Cadence?>{
         for (final routine
             in await _database.select(_database.planRoutines).get())
           routine.id: _cadenceFromRow(routine),
       };
       for (final entity in entities) {
-        final rows = snapshot.rowsByTable[entity.tableName]!;
+        final rows = rowsByTable[entity.tableName]!;
         for (final row in _rowsInMergeOrder(entity, rows)) {
           final existing = await entity.findById(entity.idOf(row));
           if (existing != null &&
@@ -219,6 +241,136 @@ class PortableArchiveRepository {
     return ordered;
   }
 
+  /// Re-points the archive's default measurements (Body Weight, Body Fat) at
+  /// this device's own, so restoring onto a phone that already opened Body
+  /// Tracker leaves one Body Weight holding both histories instead of two.
+  ///
+  /// Every install seeds these two through
+  /// [MeasurementRepository.ensureDefaultMeasurements] with a fresh random
+  /// id, and archive merge matches rows by id, so without this step the
+  /// archive's copy lands next to the local one. The other default-seeded
+  /// entities (platform exercises and categories, meal types, OTC Compounds)
+  /// already use fixed seed ids and merge by id correctly.
+  ///
+  /// Why a name merge at import rather than deterministic seed ids plus a
+  /// migration:
+  /// - Every archive written to date carries random ids. Fixed ids for future
+  ///   seeds could not make those archives merge, so a name merge is needed
+  ///   regardless, and once it exists fixed ids add nothing to restore.
+  /// - Name plus unit is already how the server identifies these two:
+  ///   canonical import attaches an incoming body-weight reading to the
+  ///   user's active body-composition metric with the same name and unit
+  ///   (`findExistingBodyCompositionMetric` in the server's
+  ///   canonical-import-endpoint.ts). One identity rule for both paths.
+  /// - Rewriting the primary key of an existing row is not something LWW
+  ///   sync can express: the server would keep the old row and every reading
+  ///   already pushed under it.
+  ///
+  /// The matching rule: an archive row merges only when it is an active
+  /// curated measurement named exactly like a default, and this device has
+  /// an active curated measurement with the same name and unit (the first by
+  /// sort order, then id, as the server picks). Units must agree because a
+  /// reading's value is stored in its measurement's unit; folding a pound
+  /// Body Weight into a kilogram one would relabel every value. Archived
+  /// archive rows are left alone, so a Body Weight archived on the source
+  /// device cannot archive this device's live one.
+  ///
+  /// The rewrite happens before the normal LWW pass. The measurement row
+  /// takes the local id, so a newer edit in the archive (a goal, say) still
+  /// wins by LWW; readings and Protocol target outcomes follow it; and the
+  /// archive's Activity Log rows for all three are re-pointed, so an undo
+  /// from Recent activity acts on the merged measurement rather than
+  /// resurrecting the archive's id.
+  Future<Map<String, List<Object>>> _adoptLocalDefaultMeasurementIds(
+    Map<String, List<Object>> rowsByTable,
+  ) async {
+    final localRows = await (_database.select(_database.metrics)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.valueShape.equals(MetricValueShape.scalar.name) &
+                row.metricGroup.equals(MetricGroup.bodyComposition.name) &
+                row.goalType.isNotNull() &
+                row.name.isIn(MeasurementRepository.defaultMeasurementNames),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.sortOrder),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
+        .get();
+    final localIdByNameAndUnit = <(String, String), String>{};
+    for (final row in localRows) {
+      localIdByNameAndUnit.putIfAbsent((row.name, row.unit), () => row.id);
+    }
+
+    final localIdByArchiveId = <String, String>{};
+    for (final value in rowsByTable[AppDatabase.metricsTable]!) {
+      final row = value as MetricRow;
+      if (!_isActiveDefaultMeasurementRow(row)) {
+        continue;
+      }
+      final localId = localIdByNameAndUnit[(row.name, row.unit)];
+      if (localId != null && localId != row.id) {
+        localIdByArchiveId[row.id] = localId;
+      }
+    }
+    if (localIdByArchiveId.isEmpty) {
+      return rowsByTable;
+    }
+
+    String adopt(String id) => localIdByArchiveId[id] ?? id;
+    String? adoptImage(String? encoded, String idKey) =>
+        _repointActivityImage(encoded, idKey, localIdByArchiveId);
+
+    const metricIdKeyByTable = <String, String>{
+      AppDatabase.metricsTable: 'id',
+      AppDatabase.metricReadingsTable: 'metric_id',
+      AppDatabase.protocolTargetOutcomesTable: 'metric_id',
+    };
+
+    return <String, List<Object>>{
+      ...rowsByTable,
+      AppDatabase.metricsTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.metricsTable]!.cast<MetricRow>().map(
+              (row) => row.copyWith(id: adopt(row.id)),
+            ),
+      ),
+      AppDatabase.metricReadingsTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.metricReadingsTable]!
+            .cast<MetricReadingRow>()
+            .map((row) => row.copyWith(metricId: adopt(row.metricId))),
+      ),
+      AppDatabase.protocolTargetOutcomesTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.protocolTargetOutcomesTable]!
+            .cast<ProtocolTargetOutcomeRow>()
+            .map(
+              (row) => row.metricId == null
+                  ? row
+                  : row.copyWith(
+                      metricId: Value<String?>(adopt(row.metricId!)),
+                    ),
+            ),
+      ),
+      AppDatabase.activityLogTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.activityLogTable]!
+            .cast<ActivityLogRow>()
+            .map((row) {
+          final idKey = metricIdKeyByTable[row.entityTable];
+          if (idKey == null) {
+            return row;
+          }
+          return row.copyWith(
+            entityId: row.entityTable == AppDatabase.metricsTable
+                ? adopt(row.entityId)
+                : row.entityId,
+            beforeImage: Value<String?>(adoptImage(row.beforeImage, idKey)),
+            afterImage: Value<String?>(adoptImage(row.afterImage, idKey)),
+          );
+        }),
+      ),
+    };
+  }
+
   Future<void> _validateStoredTemplateGroupGraph() async {
     final templates = await _database.select(_database.workoutTemplates).get();
     final exercises = await _database.select(_database.templateExercises).get();
@@ -245,7 +397,7 @@ class PortableArchiveRepository {
   }
 
   Future<void> _normalizeStoredRoutineEntryPositions(
-    _WriteContext context,
+    WriteContext context,
     Map<String, int> changedRowsByTable,
     Map<String, _PendingPortableActivity> pendingActivities,
     _PortableArchiveEntity routineEntryEntity,
@@ -288,7 +440,7 @@ class PortableArchiveRepository {
   }
 
   Future<void> _reconcileStoredRoutineEntrySlots(
-    _WriteContext context,
+    WriteContext context,
     Map<String, int> changedRowsByTable,
     Map<String, _PendingPortableActivity> pendingActivities,
     _PortableArchiveEntity routineEntryEntity, {
@@ -341,10 +493,10 @@ class PortableArchiveRepository {
         );
       }
       final authoredCadence = authoredCadences[before.routineId];
-      final cadenceMeaningChanged = !_cadencesEqual(authoredCadence, cadence);
+      final cadenceMeaningChanged = !cadencesEqual(authoredCadence, cadence);
       final slot = cadenceMeaningChanged
-          ? _defaultRoutineEntrySlot(before.position, cadence)
-          : _reconciledRoutineEntrySlot(
+          ? defaultRoutineEntrySlot(before.position, cadence)
+          : reconciledRoutineEntrySlot(
               before.slot,
               position: before.position,
               cadence: cadence,
@@ -393,12 +545,12 @@ class PortableArchiveRepository {
   }
 
   Future<void> _appendPendingPortableActivities(
-    _WriteContext context,
+    WriteContext context,
     Map<String, _PendingPortableActivity> pendingActivities,
   ) async {
     for (final pending in pendingActivities.values) {
       final current = await pending.entity.findById(pending.entityId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: pending.entity.tableName,
         entityId: pending.entityId,
@@ -487,6 +639,30 @@ class PortableArchiveRepository {
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _exerciseCategoryImage,
         ),
+        _TypedPortableArchiveEntity<_PortableFocusRow>(
+          tableName: AppDatabase.focusesTable,
+          selectRows: () async {
+            final query = _database.select(_database.focuses)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return (await query.get()).map(_PortableFocusRow.stored).toList();
+          },
+          fromJson: _PortableFocusRow.fromJson,
+          toJson: (focus) => focus.row.toJson(),
+          findById: (id) async {
+            final query = _database.select(_database.focuses)
+              ..where((row) => row.id.equals(id));
+            final row = await query.getSingleOrNull();
+            return row == null ? null : _PortableFocusRow.stored(row);
+          },
+          upsert: (focus) => _database
+              .into(_database.focuses)
+              .insertOnConflictUpdate(focus.companion),
+          idOf: (focus) => focus.row.id,
+          updatedAtOf: (focus) => focus.row.updatedAt,
+          imageOf: (focus) => _focusImage(focus.row),
+        ),
         _TypedPortableArchiveEntity<ExerciseRow>(
           tableName: AppDatabase.exercisesTable,
           selectRows: () {
@@ -496,7 +672,10 @@ class PortableArchiveRepository {
               ]);
             return query.get();
           },
-          fromJson: ExerciseRow.fromJson,
+          // Archives written before schema 59 carry no Focuses on exercises.
+          fromJson: (json) => ExerciseRow.fromJson(
+            <String, dynamic>{'focusIds': '[]', ...json},
+          ),
           toJson: (row) => row.toJson(),
           findById: (id) {
             final query = _database.select(_database.exercises)
@@ -567,7 +746,12 @@ class PortableArchiveRepository {
               ]);
             return query.get();
           },
-          fromJson: MealRow.fromJson,
+          // Archives written before schema 65 carry no time precision on
+          // Meals (docs/designs/meal-logging.md §1); they read `instant`, and
+          // a missing offset reads null.
+          fromJson: (json) => MealRow.fromJson(
+            <String, dynamic>{'timePrecision': 'instant', ...json},
+          ),
           toJson: (row) => row.toJson(),
           findById: (id) {
             final query = _database.select(_database.meals)
@@ -653,6 +837,30 @@ class PortableArchiveRepository {
           idOf: (row) => row.id,
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _nutritionGoalImage,
+        ),
+        _TypedPortableArchiveEntity<UserProfileSectionRow>(
+          tableName: AppDatabase.userProfileSectionsTable,
+          selectRows: () {
+            final query = _database.select(_database.userProfileSections)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return query.get();
+          },
+          fromJson: UserProfileSectionRow.fromJson,
+          toJson: (row) => row.toJson(),
+          findById: (id) {
+            final query = _database.select(_database.userProfileSections)
+              ..where((row) => row.id.equals(id));
+            return query.getSingleOrNull();
+          },
+          upsert: (row) => _database.into(_database.userProfileSections).insert(
+                row,
+                mode: InsertMode.insertOrReplace,
+              ),
+          idOf: (row) => row.id,
+          updatedAtOf: (row) => row.updatedAt,
+          imageOf: _userProfileSectionImage,
         ),
         _TypedPortableArchiveEntity<UserSettingsRow>(
           tableName: AppDatabase.userSettingsTable,
@@ -1083,28 +1291,54 @@ class PortableArchiveRepository {
         // Protocols rides the same merge-only LWW backup rails. Kept in the
         // encrypted portable archive so a user keeps a complete sovereign
         // backup (PROTOCOLS.md §8) even though Protocols is excluded from CSV.
-        _TypedPortableArchiveEntity<CompoundRow>(
-          tableName: AppDatabase.compoundsTable,
+        _TypedPortableArchiveEntity<PurposeRow>(
+          tableName: AppDatabase.purposesTable,
           selectRows: () {
-            final query = _database.select(_database.compounds)
+            final query = _database.select(_database.purposes)
               ..orderBy([
                 (row) => OrderingTerm.asc(row.id),
               ]);
             return query.get();
           },
-          fromJson: CompoundRow.fromJson,
+          fromJson: PurposeRow.fromJson,
           toJson: (row) => row.toJson(),
           findById: (id) {
-            final query = _database.select(_database.compounds)
+            final query = _database.select(_database.purposes)
               ..where((row) => row.id.equals(id));
             return query.getSingleOrNull();
           },
           upsert: (row) => _database
-              .into(_database.compounds)
+              .into(_database.purposes)
               .insert(row, mode: InsertMode.insertOrReplace),
           idOf: (row) => row.id,
           updatedAtOf: (row) => row.updatedAt,
-          imageOf: _compoundImage,
+          imageOf: _purposeImage,
+        ),
+        _TypedPortableArchiveEntity<_PortableCompoundRow>(
+          tableName: AppDatabase.compoundsTable,
+          selectRows: () async {
+            final query = _database.select(_database.compounds)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return (await query.get())
+                .map(_PortableCompoundRow.stored)
+                .toList();
+          },
+          fromJson: _PortableCompoundRow.fromJson,
+          toJson: (compound) => compound.row.toJson(),
+          findById: (id) async {
+            final query = _database.select(_database.compounds)
+              ..where((row) => row.id.equals(id));
+            final row = await query.getSingleOrNull();
+            return row == null ? null : _PortableCompoundRow.stored(row);
+          },
+          upsert: (compound) => _database
+              .into(_database.compounds)
+              .insertOnConflictUpdate(compound.companion),
+          idOf: (compound) => compound.row.id,
+          updatedAtOf: (compound) => compound.row.updatedAt,
+          imageOf: (compound) => _compoundImage(compound.row),
         ),
         _TypedPortableArchiveEntity<DoseRow>(
           tableName: AppDatabase.dosesTable,
@@ -1128,6 +1362,32 @@ class PortableArchiveRepository {
           idOf: (row) => row.id,
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _doseImage,
+        ),
+        // Skips (D8) ride the same merge-only rails as Doses. An archive
+        // below schema 64 has no such file (`_mayBeAbsentFromArchive`).
+        _TypedPortableArchiveEntity<ProtocolSkipRow>(
+          tableName: AppDatabase.protocolSkipsTable,
+          selectRows: () {
+            final query = _database.select(_database.protocolSkips)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return query.get();
+          },
+          fromJson: ProtocolSkipRow.fromJson,
+          toJson: (row) => row.toJson(),
+          findById: (id) {
+            final query = _database.select(_database.protocolSkips)
+              ..where((row) => row.id.equals(id));
+            return query.getSingleOrNull();
+          },
+          upsert: (row) => _database
+              .into(_database.protocolSkips)
+              .insert(row, mode: InsertMode.insertOrReplace),
+          idOf: (row) => row.id,
+          updatedAtOf: (row) => row.updatedAt,
+          imageOf: _protocolSkipImage,
+          validateRow: _validatePortableProtocolSkipRow,
         ),
         // The `Protocol` plan-layer entity (PROTOCOLS.md §1.4) rides
         // the same merge-only backup rails: kept in the encrypted portable
@@ -1281,6 +1541,13 @@ class PortableArchiveRepository {
     }
 
     for (final entity in _entities) {
+      if (_isPrePlanProtocolTable(
+        entity.tableName,
+        archiveSchemaVersion: manifest.schemaVersion,
+      )) {
+        rowsByTable[entity.tableName] = const <Object>[];
+        continue;
+      }
       final manifestEntity = manifestEntities[entity.tableName];
       if (manifestEntity == null) {
         if (_mayBeAbsentFromArchive(
@@ -1314,6 +1581,18 @@ class PortableArchiveRepository {
         );
       }
       rowsByTable[entity.tableName] = rows;
+    }
+
+    // Before schema 61, Protocol plans had another shape, which is cleared
+    // rather than converted. Their rows were skipped above; their Activity
+    // Log rows are dropped here, so an old image is never replayed or undone
+    // into the new tables.
+    if (manifest.schemaVersion < _protocolPlanSchemaVersion) {
+      rowsByTable[AppDatabase.activityLogTable] = List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.activityLogTable]!
+            .cast<ActivityLogRow>()
+            .where((row) => !_protocolPlanTables.contains(row.entityTable)),
+      );
     }
 
     // Before schema 53, Template Link routine IDs belonged to an unfinished
@@ -1380,13 +1659,18 @@ class PortableArchiveRepository {
   }
 
   void _validateManifest(PortableArchiveManifest manifest) {
+    if (manifest.formatVersion > archiveFormatVersion) {
+      throw PortableArchiveNewerVersionException(
+        'Archive format ${manifest.formatVersion} is newer than this app.',
+      );
+    }
     if (manifest.formatVersion != archiveFormatVersion) {
       throw PortableArchiveException(
         'Archive format ${manifest.formatVersion} is not supported.',
       );
     }
     if (manifest.schemaVersion > _database.schemaVersion) {
-      throw PortableArchiveException(
+      throw PortableArchiveNewerVersionException(
         'Archive schema ${manifest.schemaVersion} is newer than this app.',
       );
     }
@@ -1399,6 +1683,31 @@ class PortableArchiveRepository {
         'Archive manifest has an unexpected entity set.',
       );
     }
+  }
+
+  /// The schema version that introduced the Protocol plan shape (Schedule
+  /// Versions, local-date bounds, the Protocol Period).
+  static const _protocolPlanSchemaVersion = 61;
+
+  static const _protocolPlanTables = <String>{
+    AppDatabase.protocolsTable,
+    AppDatabase.protocolCompoundsTable,
+    AppDatabase.schedulesTable,
+    AppDatabase.protocolTargetOutcomesTable,
+  };
+
+  /// Whether [tableName] holds Protocol plan rows in the shape before schema
+  /// 61. Those plans are cleared on upgrade and re-entered, not converted, so
+  /// an older archive imports its Compounds and Doses (whose Protocol tag and
+  /// name snapshot still render) and skips its plan rows without decoding
+  /// them. The archive format is unchanged; its manifest's schema version
+  /// tells the shapes apart.
+  bool _isPrePlanProtocolTable(
+    String tableName, {
+    required int archiveSchemaVersion,
+  }) {
+    return archiveSchemaVersion < _protocolPlanSchemaVersion &&
+        _protocolPlanTables.contains(tableName);
   }
 
   bool _mayBeAbsentFromArchive(
@@ -1415,6 +1724,23 @@ class PortableArchiveRepository {
     if (archiveSchemaVersion < 52 &&
         (tableName == AppDatabase.templateGroupsTable ||
             tableName == AppDatabase.templateGroupMembersTable)) {
+      return true;
+    }
+    if (archiveSchemaVersion < 59 && tableName == AppDatabase.focusesTable) {
+      return true;
+    }
+    // Skips arrived at schema 64 (D8).
+    if (archiveSchemaVersion < 64 &&
+        tableName == AppDatabase.protocolSkipsTable) {
+      return true;
+    }
+    // Purposes arrived at schema 66 (compound-purposes.md, D1).
+    if (archiveSchemaVersion < 66 && tableName == AppDatabase.purposesTable) {
+      return true;
+    }
+    // The User Profile arrived at schema 67 (user-profile.md, Data model).
+    if (archiveSchemaVersion < 67 &&
+        tableName == AppDatabase.userProfileSectionsTable) {
       return true;
     }
     return archiveSchemaVersion < 53 &&
@@ -1468,8 +1794,9 @@ class PortableArchiveRepository {
       );
     }
     if (passphrase == null || passphrase.isEmpty) {
-      throw const PortableArchiveException(
+      throw const PortableArchivePassphraseException(
         'This archive is encrypted and needs a passphrase.',
+        passphraseProvided: false,
       );
     }
 
@@ -1492,8 +1819,9 @@ class PortableArchiveRepository {
         secretKey: secretKey,
       );
     } catch (error) {
-      throw PortableArchiveException(
+      throw PortableArchivePassphraseException(
         'Could not decrypt archive. Check the passphrase and archive integrity.',
+        passphraseProvided: true,
         cause: error,
       );
     }
@@ -1723,6 +2051,26 @@ class PortableArchiveException implements Exception {
   }
 }
 
+/// An encrypted archive was opened without a passphrase
+/// ([passphraseProvided] is false) or with one that did not decrypt it.
+/// AES-GCM cannot tell a wrong passphrase from a damaged payload, so the
+/// second case covers both; a restore flow asks for the passphrase again.
+class PortableArchivePassphraseException extends PortableArchiveException {
+  const PortableArchivePassphraseException(
+    super.message, {
+    required this.passphraseProvided,
+    super.cause,
+  });
+
+  final bool passphraseProvided;
+}
+
+/// The archive was written by a newer app than this one, so updating the app
+/// (not retrying) is the fix.
+class PortableArchiveNewerVersionException extends PortableArchiveException {
+  const PortableArchiveNewerVersionException(super.message, {super.cause});
+}
+
 class _PortableArchiveSnapshot {
   const _PortableArchiveSnapshot({
     required this.manifest,
@@ -1850,6 +2198,66 @@ class _TypedPortableArchiveEntity<T extends Object>
   }
 }
 
+/// A Focus row read from an archive, remembering whether the archive carried
+/// its color. Archives from schema 62 or earlier have no `colorHex` key, and
+/// reading that as null would let an old archive's newer row erase a color
+/// picked since (docs/designs/progress-overview.md, D6). A missing key leaves
+/// the stored color as it is, the rule sync and undo follow too; an explicit
+/// null still clears it.
+class _PortableFocusRow {
+  const _PortableFocusRow(this.row, {required this.hasColorHex});
+
+  _PortableFocusRow.stored(FocusRow row) : this(row, hasColorHex: true);
+
+  factory _PortableFocusRow.fromJson(Map<String, dynamic> json) {
+    return _PortableFocusRow(
+      FocusRow.fromJson(json),
+      hasColorHex: json.containsKey('colorHex'),
+    );
+  }
+
+  final FocusRow row;
+  final bool hasColorHex;
+
+  FocusesCompanion get companion {
+    final companion = row.toCompanion(false);
+    return hasColorHex
+        ? companion
+        : companion.copyWith(colorHex: const Value<String?>.absent());
+  }
+}
+
+/// A Compound row read from an archive, remembering whether the archive carried
+/// its Purposes. Archives from schema 65 or earlier have no `purposeIds` key,
+/// and `CompoundRow.fromJson` throws on a missing non-null key, so it reads as
+/// the column default. But reading that as `[]` on write would let an old
+/// archive's newer row erase tags made since (docs/designs/compound-purposes.md,
+/// D2). A missing key leaves the stored list as it is, the rule sync and undo
+/// follow too.
+class _PortableCompoundRow {
+  const _PortableCompoundRow(this.row, {required this.hasPurposeIds});
+
+  _PortableCompoundRow.stored(CompoundRow row)
+      : this(row, hasPurposeIds: true);
+
+  factory _PortableCompoundRow.fromJson(Map<String, dynamic> json) {
+    return _PortableCompoundRow(
+      CompoundRow.fromJson(<String, dynamic>{'purposeIds': '[]', ...json}),
+      hasPurposeIds: json.containsKey('purposeIds'),
+    );
+  }
+
+  final CompoundRow row;
+  final bool hasPurposeIds;
+
+  CompoundsCompanion get companion {
+    final companion = row.toCompanion(false);
+    return hasPurposeIds
+        ? companion
+        : companion.copyWith(purposeIds: const Value<String>.absent());
+  }
+}
+
 Iterable<String> _emptyAffectedExerciseIds<T>(T _) {
   return const <String>[];
 }
@@ -1867,6 +2275,21 @@ void _validatePortablePrescriptionRow(PrescriptionRow row) {
         values: values.values.values,
       )
       .throwIfRejected();
+}
+
+/// A Skip row from an archive (D8): its `local_date` must be a real date,
+/// and its `planned_local_time` must pass the shared `skip_time_format`
+/// rule. A failure throws, and the row is rejected as a malformed Dose row
+/// is. It is not judged against today, because an archive is a past record:
+/// passing the row's own date as `today` leaves `skip_future` nothing to
+/// refuse, so only the time rule can fire.
+void _validatePortableProtocolSkipRow(ProtocolSkipRow row) {
+  final localDate = ProtocolDayDate.parse(row.localDate);
+  validateProtocolSkip(
+    localDate: localDate,
+    plannedLocalTime: row.plannedLocalTime,
+    today: localDate,
+  ).throwIfRejected();
 }
 
 void _validatePortableTemplateExerciseUniqueness(List<Object> rows) {

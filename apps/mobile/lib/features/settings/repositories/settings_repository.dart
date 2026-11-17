@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/settings/account_settings.dart';
+import '../../../domain/settings/settings_validation.dart';
 import '../../../domain/training/training_day.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -48,13 +49,15 @@ class FileSettingsRepository implements SettingsRepository {
     try {
       final file = await _settingsFile();
       if (!await file.exists()) {
-        return AppSettings.defaults;
+        return AppSettings.defaults.copyWith(onboardingDone: false);
       }
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is Map<String, Object?>) {
         return AppSettings.fromJson(decoded);
       }
     } on Object {
+      // Unreadable or corrupt (here and below) is not evidence of a fresh
+      // install, and widget tests with no path_provider land here: no onboarding.
       return AppSettings.defaults;
     }
     return AppSettings.defaults;
@@ -110,6 +113,8 @@ class SplitSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> save(AppSettings settings) async {
+    // Validate first so a rejected account half never reaches the JSON mirror.
+    validateAccountSettings(settings.toAccountSettings()).throwIfRejected();
     // Device half + full backup mirror to JSON; account half to the synced row.
     await _deviceStore.save(settings);
     await _accountSettings.save(settings.toAccountSettings());
@@ -140,6 +145,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
   Future<void> setThemePreference(AppThemePreference preference) {
     return _update((settings) {
       return settings.copyWith(themePreference: preference);
+    });
+  }
+
+  Future<void> setOnlineFoodLookups(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(onlineFoodLookups: enabled);
     });
   }
 
@@ -188,6 +199,24 @@ class SettingsController extends AsyncNotifier<AppSettings> {
   Future<void> setRestTimerSoundsEnabled(bool enabled) {
     return _update((settings) {
       return settings.copyWith(restTimerSoundsEnabled: enabled);
+    });
+  }
+
+  Future<void> setProtocolRemindersOnThisDevice(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(protocolRemindersOnThisDevice: enabled);
+    });
+  }
+
+  Future<void> setShowProtocolsOnToday(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(showProtocolsOnToday: enabled);
+    });
+  }
+
+  Future<void> setOnboardingDone() {
+    return _update((settings) {
+      return settings.copyWith(onboardingDone: true);
     });
   }
 
@@ -264,6 +293,10 @@ class AppSettings {
     this.autoBackupLastRunAt,
     this.autoBackupLastSuccessfulRunAt,
     this.autoBackupLastStatus = AutoBackupStatus.idle,
+    this.onlineFoodLookups = true,
+    this.protocolRemindersOnThisDevice = true,
+    this.showProtocolsOnToday = true,
+    this.onboardingDone = true,
   }) : assert(defaultWeightIncrement > 0);
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -284,7 +317,7 @@ class AppSettings {
         WeekStartDay.monday,
       ),
       defaultWeightIncrement:
-          _positiveDouble(json['defaultWeightIncrement'], 2.5),
+          _weightIncrement(json['defaultWeightIncrement'], 2.5),
       homeScreenDisplay: _enumValue(
         HomeScreenDisplay.values,
         json['homeScreenDisplay'],
@@ -322,6 +355,21 @@ class AppSettings {
         json['autoBackupLastStatus'],
         AutoBackupStatus.idle,
       ),
+      onlineFoodLookups: json['onlineFoodLookups'] is bool
+          ? json['onlineFoodLookups']! as bool
+          : true,
+      protocolRemindersOnThisDevice:
+          json['protocolRemindersOnThisDevice'] is bool
+              ? json['protocolRemindersOnThisDevice']! as bool
+              : true,
+      showProtocolsOnToday: json['showProtocolsOnToday'] is bool
+          ? json['showProtocolsOnToday']! as bool
+          : true,
+      // Unlike the constructor default: a settings file without the key comes
+      // from an install older than onboarding, which sees it once.
+      onboardingDone: json['onboardingDone'] is bool
+          ? json['onboardingDone']! as bool
+          : false,
     );
   }
 
@@ -350,6 +398,32 @@ class AppSettings {
   final DateTime? autoBackupLastSuccessfulRunAt;
   final AutoBackupStatus autoBackupLastStatus;
 
+  /// Device-level (never synced): whether the add-food picker may send the
+  /// user's search text or barcode to Open Food Facts. The offline food list
+  /// works either way.
+  final bool onlineFoodLookups;
+
+  /// Device-level (never synced): "Reminders on this device", the device
+  /// switch of D5. When off, this phone holds no Protocol reminders,
+  /// whatever each Protocol's Reminders switch says, so a user with two
+  /// phones can keep them on one.
+  final bool protocolRemindersOnThisDevice;
+
+  /// Device-level (never synced): whether Today shows the Protocols tab.
+  /// Discretion is about who holds this phone, not the account, so a user
+  /// can hide it on a phone others see and keep it on their own. Off, the
+  /// Protocols domain is still in Library, behind its lock as always.
+  final bool showProtocolsOnToday;
+
+  /// Device-level (never synced): whether first-open onboarding has been
+  /// finished or skipped on this device. The gate runs before sign-in on a
+  /// fresh device, so a synced record could not stop the first showing (see
+  /// Onboarding gate in docs/designs/user-profile.md). Defaults to true so
+  /// `AppSettings.defaults` skips onboarding; only
+  /// `FileSettingsRepository.load` produces false, for a missing settings file
+  /// or a file without the key.
+  final bool onboardingDone;
+
   bool get autoBackupNeedsFolderGrant =>
       autoBackupEnabled &&
       (autoBackupFolderUri == null ||
@@ -364,10 +438,8 @@ class AppSettings {
   }
 
   TrainingDayDate weekStartFor(TrainingDayDate localDate) {
-    final date = localDate.toLocalDateTime();
-    final startWeekday = weekStartDay.dateTimeWeekday;
-    final delta = (date.weekday - startWeekday + 7) % 7;
-    return TrainingDayDate.fromDateTime(date.subtract(Duration(days: delta)));
+    final delta = (localDate.isoWeekday - weekStartDay.dateTimeWeekday + 7) % 7;
+    return localDate.addDays(-delta);
   }
 
   Map<String, Object?> toJson() {
@@ -392,6 +464,10 @@ class AppSettings {
       'autoBackupLastSuccessfulRunAt':
           autoBackupLastSuccessfulRunAt?.toUtc().toIso8601String(),
       'autoBackupLastStatus': autoBackupLastStatus.name,
+      'onlineFoodLookups': onlineFoodLookups,
+      'protocolRemindersOnThisDevice': protocolRemindersOnThisDevice,
+      'showProtocolsOnToday': showProtocolsOnToday,
+      'onboardingDone': onboardingDone,
     };
   }
 
@@ -414,6 +490,10 @@ class AppSettings {
     Object? autoBackupLastRunAt = _copyWithSentinel,
     Object? autoBackupLastSuccessfulRunAt = _copyWithSentinel,
     AutoBackupStatus? autoBackupLastStatus,
+    bool? onlineFoodLookups,
+    bool? protocolRemindersOnThisDevice,
+    bool? showProtocolsOnToday,
+    bool? onboardingDone,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -450,6 +530,11 @@ class AppSettings {
               ? this.autoBackupLastSuccessfulRunAt
               : autoBackupLastSuccessfulRunAt as DateTime?,
       autoBackupLastStatus: autoBackupLastStatus ?? this.autoBackupLastStatus,
+      onlineFoodLookups: onlineFoodLookups ?? this.onlineFoodLookups,
+      protocolRemindersOnThisDevice:
+          protocolRemindersOnThisDevice ?? this.protocolRemindersOnThisDevice,
+      showProtocolsOnToday: showProtocolsOnToday ?? this.showProtocolsOnToday,
+      onboardingDone: onboardingDone ?? this.onboardingDone,
     );
   }
 
@@ -526,11 +611,16 @@ class AppSettings {
             autoBackupLastRunAt == other.autoBackupLastRunAt &&
             autoBackupLastSuccessfulRunAt ==
                 other.autoBackupLastSuccessfulRunAt &&
-            autoBackupLastStatus == other.autoBackupLastStatus;
+            autoBackupLastStatus == other.autoBackupLastStatus &&
+            onlineFoodLookups == other.onlineFoodLookups &&
+            protocolRemindersOnThisDevice ==
+                other.protocolRemindersOnThisDevice &&
+            showProtocolsOnToday == other.showProtocolsOnToday &&
+            onboardingDone == other.onboardingDone;
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
         themePreference,
         unitSystem,
         weekStartDay,
@@ -549,7 +639,11 @@ class AppSettings {
         autoBackupLastRunAt,
         autoBackupLastSuccessfulRunAt,
         autoBackupLastStatus,
-      );
+        onlineFoodLookups,
+        protocolRemindersOnThisDevice,
+        showProtocolsOnToday,
+        onboardingDone,
+      ]);
 }
 
 enum AppThemePreference {
@@ -655,6 +749,16 @@ double _positiveDouble(Object? rawValue, double fallback) {
     return fallback;
   }
   return parsed;
+}
+
+/// Files written before Settings validation could hold any positive increment;
+/// one the shared validator rejects falls back rather than failing load.
+double _weightIncrement(Object? rawValue, double fallback) {
+  final parsed = _positiveDouble(rawValue, fallback);
+  final accepted = validateSettingsFields(<SettingsFieldValue>[
+    SettingsFieldValue.number(field: 'defaultWeightIncrement', value: parsed),
+  ]).accepted;
+  return accepted ? parsed : fallback;
 }
 
 String? _optionalString(Object? rawValue) {

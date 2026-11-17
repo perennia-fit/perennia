@@ -39,6 +39,11 @@ Widgets  →  Controllers  →  Repositories  →  Drift (SQLite) / HTTP
 Reads are reactive: repositories expose Drift stream queries, so a write shows up
 everywhere it is displayed without anything explicitly refreshing.
 
+Reference data that can be rebuilt — the offline Open Food Facts list and the
+products a user opened or scanned — lives in a separate database file in the cache
+directory (`FoodReferenceDatabase`), outside sync, backups and the portable archive.
+It installs on another isolate, so it never holds a lock a logging save needs.
+
 Analytics — records, estimated 1RM, volume, streaks — are **computed on read,
 never stored**. There is no derived state to become stale, no cache to
 invalidate, and no repair path to write when it inevitably goes wrong.
@@ -94,8 +99,17 @@ Offline-first, and deliberately boring:
   reversible in one action.
 - **Deleting is archiving.** User-facing deletes tombstone the row so history
   survives and sync converges. Nothing cascades.
-- The most sensitive domain syncs as an **opaque payload**: the server stores and
-  moves it without being able to read it.
+- Protocols data (Compounds, Protocols, Schedules and Doses) syncs like every
+  other domain. The server stores each row as a JSON payload and **reads it**,
+  which is what gives the user's Agent the same access the app has. It is not
+  end-to-end encrypted.
+- The User Profile syncs as `user_profile_sections`, one live row per section,
+  newest wins. The server runs **no domain validation at push**: it parses the
+  payload's shape only, as for every other synced entity, and domain rules run on
+  the device before every write and in the agent route. The server has no way to
+  reject a single pushed change. One it did not accept would stay pending on the
+  device and stall every later Sync Run, so a rule check at push would turn a rule
+  disagreement between app versions into a sync outage.
 
 ## Validation
 

@@ -48,6 +48,8 @@ test(
         mealType: "Lunch",
         startedAt: "2026-06-08T12:00:00.000Z",
         localDate: "2026-06-08",
+        // Written with the Meal Logging time keys; the first Meal is not.
+        timeKeys: { timezone_offset_minutes: 600, time_precision: "date" },
         entries: [
           entryPayload({ id: randomUUID(), mealId: mealIds.second, name: "Chicken", position: 0 }),
           entryPayload({ id: randomUUID(), mealId: mealIds.second, name: "Rice", position: 1 })
@@ -73,11 +75,23 @@ test(
       const defaultBody = await defaultResponse.json();
       assert.equal(defaultBody.totalMatched, 2);
       assert.equal(defaultBody.limit, 50);
-      // Minimal default fields.
-      assert.deepEqual(defaultBody.fields, ["id", "mealType", "startedAt"]);
+      // Minimal default fields, with the Meal's frozen offset and time precision.
+      assert.deepEqual(defaultBody.fields, [
+        "id",
+        "mealType",
+        "startedAt",
+        "timezoneOffsetMinutes",
+        "timePrecision"
+      ]);
       const firstMeal = defaultBody.meals.find((meal) => meal.id === mealIds.first);
       assert.ok(firstMeal, "meal 1 should be present");
       assert.equal(firstMeal.entries, undefined);
+      // A payload written before Meal Logging reads an unknown offset and an instant.
+      assert.equal(firstMeal.timezoneOffsetMinutes, null);
+      assert.equal(firstMeal.timePrecision, "instant");
+      const secondDefault = defaultBody.meals.find((meal) => meal.id === mealIds.second);
+      assert.equal(secondDefault.timezoneOffsetMinutes, 600);
+      assert.equal(secondDefault.timePrecision, "date");
 
       const projectedResponse = await getAgent(
         app,
@@ -85,7 +99,17 @@ test(
       );
       assert.equal(projectedResponse.status, 200);
       const projectedBody = await projectedResponse.json();
+      // An explicit projection always adds the three base fields, and only those.
+      assert.deepEqual(projectedBody.fields, [
+        "id",
+        "mealType",
+        "startedAt",
+        "localDate",
+        "entries"
+      ]);
       const secondMeal = projectedBody.meals.find((meal) => meal.id === mealIds.second);
+      assert.equal(secondMeal.timezoneOffsetMinutes, undefined);
+      assert.equal(secondMeal.timePrecision, undefined);
       assert.equal(secondMeal.localDate, "2026-06-08");
       assert.equal(secondMeal.entries.length, 2);
       assert.deepEqual(
@@ -234,7 +258,7 @@ async function seedUser(database, userId) {
 
 async function seedMeal(
   { db },
-  { userId, id, mealType, startedAt, localDate, deletedAt = null, entries }
+  { userId, id, mealType, startedAt, localDate, deletedAt = null, timeKeys = {}, entries }
 ) {
   await db.insert(schema.meals).values({
     id,
@@ -250,6 +274,7 @@ async function seedMeal(
       ended_at: null,
       timezone: "Australia/Brisbane",
       local_date: localDate,
+      ...timeKeys,
       updated_at: startedAt,
       deleted_at: deletedAt
     }

@@ -317,6 +317,7 @@ WorkoutTemplateDetail _workoutTemplateDetailFromRecord(
     id: record.id,
     name: record.name,
     notes: record.notes,
+    focusId: record.focusId,
     groups: record.groups
         .map(
           (group) => TemplateGroupDetail(
@@ -431,12 +432,14 @@ final class WorkoutTemplateDetail {
     required List<TemplateExerciseDetail> exercises,
     List<TemplateGroupDetail> groups = const <TemplateGroupDetail>[],
     this.notes,
+    this.focusId,
   })  : exercises = List<TemplateExerciseDetail>.unmodifiable(exercises),
         groups = List<TemplateGroupDetail>.unmodifiable(groups);
 
   final String id;
   final String name;
   final String? notes;
+  final String? focusId;
   final List<TemplateExerciseDetail> exercises;
   final List<TemplateGroupDetail> groups;
 
@@ -450,6 +453,7 @@ final class WorkoutTemplateDetail {
       id: id,
       name: name ?? this.name,
       notes: notes == null ? this.notes : notes(),
+      focusId: focusId,
       exercises: exercises ?? this.exercises,
       groups: groups ?? this.groups,
     );

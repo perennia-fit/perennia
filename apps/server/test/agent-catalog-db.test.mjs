@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createDrizzleAgentCatalogStore,
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 import { CANONICAL_ACTIVITY_PLATFORM_EXERCISE_IDS } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -270,6 +276,245 @@ test(
   }
 );
 
+// Category is optional on the app (`Exercises.categoryId` is nullable), so a
+// synced User Library exercise may carry `category_id: null` or omit it. The
+// catalog projection used to require a non-empty category and turned the whole
+// listing into a 500 for that user.
+test(
+  "a synced User Library exercise with no Category lists with a null " +
+    "category, and category filtering still matches categorized exercises",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const user = await createSignedInUser(serverApp);
+      const agentSecret = await createAgentKey(serverApp, user.sessionToken);
+
+      const categoryId = randomUUID();
+      const uncategorizedId = randomUUID();
+      const missingCategoryId = randomUUID();
+      const categorizedId = randomUUID();
+      const updatedAt = "2025-07-01T08:00:00.000Z";
+
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercise_categories",
+        changes: [
+          {
+            id: categoryId,
+            payload: categoryPayload(categoryId, "Grip Work", updatedAt),
+            updatedAt,
+            deletedAt: null
+          }
+        ]
+      });
+      const { category_id: _omitted, ...missingCategoryPayload } =
+        exercisePayload({
+          id: missingCategoryId,
+          name: "Uncategorized Farmer Hold",
+          categoryId: null,
+          updatedAt
+        });
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          {
+            id: uncategorizedId,
+            payload: exercisePayload({
+              id: uncategorizedId,
+              name: "Uncategorized Pinch Carry",
+              categoryId: null,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: missingCategoryId,
+            payload: missingCategoryPayload,
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: categorizedId,
+            payload: exercisePayload({
+              id: categorizedId,
+              name: "Uncategorized Grip Crush",
+              categoryId,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          }
+        ]
+      });
+
+      const list = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Uncategorized&limit=100"
+      );
+      assert.equal(list.status, 200);
+      const listBody = await list.json();
+      const byId = new Map(
+        listBody.exercises.map((exercise) => [exercise.id, exercise])
+      );
+      assert.equal(byId.get(uncategorizedId)?.category, null);
+      assert.equal(byId.get(missingCategoryId)?.category, null);
+      assert.deepEqual(byId.get(categorizedId)?.category, {
+        id: categoryId,
+        name: "Grip Work"
+      });
+
+      // The unfiltered listing (Platform Library included) also serves.
+      const fullList = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?limit=100"
+      );
+      assert.equal(fullList.status, 200);
+
+      // resolve projects the same shape.
+      const resolve = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises/resolve?name=Uncategorized%20Pinch%20Carry"
+      );
+      assert.equal(resolve.status, 200);
+      const resolveBody = await resolve.json();
+      assert.equal(resolveBody.resolution, "matched");
+      assert.equal(resolveBody.matchedExercise.id, uncategorizedId);
+      assert.equal(resolveBody.matchedExercise.category, null);
+
+      // A category filter matches by name or id and skips uncategorized rows.
+      for (const filter of ["grip%20work", categoryId]) {
+        const filtered = await getAgent(
+          serverApp.app,
+          agentSecret,
+          `/agent/exercises?search=Uncategorized&category=${filter}`
+        );
+        assert.equal(filtered.status, 200);
+        assert.deepEqual(
+          (await filtered.json()).exercises.map((exercise) => exercise.id),
+          [categorizedId]
+        );
+      }
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+// A synced exercise can reference a Category the server holds no usable row
+// for: a seeded Category whose push never landed, or a row without a name.
+// Neither may fail the listing. A seeded id still resolves to the Platform
+// seed name (the app seeds those Categories under the same fixed ids); an
+// unknown one projects as no Category, as the app's Exercise List shows it.
+test(
+  "an exercise whose Category reference does not resolve still lists: a " +
+    "seeded id takes the Platform seed name, anything else is null",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const user = await createSignedInUser(serverApp);
+      const agentSecret = await createAgentKey(serverApp, user.sessionToken);
+
+      const seededChestCategoryId = "01910000-0000-7000-8000-000000000007";
+      const unnamedCategoryId = randomUUID();
+      const seededRefId = randomUUID();
+      const unknownRefId = randomUUID();
+      const unnamedRefId = randomUUID();
+      const updatedAt = "2025-07-02T08:00:00.000Z";
+
+      // A Category row whose payload carries no name. Written straight to the
+      // table: the app never produces one, but the projection must not trust
+      // an opaque payload to be well formed.
+      await serverApp.database.db.insert(schema.exerciseCategories).values({
+        id: unnamedCategoryId,
+        userId: user.userId,
+        deviceId: "device-a",
+        payload: { id: unnamedCategoryId, sort_order: 1 },
+        updatedAt: new Date(updatedAt),
+        deletedAt: null
+      });
+
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          [seededRefId, "Dangling Seeded Press", seededChestCategoryId],
+          [unknownRefId, "Dangling Unknown Row", randomUUID()],
+          [unnamedRefId, "Dangling Unnamed Curl", unnamedCategoryId]
+        ].map(([id, name, categoryId]) => ({
+          id,
+          payload: exercisePayload({ id, name, categoryId, updatedAt }),
+          updatedAt,
+          deletedAt: null
+        }))
+      });
+
+      const list = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Dangling&limit=100"
+      );
+      assert.equal(list.status, 200);
+      const byId = new Map(
+        (await list.json()).exercises.map((exercise) => [exercise.id, exercise])
+      );
+      assert.deepEqual(byId.get(seededRefId)?.category, {
+        id: seededChestCategoryId,
+        name: "Chest"
+      });
+      assert.equal(byId.get(unknownRefId)?.category, null);
+      assert.equal(byId.get(unnamedRefId)?.category, null);
+
+      const filtered = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Dangling&category=chest"
+      );
+      assert.equal(filtered.status, 200);
+      assert.deepEqual(
+        (await filtered.json()).exercises.map((exercise) => exercise.id),
+        [seededRefId]
+      );
+
+      const resolve = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises/resolve?name=Dangling%20Unknown%20Row"
+      );
+      assert.equal(resolve.status, 200);
+      assert.equal((await resolve.json()).matchedExercise.category, null);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
 function categoryPayload(id, name, updatedAt) {
   return {
     id,
@@ -280,6 +525,140 @@ function categoryPayload(id, name, updatedAt) {
     deleted_at: null
   };
 }
+
+test(
+  "a kept exercise reads as the user's own row, archived or not, and as its " +
+    "merge target for an account without it",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const keeper = await createSignedInUser(serverApp);
+      const other = await createSignedInUser(serverApp);
+      const [kept, archived] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+      const updatedAt = "2026-11-05T00:00:00.000Z";
+      await syncPushOk(serverApp.app, keeper.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          {
+            id: kept.fromExerciseId,
+            payload: exercisePayload({
+              id: kept.fromExerciseId,
+              name: "My Kept Exercise",
+              categoryId: null,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: archived.fromExerciseId,
+            payload: exercisePayload({
+              id: archived.fromExerciseId,
+              name: "My Archived Kept Exercise",
+              categoryId: null,
+              updatedAt,
+              deletedAt: updatedAt
+            }),
+            updatedAt,
+            deletedAt: updatedAt
+          }
+        ]
+      });
+
+      const store = createDrizzleAgentCatalogStore(serverApp.database.db);
+
+      const keptRow = await store.getExerciseById({
+        userId: keeper.userId,
+        exerciseId: kept.fromExerciseId
+      });
+      assert.equal(keptRow.id, kept.fromExerciseId);
+      assert.equal(keptRow.library, "user");
+      assert.equal(keptRow.name, "My Kept Exercise");
+      assert.equal(keptRow.active, true);
+
+      const archivedRow = await store.getExerciseById({
+        userId: keeper.userId,
+        exerciseId: archived.fromExerciseId
+      });
+      assert.equal(archivedRow.id, archived.fromExerciseId);
+      assert.equal(archivedRow.library, "user");
+      assert.equal(archivedRow.active, false);
+
+      const keeperRows = await store.getExercisesByIds({
+        userId: keeper.userId,
+        exerciseIds: [kept.fromExerciseId, archived.fromExerciseId]
+      });
+      assert.deepEqual(
+        keeperRows.map((row) => row.id).sort(),
+        [kept.fromExerciseId, archived.fromExerciseId].sort()
+      );
+      assert.ok(keeperRows.every((row) => row.library === "user"));
+
+      // The keeper's rows must not mask the redirect for another account.
+      const otherRow = await store.getExerciseById({
+        userId: other.userId,
+        exerciseId: kept.fromExerciseId
+      });
+      assert.equal(otherRow.id, kept.toExerciseId);
+      assert.equal(otherRow.library, "platform");
+      const otherRows = await store.getExercisesByIds({
+        userId: other.userId,
+        exerciseIds: [kept.fromExerciseId]
+      });
+      assert.deepEqual(
+        otherRows.map((row) => row.id),
+        [kept.toExerciseId]
+      );
+
+      const agentSecret = await createAgentKey(serverApp, keeper.sessionToken);
+      const customize = await postExerciseCatalogBatch(
+        serverApp.app,
+        agentSecret,
+        {
+          idempotencyKey: `customize-kept-${randomUUID()}`,
+          categories: [],
+          exercises: [
+            {
+              id: randomUUID(),
+              name: "Customizing a kept exercise",
+              categoryId: null,
+              dimensions: ["load", "reps"],
+              defaultLoadUnit: "kilogram",
+              loadMode: "added",
+              isUnilateral: false,
+              usesRpe: false,
+              isFavorite: false,
+              equipment: [],
+              notes: null,
+              customizesExerciseId: kept.fromExerciseId,
+              deletedAt: null
+            }
+          ]
+        }
+      );
+      assert.equal(customize.status, 422);
+      const customizeBody = await customize.json();
+      assert.equal(
+        customizeBody.errors[0].rule,
+        "customized_exercise_not_platform"
+      );
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
 
 function exercisePayload({
   id,
@@ -328,6 +707,17 @@ function getAgent(app, agentSecret, path) {
   });
 }
 
+function postExerciseCatalogBatch(app, agentSecret, body) {
+  return app.request("/agent/exercises/batch-write", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${agentSecret}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
 async function syncPushOk(app, sessionToken, body) {
   const response = await app.request("/sync/push", {
     method: "POST",
@@ -335,7 +725,7 @@ async function syncPushOk(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
   assert.equal(response.status, 200);
   return response;

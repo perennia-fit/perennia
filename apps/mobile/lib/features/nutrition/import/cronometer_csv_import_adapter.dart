@@ -138,6 +138,12 @@ class CronometerCsvImportAdapter implements NutritionImportAdapter {
       final dayText = dayColumn == null ? '' : _cell(cells, dayColumn).trim();
       final timeText = timeColumn == null ? '' : _cell(cells, timeColumn).trim();
       final startedAt = _parseTimestamp(dayText, timeText);
+      // A row with no time of day (no `Time` column, or an empty or
+      // unreadable cell) only knows its date; its `startedAt` is local
+      // midnight (docs/designs/meal-logging.md §1).
+      final timePrecision = _timeOfDay(timeText) == null
+          ? MealTimePrecision.date
+          : MealTimePrecision.instant;
       final localDate = NutritionDayDate.fromDateTime(startedAt);
       final mealKey = '${localDate.storageValue}|$group';
 
@@ -187,6 +193,7 @@ class CronometerCsvImportAdapter implements NutritionImportAdapter {
           mealType: group,
           startedAt: startedAt,
           localDate: localDate,
+          timePrecision: timePrecision,
         );
       });
       accumulator.entries.add(entry);
@@ -264,11 +271,14 @@ class CronometerCsvImportAdapter implements NutritionImportAdapter {
     if (day == null) {
       return DateTime(1970);
     }
-    final timeMatch =
-        RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(timeText.trim());
+    final timeMatch = _timeOfDay(timeText);
     final hour = timeMatch == null ? 0 : int.parse(timeMatch.group(1)!);
     final minute = timeMatch == null ? 0 : int.parse(timeMatch.group(2)!);
     return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
+  static RegExpMatch? _timeOfDay(String timeText) {
+    return RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(timeText.trim());
   }
 
   static String _externalId({
@@ -300,11 +310,13 @@ class _MealAccumulator {
     required this.mealType,
     required this.startedAt,
     required this.localDate,
+    required this.timePrecision,
   });
 
   final String mealType;
   final DateTime startedAt;
   final NutritionDayDate localDate;
+  final MealTimePrecision timePrecision;
   final List<NutritionImportFoodEntry> entries = <NutritionImportFoodEntry>[];
 
   NutritionImportMeal toMeal() {
@@ -312,6 +324,7 @@ class _MealAccumulator {
       mealType: mealType,
       startedAt: startedAt,
       localDate: localDate,
+      timePrecision: timePrecision,
       entries: List<NutritionImportFoodEntry>.unmodifiable(entries),
     );
   }

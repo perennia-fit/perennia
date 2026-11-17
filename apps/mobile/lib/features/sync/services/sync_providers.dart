@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/training_repositories.dart';
 import '../../auth/repositories/auth_repository.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../repositories/sync_device_id_repository.dart';
@@ -15,6 +16,10 @@ final syncCycleRunnerProvider = Provider<RepositorySyncCycleRunner>((ref) {
     repository: repository,
     statusRepository: repository.statusRepository,
     onUserSettingsApplied: () => ref.invalidate(settingsControllerProvider),
+    ensureLibrarySeeded: () => ref
+        .read(trainingRepositoriesProvider)
+        .catalog
+        .ensurePlatformLibrarySeeded(),
   );
 });
 

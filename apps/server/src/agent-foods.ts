@@ -26,6 +26,13 @@ import {
   USDA_FOOD_SEED_FOODS,
   USDA_FOOD_SEED_METADATA
 } from "./data/usda-food-seed.generated.js";
+import {
+  getOpenFoodFactsBundle,
+  OPEN_FOOD_FACTS_DISCLAIMER,
+  openFoodFactsProductUrl,
+  searchBundle,
+  type BundleProduct
+} from "./open-food-facts-bundle.js";
 
 // Bounded-read page sizing (data-minimizing by default) — mirrors
 // the exercise/protocols catalog list surfaces.
@@ -213,29 +220,51 @@ export const AgentFoodListResponseSchema = z
   .openapi("AgentFoodListResponse");
 
 // ---------------------------------------------------------------------------
-// Platform Food search (USDA) — the SAME bundled CC0 dataset the app ships,
-// served server-side from a generated seed module so an agent and
-// the app resolve identical USDA results. Open Food Facts is NOT proxied by
-// this slice: it is a live-query + per-user-cache external API,
-// which does not fit a deterministic, network-free server read; the response
-// shape below reserves room for it (source is already a field) without
-// committing to a rate-limited external proxy in v1.
+// Platform Food search — the SAME bundled reference data the app ships, so an
+// agent and the app resolve identical records:
+//
+// * `usda`: the bundled CC0 USDA seed, served from a generated seed module.
+// * `openFoodFacts`: the Open Food Facts bundle the app ships
+//   (apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz), read by
+//   open-food-facts-bundle.ts. A barcode's record is the one in that
+//   barcode's line of the bundle, which an app with the same dataset version
+//   decodes identically.
+//
+// The server never calls Open Food Facts. Live lookups stay in the app, where
+// the user starts them and can turn them off: a server proxy would make
+// agent results depend on a rate-limited external API and send every
+// agent's searches to a third party (docs/designs/open-food-facts.md,
+// Alternative I). The search order can differ from the app's FTS5 search.
 // ---------------------------------------------------------------------------
 
-const AgentPlatformFoodSourceSchema = z.enum(["usda"]).openapi(
-  "AgentPlatformFoodSource"
-);
+const AgentPlatformFoodSourceSchema = z
+  .enum(["usda", "openFoodFacts"])
+  .openapi("AgentPlatformFoodSource");
 
 export const AgentPlatformFoodSchema = z
   .object({
-    id: z.string().min(1),
+    id: z.string().min(1).openapi({
+      description:
+        "The USDA seed id, or the Open Food Facts barcode as stored in the bundle."
+    }),
     name: z.string().min(1),
     foodSource: AgentPlatformFoodSourceSchema,
     nutrientsPer100: AgentFoodReadNutrientVectorSchema,
     isLiquid: z.boolean(),
     servingLabel: z.string().min(1).nullable(),
     servingSize: z.number().positive().nullable(),
-    packageSize: z.number().positive().nullable()
+    packageSize: z.number().positive().nullable(),
+    brand: z.string().min(1).nullable().openapi({
+      description: "The product's brand; null when unknown, and for USDA."
+    }),
+    sourceModifiedAt: ISO8601StringSchema.nullable().openapi({
+      description:
+        "When Open Food Facts last changed the product's data (ISO-8601, UTC); null for USDA."
+    }),
+    productUrl: z.string().min(1).nullable().openapi({
+      description:
+        "The product's Open Food Facts page, where its data can be checked and corrected; null for USDA."
+    })
   })
   .openapi("AgentPlatformFood");
 
@@ -246,7 +275,11 @@ export const AgentPlatformFoodAttributionSchema = z
     sourceName: z.string().min(1),
     sourceUrl: z.string().min(1),
     licenseName: z.string().min(1),
-    attributionText: z.string().min(1)
+    attributionText: z.string().min(1),
+    disclaimer: z.string().min(1).nullable().openapi({
+      description:
+        "The accuracy disclaimer to show with Open Food Facts foods; null for USDA."
+    })
   })
   .openapi("AgentPlatformFoodAttribution");
 
@@ -254,12 +287,12 @@ export const AgentFoodPlatformSearchQuerySchema = z.object({
   search: z.string().trim().min(1).optional().openapi({
     param: { name: "search", in: "query" },
     description:
-      "Optional case-insensitive name filter. Omit to list the bundled catalog."
+      "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods."
   }),
   source: AgentPlatformFoodSourceSchema.default("usda").openapi({
     param: { name: "source", in: "query" },
     description:
-      "Platform Food source. Only usda is available in this slice — the bundled, offline CC0 dataset."
+      "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts."
   }),
   limit: z.coerce
     .number()
@@ -279,7 +312,7 @@ export const AgentFoodPlatformSearchResponseSchema = z
     limit: z.number().int().min(1).max(AGENT_FOODS_MAX_PLATFORM_SEARCH_LIMIT),
     attribution: AgentPlatformFoodAttributionSchema.openapi({
       description:
-        "Required attribution for the source dataset. USDA is CC0/public domain; courtesy attribution is still surfaced here."
+        "Required attribution for the source dataset; show it, and the disclaimer when present, wherever the results are shown. Open Food Facts is ODbL, and the attribution text says where the licensed copy is; USDA is CC0/public domain, with courtesy attribution."
     })
   })
   .openapi("AgentFoodPlatformSearchResponse");
@@ -332,9 +365,10 @@ export const agentFoodPlatformSearchRoute = createRoute({
   path: "/agent/foods/platform-search",
   operationId: "searchAgentPlatformFoods",
   tags: ["Agent Catalog"],
-  summary: "Search the bundled USDA Platform Food reference dataset.",
+  summary:
+    "Search the bundled USDA and Open Food Facts Platform Food reference data.",
   description:
-    "Serves the SAME bundled USDA FoodData Central seed the app ships, so an agent and the app resolve identical generic-food nutrient facts offline of any external network call. CC0/public domain; courtesy attribution is still included in the response. Open Food Facts (branded/barcode) is not available through this operation in this slice.",
+    "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, the default, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
   security: [{ bearerAuth: [] }],
   request: { query: AgentFoodPlatformSearchQuerySchema },
   responses: {
@@ -352,9 +386,15 @@ export const agentFoodPlatformSearchRoute = createRoute({
     },
     429: RateLimitExceededOpenApiResponse,
     503: {
-      description: "Agent API key storage is not configured.",
+      description:
+        "Agent API key storage is not configured, or the Open Food Facts bundle is not available on this server.",
       content: {
-        "application/json": { schema: AgentApiKeyUnavailableResponseSchema }
+        "application/json": {
+          schema: z.union([
+            AgentApiKeyUnavailableResponseSchema,
+            AgentFoodsUnavailableResponseSchema
+          ])
+        }
       }
     }
   }
@@ -1362,12 +1402,14 @@ function foodIssue(
 }
 
 // ---------------------------------------------------------------------------
-// Platform Food search (bundled USDA seed, /0031)
+// Platform Food search (bundled USDA seed and Open Food Facts bundle)
 // ---------------------------------------------------------------------------
 
-function toPlatformFood(
+type AgentPlatformFood = z.infer<typeof AgentPlatformFoodSchema>;
+
+function usdaPlatformFood(
   food: (typeof USDA_FOOD_SEED_FOODS)[number]
-): z.infer<typeof AgentPlatformFoodSchema> {
+): AgentPlatformFood {
   return AgentPlatformFoodSchema.parse({
     id: food.id,
     name: food.name,
@@ -1376,17 +1418,74 @@ function toPlatformFood(
     isLiquid: food.isLiquid,
     servingLabel: food.servingLabel,
     servingSize: food.servingSize,
-    packageSize: food.packageSize
+    packageSize: food.packageSize,
+    brand: null,
+    sourceModifiedAt: null,
+    productUrl: null
   });
 }
 
+function openFoodFactsPlatformFood(product: BundleProduct): AgentPlatformFood {
+  // A Nutrient the bundle reports is complete, with its text as `entered`
+  // and the parsed number as `value`, as the app reads it; every other
+  // Nutrient id is an explicit unknown, never zero.
+  const nutrients: Record<string, AgentNutrientAmount> = {};
+  for (const [key, entered] of Object.entries(product.nutrients)) {
+    nutrients[key] = {
+      status: "complete",
+      value: Number(entered),
+      entered,
+      unit: NUTRIENT_DEFAULT_UNIT[key] as AgentNutrientAmount["unit"]
+    };
+  }
+  return AgentPlatformFoodSchema.parse({
+    id: product.code,
+    name: product.name,
+    foodSource: "openFoodFacts",
+    nutrientsPer100: nutrientVectorStorage(nutrients),
+    isLiquid: product.isLiquid,
+    servingLabel: product.servingLabel,
+    servingSize: product.servingSize,
+    packageSize: product.packageSize,
+    brand: product.brand,
+    sourceModifiedAt: new Date(product.modifiedAt * 1000).toISOString(),
+    productUrl: openFoodFactsProductUrl(product.code)
+  });
+}
+
+/**
+ * Searches one Platform Food source. Synchronous: the Open Food Facts bundle
+ * is read once per process, on its first use. Throws
+ * OpenFoodFactsBundleUnavailableError when `source` is `openFoodFacts` and
+ * the bundle cannot be read; the REST route and the MCP tool answer 503
+ * `agent_foods_unavailable`.
+ */
 export function searchAgentPlatformFoods({
   search,
+  source = "usda",
   limit
 }: {
   search?: string;
+  source?: AgentFoodPlatformSearchQuery["source"];
   limit: number;
 }): AgentFoodPlatformSearchResponse {
+  if (source === "openFoodFacts") {
+    const bundle = getOpenFoodFactsBundle();
+    return AgentFoodPlatformSearchResponseSchema.parse({
+      foods: searchBundle(bundle, search, limit).map(openFoodFactsPlatformFood),
+      limit,
+      attribution: {
+        source: "openFoodFacts",
+        datasetVersion: bundle.header.datasetVersion,
+        sourceName: bundle.header.sourceName,
+        sourceUrl: bundle.header.sourceUrl,
+        licenseName: bundle.header.licenseName,
+        attributionText: bundle.header.attributionText,
+        disclaimer: OPEN_FOOD_FACTS_DISCLAIMER
+      }
+    });
+  }
+
   const queryKey = search === undefined ? undefined : normalizeName(search);
   const matched = USDA_FOOD_SEED_FOODS.filter((food) => {
     if (queryKey === undefined) {
@@ -1397,7 +1496,7 @@ export function searchAgentPlatformFoods({
   }).slice(0, limit);
 
   return AgentFoodPlatformSearchResponseSchema.parse({
-    foods: matched.map(toPlatformFood),
+    foods: matched.map(usdaPlatformFood),
     limit,
     attribution: {
       source: "usda",
@@ -1405,7 +1504,8 @@ export function searchAgentPlatformFoods({
       sourceName: USDA_FOOD_SEED_METADATA.sourceName,
       sourceUrl: USDA_FOOD_SEED_METADATA.sourceUrl,
       licenseName: USDA_FOOD_SEED_METADATA.licenseName,
-      attributionText: USDA_FOOD_SEED_METADATA.attributionText
+      attributionText: USDA_FOOD_SEED_METADATA.attributionText,
+      disclaimer: null
     }
   });
 }

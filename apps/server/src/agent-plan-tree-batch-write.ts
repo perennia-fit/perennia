@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise,
 } from "./agent-catalog.js";
@@ -81,6 +85,10 @@ export const AgentPlanTreeBatchWriteWorkoutTemplateSchema = z
       description: "Workout Template name.",
     }),
     notes: z.string().nullable().default(null),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Must be an active starter or user Focus. Null clears it; omit to keep the Template's current Focus.",
+    }),
   })
   .merge(AgentPlanTreeSyncFieldsSchema)
   .openapi("AgentPlanTreeBatchWriteWorkoutTemplate");
@@ -705,6 +713,7 @@ export async function prepareAgentPlanTreeBatchWrite({
   const errors: AgentPlanTreeBatchWriteIssue[] = [];
   const warnings: AgentPlanTreeBatchWriteIssue[] = [];
   const rows = prepareRows(request, nowIso);
+  carryThroughTemplateFocus({ request, references, rows, userId });
   const responseItems = flattenPreparedRows(rows);
   const preparedByKey = new Map(
     responseItems.map((row) => [entityKey(row.entityType, row.id), row]),
@@ -820,6 +829,25 @@ export async function prepareAgentPlanTreeBatchWrite({
     exerciseById,
     errors,
   });
+  const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
+  for (const [itemIndex, item] of request.workoutTemplates.entries()) {
+    if (typeof item.focusId !== "string") {
+      continue;
+    }
+    if (!(await isActiveFocus(item.focusId))) {
+      errors.push(
+        structuralIssue({
+          entityType: "workoutTemplate",
+          itemIndex,
+          entityId: item.id,
+          field: "focusId",
+          rule: FOCUS_NOT_FOUND_RULE,
+          message: focusNotFoundMessage("focusId"),
+          limit: "active-caller-visible",
+        }),
+      );
+    }
+  }
   validatePrescriptions({
     finalPrescriptions,
     finalTemplateExercises,
@@ -1040,6 +1068,9 @@ function prepareRows(
         id: item.id,
         name: item.name.trim(),
         notes: item.notes,
+        // An omitted focusId is filled from the stored row once references
+        // are loaded (carryThroughTemplateFocus); null here clears it.
+        focus_id: item.focusId ?? null,
       },
     }),
   );
@@ -1148,6 +1179,34 @@ function prepareRows(
     routines,
     routineEntries,
   };
+}
+
+// The template payload is rebuilt whole from the request, so a write that
+// does not mention Focus must keep the stored `focus_id` (set on a device or
+// by an earlier write) rather than silently clear it.
+function carryThroughTemplateFocus({
+  request,
+  references,
+  rows,
+  userId,
+}: {
+  request: AgentPlanTreeBatchWriteRequest;
+  references: AgentPlanTreeBatchReferenceState;
+  rows: PreparedRowsByEntity;
+  userId: string;
+}) {
+  for (const [itemIndex, item] of request.workoutTemplates.entries()) {
+    if (item.focusId !== undefined) {
+      continue;
+    }
+    const stored = references.workoutTemplates.find(
+      (row) => row.id === item.id && row.userId === userId,
+    );
+    const prepared = rows.workoutTemplates[itemIndex];
+    if (prepared !== undefined) {
+      prepared.payload.focus_id = payloadFocusId(stored?.payload);
+    }
+  }
 }
 
 function preparedRow({

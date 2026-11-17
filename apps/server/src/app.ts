@@ -33,6 +33,8 @@ import {
   AgentExerciseListResponseSchema,
   agentExerciseResolveRoute,
   AgentExerciseResolveResponseSchema,
+  agentFocusListRoute,
+  AgentFocusListResponseSchema,
   parseAgentExerciseListQuery,
   type AgentCatalogStore
 } from "./agent-catalog.js";
@@ -44,7 +46,6 @@ import {
   AgentSetValidationErrorResponseSchema,
   AgentSetValidationResponseSchema,
   doseValidationLimitsResponse,
-  nutrientValidationLimitsResponse,
   setValidationLimitsResponse,
   validateAgentDose,
   validateAgentSet
@@ -66,11 +67,11 @@ import {
   type AgentExerciseCatalogBatchWriteStore
 } from "./agent-exercise-catalog-batch-write.js";
 import {
+  agentMealBatchWriteErrorBody,
   agentMealBatchWriteRoute,
-  AgentMealBatchWriteErrorResponseSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  prepareAgentMealBatchWrite,
+  resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
 import {
@@ -89,11 +90,16 @@ import {
   type AgentFoodBatchWriteStore,
   type AgentFoodCatalogStore
 } from "./agent-foods.js";
+import { OpenFoodFactsBundleUnavailableError } from "./open-food-facts-bundle.js";
 import {
   agentCompoundBatchWriteRoute,
   agentCompoundListRoute,
+  agentPurposeBatchWriteRoute,
+  agentPurposeListRoute,
   AgentCompoundBatchWriteResponseSchema,
   AgentCompoundListResponseSchema,
+  AgentPurposeBatchWriteResponseSchema,
+  AgentPurposeListResponseSchema,
   agentDoseBatchWriteRoute,
   agentDoseListRoute,
   AgentDoseBatchWriteErrorResponseSchema,
@@ -103,18 +109,29 @@ import {
   AgentEffectWindowErrorResponseSchema,
   AgentEffectWindowResponseSchema,
   agentProtocolBatchWriteRoute,
+  agentProtocolDayStatusesRoute,
+  agentProtocolDeleteResponse,
+  agentProtocolDeleteRoute,
   agentProtocolListRoute,
+  agentProtocolPlannedDaysRoute,
+  agentProtocolSkipBatchWriteRefusal,
+  agentProtocolSkipBatchWriteResponse,
+  agentProtocolSkipBatchWriteRoute,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   AgentProtocolsUnavailableResponseSchema,
   agentProtocolsBatchRequestFingerprint,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   finalizeAgentDoseBatchWriteResults,
   finalizeAgentProtocolsEntityBatchWriteResults,
   prepareAgentCompoundBatchWrite,
+  prepareAgentPurposeBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   type AgentProtocolsStore
 } from "./agent-protocols.js";
 import {
@@ -156,6 +173,15 @@ import {
   type AgentSettingsBatchWriteStore
 } from "./agent-settings.js";
 import {
+  agentProfileReadRoute,
+  agentProfileBatchWriteRoute,
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  type AgentProfileStore
+} from "./agent-profile.js";
+import {
   agentRoutineDetailRoute,
   agentRoutineListRoute,
   agentWorkoutTemplateDetailRoute,
@@ -166,6 +192,15 @@ import {
   AgentPlanReadUnavailableResponseSchema,
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
+import {
+  agentNewBestsRoute,
+  agentTrainingDaysRoute,
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  checkAgentTrainingDaysQuery,
+  readAgentExerciseProgressSeries,
+  type AgentProgressReadStore
+} from "./agent-progress-reads.js";
 import {
   agentPlanTreeBatchWriteRoute,
   AgentPlanTreeBatchWriteUnavailableResponseSchema,
@@ -317,6 +352,22 @@ import {
   type AgentReadStore
 } from "./agent-read-surface.js";
 import {
+  agentFoodHistoryRoute,
+  AgentFoodHistoryResponseSchema,
+  type AgentFoodHistoryReadStore
+} from "./agent-food-history.js";
+import {
+  agentMealHistoryRoute,
+  AgentMealHistoryResponseSchema,
+  type AgentMealHistoryReadStore
+} from "./agent-meal-history.js";
+import {
+  agentMealTypesRoute,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  type AgentMealTypesReadStore
+} from "./agent-meal-types.js";
+import {
   agentMealListRoute,
   agentNutritionTotalsRoute,
   agentNutritionTrendsRoute,
@@ -370,7 +421,10 @@ import {
 import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   EXERCISE_GROUPS_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
@@ -378,8 +432,11 @@ import {
   FOODS_SYNC_ENTITY,
   LOGGED_SETS_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
+  METRICS_SYNC_ENTITY,
+  METRIC_READINGS_SYNC_ENTITY,
   MEAL_TYPES_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
+  USER_PROFILE_SECTIONS_SYNC_ENTITY,
   USER_SETTINGS_SYNC_ENTITY,
   PRESCRIPTIONS_SYNC_ENTITY,
   PROTOCOLS_SYNC_ENTITY,
@@ -448,6 +505,9 @@ export type CreateAppOptions = {
   agentCatalogStore?: AgentCatalogStore;
   agentReadStore?: AgentReadStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
+  agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealHistoryReadStore?: AgentMealHistoryReadStore;
+  agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentCrossDomainReadStore?: AgentCrossDomainReadStore;
   agentWorkoutBatchWriteStore?: AgentWorkoutBatchWriteStore;
   agentExerciseCatalogBatchWriteStore?: AgentExerciseCatalogBatchWriteStore;
@@ -458,7 +518,9 @@ export type CreateAppOptions = {
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
+  agentProfileStore?: AgentProfileStore;
   agentPlanReadStore?: AgentPlanReadStore;
+  agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
   agentPlanMaterializeStore?: AgentPlanMaterializeStore;
   agentPlanCaptureStore?: AgentPlanCaptureStore;
@@ -608,6 +670,9 @@ export function createApp(options: CreateAppOptions = {}) {
   const agentCatalogStore = options.agentCatalogStore;
   const agentReadStore = options.agentReadStore;
   const agentNutritionReadStore = options.agentNutritionReadStore;
+  const agentFoodHistoryReadStore = options.agentFoodHistoryReadStore;
+  const agentMealHistoryReadStore = options.agentMealHistoryReadStore;
+  const agentMealTypesReadStore = options.agentMealTypesReadStore;
   const agentCrossDomainReadStore = options.agentCrossDomainReadStore;
   const agentWorkoutBatchWriteStore = options.agentWorkoutBatchWriteStore;
   const agentExerciseCatalogBatchWriteStore =
@@ -619,7 +684,9 @@ export function createApp(options: CreateAppOptions = {}) {
   const agentProtocolsStore = options.agentProtocolsStore;
   const agentNutritionGoalStore = options.agentNutritionGoalStore;
   const agentSettingsStore = options.agentSettingsStore;
+  const agentProfileStore = options.agentProfileStore;
   const agentPlanReadStore = options.agentPlanReadStore;
+  const agentProgressReadStore = options.agentProgressReadStore;
   const agentPlanTreeBatchWriteStore = options.agentPlanTreeBatchWriteStore;
   const agentPlanMaterializeStore = options.agentPlanMaterializeStore;
   const agentPlanCaptureStore = options.agentPlanCaptureStore;
@@ -2237,6 +2304,52 @@ export function createApp(options: CreateAppOptions = {}) {
     return context.json(AgentExerciseListResponseSchema.parse(result), 200);
   });
 
+  app.openapi(agentFocusListRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentCatalogStore === undefined) {
+      return context.json(
+        AgentCatalogUnavailableResponseSchema.parse({
+          code: "agent_catalog_unavailable",
+          message: "Agent Exercise catalog storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    const focuses = await agentCatalogStore.listFocuses({
+      userId: agentAuth.agent.userId
+    });
+
+    return context.json(AgentFocusListResponseSchema.parse({ focuses }), 200);
+  });
+
   app.openapi(agentWorkoutBatchWriteRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -2501,21 +2614,14 @@ export function createApp(options: CreateAppOptions = {}) {
     const agent = agentAuth.agent;
 
     const requestBody = context.req.valid("json");
-    const prepared = await prepareAgentMealBatchWrite({
+    const resolved = await resolveAgentMealBatchEntries({
       request: requestBody,
       userId: agent.userId,
       foodCatalogStore: agentFoodCatalogStore
     });
-    if (!prepared.accepted) {
+    if (!resolved.accepted) {
       return context.json(
-        AgentMealBatchWriteErrorResponseSchema.parse({
-          code: "agent_meal_batch_write_failed",
-          message:
-            "Batch contains one or more hard validation failures.",
-          errors: prepared.errors,
-          warnings: prepared.warnings,
-          limits: nutrientValidationLimitsResponse()
-        }),
+        agentMealBatchWriteErrorBody(422, resolved.errors, resolved.warnings),
         422
       );
     }
@@ -2525,9 +2631,18 @@ export function createApp(options: CreateAppOptions = {}) {
       batchId: requestBody.idempotencyKey,
       correlationId: requestCorrelationId(context),
       deviceId: `agent:${agent.keyId}`,
-      meal: prepared.meal,
-      entries: prepared.entries
+      request: resolved.request
     });
+    if (writeResult.status === "rejected") {
+      return context.json(
+        agentMealBatchWriteErrorBody(
+          writeResult.httpStatus,
+          writeResult.errors,
+          writeResult.warnings
+        ),
+        writeResult.httpStatus
+      );
+    }
     if (syncNudgePublisher !== undefined && writeResult.applied.length > 0) {
       try {
         await syncNudgePublisher.enqueueSyncNudge({
@@ -2556,7 +2671,8 @@ export function createApp(options: CreateAppOptions = {}) {
         batchId: requestBody.idempotencyKey,
         mealId: requestBody.meal.id,
         serverClock: writeResult.serverClock,
-        entries: prepared.responseEntries
+        entries: resolved.responseEntries,
+        warnings: writeResult.warnings
       }),
       200
     );
@@ -2642,10 +2758,29 @@ export function createApp(options: CreateAppOptions = {}) {
     }
 
     const query = context.req.valid("query");
-    const result = searchAgentPlatformFoods({
-      search: query.search,
-      limit: query.limit
-    });
+    let result;
+    try {
+      result = searchAgentPlatformFoods({
+        search: query.search,
+        source: query.source,
+        limit: query.limit
+      });
+    } catch (error) {
+      if (error instanceof OpenFoodFactsBundleUnavailableError) {
+        logger.error?.(
+          { error, cause: error.cause },
+          "open food facts bundle unavailable"
+        );
+        return context.json(
+          AgentFoodsUnavailableResponseSchema.parse({
+            code: "agent_foods_unavailable",
+            message: error.message
+          }),
+          503
+        );
+      }
+      throw error;
+    }
 
     return context.json(
       AgentFoodPlatformSearchResponseSchema.parse(result),
@@ -3131,6 +3266,50 @@ export function createApp(options: CreateAppOptions = {}) {
     return context.json(AgentCompoundListResponseSchema.parse(result), 200);
   });
 
+  app.openapi(agentPurposeListRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const result = await agentProtocolsStore.listPurposes({
+      userId: agentAuth.agent.userId,
+      query: context.req.valid("query")
+    });
+    return context.json(AgentPurposeListResponseSchema.parse(result), 200);
+  });
+
   app.openapi(agentProtocolListRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -3275,6 +3454,118 @@ export function createApp(options: CreateAppOptions = {}) {
     );
   });
 
+  app.openapi(agentProtocolPlannedDaysRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentProtocolDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProtocolDaysInvalidRequestResponseSchema.parse({
+          code: "agent_protocol_days_invalid_request",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProtocolsStore.listProtocolPlannedDays({
+      userId: agentAuth.agent.userId,
+      query
+    });
+    return context.json(result, 200);
+  });
+
+  app.openapi(agentProtocolDayStatusesRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentProtocolDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProtocolDaysInvalidRequestResponseSchema.parse({
+          code: "agent_protocol_days_invalid_request",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProtocolsStore.listProtocolDayStatuses({
+      userId: agentAuth.agent.userId,
+      query
+    });
+    return context.json(result, 200);
+  });
+
   app.openapi(agentDoseBatchWriteRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -3334,7 +3625,7 @@ export function createApp(options: CreateAppOptions = {}) {
       deviceId: `agent:${agent.keyId}`,
       doses: prepared.doses
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    const writeFailure = agentProtocolsWriteFailure(writeResult, []);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3423,7 +3714,7 @@ export function createApp(options: CreateAppOptions = {}) {
       deviceId: `agent:${agent.keyId}`,
       compounds: prepared.compounds
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    const writeFailure = agentProtocolsWriteFailure(writeResult, []);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3448,6 +3739,95 @@ export function createApp(options: CreateAppOptions = {}) {
           accepted: writeResult.accepted,
           duplicate: writeResult.duplicate,
           results: prepared.responseCompounds
+        })
+      }),
+      200
+    );
+  });
+
+  app.openapi(agentPurposeBatchWriteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+    const requestBody = context.req.valid("json");
+    const prepared = prepareAgentPurposeBatchWrite({ request: requestBody });
+    if (!prepared.accepted) {
+      return context.json(
+        AgentProtocolsBatchWriteErrorResponseSchema.parse({
+          code: "agent_protocols_batch_write_failed",
+          message: "Batch contains one or more hard validation failures.",
+          errors: prepared.errors,
+          warnings: []
+        }),
+        422
+      );
+    }
+    const writeResult = await agentProtocolsStore.writePurposeBatch({
+      userId: agent.userId,
+      batchId: requestBody.idempotencyKey,
+      requestFingerprint: agentProtocolsBatchRequestFingerprint(requestBody),
+      deviceId: `agent:${agent.keyId}`,
+      purposes: prepared.purposes
+    });
+    const writeFailure = agentProtocolsWriteFailure(writeResult, []);
+    if (writeFailure !== null) {
+      return writeFailure.status === 422
+        ? context.json(writeFailure.body, 422)
+        : context.json(writeFailure.body, 503);
+    }
+    await maybeNudgeAgentWrite({
+      syncNudgePublisher,
+      logger,
+      agent,
+      batchId: requestBody.idempotencyKey,
+      applied: writeResult.applied.length
+    });
+    return context.json(
+      AgentPurposeBatchWriteResponseSchema.parse({
+        accepted: true,
+        duplicate: writeResult.duplicate,
+        idempotencyKey: requestBody.idempotencyKey,
+        batchId: requestBody.idempotencyKey,
+        serverClock: writeResult.serverClock,
+        purposes: finalizeAgentProtocolsEntityBatchWriteResults({
+          applied: writeResult.applied,
+          accepted: writeResult.accepted,
+          duplicate: writeResult.duplicate,
+          results: prepared.responsePurposes
         })
       }),
       200
@@ -3500,7 +3880,7 @@ export function createApp(options: CreateAppOptions = {}) {
           code: "agent_protocols_batch_write_failed",
           message: "Batch contains one or more hard validation failures.",
           errors: prepared.errors,
-          warnings: []
+          warnings: prepared.warnings
         }),
         422
       );
@@ -3510,12 +3890,15 @@ export function createApp(options: CreateAppOptions = {}) {
       batchId: requestBody.idempotencyKey,
       requestFingerprint: agentProtocolsBatchRequestFingerprint(requestBody),
       deviceId: `agent:${agent.keyId}`,
+      today: prepared.today,
       protocols: prepared.protocols,
       members: prepared.members,
       schedules: prepared.schedules,
       targetOutcomes: prepared.targetOutcomes
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    // The pure step's warnings, then the store's (D8's archive warning).
+    const warnings = [...prepared.warnings, ...(writeResult.warnings ?? [])];
+    const writeFailure = agentProtocolsWriteFailure(writeResult, warnings);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3540,10 +3923,138 @@ export function createApp(options: CreateAppOptions = {}) {
           accepted: writeResult.accepted,
           duplicate: writeResult.duplicate,
           results: prepared.responseProtocols
-        })
+        }),
+        warnings
       }),
       200
     );
+  });
+
+  app.openapi(agentProtocolDeleteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+    const requestBody = context.req.valid("json");
+    const writeResult = await agentProtocolsStore.deleteProtocols({
+      userId: agent.userId,
+      deviceId: `agent:${agent.keyId}`,
+      idempotencyKey: requestBody.idempotencyKey,
+      protocolIds: requestBody.protocolIds
+    });
+    const response = agentProtocolDeleteResponse(requestBody, writeResult);
+    if (response.status === 200) {
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent,
+        batchId: requestBody.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return context.json(response.body, 200);
+    }
+    return response.status === 422
+      ? context.json(response.body, 422)
+      : context.json(response.body, 503);
+  });
+
+  app.openapi(agentProtocolSkipBatchWriteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+    const requestBody = context.req.valid("json");
+    const prepared = prepareAgentProtocolSkipBatchWrite({ request: requestBody });
+    if (!prepared.accepted) {
+      return context.json(agentProtocolSkipBatchWriteRefusal(prepared.issues).body, 422);
+    }
+    const writeResult = await agentProtocolsStore.writeProtocolSkipBatch({
+      userId: agent.userId,
+      batchId: requestBody.idempotencyKey,
+      requestFingerprint: agentProtocolsBatchRequestFingerprint(requestBody),
+      deviceId: `agent:${agent.keyId}`,
+      skips: prepared.skips
+    });
+    const response = agentProtocolSkipBatchWriteResponse(requestBody, writeResult);
+    if (response.status === 200) {
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent,
+        batchId: requestBody.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return context.json(response.body, 200);
+    }
+    return response.status === 422
+      ? context.json(response.body, 422)
+      : context.json(response.body, 503);
   });
 
   app.openapi(agentExerciseAnalyticsRoute, async (context) => {
@@ -3611,19 +4122,26 @@ export function createApp(options: CreateAppOptions = {}) {
       );
     }
 
-    const sets = await agentReadStore.readExerciseSets({
-      userId: agent.userId,
-      exerciseId: params.exerciseId,
-      from: query.from,
-      to: query.to
-    });
+    const [sets, progressSeries] = await Promise.all([
+      agentReadStore.readExerciseSets({
+        userId: agent.userId,
+        exerciseId: params.exerciseId,
+        from: query.from,
+        to: query.to
+      }),
+      readAgentExerciseProgressSeries(agentProgressReadStore, {
+        userId: agent.userId,
+        exercise
+      })
+    ]);
 
     return context.json(
       AgentExerciseAnalyticsResponseSchema.parse(
         buildAgentExerciseAnalyticsResponse({
           exercise,
           maxPoints: query.maxPoints,
-          sets
+          sets,
+          progressSeries
         })
       ),
       200
@@ -4055,6 +4573,157 @@ export function createApp(options: CreateAppOptions = {}) {
     );
   });
 
+  app.openapi(agentFoodHistoryRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentFoodHistoryReadStore === undefined) {
+      return context.json(
+        AgentNutritionReadUnavailableResponseSchema.parse({
+          code: "agent_nutrition_read_unavailable",
+          message: "Agent nutrition read storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    return context.json(
+      AgentFoodHistoryResponseSchema.parse(
+        await agentFoodHistoryReadStore.listFoodHistory({
+          userId: agentAuth.agent.userId,
+          limit: context.req.valid("query").limit,
+          now: new Date()
+        })
+      ),
+      200
+    );
+  });
+
+  app.openapi(agentMealHistoryRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentMealHistoryReadStore === undefined) {
+      return context.json(
+        AgentNutritionReadUnavailableResponseSchema.parse({
+          code: "agent_nutrition_read_unavailable",
+          message: "Agent nutrition read storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    return context.json(
+      AgentMealHistoryResponseSchema.parse(
+        await agentMealHistoryReadStore.listMealHistory({
+          userId: agentAuth.agent.userId,
+          limit: context.req.valid("query").limit,
+          now: new Date()
+        })
+      ),
+      200
+    );
+  });
+
+  app.openapi(agentMealTypesRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentMealTypesReadStore === undefined) {
+      return context.json(
+        AgentMealTypesUnavailableResponseSchema.parse({
+          code: "agent_nutrition_read_unavailable",
+          message: "Agent nutrition read storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    return context.json(
+      AgentMealTypesResponseSchema.parse(
+        await agentMealTypesReadStore.listMealTypes({
+          userId: agentAuth.agent.userId
+        })
+      ),
+      200
+    );
+  });
+
   app.openapi(agentNutritionGoalListRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -4335,6 +5004,121 @@ export function createApp(options: CreateAppOptions = {}) {
         404
       );
     }
+    return context.json(result, 200);
+  });
+
+  app.openapi(agentTrainingDaysRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProgressReadStore === undefined) {
+      return context.json(
+        AgentProgressReadUnavailableResponseSchema.parse({
+          code: "agent_progress_read_unavailable",
+          message: "Agent progress read storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentTrainingDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProgressReadInvalidRangeResponseSchema.parse({
+          code: "agent_progress_read_invalid_range",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProgressReadStore.readTrainingDays({
+      userId: agentAuth.agent.userId,
+      from: query.fromLocalDate,
+      to: query.toLocalDate,
+      today: query.today
+    });
+    return context.json(result, 200);
+  });
+
+  app.openapi(agentNewBestsRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProgressReadStore === undefined) {
+      return context.json(
+        AgentProgressReadUnavailableResponseSchema.parse({
+          code: "agent_progress_read_unavailable",
+          message: "Agent progress read storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentTrainingDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProgressReadInvalidRangeResponseSchema.parse({
+          code: "agent_progress_read_invalid_range",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProgressReadStore.readNewBests({
+      userId: agentAuth.agent.userId,
+      from: query.fromLocalDate,
+      to: query.toLocalDate
+    });
     return context.json(result, 200);
   });
 
@@ -4639,6 +5423,143 @@ export function createApp(options: CreateAppOptions = {}) {
     );
   });
 
+  app.openapi(agentProfileReadRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProfileStore === undefined) {
+      return context.json(
+        AgentProfileUnavailableResponseSchema.parse({
+          code: "agent_profile_unavailable",
+          message: "Agent User Profile storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    const profile = await agentProfileStore.read({
+      userId: agentAuth.agent.userId
+    });
+
+    return context.json(AgentProfileSchema.parse(profile), 200);
+  });
+
+  app.openapi(agentProfileBatchWriteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProfileStore === undefined) {
+      return context.json(
+        AgentProfileUnavailableResponseSchema.parse({
+          code: "agent_profile_unavailable",
+          message: "Agent User Profile storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+
+    const requestBody = context.req.valid("json");
+    const writeResult = await agentProfileStore.batchWrite({
+      userId: agent.userId,
+      deviceId: `agent:${agent.keyId}`,
+      request: requestBody
+    });
+    if (!writeResult.accepted) {
+      return context.json(
+        AgentProfileBatchWriteErrorResponseSchema.parse({
+          code: "agent_profile_batch_write_failed",
+          message:
+            "User Profile write contains one or more hard validation failures.",
+          errors: writeResult.errors
+        }),
+        422
+      );
+    }
+    if (syncNudgePublisher !== undefined && writeResult.applied) {
+      try {
+        await syncNudgePublisher.enqueueSyncNudge({
+          userId: agent.userId,
+          sourceDeviceId: `agent:${agent.keyId}`,
+          reason: "agent_write"
+        });
+      } catch (error) {
+        logger.error?.(
+          {
+            error,
+            userId: agent.userId,
+            keyId: agent.keyId,
+            batchId: requestBody.idempotencyKey
+          },
+          "agent profile sync nudge enqueue failed"
+        );
+      }
+    }
+
+    return context.json(
+      AgentProfileBatchWriteResponseSchema.parse({
+        accepted: true,
+        duplicate: writeResult.duplicate,
+        idempotencyKey: requestBody.idempotencyKey,
+        batchId: requestBody.idempotencyKey,
+        serverClock: writeResult.serverClock,
+        profile: writeResult.profile,
+        warnings: writeResult.warnings
+      }),
+      200
+    );
+  });
+
   app.openapi(agentEnergyBalanceRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -4848,6 +5769,22 @@ export function createApp(options: CreateAppOptions = {}) {
           changes: requestBody.changes
         });
         break;
+      case FOCUSES_SYNC_ENTITY:
+        result = await syncStore.pushFocuses({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case PURPOSES_SYNC_ENTITY:
+        result = await syncStore.pushPurposes({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
       case EXERCISES_SYNC_ENTITY:
         result = await syncStore.pushExercises({
           userId: session.userId,
@@ -4912,6 +5849,14 @@ export function createApp(options: CreateAppOptions = {}) {
           changes: requestBody.changes
         });
         break;
+      case PROTOCOL_SKIPS_SYNC_ENTITY:
+        result = await syncStore.pushProtocolSkips({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
       case PROTOCOLS_SYNC_ENTITY:
         result = await syncStore.pushProtocols({
           userId: session.userId,
@@ -4946,6 +5891,14 @@ export function createApp(options: CreateAppOptions = {}) {
         break;
       case NUTRITION_GOALS_SYNC_ENTITY:
         result = await syncStore.pushNutritionGoals({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case USER_PROFILE_SECTIONS_SYNC_ENTITY:
+        result = await syncStore.pushUserProfileSections({
           userId: session.userId,
           correlationId: requestCorrelationId(context),
           deviceId: requestBody.deviceId,
@@ -5056,6 +6009,22 @@ export function createApp(options: CreateAppOptions = {}) {
           changes: requestBody.changes
         });
         break;
+      case METRICS_SYNC_ENTITY:
+        result = await syncStore.pushMetrics({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case METRIC_READINGS_SYNC_ENTITY:
+        result = await syncStore.pushMetricReadings({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
       default:
         result = await syncStore.pushIntegrationDataClassConsents({
           userId: session.userId,
@@ -5089,7 +6058,8 @@ export function createApp(options: CreateAppOptions = {}) {
         protocolVersion: requestBody.protocolVersion,
         accepted: result.accepted,
         serverClock: result.serverClock,
-        applied: result.applied
+        applied: result.applied,
+        merged: result.merged
       }),
       200
     );

@@ -40,7 +40,7 @@ final class WorkoutCaptureRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -60,7 +60,7 @@ final class WorkoutCaptureRepository {
       }
       final authoritativeWarningTokens =
           validation.warningAcknowledgementTokenSet;
-      if (!_sameCaptureWarningTokens(
+      if (!_sameStringSet(
         authoritativeWarningTokens,
         request.acknowledgedWarningTokens,
       )) {
@@ -72,7 +72,12 @@ final class WorkoutCaptureRepository {
 
       final templateWrite =
           await _repositories.workoutTemplates._createWithContent(
-        WorkoutTemplateDraft(name: normalizedName),
+        WorkoutTemplateDraft(
+          name: normalizedName,
+          focusId: (await _repositories.workoutSessions
+                  ._requireRow(request.workoutId))
+              .focusId,
+        ),
         _workoutTemplateContentDraftFromCapture(content),
         context,
         exercisePolicy: _WorkoutTemplateContentExercisePolicy.historicalFact,
@@ -484,6 +489,3 @@ WorkoutCaptureValidationResult _mergeCaptureValidationResults(
   return WorkoutCaptureValidationResult(errors: errors, warnings: warnings);
 }
 
-bool _sameCaptureWarningTokens(Set<String> left, Set<String> right) {
-  return left.length == right.length && left.containsAll(right);
-}

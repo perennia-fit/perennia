@@ -1,0 +1,243 @@
+{
+  "name": "m37-food-history",
+  "domain": "food-history",
+  "schemaVersion": 1,
+  "schema": "m37-food-history.schema.json",
+  "cases": [
+    {
+      "name": "frequency-in-the-last-90-days-beats-recency-and-old-staples-stay-listed",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-oct01", "startedAt": "2026-10-01T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-oct05", "startedAt": "2026-10-05T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-oct10", "startedAt": "2026-10-10T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-oct30", "startedAt": "2026-10-30T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-2025-a", "startedAt": "2025-03-01T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-2025-b", "startedAt": "2025-03-02T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-2025-c", "startedAt": "2025-03-03T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-2025-d", "startedAt": "2025-03-04T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e1", "mealId": "m-oct01", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "updatedAt": "2026-10-01T08:00:00.000Z", "deletedAt": null},
+          {"id": "e2", "mealId": "m-oct05", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "portion": {"value": 200, "entered": "200", "unit": "milliliter"}, "updatedAt": "2026-10-05T08:00:00.000Z", "deletedAt": null},
+          {"id": "e3", "mealId": "m-oct10", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "updatedAt": "2026-10-10T08:00:00.000Z", "deletedAt": null},
+          {"id": "e4", "mealId": "m-oct30", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "portion": {"value": 120, "entered": "120", "unit": "gram"}, "updatedAt": "2026-10-30T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-old-0", "mealId": "m-2025-a", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "portion": {"value": 300, "entered": "300", "unit": "gram"}, "updatedAt": "2025-03-01T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-old-1", "mealId": "m-2025-b", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "portion": {"value": 300, "entered": "300", "unit": "gram"}, "updatedAt": "2025-03-02T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-old-2", "mealId": "m-2025-c", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "portion": {"value": 300, "entered": "300", "unit": "gram"}, "updatedAt": "2025-03-03T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-old-3", "mealId": "m-2025-d", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "portion": {"value": 300, "entered": "300", "unit": "gram"}, "updatedAt": "2025-03-04T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "openFoodFacts", "foodId": "7394376616037", "recentCount": 3, "lastLoggedAt": "2026-10-10T08:00:00.000Z", "lastPortion": {"value": 250, "entered": "250", "unit": "milliliter"}},
+        {"foodSource": "usda", "foodId": "usda-fdc-173944", "recentCount": 1, "lastLoggedAt": "2026-10-30T08:00:00.000Z", "lastPortion": {"value": 120, "entered": "120", "unit": "gram"}},
+        {"foodSource": "user", "foodId": "food-porridge", "recentCount": 0, "lastLoggedAt": "2025-03-04T08:00:00.000Z", "lastPortion": {"value": 300, "entered": "300", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "an-entry-exactly-90-days-before-now-counts",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-on-cutoff", "startedAt": "2026-08-02T12:00:00.000Z", "deletedAt": null},
+          {"id": "m-before-cutoff", "startedAt": "2026-08-02T11:59:59.000Z", "deletedAt": null},
+          {"id": "m-before-cutoff-2", "startedAt": "2026-08-02T11:59:58.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-on", "mealId": "m-on-cutoff", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-on-cutoff", "isLiquid": false, "portion": {"value": 100, "entered": "100", "unit": "gram"}, "updatedAt": "2026-08-02T12:00:00.000Z", "deletedAt": null},
+          {"id": "e-before", "mealId": "m-before-cutoff", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-before-cutoff", "isLiquid": false, "portion": {"value": 100, "entered": "100", "unit": "gram"}, "updatedAt": "2026-08-02T11:59:59.000Z", "deletedAt": null},
+          {"id": "e-before-2", "mealId": "m-before-cutoff-2", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-before-cutoff", "isLiquid": false, "portion": {"value": 90, "entered": "90", "unit": "gram"}, "updatedAt": "2026-08-02T11:59:58.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "usda-on-cutoff", "recentCount": 1, "lastLoggedAt": "2026-08-02T12:00:00.000Z", "lastPortion": {"value": 100, "entered": "100", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "usda-before-cutoff", "recentCount": 0, "lastLoggedAt": "2026-08-02T11:59:59.000Z", "lastPortion": {"value": 100, "entered": "100", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "foods-logged-in-the-same-meal-keep-their-logged-order",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-breakfast", "startedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-pos0", "mealId": "m-breakfast", "kind": "food", "position": 0, "foodSource": "user", "foodId": "z-food", "isLiquid": false, "portion": {"value": 40, "entered": "40", "unit": "gram"}, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-pos1", "mealId": "m-breakfast", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "a-food", "isLiquid": false, "portion": {"value": 30, "entered": "30", "unit": "gram"}, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-pos2", "mealId": "m-breakfast", "kind": "food", "position": 2, "foodSource": "usda", "foodId": "a-food", "isLiquid": false, "portion": {"value": 20, "entered": "20", "unit": "gram"}, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "user", "foodId": "z-food", "recentCount": 1, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 40, "entered": "40", "unit": "gram"}},
+        {"foodSource": "openFoodFacts", "foodId": "a-food", "recentCount": 1, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 30, "entered": "30", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "a-food", "recentCount": 1, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 20, "entered": "20", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "the-latest-entry-is-chosen-by-meal-start-not-by-last-edit",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-early", "startedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-late", "startedAt": "2026-10-25T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-a-early", "mealId": "m-early", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 100, "entered": "100", "unit": "gram"}, "updatedAt": "2026-10-29T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-b-early", "mealId": "m-early", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-b", "isLiquid": false, "portion": {"value": 1, "entered": "1", "unit": "serving"}, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-quick-late", "mealId": "m-late", "kind": "quickEntry", "position": 0, "foodSource": null, "foodId": null, "isLiquid": null, "portion": null, "updatedAt": "2026-10-25T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-b-late", "mealId": "m-late", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-b", "isLiquid": false, "portion": {"value": 2, "entered": "2", "unit": "serving"}, "updatedAt": "2026-10-25T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-a-late", "mealId": "m-late", "kind": "food", "position": 2, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 150, "entered": "150", "unit": "gram"}, "updatedAt": "2026-10-25T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "food-b", "recentCount": 2, "lastLoggedAt": "2026-10-25T08:00:00.000Z", "lastPortion": {"value": 2, "entered": "2", "unit": "serving"}},
+        {"foodSource": "usda", "foodId": "food-a", "recentCount": 2, "lastLoggedAt": "2026-10-25T08:00:00.000Z", "lastPortion": {"value": 150, "entered": "150", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "with-equal-meal-starts-the-latest-entry-is-by-updated-at-then-id",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-one", "startedAt": "2026-10-22T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-two", "startedAt": "2026-10-22T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-1", "mealId": "m-one", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 10, "entered": "10", "unit": "gram"}, "updatedAt": "2026-10-22T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-2", "mealId": "m-two", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 20, "entered": "20", "unit": "gram"}, "updatedAt": "2026-10-23T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-3", "mealId": "m-one", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-c", "isLiquid": false, "portion": {"value": 30, "entered": "30", "unit": "gram"}, "updatedAt": "2026-10-22T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-4", "mealId": "m-two", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-c", "isLiquid": false, "portion": {"value": 40, "entered": "40", "unit": "gram"}, "updatedAt": "2026-10-22T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "food-a", "recentCount": 2, "lastLoggedAt": "2026-10-22T08:00:00.000Z", "lastPortion": {"value": 20, "entered": "20", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "food-c", "recentCount": 2, "lastLoggedAt": "2026-10-22T08:00:00.000Z", "lastPortion": {"value": 40, "entered": "40", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "last-portion-comes-from-an-earlier-entry-when-the-latest-has-none",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-1", "startedAt": "2026-10-10T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-2", "startedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-1", "mealId": "m-1", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-shake", "isLiquid": true, "portion": {"value": 200, "entered": "200", "unit": "milliliter"}, "updatedAt": "2026-10-10T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-2", "mealId": "m-2", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-shake", "isLiquid": true, "portion": null, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-3", "mealId": "m-2", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-no-portion", "isLiquid": false, "portion": null, "updatedAt": "2026-10-20T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "user", "foodId": "food-shake", "recentCount": 2, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 200, "entered": "200", "unit": "milliliter"}},
+        {"foodSource": "user", "foodId": "food-no-portion", "recentCount": 1, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": null}
+      ]
+    },
+    {
+      "name": "deleted-entries-deleted-meals-quick-entries-null-liquid-and-archived-user-foods-are-left-out",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-live", "startedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-deleted", "startedAt": "2026-10-16T08:00:00.000Z", "deletedAt": "2026-10-17T08:00:00.000Z"}
+        ],
+        "entries": [
+          {"id": "e-kept", "mealId": "m-live", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-kept", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-deleted", "mealId": "m-live", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "usda-deleted-entry", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": "2026-10-15T09:00:00.000Z"},
+          {"id": "e-in-deleted-meal", "mealId": "m-deleted", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-in-deleted-meal", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-16T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-quick", "mealId": "m-live", "kind": "quickEntry", "position": 2, "foodSource": "usda", "foodId": "usda-quick", "isLiquid": false, "portion": null, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-null-liquid", "mealId": "m-live", "kind": "food", "position": 3, "foodSource": "openFoodFacts", "foodId": "off-null-liquid", "isLiquid": null, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-no-food-id", "mealId": "m-live", "kind": "food", "position": 4, "foodSource": "cronometer", "foodId": null, "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-archived", "mealId": "m-live", "kind": "food", "position": 5, "foodSource": "user", "foodId": "food-archived", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-user-live", "mealId": "m-live", "kind": "food", "position": 6, "foodSource": "user", "foodId": "food-live", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-same-id-other-source", "mealId": "m-live", "kind": "food", "position": 7, "foodSource": "usda", "foodId": "food-archived", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-10-15T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": ["food-archived"]
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "usda-kept", "recentCount": 1, "lastLoggedAt": "2026-10-15T08:00:00.000Z", "lastPortion": {"value": 50, "entered": "50", "unit": "gram"}},
+        {"foodSource": "user", "foodId": "food-live", "recentCount": 1, "lastLoggedAt": "2026-10-15T08:00:00.000Z", "lastPortion": {"value": 50, "entered": "50", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "food-archived", "recentCount": 1, "lastLoggedAt": "2026-10-15T08:00:00.000Z", "lastPortion": {"value": 50, "entered": "50", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "one-food-id-under-two-food-sources-gives-two-records",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-a", "startedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-b", "startedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-c", "startedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "m-d", "startedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-usda-123", "mealId": "m-a", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "123", "isLiquid": false, "portion": {"value": 10, "entered": "10", "unit": "gram"}, "updatedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-off-123", "mealId": "m-b", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "123", "isLiquid": false, "portion": {"value": 20, "entered": "20", "unit": "gram"}, "updatedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-usda-b", "mealId": "m-c", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "b", "isLiquid": false, "portion": {"value": 30, "entered": "30", "unit": "gram"}, "updatedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null},
+          {"id": "e-usda-a", "mealId": "m-d", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "a", "isLiquid": false, "portion": {"value": 40, "entered": "40", "unit": "gram"}, "updatedAt": "2026-10-12T08:00:00.000Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "openFoodFacts", "foodId": "123", "recentCount": 1, "lastLoggedAt": "2026-10-12T08:00:00.000Z", "lastPortion": {"value": 20, "entered": "20", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "123", "recentCount": 1, "lastLoggedAt": "2026-10-12T08:00:00.000Z", "lastPortion": {"value": 10, "entered": "10", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "a", "recentCount": 1, "lastLoggedAt": "2026-10-12T08:00:00.000Z", "lastPortion": {"value": 40, "entered": "40", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "b", "recentCount": 1, "lastLoggedAt": "2026-10-12T08:00:00.000Z", "lastPortion": {"value": 30, "entered": "30", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "times-compare-in-whole-seconds-so-a-same-second-tie-falls-to-the-entry-id",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-later-ms", "startedAt": "2026-10-20T08:00:00.900Z", "deletedAt": null},
+          {"id": "m-earlier-ms", "startedAt": "2026-10-20T08:00:00.100Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "tie-a", "mealId": "m-later-ms", "kind": "food", "position": 3, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 100, "entered": "100", "unit": "gram"}, "updatedAt": "2026-10-20T08:05:00.900Z", "deletedAt": null},
+          {"id": "tie-b", "mealId": "m-earlier-ms", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 200, "entered": "200", "unit": "gram"}, "updatedAt": "2026-10-20T08:05:00.100Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "food-a", "recentCount": 2, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 200, "entered": "200", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "the-90-day-window-starts-at-the-whole-second-of-now-minus-90-days",
+      "input": {
+        "now": "2026-10-31T12:00:00.600Z",
+        "meals": [
+          {"id": "m-half-second-before-boundary", "startedAt": "2026-08-02T12:00:00.100Z", "deletedAt": null},
+          {"id": "m-previous-second", "startedAt": "2026-08-02T11:59:59.900Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-in-window", "mealId": "m-half-second-before-boundary", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-in-window", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-08-02T12:00:00.100Z", "deletedAt": null},
+          {"id": "e-out-of-window", "mealId": "m-previous-second", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-out-of-window", "isLiquid": false, "portion": {"value": 60, "entered": "60", "unit": "gram"}, "updatedAt": "2026-08-02T11:59:59.900Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "usda-in-window", "recentCount": 1, "lastLoggedAt": "2026-08-02T12:00:00.000Z", "lastPortion": {"value": 50, "entered": "50", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "usda-out-of-window", "recentCount": 0, "lastLoggedAt": "2026-08-02T11:59:59.000Z", "lastPortion": {"value": 60, "entered": "60", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "no-entries-gives-an-empty-history",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [],
+        "entries": [],
+        "archivedUserFoodIds": []
+      },
+      "expected": []
+    }
+  ]
+}

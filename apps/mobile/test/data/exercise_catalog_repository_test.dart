@@ -52,7 +52,7 @@ void main() {
       expect(seed.metadata.licenseSummary, contains('Workout.cool'));
       expect(seed.metadata.licenseSummary, contains('MIT'));
       expect(seed.metadata.licenseSummary, contains('provenance'));
-      expect(seed.exercises, hasLength(greaterThan(1700)));
+      expect(seed.exercises, hasLength(greaterThan(1400)));
       final categoriesById = <String, SeedExerciseCategory>{
         for (final category in seed.categories) category.id: category,
       };
@@ -65,10 +65,10 @@ void main() {
       expect(
           seed.exercises.map((exercise) => exercise.name),
           containsAll(<String>[
-            'Biceps Curls With Barbell',
+            'Barbell Biceps Curl',
             'Walking',
             'Lying Hip Abduction with Band',
-            'Facepulls',
+            'Face Pull',
           ]));
       expect(
         seed.exercises.map((exercise) => exercise.name.toLowerCase()).toSet(),
@@ -76,15 +76,21 @@ void main() {
       );
       expect(seed.exercises.map((exercise) => exercise.id),
           everyElement(_isUuidV7));
-      expect(seed.redirects, isNotEmpty);
-      expect(seed.redirects.map((redirect) => redirect.fromExerciseId),
-          everyElement(_isUuidV7));
-      expect(seed.redirects.map((redirect) => redirect.toExerciseId),
-          everyElement(_isUuidV7));
       final exerciseIds = seed.exercises.map((exercise) => exercise.id).toSet();
+      final retiredIds = seed.retired.map((exercise) => exercise.id).toSet();
+      expect(seed.retired, hasLength(419));
+      expect(retiredIds, hasLength(419));
+      expect(retiredIds, everyElement(_isUuidV7));
+      expect(retiredIds.intersection(exerciseIds), isEmpty);
       expect(
-        seed.redirects.map((redirect) => redirect.toExerciseId),
-        everyElement(isIn(exerciseIds)),
+        seed.retired.map((exercise) => exercise.categoryId),
+        everyElement(isIn(categoriesById.keys)),
+      );
+      expect(
+        seed.retired.where(
+          (exercise) => !exercise.retiredAt.isAfter(exercise.updatedAt),
+        ),
+        isEmpty,
       );
       expect(
         seed.exercises.map((exercise) => exercise.notes).whereType<String>(),
@@ -117,7 +123,7 @@ void main() {
       expect(
         seed.exercises
             .singleWhere(
-              (exercise) => exercise.name == 'Biceps Curls With Barbell',
+              (exercise) => exercise.name == 'Barbell Biceps Curl',
             )
             .equipment,
         contains(ExerciseEquipment.barbell),
@@ -131,7 +137,7 @@ void main() {
         DimensionId.reps,
       });
       final facepulls = seed.exercises.singleWhere(
-        (exercise) => exercise.name == 'Facepulls',
+        (exercise) => exercise.name == 'Face Pull',
       );
       expect(categoriesById[facepulls.categoryId]?.name, 'Shoulders');
       expect(
@@ -372,7 +378,7 @@ void main() {
       expect(squat?.deletedAt, isNull);
     });
 
-    test('platform redirects archive old ids while preserving lookup rows',
+    test('a retired id with no use is hidden while keeping its lookup row',
         () async {
       const oldId = '01910000-0000-7000-8000-000000000101';
       const canonicalId = '01910000-0000-7000-8000-000000000102';
@@ -385,15 +391,10 @@ void main() {
       );
       final cleanedSeed = PlatformExerciseSeed(
         categories: _fakeSeed.categories,
-        redirects: const <SeedExerciseRedirect>[
-          SeedExerciseRedirect(
-            fromExerciseId: oldId,
-            toExerciseId: canonicalId,
-          ),
-        ],
         exercises: _fakeSeed.exercises
             .where((exercise) => exercise.id == canonicalId)
             .toList(growable: false),
+        retired: <SeedRetiredExercise>[_retiredSquat],
       );
 
       repositories = TrainingRepositories(
@@ -411,25 +412,21 @@ void main() {
       final canonicalExercise =
           await repositories.exercises.getById(canonicalId);
       expect(oldExercise?.origin, ExerciseLibraryOrigin.platform);
-      expect(oldExercise?.deletedAt, isNotNull);
+      expect(oldExercise?.name, _retiredSquat.name);
+      expect(oldExercise?.deletedAt?.toUtc(), _retiredSquat.retiredAt);
       expect(canonicalExercise?.deletedAt, isNull);
     });
 
-    test('platform redirects materialize archived aliases on a fresh database',
+    test('a retired id gets a hidden row with its own name on a fresh database',
         () async {
       const oldId = '01910000-0000-7000-8000-000000000101';
       const canonicalId = '01910000-0000-7000-8000-000000000102';
       final cleanedSeed = PlatformExerciseSeed(
         categories: _fakeSeed.categories,
-        redirects: const <SeedExerciseRedirect>[
-          SeedExerciseRedirect(
-            fromExerciseId: oldId,
-            toExerciseId: canonicalId,
-          ),
-        ],
         exercises: _fakeSeed.exercises
             .where((exercise) => exercise.id == canonicalId)
             .toList(growable: false),
+        retired: <SeedRetiredExercise>[_retiredSquat],
       );
       repositories = TrainingRepositories(
         database,
@@ -438,16 +435,17 @@ void main() {
 
       await repositories.catalog.ensurePlatformLibrarySeeded();
 
-      final alias = await repositories.exercises.getById(oldId);
+      final hidden = await repositories.exercises.getById(oldId);
       final activeIds = (await repositories.exercises.listActive())
           .map((exercise) => exercise.id);
-      expect(alias?.origin, ExerciseLibraryOrigin.platform);
-      expect(alias?.deletedAt, isNotNull);
+      expect(hidden?.origin, ExerciseLibraryOrigin.platform);
+      expect(hidden?.name, _retiredSquat.name);
+      expect(hidden?.deletedAt, isNotNull);
       expect(activeIds, isNot(contains(oldId)));
       expect(activeIds, contains(canonicalId));
     });
 
-    test('reapplying the seed removes legacy wger attribution exercise notes',
+    test('the seed replaces a legacy Platform note and leaves a user copy alone',
         () async {
       const squatId = '01910000-0000-7000-8000-000000000101';
       final legacySeed = PlatformExerciseSeed(
@@ -458,7 +456,6 @@ void main() {
             name: 'Barbell Squat',
             dimensions: <DimensionId>[DimensionId.load, DimensionId.reps],
             categoryId: '01910000-0000-7000-8000-000000000001',
-            equipment: <ExerciseEquipment>[ExerciseEquipment.barbell],
             notes:
                 'Adapted from the wger exercise database. Equipment: Barbell.',
             updatedAt: DateTime.utc(2026),
@@ -481,9 +478,7 @@ void main() {
       );
       repositories = TrainingRepositories(
         database,
-        platformSeedSource: _QueuedPlatformExerciseSeedSource(
-          <PlatformExerciseSeed>[legacySeed, cleanedSeed],
-        ),
+        platformSeedSource: _FakePlatformExerciseSeedSource(legacySeed),
       );
 
       await repositories.catalog.ensurePlatformLibrarySeeded();
@@ -494,6 +489,10 @@ void main() {
           notes:
               'Adapted from the wger exercise database. Equipment: Dumbbell.',
         ),
+      );
+      repositories = TrainingRepositories(
+        database,
+        platformSeedSource: _FakePlatformExerciseSeedSource(cleanedSeed),
       );
       await repositories.catalog.ensurePlatformLibrarySeeded();
 
@@ -831,7 +830,9 @@ void main() {
         ]),
       );
       expect(syncState.id, syncStateId);
-      expect(syncState.pullCursor, 'cursor-v19');
+      // The schema 66 step clears it, so the next Sync Run is a full pull
+      // (docs/designs/compound-purposes.md, D1).
+      expect(syncState.pullCursor, isNull);
       expect(syncState.syncStatus, 'idle');
       expect(syncState.lastSuccessfulSyncAt, isNull);
       expect(syncState.firstFailureAt, isNull);
@@ -1632,6 +1633,17 @@ final _fakeSeed = PlatformExerciseSeed(
   ],
 );
 
+final _retiredSquat = SeedRetiredExercise(
+  id: '01910000-0000-7000-8000-000000000101',
+  name: 'Barbell Squat (retired)',
+  dimensions: <DimensionId>[DimensionId.load, DimensionId.reps],
+  categoryId: '01910000-0000-7000-8000-000000000001',
+  equipment: <ExerciseEquipment>[ExerciseEquipment.barbell],
+  notes: null,
+  updatedAt: DateTime.utc(2026),
+  retiredAt: DateTime.utc(2026, 11, 5),
+);
+
 final _fakeSeedWithRunning = PlatformExerciseSeed(
   categories: <SeedExerciseCategory>[
     ..._fakeSeed.categories,
@@ -1676,20 +1688,6 @@ class _CountingPlatformExerciseSeedSource
   Future<PlatformExerciseSeed> load() async {
     loadCount += 1;
     return seed;
-  }
-}
-
-class _QueuedPlatformExerciseSeedSource implements PlatformExerciseSeedSource {
-  _QueuedPlatformExerciseSeedSource(this.seeds);
-
-  final List<PlatformExerciseSeed> seeds;
-  int loadCount = 0;
-
-  @override
-  Future<PlatformExerciseSeed> load() async {
-    final index = loadCount < seeds.length ? loadCount : seeds.length - 1;
-    loadCount += 1;
-    return seeds[index];
   }
 }
 

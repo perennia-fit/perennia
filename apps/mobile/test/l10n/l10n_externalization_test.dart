@@ -1,13 +1,62 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // A Purpose shown next to a verb reads as a claim that a Compound does
+  // something (docs/designs/compound-purposes.md, the neutral-instrument rule).
+  // A string with no placeholder for one can't say that.
+  test('no message takes a Purpose name as a placeholder', () {
+    final arb = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
+        as Map<String, Object?>;
+
+    final failures = <String>[
+      for (final entry in arb.entries)
+        if (entry.key.startsWith('@') &&
+            entry.value is Map<String, Object?> &&
+            (entry.value! as Map<String, Object?>).containsKey('placeholders'))
+          for (final placeholder
+              in ((entry.value! as Map<String, Object?>)['placeholders']!
+                      as Map<String, Object?>)
+                  .keys)
+            if (entry.key.toLowerCase().contains('purpose') ||
+                placeholder.toLowerCase().contains('purpose'))
+              '${entry.key}: $placeholder',
+    ];
+
+    expect(failures, isEmpty);
+  });
+
   test('primary logging surfaces do not inline user-facing widget strings', () {
     final surfaceFiles = <String>[
       'lib/features/home/widgets/home_screen.dart',
       'lib/features/training/widgets/training_screen.dart',
+      'lib/features/training/widgets/rest_strip.dart',
+      'lib/features/training/widgets/replace_exercise.dart',
       'lib/features/activity/widgets/activity_feed_screen.dart',
+      'lib/features/home/widgets/start_workout_sheet.dart',
+      'lib/features/focus/widgets/focus_manager_screen.dart',
+      'lib/features/focus/widgets/focus_picker_sheet.dart',
+      'lib/features/focus/widgets/focused_exercise_list.dart',
+      'lib/features/progress/widgets/progress_overview.dart',
+      'lib/features/progress/widgets/progress_card.dart',
+      'lib/features/progress/widgets/this_week_card.dart',
+      'lib/features/progress/widgets/trained_days_card.dart',
+      'lib/features/progress/widgets/focus_time_card.dart',
+      'lib/features/progress/widgets/key_exercises_card.dart',
+      'lib/features/progress/widgets/new_bests_card.dart',
+      'lib/features/progress/widgets/body_card.dart',
+      'lib/features/progress/widgets/protocols_progress_card.dart',
+      'lib/features/progress/widgets/progress_format.dart',
+      'lib/features/template_picker/widgets/template_picker_sheet.dart',
+      'lib/features/workout_templates/widgets/prescription_summary.dart',
+      'lib/features/nutrition/widgets/meal_screen.dart',
+      'lib/features/nutrition/widgets/meal_time_sheet.dart',
+      'lib/features/protocols/widgets/compound_list_screen.dart',
+      'lib/features/protocols/widgets/compound_picker_sheet.dart',
+      'lib/features/protocols/widgets/purpose_filter_row.dart',
+      'lib/features/protocols/widgets/purpose_manager_screen.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

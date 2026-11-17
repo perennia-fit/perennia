@@ -1,0 +1,1069 @@
+{
+  "name": "m37-training-progress",
+  "domain": "training-progress",
+  "schemaVersion": 1,
+  "schema": "m37-training-progress.schema.json",
+  "cases": [
+    {
+      "name": "cuj1-checking-the-week",
+      "function": "training_week",
+      "note": "CUJ 1: Sunday evening. Lower and Run intervals done, an unplanned Wednesday, nothing on Thursday, a saved workout instead of Long run on Saturday.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:05:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-lower", "performedSetCount": 14},
+          {"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T06:30:00.000Z", "endedAt": "2026-10-27T07:20:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-run-intervals", "performedSetCount": 8},
+          {"workoutId": "w-wed", "localDate": "2026-10-28", "startedAt": "2026-10-28T18:00:00.000Z", "endedAt": "2026-10-28T18:35:00.000Z", "focusId": "f-mobility", "linkedTemplateId": null, "performedSetCount": 6},
+          {"workoutId": "w-sat", "localDate": "2026-10-31", "startedAt": "2026-10-31T08:00:00.000Z", "endedAt": "2026-10-31T09:10:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-easy-spin", "performedSetCount": 1}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-11-01"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r-hybrid"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-29", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "done_differently", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj2-today-pending",
+      "function": "training_week",
+      "note": "The Data shapes example: CUJ 2 reduced to the Thursday plan. An unplanned morning run leaves today Pending.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-upper", "weekday": 4}]}],
+        "workouts": [{"workoutId": "w1", "localDate": "2026-10-29", "startedAt": "2026-10-29T06:00:00.000Z", "endedAt": "2026-10-29T06:45:00.000Z", "focusId": "f-e", "linkedTemplateId": null, "performedSetCount": 1}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-29"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "pending", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj2-today-is-not-over",
+      "function": "training_week",
+      "note": "CUJ 2 with the whole Hybrid block: Thursday morning, an unplanned run. Thursday is Pending, Saturday is Planned.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-lower", "performedSetCount": 12},
+          {"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T06:30:00.000Z", "endedAt": "2026-10-27T07:15:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-run-intervals", "performedSetCount": 6},
+          {"workoutId": "w-thu-run", "localDate": "2026-10-29", "startedAt": "2026-10-29T06:00:00.000Z", "endedAt": "2026-10-29T06:40:00.000Z", "focusId": "f-endurance", "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-29"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r-hybrid"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "pending", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj2-upper-done-in-the-evening",
+      "function": "training_week",
+      "note": "CUJ 2, later: a Set completed in a Workout started from Upper makes Thursday Done, whatever else was logged that day.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-lower", "performedSetCount": 12},
+          {"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T06:30:00.000Z", "endedAt": "2026-10-27T07:15:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-run-intervals", "performedSetCount": 6},
+          {"workoutId": "w-thu-run", "localDate": "2026-10-29", "startedAt": "2026-10-29T06:00:00.000Z", "endedAt": "2026-10-29T06:40:00.000Z", "focusId": "f-endurance", "linkedTemplateId": null, "performedSetCount": 1},
+          {"workoutId": "w-thu-upper", "localDate": "2026-10-29", "startedAt": "2026-10-29T18:00:00.000Z", "endedAt": "2026-10-29T19:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-upper", "performedSetCount": 1}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-29"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r-hybrid"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 2},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj3-rotating-routine-only",
+      "function": "training_week",
+      "note": "CUJ 3: a rotating Cadence plans no date, so the loaders pass no plan. Days with a Logged Workout are Trained, every other day No plan, nothing Not done.",
+      "input": {
+        "plans": [],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-day-1", "performedSetCount": 10},
+          {"workoutId": "w-wed", "localDate": "2026-10-28", "startedAt": "2026-10-28T17:00:00.000Z", "endedAt": "2026-10-28T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-day-2", "performedSetCount": 10}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-29"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": [],
+        "days": [
+          {"localDate": "2026-10-26", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-29", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj4-session-after-midnight",
+      "function": "training_week",
+      "note": "CUJ 4: Lower started at 00:30 local on Tuesday (23:30 UTC on Monday). Its local date is Tuesday, so Monday is Not done and Tuesday Done differently.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [{"workoutId": "w-late", "localDate": "2026-10-27", "startedAt": "2026-10-26T23:30:00.000Z", "endedAt": "2026-10-27T00:40:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-lower", "performedSetCount": 12}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r-hybrid"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "done_differently", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "cuj5-abandoned-planned-workout",
+      "function": "training_week",
+      "note": "CUJ 5: Run intervals started from Up next on Tuesday and left with no completed Set. It is not a Logged Workout, so Tuesday is Not done.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-lower", "performedSetCount": 12},
+          {"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T06:30:00.000Z", "endedAt": "2026-10-27T06:34:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-run-intervals", "performedSetCount": 0}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r-hybrid"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "past-day-partly-done",
+      "function": "training_week",
+      "note": "D1: a past day with two planned entries and one matched is Partly done.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 1}, {"workoutTemplateId": "t-b", "weekday": 1}]}],
+        "workouts": [{"workoutId": "w1", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-b", "performedSetCount": 5}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "partly_done", "plannedCount": 2, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "two-routines-plan-the-same-template",
+      "function": "training_week",
+      "note": "D1: a Workout Template planned by two Routines on one day is two planned entries, and a Workout matches at most one. comparedRoutineIds is ascending whatever the input order.",
+      "input": {
+        "plans": [
+          {"routineId": "r2", "entries": [{"workoutTemplateId": "t-a", "weekday": 1}, {"workoutTemplateId": "t-a", "weekday": 2}]},
+          {"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 1}, {"workoutTemplateId": "t-a", "weekday": 2}]}
+        ],
+        "workouts": [
+          {"workoutId": "w-mon", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5},
+          {"workoutId": "w-tue-1", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5},
+          {"workoutId": "w-tue-2", "localDate": "2026-10-27", "startedAt": "2026-10-27T17:00:00.000Z", "endedAt": "2026-10-27T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1", "r2"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "partly_done", "plannedCount": 2, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 2, "matchedCount": 2, "workoutCount": 2},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "one-routine-plans-a-template-twice",
+      "function": "training_week",
+      "note": "D1: one Routine planning a template twice on one day needs two Workouts linked to it.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 2}, {"workoutTemplateId": "t-a", "weekday": 2}]}],
+        "workouts": [{"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T08:00:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-a", "performedSetCount": 3}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-30"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "partly_done", "plannedCount": 2, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "unlinked-workout-on-a-planned-day",
+      "function": "training_week",
+      "note": "D1: a Workout with no Template Link on a past planned day is Done differently.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 2}]}],
+        "workouts": [{"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T08:00:00.000Z", "focusId": null, "linkedTemplateId": null, "performedSetCount": 4}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-31"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "done_differently", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "open-workout-matches-the-plan",
+      "function": "training_week",
+      "note": "D1: an Open Workout with a Performed Set, linked to today's planned template, is Done.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 2}]}],
+        "workouts": [{"workoutId": "w-open", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": null, "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 2}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-27"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "no-performed-set-is-not-done",
+      "function": "training_week",
+      "note": "D0: a Workout linked to the planned template whose Sets are all incomplete is ignored, so the past planned day is Not done.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 2}]}],
+        "workouts": [{"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T07:05:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 0}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-29"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "today-one-of-two-matched",
+      "function": "training_week",
+      "note": "D1: today with one of two planned entries matched stays Pending.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-b", "weekday": 3}, {"workoutTemplateId": "t-a", "weekday": 3}]}],
+        "workouts": [{"workoutId": "w-wed", "localDate": "2026-10-28", "startedAt": "2026-10-28T07:00:00.000Z", "endedAt": "2026-10-28T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "pending", "plannedCount": 2, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "today-every-entry-matched",
+      "function": "training_week",
+      "note": "D1: today with every planned entry matched is Done.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-b", "weekday": 3}, {"workoutTemplateId": "t-a", "weekday": 3}]}],
+        "workouts": [
+          {"workoutId": "w-wed-b", "localDate": "2026-10-28", "startedAt": "2026-10-28T17:00:00.000Z", "endedAt": "2026-10-28T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-b", "performedSetCount": 5},
+          {"workoutId": "w-wed-a", "localDate": "2026-10-28", "startedAt": "2026-10-28T07:00:00.000Z", "endedAt": "2026-10-28T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "done", "plannedCount": 2, "matchedCount": 2, "workoutCount": 2},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "no-plans",
+      "function": "training_week",
+      "note": "D1: with no plan at all, a day is Trained or No plan. A future date with a Workout is still Trained.",
+      "input": {
+        "plans": [],
+        "workouts": [
+          {"workoutId": "w-tue", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5},
+          {"workoutId": "w-tue-2", "localDate": "2026-10-27", "startedAt": "2026-10-27T18:00:00.000Z", "endedAt": "2026-10-27T18:30:00.000Z", "focusId": "f-mobility", "linkedTemplateId": null, "performedSetCount": 2},
+          {"workoutId": "w-sat", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "endedAt": "2026-10-31T08:00:00.000Z", "focusId": null, "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": [],
+        "days": [
+          {"localDate": "2026-10-26", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 2},
+          {"localDate": "2026-10-28", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-11-01", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "plan-with-no-entries-is-ignored",
+      "function": "training_week",
+      "note": "D1: a weekly Routine with no planning entries plans nothing: it is not compared, and the unplanned days are No plan rather than Rest.",
+      "input": {
+        "plans": [{"routineId": "r-empty", "entries": []}],
+        "workouts": [{"workoutId": "w-thu", "localDate": "2026-10-29", "startedAt": "2026-10-29T07:00:00.000Z", "endedAt": "2026-10-29T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 3}],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-30"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": [],
+        "days": [
+          {"localDate": "2026-10-26", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-30", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "no_plan", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "workouts-outside-the-week-are-ignored",
+      "function": "training_week",
+      "note": "D1: Workouts dated the Sunday before and the Monday after the week, both linked to Monday's template, change nothing.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-a", "weekday": 1}]}],
+        "workouts": [
+          {"workoutId": "w-before", "localDate": "2026-10-25", "startedAt": "2026-10-25T17:00:00.000Z", "endedAt": "2026-10-25T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5},
+          {"workoutId": "w-after", "localDate": "2026-11-02", "startedAt": "2026-11-02T17:00:00.000Z", "endedAt": "2026-11-02T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 5}
+        ],
+        "weekStart": "2026-10-26",
+        "today": "2026-11-01"
+      },
+      "expected": {
+        "weekStart": "2026-10-26",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-26", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "sunday-week-start",
+      "function": "training_week",
+      "note": "D1: a week starting Sunday. Weekday 7 plans the first day and weekday 6 the last, which is in the future.",
+      "input": {
+        "plans": [{"routineId": "r1", "entries": [{"workoutTemplateId": "t-long-run", "weekday": 7}, {"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-easy", "weekday": 6}]}],
+        "workouts": [{"workoutId": "w-sun", "localDate": "2026-10-25", "startedAt": "2026-10-25T08:00:00.000Z", "endedAt": "2026-10-25T09:30:00.000Z", "focusId": "f-endurance", "linkedTemplateId": "t-long-run", "performedSetCount": 1}],
+        "weekStart": "2026-10-25",
+        "today": "2026-10-28"
+      },
+      "expected": {
+        "weekStart": "2026-10-25",
+        "comparedRoutineIds": ["r1"],
+        "days": [
+          {"localDate": "2026-10-25", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-26", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-27", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-28", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-29", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "planned", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0}
+        ]
+      }
+    },
+    {
+      "name": "today-after-the-week-rejects",
+      "function": "training_week",
+      "note": "D1: today must fall inside the week; the next Monday is rejected with an argument error.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [],
+        "weekStart": "2026-10-26",
+        "today": "2026-11-02"
+      },
+      "expected": {"error": "argument"}
+    },
+    {
+      "name": "today-before-the-week-rejects",
+      "function": "training_week",
+      "note": "D1: today must fall inside the week; the Sunday before is rejected with an argument error.",
+      "input": {
+        "plans": [
+          {
+            "routineId": "r-hybrid",
+            "entries": [{"workoutTemplateId": "t-lower", "weekday": 1}, {"workoutTemplateId": "t-run-intervals", "weekday": 2}, {"workoutTemplateId": "t-upper", "weekday": 4}, {"workoutTemplateId": "t-long-run", "weekday": 6}]
+          }
+        ],
+        "workouts": [],
+        "weekStart": "2026-10-26",
+        "today": "2026-10-25"
+      },
+      "expected": {"error": "argument"}
+    },
+    {
+      "name": "cuj1-summary",
+      "function": "summarize_training_week",
+      "note": "CUJ 1: \"2 done · 1 done differently · 1 not done · 1 trained\". Rest, Pending, Planned and No plan are not counted.",
+      "input": {
+        "days": [
+          {"localDate": "2026-10-26", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-27", "status": "done", "plannedCount": 1, "matchedCount": 1, "workoutCount": 1},
+          {"localDate": "2026-10-28", "status": "trained", "plannedCount": 0, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-10-29", "status": "not_done", "plannedCount": 1, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-30", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0},
+          {"localDate": "2026-10-31", "status": "done_differently", "plannedCount": 1, "matchedCount": 0, "workoutCount": 1},
+          {"localDate": "2026-11-01", "status": "rest", "plannedCount": 0, "matchedCount": 0, "workoutCount": 0}
+        ]
+      },
+      "expected": {"done": 2, "partlyDone": 0, "doneDifferently": 1, "notDone": 1, "trained": 1}
+    },
+    {
+      "name": "workout-without-a-focus",
+      "function": "training_days",
+      "note": "D3: a Workout with no Focus sums under the key \"none\".",
+      "input": {
+        "workouts": [{"workoutId": "w1", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T07:45:00.000Z", "focusId": null, "linkedTemplateId": null, "performedSetCount": 3}],
+        "from": "2026-10-26",
+        "to": "2026-10-28"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 0, "secondsByFocus": {}}, {"localDate": "2026-10-27", "workoutCount": 1, "secondsByFocus": {"none": 2700}}, {"localDate": "2026-10-28", "workoutCount": 0, "secondsByFocus": {}}]
+    },
+    {
+      "name": "two-focuses-on-one-date",
+      "function": "training_days",
+      "note": "D3: each Focus sums its own Workouts. Seconds are truncated per Workout (1 234.999 s is 1 234 s), and a Workout crossing midnight counts toward its local date.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-a1", "localDate": "2026-10-27", "startedAt": "2026-10-27T06:00:00.000Z", "endedAt": "2026-10-27T07:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 5},
+          {"workoutId": "w-b", "localDate": "2026-10-27", "startedAt": "2026-10-27T12:00:00.000Z", "endedAt": "2026-10-27T12:20:34.999Z", "focusId": "f-endurance", "linkedTemplateId": null, "performedSetCount": 1},
+          {"workoutId": "w-a2", "localDate": "2026-10-27", "startedAt": "2026-10-27T23:30:00.000Z", "endedAt": "2026-10-28T00:30:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 5}
+        ],
+        "from": "2026-10-27",
+        "to": "2026-10-28"
+      },
+      "expected": [{"localDate": "2026-10-27", "workoutCount": 3, "secondsByFocus": {"f-weights": 7200, "f-endurance": 1234}}, {"localDate": "2026-10-28", "workoutCount": 0, "secondsByFocus": {}}]
+    },
+    {
+      "name": "open-workout-counts-without-time",
+      "function": "training_days",
+      "note": "D2 and D3: an Open Workout counts toward workoutCount but adds no time and no key.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-open", "localDate": "2026-10-28", "startedAt": "2026-10-28T18:00:00.000Z", "endedAt": null, "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 2},
+          {"workoutId": "w-done", "localDate": "2026-10-28", "startedAt": "2026-10-28T07:00:00.000Z", "endedAt": "2026-10-28T07:30:00.000Z", "focusId": "f-mobility", "linkedTemplateId": null, "performedSetCount": 2},
+          {"workoutId": "w-open-only", "localDate": "2026-10-29", "startedAt": "2026-10-29T18:00:00.000Z", "endedAt": null, "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "from": "2026-10-28",
+        "to": "2026-10-29"
+      },
+      "expected": [{"localDate": "2026-10-28", "workoutCount": 2, "secondsByFocus": {"f-mobility": 1800}}, {"localDate": "2026-10-29", "workoutCount": 1, "secondsByFocus": {}}]
+    },
+    {
+      "name": "ended-before-it-started",
+      "function": "training_days",
+      "note": "D3: a Workout that ended before it started adds 0 seconds, and its key is still present.",
+      "input": {
+        "workouts": [{"workoutId": "w1", "localDate": "2026-10-26", "startedAt": "2026-10-26T18:00:00.000Z", "endedAt": "2026-10-26T17:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 4}],
+        "from": "2026-10-26",
+        "to": "2026-10-26"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 1, "secondsByFocus": {"f-weights": 0}}]
+    },
+    {
+      "name": "focus-ids-named-like-object-members",
+      "function": "training_days",
+      "note": "D3: a Focus id is opaque synced data. Ids that name members of a JavaScript object's prototype sum like any other id.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-constructor", "localDate": "2026-10-26", "startedAt": "2026-10-26T06:00:00.000Z", "endedAt": "2026-10-26T07:00:00.000Z", "focusId": "constructor", "linkedTemplateId": null, "performedSetCount": 3},
+          {"workoutId": "w-proto", "localDate": "2026-10-26", "startedAt": "2026-10-26T08:00:00.000Z", "endedAt": "2026-10-26T08:10:00.000Z", "focusId": "__proto__", "linkedTemplateId": null, "performedSetCount": 1},
+          {"workoutId": "w-to-string", "localDate": "2026-10-26", "startedAt": "2026-10-26T09:00:00.000Z", "endedAt": "2026-10-26T09:01:00.000Z", "focusId": "toString", "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "from": "2026-10-26",
+        "to": "2026-10-26"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 3, "secondsByFocus": {"constructor": 3600, "__proto__": 600, "toString": 60}}]
+    },
+    {
+      "name": "no-performed-set-is-ignored",
+      "function": "training_days",
+      "note": "D0: a Workout with no Performed Set is not a Logged Workout: no count, no time, no key.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-empty", "localDate": "2026-10-26", "startedAt": "2026-10-26T17:00:00.000Z", "endedAt": "2026-10-26T18:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": "t-a", "performedSetCount": 0},
+          {"workoutId": "w-logged", "localDate": "2026-10-26", "startedAt": "2026-10-26T07:00:00.000Z", "endedAt": "2026-10-26T07:10:00.000Z", "focusId": "f-mobility", "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "from": "2026-10-26",
+        "to": "2026-10-26"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 1, "secondsByFocus": {"f-mobility": 600}}]
+    },
+    {
+      "name": "workouts-outside-the-range-are-ignored",
+      "function": "training_days",
+      "note": "D2: Workouts dated before from or after to are ignored.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-before", "localDate": "2026-10-25", "startedAt": "2026-10-25T07:00:00.000Z", "endedAt": "2026-10-25T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 3},
+          {"workoutId": "w-in", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "endedAt": "2026-10-27T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 3},
+          {"workoutId": "w-after", "localDate": "2026-10-29", "startedAt": "2026-10-29T07:00:00.000Z", "endedAt": "2026-10-29T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 3}
+        ],
+        "from": "2026-10-26",
+        "to": "2026-10-28"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 0, "secondsByFocus": {}}, {"localDate": "2026-10-27", "workoutCount": 1, "secondsByFocus": {"f-weights": 3600}}, {"localDate": "2026-10-28", "workoutCount": 0, "secondsByFocus": {}}]
+    },
+    {
+      "name": "a-366-date-range",
+      "function": "training_days",
+      "note": "D2: the longest range, 366 dates, here across 29 February 2024. Every date has an entry, in order.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-first", "localDate": "2023-11-02", "startedAt": "2023-11-02T07:00:00.000Z", "endedAt": "2023-11-02T08:00:00.000Z", "focusId": "f-weights", "linkedTemplateId": null, "performedSetCount": 3},
+          {"workoutId": "w-leap", "localDate": "2024-02-29", "startedAt": "2024-02-29T07:00:00.000Z", "endedAt": "2024-02-29T07:30:00.000Z", "focusId": null, "linkedTemplateId": null, "performedSetCount": 1},
+          {"workoutId": "w-last", "localDate": "2024-11-01", "startedAt": "2024-11-01T07:00:00.000Z", "endedAt": "2024-11-01T07:15:00.000Z", "focusId": "f-mobility", "linkedTemplateId": null, "performedSetCount": 2}
+        ],
+        "from": "2023-11-02",
+        "to": "2024-11-01"
+      },
+      "expected": [
+        {"localDate": "2023-11-02", "workoutCount": 1, "secondsByFocus": {"f-weights": 3600}},
+        {"localDate": "2023-11-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-11-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2023-12-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-01-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-02-29", "workoutCount": 1, "secondsByFocus": {"none": 1800}},
+        {"localDate": "2024-03-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-03-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-04-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-05-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-06-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-07-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-08-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-09-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-01", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-02", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-03", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-04", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-05", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-06", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-07", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-08", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-09", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-10", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-11", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-12", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-13", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-14", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-15", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-16", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-17", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-18", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-19", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-20", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-21", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-22", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-23", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-24", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-25", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-26", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-27", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-28", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-29", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-30", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-10-31", "workoutCount": 0, "secondsByFocus": {}},
+        {"localDate": "2024-11-01", "workoutCount": 1, "secondsByFocus": {"f-mobility": 900}}
+      ]
+    },
+    {
+      "name": "a-367-date-range-rejects",
+      "function": "training_days",
+      "note": "D2: one date more than 366 is rejected with an argument error.",
+      "input": {"workouts": [], "from": "2023-11-01", "to": "2024-11-01"},
+      "expected": {"error": "argument"}
+    },
+    {
+      "name": "from-after-to-rejects",
+      "function": "training_days",
+      "note": "D2: from after to is rejected with an argument error.",
+      "input": {"workouts": [], "from": "2026-10-28", "to": "2026-10-27"},
+      "expected": {"error": "argument"}
+    }
+  ]
+}

@@ -17,6 +17,7 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       js: ${{ steps.filter.outputs.js }}
       dependency_hygiene: ${{ steps.filter.outputs.dependency_hygiene }}
+      release_version: ${{ steps.filter.outputs.release_version }}
       workflow_lint: ${{ steps.filter.outputs.workflow_lint }}
     steps:
       - name: Checkout
@@ -40,6 +41,8 @@ jobs:
               - 'apps/mobile/pubspec.yaml'
               - 'packages/contract/**'
               - 'tools/generate-server-platform-exercise-seed.mjs'
+              - 'tools/platform-exercise-focus.mjs'
+              - 'tools/data/platform-exercise-focus-overrides.json'
               - 'tools/generate-server-usda-food-seed.mjs'
               - '.node-version'
               - 'package.json'
@@ -47,21 +50,42 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'tsconfig.base.json'
               - '.github/workflows/ci.yml'
+            # The Dart step discovers its runners, so these cover whole trees
+            # rather than naming files: a named list is how the Protocols
+            # vectors (m26) fell outside this job.
             golden_vectors:
               - 'apps/server/src/analytics/**'
               - 'apps/server/src/metric-reading-normalization.ts'
+              - 'apps/server/src/agent-validation.ts'
+              - 'apps/server/src/agent-plan-capture.ts'
               - 'apps/server/test/analytics.golden.test.mjs'
               - 'apps/server/test/metric-reading-normalization.golden.test.mjs'
+              - 'apps/server/test/agent-validation.golden.test.mjs'
+              - 'apps/server/test/agent-plan-capture.golden.test.mjs'
               - 'apps/server/test/nutrition-analytics.golden.test.mjs'
+              - 'apps/server/src/agent-protocols.ts'
+              - 'apps/server/test/effect-window.golden.test.mjs'
+              - 'apps/server/src/protocol-plan.ts'
+              - 'apps/server/test/protocol-plan.golden.test.mjs'
+              - 'apps/server/src/barcode-candidates.ts'
+              - 'apps/server/test/barcode-candidates.golden.test.mjs'
+              - 'apps/server/src/food-history.ts'
+              - 'apps/server/test/food-history.golden.test.mjs'
+              - 'apps/server/src/meal-history.ts'
+              - 'apps/server/test/meal-history.golden.test.mjs'
+              - 'apps/server/src/timezone.ts'
+              - 'apps/server/test/timezone.test.mjs'
+              - 'apps/server/test/training-progress.golden.test.mjs'
+              - 'apps/server/test/progress-measure.golden.test.mjs'
+              - 'apps/server/test/metric-trend.golden.test.mjs'
+              - 'apps/server/src/compound-purposes.ts'
+              - 'apps/server/test/compound-purposes.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
-              - 'apps/mobile/lib/domain/analytics/**'
-              - 'apps/mobile/lib/domain/metrics/**'
-              - 'apps/mobile/lib/domain/nutrition/**'
-              - 'apps/mobile/lib/domain/training/training_dimensions.dart'
-              - 'apps/mobile/test/domain/exercise_analytics_test.dart'
-              - 'apps/mobile/test/domain/metric_reading_normalization_test.dart'
-              - 'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart'
+              - 'apps/mobile/lib/domain/**'
+              - 'apps/mobile/lib/features/body_tracker/**'
+              - 'apps/mobile/test/domain/**'
+              - 'apps/mobile/test/features/body_tracker/**'
               - 'apps/mobile/pubspec.yaml'
               - 'pubspec.yaml'
               - 'pubspec.lock'
@@ -72,6 +96,11 @@ jobs:
               - '.github/workflows/ci.yml'
             js:
               - 'apps/server/**'
+              # The server tests read the Open Food Facts bundle, and check
+              # the Nutrient ids and the bundle format against these Dart files.
+              - 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz'
+              - 'apps/mobile/lib/domain/nutrition/nutrition.dart'
+              - 'apps/mobile/lib/domain/nutrition/open_food_facts.dart'
               - 'tools/generate-wger-platform-exercises.mjs'
               - 'tools/platform-exercise-cleanup.mjs'
               - 'packages/contract/**'
@@ -96,6 +125,12 @@ jobs:
               - 'pubspec.lock'
               - 'apps/mobile/pubspec.yaml'
               - '.github/workflows/ci.yml'
+            release_version:
+              - 'apps/mobile/pubspec.yaml'
+              - 'apps/server/package.json'
+              - 'CHANGELOG.md'
+              - 'tools/check-release.mjs'
+              - '.github/workflows/ci.yml'
             workflow_lint:
               - '.github/workflows/**'
 
@@ -115,6 +150,23 @@ jobs:
 
       - name: Check dependency update coverage
         run: node tools/check-dependency-hygiene.mjs
+
+  release_version:
+    name: Release version consistency
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.release_version == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Check app, server, and CHANGELOG versions agree
+        run: node tools/check-release.mjs
 
   workflow_lint:
     name: Workflow lint
@@ -153,7 +205,11 @@ jobs:
         run: dart run build_runner build
 
       - name: Fail on stale Drift code
-        run: git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart
+        run: git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart apps/mobile/lib/data/local/food_reference_database.g.dart
+
+      - name: Fail on a missing Drift schema snapshot
+        working-directory: apps/mobile
+        run: dart run tool/drift_schema_snapshots.dart --check
 
       - name: Regenerate design tokens
         working-directory: apps/mobile
@@ -200,6 +256,9 @@ jobs:
       - name: Check server Platform Exercise seed is in sync
         run: node tools/generate-server-platform-exercise-seed.mjs --check
 
+      - name: Check Platform Exercise Focuses are current
+        run: node tools/platform-exercise-focus.mjs --check
+
       - name: Check server USDA Food seed is in sync
         run: node tools/generate-server-usda-food-seed.mjs --check
 
@@ -241,9 +300,21 @@ jobs:
       - name: TypeScript golden vectors
         run: pnpm --filter @perennia/server test:golden-vectors
 
+      # Every Dart test that reads packages/golden-vectors, discovered rather than
+      # listed: a hand-kept list let a vector runner (m26 dose validation) sit
+      # outside this job, so a vector-only change merged with no Dart run at all.
+      # Mirrored by runDartGoldenRunners() in tools/ci-local.mjs.
       - name: Dart golden vectors
         working-directory: apps/mobile
-        run: flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart
+        run: |
+          runners=$(git grep -l -e 'golden-vectors' -- 'test/*_test.dart')
+          if [ -z "$runners" ]; then
+            echo "::error::No Dart test reads packages/golden-vectors"
+            exit 1
+          fi
+          echo "$runners"
+          # shellcheck disable=SC2086 # word-splitting the file list is intended
+          flutter test $runners
 
   js:
     name: JS workspace checks
@@ -342,6 +413,7 @@ jobs:
       - mobile
       - workflow_lint
       - dependency_hygiene
+      - release_version
       - js
       - sync-convergence
     if: always()
@@ -354,6 +426,7 @@ jobs:
           echo "mobile:  ${{ needs.mobile.result }}"
           echo "workflow-lint: ${{ needs.workflow_lint.result }}"
           echo "dependency-hygiene: ${{ needs.dependency_hygiene.result }}"
+          echo "release-version: ${{ needs.release_version.result }}"
           echo "js:      ${{ needs.js.result }}"
           echo "sync-convergence: ${{ needs.sync-convergence.result }}"
 
@@ -361,7 +434,7 @@ jobs:
             exit 1
           fi
 
-          for result in "${{ needs.contract-drift.result }}" "${{ needs.golden_vectors.result }}" "${{ needs.mobile.result }}" "${{ needs.workflow_lint.result }}" "${{ needs.dependency_hygiene.result }}" "${{ needs.js.result }}" "${{ needs.sync-convergence.result }}"; do
+          for result in "${{ needs.contract-drift.result }}" "${{ needs.golden_vectors.result }}" "${{ needs.mobile.result }}" "${{ needs.workflow_lint.result }}" "${{ needs.dependency_hygiene.result }}" "${{ needs.release_version.result }}" "${{ needs.js.result }}" "${{ needs.sync-convergence.result }}"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               exit 1
             fi

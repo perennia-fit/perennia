@@ -8,9 +8,14 @@ import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
+import '../../focus/controllers/focus_providers.dart';
+import '../../focus/repositories/focus_feature_repository.dart';
+import '../../focus/widgets/focus_picker_sheet.dart';
+import '../../focus/widgets/focus_visuals.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../controllers/workout_template_controller.dart';
 import '../repositories/workout_template_feature_repository.dart';
+import 'prescription_summary.dart';
 import 'template_group_editor_sheet.dart';
 
 class WorkoutTemplateEditorScreen extends ConsumerStatefulWidget {
@@ -22,6 +27,7 @@ class WorkoutTemplateEditorScreen extends ConsumerStatefulWidget {
   static const routeName = '/library/training/workout-templates/edit';
   static const nameFieldKey = Key('workoutTemplateEditor.name');
   static const notesFieldKey = Key('workoutTemplateEditor.notes');
+  static const focusFieldKey = Key('workoutTemplateEditor.focus');
   static const saveDetailsButtonKey = Key('workoutTemplateEditor.saveDetails');
   static const addExerciseButtonKey = Key('workoutTemplateEditor.addExercise');
   static const exercisePickerKey = Key('workoutTemplateEditor.exercisePicker');
@@ -171,6 +177,8 @@ class _WorkoutTemplateEditorScreenState
                     labelText: l10n.workoutTemplatesNotesLabel,
                   ),
                 ),
+                const SizedBox(height: AppDimens.base),
+                _TemplateFocusField(template: template),
                 const SizedBox(height: AppDimens.base),
                 FilledButton.icon(
                   key: WorkoutTemplateEditorScreen.saveDetailsButtonKey,
@@ -480,7 +488,7 @@ class _WorkoutTemplateEditorScreenState
         exercises: template.exercises,
         groups: template.groups,
         group: group,
-        defaultColorHex: _colorToHex(
+        defaultColorHex: colorToHex(
           sheetContext.colors.categoryColor('other'),
         ),
         onSave: (input) async {
@@ -685,6 +693,61 @@ class _WorkoutTemplateEditorScreenState
   void _showGroupFailure() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(context.l10n.workoutTemplateGroupActionFailed)),
+    );
+  }
+}
+
+/// The Focus a Workout started from this template is performed under. It is
+/// saved the moment it is picked, like the template's exercise edits.
+class _TemplateFocusField extends ConsumerWidget {
+  const _TemplateFocusField({required this.template});
+
+  final WorkoutTemplateDetail template;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final focus = ref.watch(focusRecordProvider(template.focusId));
+    final name =
+        focus == null ? l10n.workoutNoFocus : focusDisplayName(context, focus);
+    return InkWell(
+      key: WorkoutTemplateEditorScreen.focusFieldKey,
+      borderRadius: AppRadii.cardMd,
+      onTap: () async {
+        final pick = await pickChangedFocus(
+          context,
+          current: template.focusId,
+        );
+        if (pick == null) {
+          return;
+        }
+        await ref
+            .read(focusFeatureRepositoryProvider)
+            .setTemplateFocus(template.id, pick.focusId);
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: l10n.workoutTemplateFocusLabel,
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+        ),
+        child: Row(
+          children: [
+            if (focus != null) ...[
+              Icon(focusIcon(focus.id), size: 20),
+              const SizedBox(width: AppDimens.dense),
+            ],
+            Flexible(
+              child: Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+                style: context.textStyles.body.copyWith(
+                  color: focus == null ? context.colors.textSecondary : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1128,7 +1191,7 @@ class _TemplateExerciseCard extends StatelessWidget {
                           ),
                         ),
                         title: Text(
-                          _prescriptionSummary(context, exercise, prescription),
+                          prescriptionSummary(context, exercise, prescription),
                           key: WorkoutTemplateEditorScreen.prescriptionTileKey(
                             prescription.id,
                           ),
@@ -1374,7 +1437,7 @@ class _PrescriptionEditorSheetState extends State<PrescriptionEditorSheet> {
                     controller: _valueControllers[dimension],
                     decoration: InputDecoration(
                       labelText: _dimensionLabel(context, dimension),
-                      suffixText: _unitLabel(
+                      suffixText: trainingUnitLabel(
                         context,
                         _unitForDimension(dimension),
                       ),
@@ -1549,38 +1612,6 @@ class _PrescriptionEditorSheetState extends State<PrescriptionEditorSheet> {
   }
 }
 
-String _prescriptionSummary(
-  BuildContext context,
-  TemplateExerciseDetail exercise,
-  PrescriptionDetail prescription,
-) {
-  final l10n = context.l10n;
-  final valueSummary =
-      prescription.mode == TemplatePrescriptionMode.copyPrevious
-          ? l10n.workoutTemplatePrescriptionCopyPreviousSummary
-          : exercise.type.isCompletionOnly
-              ? l10n.workoutTemplatePrescriptionCompletion
-              : exercise.type.dimensions
-                  .map((dimension) {
-                    final value = prescription.values.valueFor(dimension);
-                    if (value == null) {
-                      return '';
-                    }
-                    return '${value.entered} ${_unitLabel(context, value.unit)}';
-                  })
-                  .where((segment) => segment.isNotEmpty)
-                  .join(' · ');
-  final details = <String>[valueSummary];
-  if (prescription.restAfter != null) {
-    details.add(
-      '${l10n.workoutTemplatePrescriptionRestAfter} '
-      '${prescription.restAfter!.inSeconds} '
-      '${l10n.workoutTemplatePrescriptionSeconds}',
-    );
-  }
-  return '${prescription.repeat} × (${details.join(', ')})';
-}
-
 TrainingUnit _defaultUnit(
   TemplateExerciseDetail exercise,
   DimensionId dimension,
@@ -1605,21 +1636,4 @@ String _dimensionLabel(BuildContext context, DimensionId dimension) {
     DimensionId.duration => l10n.trainingDimensionDuration,
     DimensionId.distance => l10n.trainingDimensionDistance,
   };
-}
-
-String _unitLabel(BuildContext context, TrainingUnit unit) {
-  final l10n = context.l10n;
-  return switch (unit) {
-    TrainingUnit.kilogram => l10n.trainingUnitKilogram,
-    TrainingUnit.pound => l10n.trainingUnitPound,
-    TrainingUnit.repetition => l10n.trainingUnitRepetition,
-    TrainingUnit.second => l10n.trainingUnitSecond,
-    TrainingUnit.kilometer => l10n.trainingUnitKilometer,
-    TrainingUnit.mile => l10n.trainingUnitMile,
-  };
-}
-
-String _colorToHex(Color color) {
-  final rgb = color.toARGB32() & 0x00FFFFFF;
-  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }

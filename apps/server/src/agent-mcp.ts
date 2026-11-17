@@ -20,6 +20,7 @@ import {
   AgentExerciseListResponseSchema,
   AgentExerciseResolveQuerySchema,
   AgentExerciseResolveResponseSchema,
+  AgentFocusListResponseSchema,
   parseAgentExerciseListQuery,
   type AgentCatalogStore
 } from "./agent-catalog.js";
@@ -71,11 +72,11 @@ import {
   type AgentExerciseCatalogBatchWriteStore
 } from "./agent-exercise-catalog-batch-write.js";
 import {
-  AgentMealBatchWriteErrorResponseSchema,
+  agentMealBatchWriteErrorBody,
   AgentMealBatchWriteRequestSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  prepareAgentMealBatchWrite,
+  resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
 import {
@@ -94,6 +95,7 @@ import {
   type AgentFoodBatchWriteStore,
   type AgentFoodCatalogStore
 } from "./agent-foods.js";
+import { OpenFoodFactsBundleUnavailableError } from "./open-food-facts-bundle.js";
 import {
   AgentMetricBatchWriteErrorResponseSchema,
   AgentMetricBatchWriteRequestSchema,
@@ -131,6 +133,14 @@ import {
   type AgentSettingsBatchWriteStore
 } from "./agent-settings.js";
 import {
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteRequestSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  type AgentProfileStore
+} from "./agent-profile.js";
+import {
   agentPlanInvalidCursorResponse,
   AgentPlanDetailQuerySchema,
   AgentPlanInvalidCursorError,
@@ -147,6 +157,17 @@ import {
   AgentWorkoutTemplateParamsSchema,
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
+import {
+  AgentNewBestsQuerySchema,
+  AgentNewBestsResponseSchema,
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  AgentTrainingDaysQuerySchema,
+  AgentTrainingDaysResponseSchema,
+  checkAgentTrainingDaysQuery,
+  readAgentExerciseProgressSeries,
+  type AgentProgressReadStore
+} from "./agent-progress-reads.js";
 import {
   AgentPlanTreeBatchWriteErrorResponseSchema,
   AgentPlanTreeBatchWriteRequestSchema,
@@ -175,6 +196,10 @@ import {
   AgentCompoundBatchWriteResponseSchema,
   AgentCompoundListQuerySchema,
   AgentCompoundListResponseSchema,
+  AgentPurposeBatchWriteRequestSchema,
+  AgentPurposeBatchWriteResponseSchema,
+  AgentPurposeListQuerySchema,
+  AgentPurposeListResponseSchema,
   AgentDoseBatchWriteErrorResponseSchema,
   AgentDoseBatchWriteRequestSchema,
   AgentDoseBatchWriteResponseSchema,
@@ -185,20 +210,54 @@ import {
   AgentEffectWindowResponseSchema,
   AgentProtocolBatchWriteRequestSchema,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDayStatusesQuerySchema,
+  AgentProtocolDayStatusesResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
+  AgentProtocolDeleteRequestSchema,
+  AgentProtocolDeleteResponseSchema,
+  agentProtocolDeleteResponse,
+  AgentProtocolSkipBatchWriteRequestSchema,
+  AgentProtocolSkipBatchWriteResponseSchema,
+  agentProtocolSkipBatchWriteRefusal,
+  agentProtocolSkipBatchWriteResponse,
   AgentProtocolListQuerySchema,
   AgentProtocolListResponseSchema,
+  AgentProtocolPlannedDaysQuerySchema,
+  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   AgentProtocolsUnavailableResponseSchema,
   agentProtocolsBatchRequestFingerprint,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   finalizeAgentDoseBatchWriteResults,
   finalizeAgentProtocolsEntityBatchWriteResults,
   prepareAgentCompoundBatchWrite,
+  prepareAgentPurposeBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   type AgentProtocolsStore
 } from "./agent-protocols.js";
-import { nutrientValidationLimitsResponse } from "./agent-validation.js";
+import {
+  AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
+  AGENT_FOOD_HISTORY_DESCRIPTION,
+  AGENT_FOOD_HISTORY_MAX_LIMIT,
+  AgentFoodHistoryResponseSchema,
+  type AgentFoodHistoryReadStore
+} from "./agent-food-history.js";
+import {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryResponseSchema,
+  type AgentMealHistoryReadStore
+} from "./agent-meal-history.js";
+import {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  type AgentMealTypesReadStore
+} from "./agent-meal-types.js";
 import {
   AgentMealListQuerySchema,
   AgentMealListResponseSchema,
@@ -317,6 +376,27 @@ export const AgentMcpMealListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentMealListQuerySchema.optional()
 }).openapi("AgentMcpMealListInput");
 
+export const AgentMcpFoodHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_FOOD_HISTORY_MAX_LIMIT)
+    .optional()
+}).openapi("AgentMcpFoodHistoryInput");
+
+export const AgentMcpMealHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_MEAL_HISTORY_MAX_LIMIT)
+    .optional()
+}).openapi("AgentMcpMealHistoryInput");
+
+export const AgentMcpMealTypesInputSchema =
+  AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
+
 export const AgentMcpFoodListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentFoodListQuerySchema.optional()
 }).openapi("AgentMcpFoodListInput");
@@ -381,6 +461,11 @@ export const AgentMcpNutritionGoalBatchWriteInputSchema =
     request: AgentNutritionGoalBatchWriteRequestSchema
   }).openapi("AgentMcpNutritionGoalBatchWriteInput");
 
+// New tool: authenticates only through the transport Authorization header.
+export const AgentMcpFocusListInputSchema = z
+  .object({})
+  .openapi("AgentMcpFocusListInput");
+
 export const AgentMcpSettingsReadInputSchema =
   AgentMcpAuthFieldsSchema.openapi("AgentMcpSettingsReadInput");
 
@@ -391,6 +476,16 @@ export const AgentMcpSettingsBatchWriteInputSchema =
 
 // New tools authenticate only through the transport Authorization header.
 // They deliberately do not inherit the deprecated apiKey argument.
+export const AgentMcpProfileReadInputSchema = z
+  .object({})
+  .openapi("AgentMcpProfileReadInput");
+
+export const AgentMcpProfileBatchWriteInputSchema = z
+  .object({
+    request: AgentProfileBatchWriteRequestSchema
+  })
+  .openapi("AgentMcpProfileBatchWriteInput");
+
 export const AgentMcpWorkoutTemplateListInputSchema = z
   .object({
     query: AgentWorkoutTemplateListQuerySchema.optional()
@@ -416,6 +511,18 @@ export const AgentMcpRoutineDetailInputSchema = z
     query: AgentRoutineDetailQuerySchema.optional()
   })
   .openapi("AgentMcpRoutineDetailInput");
+
+export const AgentMcpTrainingDaysInputSchema = z
+  .object({
+    query: AgentTrainingDaysQuerySchema
+  })
+  .openapi("AgentMcpTrainingDaysInput");
+
+export const AgentMcpNewBestsInputSchema = z
+  .object({
+    query: AgentNewBestsQuerySchema
+  })
+  .openapi("AgentMcpNewBestsInput");
 
 export const AgentMcpPlanTreeBatchWriteInputSchema = z
   .object({
@@ -445,6 +552,10 @@ export const AgentMcpCompoundListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentCompoundListQuerySchema.optional()
 }).openapi("AgentMcpCompoundListInput");
 
+export const AgentMcpPurposeListInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentPurposeListQuerySchema.optional()
+}).openapi("AgentMcpPurposeListInput");
+
 export const AgentMcpProtocolListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentProtocolListQuerySchema.optional()
 }).openapi("AgentMcpProtocolListInput");
@@ -457,6 +568,14 @@ export const AgentMcpEffectWindowInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentEffectWindowQuerySchema
 }).openapi("AgentMcpEffectWindowInput");
 
+export const AgentMcpProtocolPlannedDaysInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentProtocolPlannedDaysQuerySchema
+}).openapi("AgentMcpProtocolPlannedDaysInput");
+
+export const AgentMcpProtocolDayStatusesInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentProtocolDayStatusesQuerySchema
+}).openapi("AgentMcpProtocolDayStatusesInput");
+
 export const AgentMcpDoseBatchWriteInputSchema = AgentMcpAuthFieldsSchema.extend({
   request: AgentDoseBatchWriteRequestSchema
 }).openapi("AgentMcpDoseBatchWriteInput");
@@ -466,10 +585,24 @@ export const AgentMcpCompoundBatchWriteInputSchema =
     request: AgentCompoundBatchWriteRequestSchema
   }).openapi("AgentMcpCompoundBatchWriteInput");
 
+export const AgentMcpPurposeBatchWriteInputSchema =
+  AgentMcpAuthFieldsSchema.extend({
+    request: AgentPurposeBatchWriteRequestSchema
+  }).openapi("AgentMcpPurposeBatchWriteInput");
+
 export const AgentMcpProtocolBatchWriteInputSchema =
   AgentMcpAuthFieldsSchema.extend({
     request: AgentProtocolBatchWriteRequestSchema
   }).openapi("AgentMcpProtocolBatchWriteInput");
+
+export const AgentMcpProtocolDeleteInputSchema = AgentMcpAuthFieldsSchema.extend({
+  request: AgentProtocolDeleteRequestSchema
+}).openapi("AgentMcpProtocolDeleteInput");
+
+export const AgentMcpProtocolSkipBatchWriteInputSchema =
+  AgentMcpAuthFieldsSchema.extend({
+    request: AgentProtocolSkipBatchWriteRequestSchema
+  }).openapi("AgentMcpProtocolSkipBatchWriteInput");
 
 export type AgentMcpServerOptions = {
   agentApiKeyStore?: AgentApiKeyStore;
@@ -484,9 +617,14 @@ export type AgentMcpServerOptions = {
   agentActivityStore?: AgentActivityStore;
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
+  agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealHistoryReadStore?: AgentMealHistoryReadStore;
+  agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
+  profileStore?: AgentProfileStore;
   agentPlanReadStore?: AgentPlanReadStore;
+  agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
   agentPlanMaterializeStore?: AgentPlanMaterializeStore;
   agentPlanCaptureStore?: AgentPlanCaptureStore;
@@ -512,9 +650,14 @@ export function createAgentMcpServer({
   agentActivityStore,
   agentProtocolsStore,
   agentNutritionReadStore,
+  agentFoodHistoryReadStore,
+  agentMealHistoryReadStore,
+  agentMealTypesReadStore,
   agentNutritionGoalStore,
   agentSettingsStore,
+  profileStore,
   agentPlanReadStore,
+  agentProgressReadStore,
   agentPlanTreeBatchWriteStore,
   agentPlanMaterializeStore,
   agentPlanCaptureStore,
@@ -742,6 +885,45 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_focuses",
+    {
+      title: "List Agent Focuses",
+      description:
+        "List the caller's active Focuses (the training discipline a Workout is performed under: the starter set merged with the user's own renames, reorders and additions; archived ones omitted) through the same catalog store as REST.",
+      inputSchema: AgentMcpFocusListInputSchema,
+      outputSchema: AgentFocusListResponseSchema
+    },
+    async (_input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentCatalogStore === undefined) {
+        return errorResult(
+          AgentCatalogUnavailableResponseSchema.parse({
+            code: "agent_catalog_unavailable",
+            message: "Agent Exercise catalog storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentFocusListResponseSchema.parse({
+          focuses: await agentCatalogStore.listFocuses({
+            userId: auth.agent.userId
+          })
+        })
+      );
+    }
+  );
+
+  server.registerTool(
     "agent_batch_write_workout",
     {
       title: "Batch Write Agent Workout",
@@ -889,19 +1071,26 @@ export function createAgentMcpServer({
         );
       }
 
-      const sets = await agentReadStore.readExerciseSets({
-        userId: auth.agent.userId,
-        exerciseId: input.params.exerciseId,
-        from: query.from,
-        to: query.to
-      });
+      const [sets, progressSeries] = await Promise.all([
+        agentReadStore.readExerciseSets({
+          userId: auth.agent.userId,
+          exerciseId: input.params.exerciseId,
+          from: query.from,
+          to: query.to
+        }),
+        readAgentExerciseProgressSeries(agentProgressReadStore, {
+          userId: auth.agent.userId,
+          exercise
+        })
+      ]);
 
       return successResult(
         AgentExerciseAnalyticsResponseSchema.parse(
           buildAgentExerciseAnalyticsResponse({
             exercise,
             maxPoints: query.maxPoints,
-            sets
+            sets,
+            progressSeries
           })
         )
       );
@@ -1161,6 +1350,105 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_training_days",
+    {
+      title: "List Agent Training Days",
+      description:
+        "List each local date's Logged Workout count and seconds per Focus over a range (both ends included, at most 366 days, ending no later than the required today), the number of Trained Days, and this week's Training Day Status of each day against the weekly Routines, through the same REST read path and the same core as the app's Progress Overview. Computed on read, never stored.",
+      inputSchema: AgentMcpTrainingDaysInputSchema,
+      outputSchema: AgentTrainingDaysResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProgressReadStore === undefined) {
+        return errorResult(
+          AgentProgressReadUnavailableResponseSchema.parse({
+            code: "agent_progress_read_unavailable",
+            message: "Agent progress read storage is not configured."
+          })
+        );
+      }
+      const query = AgentTrainingDaysQuerySchema.parse(input.query);
+      const checked = checkAgentTrainingDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProgressReadInvalidRangeResponseSchema.parse({
+            code: "agent_progress_read_invalid_range",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProgressReadStore.readTrainingDays({
+          userId: auth.agent.userId,
+          from: query.fromLocalDate,
+          to: query.toLocalDate,
+          today: query.today
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_new_bests",
+    {
+      title: "List Agent New Bests",
+      description:
+        "List every New Best dated over a range (both ends included, at most 366 days): a Logged Workout whose Progress Measure for an exercise, taken from its Record Profile over completed Sets, is strictly better than every earlier Workout's, judged over the exercise's whole history. Archived exercises are left out and values are in normalized units. Same REST read path and core as the app's Progress Overview; computed on read, never stored.",
+      inputSchema: AgentMcpNewBestsInputSchema,
+      outputSchema: AgentNewBestsResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProgressReadStore === undefined) {
+        return errorResult(
+          AgentProgressReadUnavailableResponseSchema.parse({
+            code: "agent_progress_read_unavailable",
+            message: "Agent progress read storage is not configured."
+          })
+        );
+      }
+      const query = AgentNewBestsQuerySchema.parse(input.query);
+      const checked = checkAgentTrainingDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProgressReadInvalidRangeResponseSchema.parse({
+            code: "agent_progress_read_invalid_range",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProgressReadStore.readNewBests({
+          userId: auth.agent.userId,
+          from: query.fromLocalDate,
+          to: query.toLocalDate
+        })
+      );
+    }
+  );
+
+  server.registerTool(
     "agent_batch_write_plan_tree",
     {
       title: "Batch Write Agent Plan Tree",
@@ -1363,7 +1651,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Meal",
       description:
-        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key; no logic fork.",
+        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Writes only the Meal fields sent: an absent field keeps its stored value and null clears endedAt or deletedAt. Creating a Meal needs mealType and startedAt with timezoneOffsetMinutes and/or timezone; localDate is derived when the offset is known. A request whose meal carries only id writes its entries and leaves the Meal untouched; entries may be empty when Meal fields are sent. Idempotent by idempotency key; no logic fork.",
       inputSchema: AgentMcpMealBatchWriteInputSchema,
       outputSchema: AgentMealBatchWriteResponseSchema
     },
@@ -1439,6 +1727,124 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_food_history",
+    {
+      title: "List Agent Food History",
+      description: AGENT_FOOD_HISTORY_DESCRIPTION,
+      inputSchema: AgentMcpFoodHistoryInputSchema,
+      outputSchema: AgentFoodHistoryResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentFoodHistoryReadStore === undefined) {
+        return errorResult(
+          AgentNutritionReadUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentFoodHistoryResponseSchema.parse(
+          await agentFoodHistoryReadStore.listFoodHistory({
+            userId: auth.agent.userId,
+            limit: input.limit ?? AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
+            now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_history",
+    {
+      title: "List Agent Meal History",
+      description: AGENT_MEAL_HISTORY_DESCRIPTION,
+      inputSchema: AgentMcpMealHistoryInputSchema,
+      outputSchema: AgentMealHistoryResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealHistoryReadStore === undefined) {
+        return errorResult(
+          AgentNutritionReadUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealHistoryResponseSchema.parse(
+          await agentMealHistoryReadStore.listMealHistory({
+            userId: auth.agent.userId,
+            limit: input.limit ?? AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+            now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_types",
+    {
+      title: "List Agent Meal Types",
+      description: AGENT_MEAL_TYPES_DESCRIPTION,
+      inputSchema: AgentMcpMealTypesInputSchema,
+      outputSchema: AgentMealTypesResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealTypesReadStore === undefined) {
+        return errorResult(
+          AgentMealTypesUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealTypesResponseSchema.parse(
+          await agentMealTypesReadStore.listMealTypes({
+            userId: auth.agent.userId
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
     "agent_list_foods",
     {
       title: "List Agent Foods",
@@ -1486,7 +1892,7 @@ export function createAgentMcpServer({
     {
       title: "Search Agent Platform Foods",
       description:
-        "Search the bundled USDA Platform Food reference dataset through the same path as REST — the SAME offline CC0 catalog the app ships, so an agent and the app resolve identical generic-food nutrient facts. Open Food Facts (branded/barcode) is not available through this tool in this slice.",
+        "Search the bundled USDA and Open Food Facts Platform Food reference data through the same path as REST — the SAME offline data the app ships, so an agent and the app resolve identical records. source=usda (the default) is the CC0 USDA catalog; source=openFoodFacts searches the Open Food Facts bundle by name or barcode. The server never calls Open Food Facts. Show the returned attribution, and its disclaimer when present, with the results.",
       inputSchema: AgentMcpFoodPlatformSearchInputSchema,
       outputSchema: AgentFoodPlatformSearchResponseSchema
     },
@@ -1503,11 +1909,29 @@ export function createAgentMcpServer({
       }
 
       const query = AgentFoodPlatformSearchQuerySchema.parse(input.query ?? {});
-      return successResult(
-        AgentFoodPlatformSearchResponseSchema.parse(
-          searchAgentPlatformFoods({ search: query.search, limit: query.limit })
-        )
-      );
+      let result;
+      try {
+        result = searchAgentPlatformFoods({
+          search: query.search,
+          source: query.source,
+          limit: query.limit
+        });
+      } catch (error) {
+        if (error instanceof OpenFoodFactsBundleUnavailableError) {
+          logger.error?.(
+            { error, cause: error.cause },
+            "open food facts bundle unavailable"
+          );
+          return errorResult(
+            AgentFoodsUnavailableResponseSchema.parse({
+              code: "agent_foods_unavailable",
+              message: error.message
+            })
+          );
+        }
+        throw error;
+      }
+      return successResult(AgentFoodPlatformSearchResponseSchema.parse(result));
     }
   );
 
@@ -1595,7 +2019,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metric Readings",
       description:
-        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients.",
+        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history.",
       inputSchema: AgentMcpMetricReadingsInputSchema,
       outputSchema: AgentMetricReadingsResponseSchema
     },
@@ -1714,7 +2138,7 @@ export function createAgentMcpServer({
     {
       title: "Undo Agent Activity Batch",
       description:
-        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row; idempotent by idempotency key; nothing is hard-deleted.",
+        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row, and undoing a Meal's creation after another batch added a Food Entry to it is refused (skipped_dependent); idempotent by idempotency key; nothing is hard-deleted.",
       inputSchema: AgentMcpActivityUndoBatchInputSchema,
       outputSchema: AgentActivityUndoBatchResponseSchema
     },
@@ -2038,6 +2462,82 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_read_profile",
+    {
+      title: "Read User Profile",
+      description:
+        "Read the user's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. Every agent connected to this account can read it. Values are what the user entered, not medical advice.",
+      inputSchema: AgentMcpProfileReadInputSchema,
+      outputSchema: AgentProfileSchema
+    },
+    async (_input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (profileStore === undefined) {
+        return errorResult(
+          AgentProfileUnavailableResponseSchema.parse({
+            code: "agent_profile_unavailable",
+            message: "Agent User Profile storage is not configured."
+          })
+        );
+      }
+
+      const profile = await profileStore.read({
+        userId: auth.agent.userId
+      });
+
+      return successResult(AgentProfileSchema.parse(profile));
+    }
+  );
+
+  server.registerTool(
+    "agent_batch_write_profile",
+    {
+      title: "Batch Write User Profile",
+      description:
+        "Change fields in the user's User Profile. Only the fields you send change, null clears a field, and a list replaces the whole list. Improbable values are saved and returned as warnings to confirm with the user. Each call is one Activity Log Batch the user can undo.",
+      inputSchema: AgentMcpProfileBatchWriteInputSchema,
+      outputSchema: AgentProfileBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (profileStore === undefined) {
+        return errorResult(
+          AgentProfileUnavailableResponseSchema.parse({
+            code: "agent_profile_unavailable",
+            message: "Agent User Profile storage is not configured."
+          })
+        );
+      }
+
+      return writeProfileBatchToolResult({
+        agent: auth.agent,
+        logger,
+        profileStore,
+        request: input.request,
+        syncNudgePublisher
+      });
+    }
+  );
+
+  server.registerTool(
     "agent_get_energy_balance",
     {
       title: "Get Agent Energy Balance",
@@ -2219,11 +2719,50 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_purposes",
+    {
+      title: "List Agent Purposes",
+      description:
+        "List the caller's Purposes through the same REST read path, sorted by sortOrder. A Purpose is a label for why the user takes a Compound. The six starter Purposes are merged in for an account that has never synced them; archived Purposes are left out unless includeArchived is true.",
+      inputSchema: AgentMcpPurposeListInputSchema,
+      outputSchema: AgentPurposeListResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      return successResult(
+        AgentPurposeListResponseSchema.parse(
+          await agentProtocolsStore.listPurposes({
+            userId: auth.agent.userId,
+            query: AgentPurposeListQuerySchema.parse(input.query ?? {})
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
     "agent_list_protocols",
     {
       title: "List Agent Protocols",
       description:
-        "List a bounded page of the caller's Protocols with their member Compounds, Schedules, and target outcomes through the same REST read path. All plan data — never derived analytics.",
+        "List a bounded page of the caller's Protocols with their local-date bounds, Protocol Period, Protocol Members (every Schedule Version and the current one), and target outcomes through the same REST read path. All plan data — never derived analytics.",
       inputSchema: AgentMcpProtocolListInputSchema,
       outputSchema: AgentProtocolListResponseSchema
     },
@@ -2301,7 +2840,7 @@ export function createAgentMcpServer({
     {
       title: "Read Agent Effect Window",
       description:
-        "Read a descriptive before/during/after summary of one outcome Metric around a Compound's or Protocol's logged Dose timeline over a range, through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
       inputSchema: AgentMcpEffectWindowInputSchema,
       outputSchema: AgentEffectWindowResponseSchema
     },
@@ -2338,6 +2877,102 @@ export function createAgentMcpServer({
       }
       return successResult(
         AgentEffectWindowResponseSchema.parse(result.value)
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_protocol_planned_days",
+    {
+      title: "List Agent Protocol Planned Days",
+      description:
+        "List what the caller's Protocols planned for each Compound on each local date of a range (both ends included, at most 366 days; future dates allowed), through the same REST read path: the planned doses with times and amounts, or why nothing was planned. Computed on read by the plan core the app uses; never stored.",
+      inputSchema: AgentMcpProtocolPlannedDaysInputSchema,
+      outputSchema: AgentProtocolPlannedDaysResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const query = AgentProtocolPlannedDaysQuerySchema.parse(input.query);
+      const checked = checkAgentProtocolDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProtocolDaysInvalidRequestResponseSchema.parse({
+            code: "agent_protocol_days_invalid_request",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProtocolsStore.listProtocolPlannedDays({
+          userId: auth.agent.userId,
+          query
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_protocol_day_statuses",
+    {
+      title: "List Agent Protocol Day Statuses",
+      description:
+        "List the Day Status of each Compound on each local date of a range (both ends included, at most 366 days, ending no later than the required today), through the same REST read path: logged Doses matched to planned doses exactly as the app matches them, with detail=doses adding each slot's fill. Statuses and counts only; computed on read, never stored.",
+      inputSchema: AgentMcpProtocolDayStatusesInputSchema,
+      outputSchema: AgentProtocolDayStatusesResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const query = AgentProtocolDayStatusesQuerySchema.parse(input.query);
+      const checked = checkAgentProtocolDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProtocolDaysInvalidRequestResponseSchema.parse({
+            code: "agent_protocol_days_invalid_request",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProtocolsStore.listProtocolDayStatuses({
+          userId: auth.agent.userId,
+          query
+        })
       );
     }
   );
@@ -2419,11 +3054,49 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_batch_write_purposes",
+    {
+      title: "Batch Write Agent Purposes",
+      description:
+        "Apply an agent Purpose batch through the same name rules, Activity Log, and sync-nudge path as REST. Create, rename, reorder, or archive (deletedAt) Purposes, the labels for why the user takes a Compound. Archiving never touches a Compound's tags. Idempotent by idempotency key.",
+      inputSchema: AgentMcpPurposeBatchWriteInputSchema,
+      outputSchema: AgentPurposeBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      return writePurposeBatchToolResult({
+        agent: auth.agent,
+        agentProtocolsStore,
+        logger,
+        request: input.request,
+        syncNudgePublisher
+      });
+    }
+  );
+
+  server.registerTool(
     "agent_batch_write_protocols",
     {
       title: "Batch Write Agent Protocols",
       description:
-        "Apply an agent Protocol plan batch (protocols + members + schedules + target outcomes) through the same Activity Log and sync-nudge path as REST. Archive supported. Plan writes never touch logged Doses (no cascade). Idempotent by idempotency key.",
+        "Apply an agent Protocol plan batch (protocols + members + Schedule Versions + target outcomes) through the same shared plan validators, Activity Log, and sync-nudge path as REST. Carries the user's local date as today, which dates new Schedule Versions and archives as the app does; versions are insert-only. Archive with archived: true. Plan writes never touch logged Doses (no cascade). Idempotent by idempotency key.",
       inputSchema: AgentMcpProtocolBatchWriteInputSchema,
       outputSchema: AgentProtocolBatchWriteResponseSchema
     },
@@ -2453,6 +3126,109 @@ export function createAgentMcpServer({
         request: input.request,
         syncNudgePublisher
       });
+    }
+  );
+
+  server.registerTool(
+    "agent_delete_protocols",
+    {
+      title: "Delete Agent Protocols",
+      description:
+        "Delete Protocols nothing was logged for (hasHistory false on agent_list_protocols), through the same history check, Activity Log, and sync-nudge path as REST. Writes one row per Protocol and nothing else; archived Protocols with no history are accepted. Any refused id (protocol_not_found, protocol_has_history) refuses the whole request; archive a Protocol with history with agent_batch_write_protocols instead. One request is one batch: undoing its batchId restores every Protocol it deleted. Idempotent by idempotency key.",
+      inputSchema: AgentMcpProtocolDeleteInputSchema,
+      outputSchema: AgentProtocolDeleteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const writeResult = await agentProtocolsStore.deleteProtocols({
+        userId: auth.agent.userId,
+        deviceId: `agent:${auth.agent.keyId}`,
+        idempotencyKey: input.request.idempotencyKey,
+        protocolIds: input.request.protocolIds
+      });
+      const response = agentProtocolDeleteResponse(input.request, writeResult);
+      if (response.status !== 200) {
+        return errorResult(response.body);
+      }
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent: auth.agent,
+        batchId: input.request.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return successResult(response.body);
+    }
+  );
+
+  server.registerTool(
+    "agent_batch_write_protocol_skips",
+    {
+      title: "Batch Write Agent Protocol Skips",
+      description:
+        "Skip planned doses (not taken, on purpose), or remove Skips, through the same Skip validator, Activity Log, and sync-nudge path as REST. A Skip names its planned dose by protocolId, compoundId, localDate and plannedLocalTime (null when untimed), today or a past day, and makes its Day Status read skipped. A Skip is never edited: write it once, remove it with deletedAt. Removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time. Find a Skip to remove in agent_list_protocol_day_statuses fills (detail doses). Any refused item refuses the whole batch. Idempotent by idempotency key.",
+      inputSchema: AgentMcpProtocolSkipBatchWriteInputSchema,
+      outputSchema: AgentProtocolSkipBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const prepared = prepareAgentProtocolSkipBatchWrite({ request: input.request });
+      if (!prepared.accepted) {
+        return errorResult(agentProtocolSkipBatchWriteRefusal(prepared.issues).body);
+      }
+      const writeResult = await agentProtocolsStore.writeProtocolSkipBatch({
+        userId: auth.agent.userId,
+        batchId: input.request.idempotencyKey,
+        requestFingerprint: agentProtocolsBatchRequestFingerprint(input.request),
+        deviceId: `agent:${auth.agent.keyId}`,
+        skips: prepared.skips
+      });
+      const response = agentProtocolSkipBatchWriteResponse(input.request, writeResult);
+      if (response.status !== 200) {
+        return errorResult(response.body);
+      }
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent: auth.agent,
+        batchId: input.request.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return successResult(response.body);
     }
   );
 
@@ -2492,7 +3268,7 @@ async function writeDoseBatchToolResult({
     deviceId: sourceDeviceId,
     doses: prepared.doses
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -2552,7 +3328,7 @@ async function writeCompoundBatchToolResult({
     deviceId: sourceDeviceId,
     compounds: prepared.compounds
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -2580,6 +3356,65 @@ async function writeCompoundBatchToolResult({
   );
 }
 
+async function writePurposeBatchToolResult({
+  agent,
+  agentProtocolsStore,
+  logger,
+  request,
+  syncNudgePublisher
+}: {
+  agent: AuthenticatedAgent;
+  agentProtocolsStore: AgentProtocolsStore;
+  logger: RequestLogger;
+  request: z.infer<typeof AgentPurposeBatchWriteRequestSchema>;
+  syncNudgePublisher?: SyncNudgePublisher;
+}): Promise<CallToolResult> {
+  const prepared = prepareAgentPurposeBatchWrite({ request });
+  if (!prepared.accepted) {
+    return errorResult(
+      AgentProtocolsBatchWriteErrorResponseSchema.parse({
+        code: "agent_protocols_batch_write_failed",
+        message: "Batch contains one or more hard validation failures.",
+        errors: prepared.errors,
+        warnings: []
+      })
+    );
+  }
+  const writeResult = await agentProtocolsStore.writePurposeBatch({
+    userId: agent.userId,
+    batchId: request.idempotencyKey,
+    requestFingerprint: agentProtocolsBatchRequestFingerprint(request),
+    deviceId: `agent:${agent.keyId}`,
+    purposes: prepared.purposes
+  });
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
+  if (writeFailure !== null) {
+    return errorResult(writeFailure.body);
+  }
+  await maybeNudgeAgentWrite({
+    syncNudgePublisher,
+    logger,
+    agent,
+    batchId: request.idempotencyKey,
+    applied: writeResult.applied.length
+  });
+  return successResult(
+    AgentPurposeBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: writeResult.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: writeResult.serverClock,
+      purposes: finalizeAgentProtocolsEntityBatchWriteResults({
+        applied: writeResult.applied,
+        accepted: writeResult.accepted,
+        duplicate: writeResult.duplicate,
+        results: prepared.responsePurposes
+      })
+    })
+  );
+}
+
 async function writeProtocolBatchToolResult({
   agent,
   agentProtocolsStore,
@@ -2600,7 +3435,7 @@ async function writeProtocolBatchToolResult({
         code: "agent_protocols_batch_write_failed",
         message: "Batch contains one or more hard validation failures.",
         errors: prepared.errors,
-        warnings: []
+        warnings: prepared.warnings
       })
     );
   }
@@ -2610,12 +3445,15 @@ async function writeProtocolBatchToolResult({
     batchId: request.idempotencyKey,
     requestFingerprint: agentProtocolsBatchRequestFingerprint(request),
     deviceId: sourceDeviceId,
+    today: prepared.today,
     protocols: prepared.protocols,
     members: prepared.members,
     schedules: prepared.schedules,
     targetOutcomes: prepared.targetOutcomes
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  // The pure step's warnings, then the store's (D8's archive warning).
+  const warnings = [...prepared.warnings, ...(writeResult.warnings ?? [])];
+  const writeFailure = agentProtocolsWriteFailure(writeResult, warnings);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -2638,7 +3476,8 @@ async function writeProtocolBatchToolResult({
         accepted: writeResult.accepted,
         duplicate: writeResult.duplicate,
         results: prepared.responseProtocols
-      })
+      }),
+      warnings
     })
   );
 }
@@ -2688,20 +3527,14 @@ async function writeMealBatchToolResult({
   request: z.infer<typeof AgentMealBatchWriteRequestSchema>;
   syncNudgePublisher?: SyncNudgePublisher;
 }): Promise<CallToolResult> {
-  const prepared = await prepareAgentMealBatchWrite({
+  const resolved = await resolveAgentMealBatchEntries({
     request,
     userId: agent.userId,
     foodCatalogStore: agentFoodCatalogStore
   });
-  if (!prepared.accepted) {
+  if (!resolved.accepted) {
     return errorResult(
-      AgentMealBatchWriteErrorResponseSchema.parse({
-        code: "agent_meal_batch_write_failed",
-        message: "Batch contains one or more hard validation failures.",
-        errors: prepared.errors,
-        warnings: prepared.warnings,
-        limits: nutrientValidationLimitsResponse()
-      })
+      agentMealBatchWriteErrorBody(422, resolved.errors, resolved.warnings)
     );
   }
 
@@ -2710,9 +3543,17 @@ async function writeMealBatchToolResult({
     userId: agent.userId,
     batchId: request.idempotencyKey,
     deviceId: sourceDeviceId,
-    meal: prepared.meal,
-    entries: prepared.entries
+    request: resolved.request
   });
+  if (writeResult.status === "rejected") {
+    return errorResult(
+      agentMealBatchWriteErrorBody(
+        writeResult.httpStatus,
+        writeResult.errors,
+        writeResult.warnings
+      )
+    );
+  }
 
   if (syncNudgePublisher !== undefined && writeResult.applied.length > 0) {
     try {
@@ -2742,7 +3583,8 @@ async function writeMealBatchToolResult({
       batchId: request.idempotencyKey,
       mealId: request.meal.id,
       serverClock: writeResult.serverClock,
-      entries: prepared.responseEntries
+      entries: resolved.responseEntries,
+      warnings: writeResult.warnings
     })
   );
 }
@@ -3133,6 +3975,70 @@ async function writeSettingsBatchToolResult({
       serverClock: writeResult.serverClock,
       settings: writeResult.settings,
       updatedAt: writeResult.updatedAt
+    })
+  );
+}
+
+async function writeProfileBatchToolResult({
+  agent,
+  logger,
+  profileStore,
+  request,
+  syncNudgePublisher
+}: {
+  agent: AuthenticatedAgent;
+  logger: RequestLogger;
+  profileStore: AgentProfileStore;
+  request: z.infer<typeof AgentProfileBatchWriteRequestSchema>;
+  syncNudgePublisher?: SyncNudgePublisher;
+}): Promise<CallToolResult> {
+  const sourceDeviceId = `agent:${agent.keyId}`;
+  const writeResult = await profileStore.batchWrite({
+    userId: agent.userId,
+    deviceId: sourceDeviceId,
+    request
+  });
+
+  if (!writeResult.accepted) {
+    return errorResult(
+      AgentProfileBatchWriteErrorResponseSchema.parse({
+        code: "agent_profile_batch_write_failed",
+        message:
+          "User Profile write contains one or more hard validation failures.",
+        errors: writeResult.errors
+      })
+    );
+  }
+
+  if (syncNudgePublisher !== undefined && writeResult.applied) {
+    try {
+      await syncNudgePublisher.enqueueSyncNudge({
+        userId: agent.userId,
+        sourceDeviceId,
+        reason: "agent_write"
+      });
+    } catch (error) {
+      logger.error?.(
+        {
+          error,
+          userId: agent.userId,
+          keyId: agent.keyId,
+          batchId: request.idempotencyKey
+        },
+        "agent profile sync nudge enqueue failed"
+      );
+    }
+  }
+
+  return successResult(
+    AgentProfileBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: writeResult.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: writeResult.serverClock,
+      profile: writeResult.profile,
+      warnings: writeResult.warnings
     })
   );
 }

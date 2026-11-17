@@ -27,6 +27,9 @@ COPY --from=prod-deps /app/apps/server/node_modules ./apps/server/node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/package.json
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/drizzle ./apps/server/drizzle
+# The agent Platform Food search reads the Open Food Facts bundle the app
+# ships, at the path open-food-facts-bundle.ts resolves from dist/.
+COPY apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz /app/apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz
 WORKDIR /app/apps/server
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

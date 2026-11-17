@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m40-compound-purposes.schema.json",
+  "title": "M40 Compound Purposes golden vector",
+  "description": "Language-neutral parity cases for the Compound Purposes core (docs/designs/compound-purposes.md, D3 and D8). Each case names one function, gives its arguments by parameter name in `input` and its full result in `expected`. starterPurposes returns the six starter Purposes in sortOrder. validatePurposeName trims the name, rejects an empty result with purpose_name_required, and rejects a name equal to one of activeNamesExcludingSelf, compared trimmed and case-insensitive, with duplicate_purpose_name; it accepts with the trimmed name otherwise. Callers pass active names only, so an archived name is free to reuse. normalizePurposeIds collapses repeated ids, keeping the first occurrence and the order. A rejected name expects {\"rejected\": <code>}, an accepted one {\"accepted\": <trimmed name>}.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m40-compound-purposes"},
+    "domain": {"const": "compound-purposes"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m40-compound-purposes.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "starterPurpose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "sortOrder"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^019200ff-0000-7000-8000-0000000001[0-9]{2}$"},
+        "name": {"type": "string", "minLength": 1},
+        "sortOrder": {"type": "integer", "minimum": 0}
+      }
+    },
+    "caseHeader": {
+      "type": "object",
+      "required": ["name", "function", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."}
+      }
+    },
+    "case": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/caseHeader"}],
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "function": {"const": "starterPurposes"},
+            "input": {"type": "object", "additionalProperties": false},
+            "expected": {"type": "array", "items": {"$ref": "#/$defs/starterPurpose"}}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "validatePurposeName"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "activeNamesExcludingSelf"],
+              "properties": {
+                "name": {"type": "string"},
+                "activeNamesExcludingSelf": {"type": "array", "items": {"type": "string"}}
+              }
+            },
+            "expected": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["accepted"],
+                  "properties": {"accepted": {"type": "string", "minLength": 1}}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["rejected"],
+                  "properties": {"rejected": {"enum": ["purpose_name_required", "duplicate_purpose_name"]}}
+                }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "normalizePurposeIds"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ids"],
+              "properties": {"ids": {"type": "array", "items": {"type": "string"}}}
+            },
+            "expected": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      ]
+    }
+  }
+}

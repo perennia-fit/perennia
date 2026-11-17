@@ -4,7 +4,11 @@ import test from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -161,7 +165,11 @@ test(
       assert.equal(pulledProtocol.payload.name, "Lean bulk");
       assert.equal(pulledMember.payload.compound_id, compoundId);
       assert.equal(pulledSchedule.payload.dose_amount_entered, "5");
-      assert.equal(pulledSchedule.payload.frequency, "onceDaily");
+      assert.equal(pulledSchedule.payload.effective_from, "2025-06-30");
+      assert.deepEqual(pulledSchedule.payload.rule, timedDailyRule);
+      assert.equal(pulledProtocol.payload.start_local_date, "2025-06-30");
+      assert.equal(pulledProtocol.payload.reminders_enabled, false);
+      assert.equal(pulledDose.payload.timezone_offset_minutes, -180);
       assert.equal(pulledDose.payload.protocol_id, protocolId);
 
       // User B pulls and sees none of user A's rows — strict per-user scoping.
@@ -187,6 +195,7 @@ test(
             id: protocolId,
             payload: {
               ...protocolPayload(protocolId, deletedAt),
+              archived_on: "2025-06-30",
               deleted_at: deletedAt
             },
             updatedAt: deletedAt,
@@ -200,6 +209,7 @@ test(
         .from(schema.protocols)
         .where(eq(schema.protocols.id, protocolId));
       assert.notEqual(archivedProtocol[0].deletedAt, null);
+      assert.equal(archivedProtocol[0].payload.archived_on, "2025-06-30");
       const doseStillLive = await serverApp.database.db
         .select()
         .from(schema.doses)
@@ -225,12 +235,19 @@ function compoundPayload(id, updatedAt) {
   };
 }
 
+// The sync protocol 2 shapes (docs/designs/protocol-schedules-and-reminders.md,
+// "Data shapes"): local-date bounds, a period, versioned Schedule rules.
+const timedDailyRule = { v: 1, kind: "timed", days: { kind: "daily" }, times: ["09:00"] };
+
 function protocolPayload(id, updatedAt) {
   return {
     id,
     name: "Lean bulk",
-    start_date: updatedAt,
-    end_date: null,
+    start_local_date: updatedAt.slice(0, 10),
+    end_local_date: null,
+    period: null,
+    reminders_enabled: false,
+    archived_on: null,
     updated_at: updatedAt,
     deleted_at: null
   };
@@ -242,6 +259,7 @@ function protocolCompoundPayload(id, protocolId, compoundId, updatedAt) {
     protocol_id: protocolId,
     compound_id: compoundId,
     position: 0,
+    archived_on: null,
     updated_at: updatedAt,
     deleted_at: null
   };
@@ -251,10 +269,11 @@ function schedulePayload(id, protocolCompoundId, updatedAt) {
   return {
     id,
     protocol_compound_id: protocolCompoundId,
+    effective_from: updatedAt.slice(0, 10),
+    rule: timedDailyRule,
     dose_amount_value: 5,
     dose_amount_entered: "5",
     dose_unit: "gram",
-    frequency: "onceDaily",
     route: "oral",
     updated_at: updatedAt,
     deleted_at: null
@@ -272,7 +291,8 @@ function dosePayload(id, protocolId, updatedAt) {
     unit: "gram",
     route: "oral",
     took_at: updatedAt,
-    timezone: "UTC",
+    timezone: "America/Sao_Paulo",
+    timezone_offset_minutes: -180,
     local_date: "2026-06-30",
     provenance: "manual",
     protocol_id: protocolId,
@@ -289,7 +309,7 @@ async function syncPush(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
 }
 
@@ -309,7 +329,7 @@ async function pullAll(app, sessionToken) {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

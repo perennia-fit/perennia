@@ -36,6 +36,25 @@ final class RoutineUpNextSummary {
   final List<RoutineUpNextCardRecord> cards;
 }
 
+/// One active weekly Routine as Progress Overview compares the week with it
+/// (docs/designs/progress-overview.md, D1): its planning entries, with the
+/// Routine's name for the "Comparing" line. A Routine with no planning entry
+/// is never one of these.
+final class WeeklyPlanFacts {
+  WeeklyPlanFacts({
+    required this.routineId,
+    required this.routineName,
+    required Iterable<WeeklyPlanEntry> entries,
+  }) : entries = List<WeeklyPlanEntry>.unmodifiable(entries);
+
+  final String routineId;
+  final String routineName;
+  final List<WeeklyPlanEntry> entries;
+
+  WeeklyPlan toWeeklyPlan() =>
+      WeeklyPlan(routineId: routineId, entries: entries);
+}
+
 /// Read-only local repository deriving Up-next suggestions for every
 /// cadenced Routine (ROUTINES.md §1.2, §3.1;;).
 ///
@@ -92,7 +111,54 @@ final class RoutineUpNextRepository {
     );
   }
 
+  /// The active weekly Routines' planning entries, for This week (D1). The
+  /// Routines are Up next's, Cadence decoding included, so a Routine is
+  /// weekly here exactly when Up next says it is; an archived Routine, entry
+  /// or Workout Template plans nothing here either, and a Routine with no
+  /// live entry is absent. A weekly slot is the ISO weekday.
+  Stream<List<WeeklyPlanFacts>> watchWeeklyPlans() {
+    return _watchCadencedRoutines().map(
+      (routines) => List<WeeklyPlanFacts>.unmodifiable(<WeeklyPlanFacts>[
+        for (final routine in routines)
+          if (routine.cadence.kind == CadenceKind.weekly &&
+              routine.entries.isNotEmpty)
+            WeeklyPlanFacts(
+              routineId: routine.routineId,
+              routineName: routine.routineName,
+              entries: <WeeklyPlanEntry>[
+                for (final entry in routine.entries)
+                  WeeklyPlanEntry(
+                    workoutTemplateId: entry.workoutTemplateId,
+                    weekday: entry.slot,
+                  ),
+              ],
+            ),
+      ]),
+    );
+  }
+
+  /// Whether an active Routine has a rotating Cadence: This week compares
+  /// weekly Routines only, and says so when one rotates.
+  Stream<bool> watchHasRotatingRoutine() {
+    final query = _database.selectOnly(_database.planRoutines)
+      ..addColumns([_database.planRoutines.id])
+      ..where(
+        _database.planRoutines.deletedAt.isNull() &
+            _database.planRoutines.cadenceKind.equals(
+              CadenceKind.rotating.storageValue,
+            ),
+      )
+      ..limit(1);
+    return query.watch().map((rows) => rows.isNotEmpty);
+  }
+
   Stream<List<_CadencedRoutineEntries>> _watchCadencedRoutines() {
+    return _cadencedRoutinesQuery().watch().map(
+          _cadencedRoutinesFromJoinedRows,
+        );
+  }
+
+  JoinedSelectStatement<HasResultSet, dynamic> _cadencedRoutinesQuery() {
     final query = _database.select(_database.planRoutines).join([
       innerJoin(
         _database.routineEntries,
@@ -119,7 +185,7 @@ final class RoutineUpNextRepository {
         OrderingTerm.asc(_database.routineEntries.position),
         OrderingTerm.asc(_database.routineEntries.id),
       ]);
-    return query.watch().map(_cadencedRoutinesFromJoinedRows);
+    return query;
   }
 
   Stream<Map<String, List<UpNextTemplateLinkFact>>>
@@ -173,20 +239,16 @@ final class RoutineUpNextRepository {
         ),
       );
     }
-    return List<_CadencedRoutineEntries>.unmodifiable(
-      order.map((id) {
-        final routine = routineRowById[id]!;
-        return _CadencedRoutineEntries(
-          routineId: routine.id,
-          routineName: routine.name,
-          cadence: _cadenceFromRow(routine) ??
-              (throw StateError(
-                'Cadence-bearing Routine ${routine.id} has no Cadence.',
-              )),
-          entries: entriesByRoutine[id]!,
-        );
-      }),
-    );
+    return List<_CadencedRoutineEntries>.unmodifiable(<_CadencedRoutineEntries>[
+      for (final id in order)
+        if (_decodedCadence(routineRowById[id]!) case final cadence?)
+          _CadencedRoutineEntries(
+            routineId: id,
+            routineName: routineRowById[id]!.name,
+            cadence: cadence,
+            entries: entriesByRoutine[id]!,
+          ),
+    ]);
   }
 
   Map<String, List<UpNextTemplateLinkFact>> _templateLinkFactsFromJoinedRows(
@@ -228,6 +290,17 @@ final class _CadencedRoutineEntries {
   final String routineName;
   final Cadence cadence;
   final List<UpNextRoutineEntry> entries;
+}
+
+/// The Routine's Cadence, or null when its row cannot be decoded. Synced
+/// rows are opaque, so a malformed Routine plans nothing in Up next and This
+/// week, as on the server, instead of failing every Routine's read.
+Cadence? _decodedCadence(PlanRoutineRow routine) {
+  try {
+    return _cadenceFromRow(routine);
+  } on StateError {
+    return null;
+  }
 }
 
 TrainingDayDate? _parseTrainingDayDate(String value) {

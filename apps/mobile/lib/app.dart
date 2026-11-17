@@ -9,11 +9,16 @@ import 'features/auth/repositories/auth_repository.dart';
 import 'features/auth/widgets/sign_in_screen.dart';
 import 'features/body_tracker/widgets/body_tracker_screen.dart';
 import 'features/catalog/repositories/exercise_catalog_repository.dart';
+import 'features/focus/repositories/focus_feature_repository.dart';
 import 'features/home/repositories/home_repository.dart';
 import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
 import 'features/metrics/widgets/metrics_screen.dart';
 import 'features/nutrition/widgets/nutrition_day_view.dart';
+import 'features/onboarding/widgets/onboarding_launcher.dart';
+import 'features/progress/repositories/progress_feature_repository.dart';
+import 'features/protocols/controllers/protocols_day_controller.dart';
+import 'features/protocols/services/protocol_reminder_scheduler.dart';
 import 'features/protocols/widgets/compound_list_screen.dart';
 import 'features/protocols/widgets/protocols_day_view.dart';
 import 'features/protocols/widgets/protocols_lock_screen.dart';
@@ -23,7 +28,9 @@ import 'features/routine_plans/widgets/routine_plan_list_screen.dart';
 import 'features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'features/up_next/repositories/up_next_feature_repository.dart';
 import 'app_navigation.dart';
+import 'data/repositories/open_food_facts_repository.dart';
 import 'data/repositories/training_repositories.dart';
+import 'features/profile/widgets/profile_screen.dart';
 import 'features/settings/repositories/settings_repository.dart';
 import 'features/settings/services/client_crash_reporting.dart';
 import 'features/settings/services/keep_screen_awake.dart';
@@ -44,10 +51,12 @@ class PerenniaRoot extends StatelessWidget {
     this.authRepository,
     this.homeRepository,
     this.upNextFeatureRepository,
+    this.progressFeatureRepository,
     this.templatePickerRepository,
     this.routinePlanRepository,
     this.workoutTemplateRepository,
     this.settingsRepository,
+    this.openFoodFactsRepository,
     this.extraOverrides = const <Override>[],
   });
 
@@ -55,10 +64,12 @@ class PerenniaRoot extends StatelessWidget {
   final AuthRepository? authRepository;
   final HomeRepository? homeRepository;
   final UpNextFeatureRepository? upNextFeatureRepository;
+  final ProgressFeatureRepository? progressFeatureRepository;
   final TemplatePickerFeatureRepository? templatePickerRepository;
   final RoutinePlanFeatureRepository? routinePlanRepository;
   final WorkoutTemplateFeatureRepository? workoutTemplateRepository;
   final SettingsRepository? settingsRepository;
+  final OpenFoodFactsRepository? openFoodFactsRepository;
   final List<Override> extraOverrides;
 
   @override
@@ -86,6 +97,16 @@ class PerenniaRoot extends StatelessWidget {
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
+        if (progressFeatureRepository != null)
+          progressFeatureRepositoryProvider.overrideWith(
+            (ref) => progressFeatureRepository!,
+          )
+        else if (homeRepository != null)
+          // Same rationale as the Up-next default above: the Progress root
+          // reads its cards through this repository.
+          progressFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubProgressFeatureRepository(),
+          ),
         if (templatePickerRepository != null)
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => templatePickerRepository!,
@@ -98,6 +119,22 @@ class PerenniaRoot extends StatelessWidget {
           // it.
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+        if (openFoodFactsRepository != null)
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => openFoodFactsRepository!,
+          )
+        else if (homeRepository != null)
+          // Same rationale again: the app installs the Open Food Facts bundle
+          // after the first frame, which needs a cache directory and an
+          // asset a harness does not have.
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
+        if (homeRepository != null)
+          // Same rationale again: the start sheet reads the Focuses.
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubFocusFeatureRepository(),
           ),
         if (routinePlanRepository != null)
           routinePlanFeatureRepositoryProvider.overrideWith(
@@ -141,6 +178,11 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
             .checkForStaleWorkoutsOnOpen(),
       );
       ref.read(syncCoordinatorProvider).requestSync(SyncTrigger.appLaunch);
+      // Installs or refreshes the offline Open Food Facts list on another
+      // isolate; it never throws and sends nothing.
+      unawaited(
+        ref.read(openFoodFactsRepositoryProvider).ensureBundleInstalled(),
+      );
       final router = ref.read(timerNotificationRouterProvider) ??
           TimerNotificationRouter(
             navigatorKey: rootNavigatorKey,
@@ -149,9 +191,49 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
                 .read(trainingRepositoriesProvider)
                 .workoutExercises
                 .getById(id),
+            // An iOS reminder tap arrives on the timer channel (file 53).
+            onProtocolReminderTapped: (localDate) {
+              final date = _protocolDayFrom(localDate);
+              if (date != null) {
+                _openProtocolReminderDay(date);
+              }
+            },
           );
       router.start();
+      // The Supplement reminder reconciler (D5): its Android taps, cold
+      // start included, arrive through the plugin it starts here.
+      unawaited(
+        ref
+            .read(protocolReminderSchedulerProvider)
+            .start(onReminderTapped: _openProtocolReminderDay),
+      );
     });
+  }
+
+  /// Opens [localDate]'s Protocol Day for a tapped Supplement reminder
+  /// (file 52), through the named route `ProtocolsLockGate` wraps, so the
+  /// lock prompts first when it is on. A reminder for the day already on
+  /// top only selects its date.
+  void _openProtocolReminderDay(ProtocolDayDate localDate) {
+    if (!mounted) {
+      return;
+    }
+    ref.read(selectedProtocolDayProvider.notifier).select(localDate);
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    if (!isTopRoute(navigator, ProtocolsDayView.routeName)) {
+      unawaited(navigator.pushNamed<void>(ProtocolsDayView.routeName));
+    }
+  }
+
+  static ProtocolDayDate? _protocolDayFrom(String localDate) {
+    try {
+      return ProtocolDayDate.parse(localDate);
+    } on FormatException {
+      return null;
+    }
   }
 
   @override
@@ -171,6 +253,8 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
       final coordinator = ref.read(syncCoordinatorProvider);
       coordinator.resumePeriodic();
       coordinator.requestSync(SyncTrigger.appResume);
+      // Travel and permission changes take effect here (CUJ 8, CUJ 10).
+      unawaited(ref.read(protocolReminderSchedulerProvider).reconcile());
       return;
     }
     ref.read(syncCoordinatorProvider).pausePeriodic();
@@ -244,7 +328,8 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
           return null;
         },
         routes: <String, WidgetBuilder>{
-          HomeScreen.routeName: (_) => const HomeScreen(),
+          HomeScreen.routeName: (_) =>
+              const OnboardingLauncher(child: HomeScreen()),
           ActivityFeedScreen.routeName: (_) => const ActivityFeedScreen(),
           BodyTrackerScreen.routeName: (_) => const BodyTrackerScreen(),
           MetricsScreen.routeName: (_) => const MetricsScreen(),
@@ -253,6 +338,7 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
           RoutinePlanListScreen.routeName: (_) => const RoutinePlanListScreen(),
           WorkoutTemplateListScreen.routeName: (_) =>
               const WorkoutTemplateListScreen(),
+          ProfileScreen.routeName: (_) => const ProfileScreen(),
           SettingsScreen.routeName: (_) => const SettingsScreen(),
           CompoundListScreen.routeName: (_) => const ProtocolsLockGate(
                 child: CompoundListScreen(),

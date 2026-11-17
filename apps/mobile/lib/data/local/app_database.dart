@@ -29,6 +29,27 @@ class ExerciseCategories extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// A Focus: the training discipline a Workout is performed under. The starter
+/// Focuses are seeded with fixed ids like the Categories; users rename,
+/// reorder, archive, and add their own, and every Focus syncs as an ordinary
+/// LWW row.
+@DataClassName('FocusRow')
+class Focuses extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get sortOrder => integer()();
+  TextColumn get colorHex => text().nullable()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DataClassName('ExerciseRow')
 class Exercises extends Table {
   TextColumn get id => text()();
@@ -47,6 +68,10 @@ class Exercises extends Table {
   TextColumn get categoryId =>
       text().nullable().references(ExerciseCategories, #id)();
   TextColumn get equipmentIds => text().withDefault(const Constant('[]'))();
+  // A JSON list of Focus ids. Deliberately not a foreign key, like every Focus
+  // reference: a pulled row may name a Focus whose own row arrives on a later
+  // page, and an archived Focus is a tombstone, never a missing row.
+  TextColumn get focusIds => text().withDefault(const Constant('[]'))();
   TextColumn get notes => text().nullable()();
   // only User Library exercises (and user customizations of a
   // Platform exercise, i.e. a shadowing copy per) sync — the Platform
@@ -65,6 +90,8 @@ class Exercises extends Table {
 }
 
 @DataClassName('WorkoutSessionRow')
+// "Recent under a Focus" groups the Workouts carrying one Focus.
+@TableIndex(name: 'workout_sessions_focus_id_index', columns: {#focusId})
 class WorkoutSessions extends Table {
   TextColumn get id => text()();
   DateTimeColumn get startedAt => dateTime()();
@@ -73,6 +100,9 @@ class WorkoutSessions extends Table {
       text().withDefault(const Constant('1970-01-01'))();
   DateTimeColumn get endedAt => dateTime().nullable()();
   TextColumn get comment => text().nullable()();
+  // The Focus this Workout is performed under; see `Exercises.focusIds` for
+  // why it is not a foreign key.
+  TextColumn get focusId => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -111,6 +141,18 @@ class Meals extends Table {
   TextColumn get localDate =>
       text().withDefault(const Constant('1970-01-01'))();
   DateTimeColumn get endedAt => dateTime().nullable()();
+
+  /// The UTC offset frozen when the Meal's time was set: the device zone's
+  /// offset at the Meal's own instant (docs/designs/meal-logging.md §1).
+  /// Null only on Meals written before schema 65 and on agent writes whose
+  /// zone the server can't resolve; readers then use the device zone.
+  IntColumn get timezoneOffsetMinutes => integer().nullable()();
+
+  /// `instant` when `started_at` is the time the user ate; `date` when only
+  /// the date is known and `started_at` is local midnight of `local_date`
+  /// (docs/designs/meal-logging.md §1). Stored by `MealTimePrecision.name`.
+  TextColumn get timePrecision =>
+      text().withDefault(const Constant('instant'))();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -182,27 +224,6 @@ class FoodEntries extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-@DataClassName('OpenFoodFactsCacheRow')
-@TableIndex(
-  name: 'open_food_facts_cache_last_accessed_at_index',
-  columns: {#lastAccessedAt},
-)
-class OpenFoodFactsCache extends Table {
-  TextColumn get lookupKey => text()();
-  TextColumn get foodId => text()();
-  TextColumn get name => text()();
-  TextColumn get nutrientValuesJson => text()();
-  BoolColumn get isLiquid => boolean().withDefault(const Constant(false))();
-  TextColumn get servingLabel => text().nullable()();
-  RealColumn get servingSize => real().nullable()();
-  RealColumn get packageSize => real().nullable()();
-  DateTimeColumn get fetchedAt => dateTime()();
-  DateTimeColumn get lastAccessedAt => dateTime()();
-
-  @override
-  Set<Column<Object>> get primaryKey => {lookupKey};
-}
-
 @DataClassName('NutritionGoalRow')
 @TableIndex(name: 'nutrition_goals_nutrient_id_index', columns: {#nutrientId})
 class NutritionGoals extends Table {
@@ -211,6 +232,34 @@ class NutritionGoals extends Table {
   RealColumn get targetValue => real()();
   TextColumn get targetEntered => text()();
   TextColumn get unit => text()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// One section of the User Profile (docs/designs/user-profile.md, Data model).
+/// `valuesJson` holds the section's values in their sync-payload shape.
+///
+/// The User Profile is not on [UserSettings] because that row syncs whole: two
+/// devices editing different sections offline must both survive, so each
+/// section is its own LWW row. It holds no fixed per-user id either, because a
+/// device in Local-only Mode has no user id and the server's primary key is
+/// global.
+///
+/// So a section can hold more than one row. Read the live row with the greatest
+/// `updatedAt`, ties broken by the greatest `id`, as the agent read does. Writes
+/// update that row in place, and an older row stays here, unread.
+@DataClassName('UserProfileSectionRow')
+class UserProfileSections extends Table {
+  TextColumn get id => text()();
+  TextColumn get section => text()();
+  TextColumn get valuesJson => text()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -320,6 +369,8 @@ class WorkoutTemplates extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get notes => text().nullable()();
+  // Copied onto the Workout when the template is materialized.
+  TextColumn get focusId => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -682,11 +733,36 @@ class MetricReadings extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+// A Purpose (CONTEXT.md `Purpose`): a label for why the user takes a Compound.
+// Modelled on `Focuses` without a color: the starter Purposes are seeded with
+// fixed ids, users rename, reorder, archive, and add their own, and every
+// Purpose syncs as an ordinary LWW row. Protocols data, so it sits behind the
+// Protocols lock and stays out of the CSV export
+// (docs/designs/compound-purposes.md, D1).
+@DataClassName('PurposeRow')
+class Purposes extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get sortOrder => integer()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 // The Protocols catalogue entry (CONTEXT.md `Compound`): an item the user takes
-// and tracks. A user-owned template carrying a name + default unit/route and an
-// optional strength; NEVER categorized by substance type or legality
-// (the genericity is the legal posture). Mirrors `Foods`/`Exercises`:
-// archives via `deleted_at`, never cascades.
+// and tracks. A user-owned template carrying a name + default unit/route, an
+// optional strength, and any number of Purposes. NEVER classified by what it is
+// or whether it is legal: there is no type, class, schedule or legality column.
+// The app tags only its own OTC built-in Compounds with Purposes, and only with
+// the seeded names (docs/designs/compound-purposes.md, "The neutral-instrument
+// rule, narrowed"). Mirrors `Foods`/`Exercises`: archives via `deleted_at`,
+// never cascades.
 @DataClassName('CompoundRow')
 @TableIndex(name: 'compounds_name_index', columns: {#name})
 class Compounds extends Table {
@@ -707,10 +783,16 @@ class Compounds extends Table {
 
   // A UI-affordance flag only, mirroring `Exercises.isFavorite`: a
   // favourited Compound hoists into a virtual "Favorites" section atop the
-  // Compound list. Never categorizes the Compound itself.
+  // Compound list. Never classifies the Compound itself.
   BoolColumn get isFavorite => boolean().withDefault(
         const Constant(false),
       )();
+
+  // The Purposes this Compound is tagged with: a JSON-encoded array of Purpose
+  // ids, soft references like `Exercises.focusIds`, in the order the user
+  // tagged them. The stored list is the list; nothing computes a default, so an
+  // emptied list stays empty.
+  TextColumn get purposeIds => text().withDefault(const Constant('[]'))();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -755,10 +837,16 @@ class Doses extends Table {
   TextColumn get route => text()();
 
   // UTC instant + captured timezone + frozen local date (YYYY-MM-DD).
+  // `timezone` is a display label only (an abbreviation such as "BRT" can't
+  // be converted back); `timezoneOffsetMinutes` is the UTC offset frozen at
+  // log time, which with `tookAt` gives the Dose's local clock time for
+  // good. It is null on a Dose logged before the offset existed: readers
+  // then work its local time out in the device's current zone.
   DateTimeColumn get tookAt => dateTime()();
   TextColumn get timezone => text()();
   TextColumn get localDate =>
       text().withDefault(const Constant('1970-01-01'))();
+  IntColumn get timezoneOffsetMinutes => integer().nullable()();
 
   // Provenance stamp (manual/integration/agent), as elsewhere (PROTOCOLS.md §7).
   TextColumn get provenance => text().withDefault(const Constant('manual'))();
@@ -784,19 +872,61 @@ class Doses extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-// A `Protocol` (CONTEXT.md): the Routine analog — a named, time-bounded plan
-// associating one or more `Compound`s (a multi-Compound Protocol is a
-// "stack", PROTOCOLS.md §1.4). A **mutable plan**: creating or editing it
-// never reads or writes a logged `Dose`. Archives via `deleted_at`, never
-// cascades (PROTOCOLS.md §7). `end_date` nullable means an open-ended
-// (ongoing) course. Syncs as an ordinary opaque-payload LWW row (
-// PROTOCOLS.md §7) — `syncDeviceId`/`syncPreviouslySynced` mirror `Compounds`.
+// A `Skip` (CONTEXT.md; docs/designs/protocol-schedules-and-reminders.md,
+// D8): "not taken, on purpose" for one planned dose of one Protocol's
+// Compound on one local date. It names the planned dose by its Protocol,
+// Compound, date and planned `HH:MM` time (null for an untimed planned
+// dose), never by slot number, because slot numbers shift whenever another
+// Protocol's plan for the Compound changes. Both ids are soft references,
+// like a Dose's: no foreign key, so a Skip outlives an archived or deleted
+// Protocol and undo brings it back with it. A Skip is never edited: it is
+// written once and removed by setting `deleted_at`; skipping again writes a
+// new row. No unique key: two devices skipping the same planned dose offline
+// keep both rows, and matching marks it once.
+@DataClassName('ProtocolSkipRow')
+@TableIndex(name: 'protocol_skips_local_date_index', columns: {#localDate})
+class ProtocolSkips extends Table {
+  TextColumn get id => text()();
+  TextColumn get protocolId => text()();
+  TextColumn get compoundId => text()();
+  TextColumn get localDate => text()();
+  TextColumn get plannedLocalTime => text().nullable()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+// A `Protocol` (CONTEXT.md): a named course associating one or more
+// `Compound`s (a multi-Compound Protocol is a "stack"). A **mutable plan**:
+// creating or editing it never reads or writes a logged `Dose`. Archives via
+// `deleted_at`, never cascades.
+//
+// Its bounds are local dates (`YYYY-MM-DD`), the end inclusive and null for
+// an ongoing course: a UTC instant has no stable calendar day, so a cycle
+// anchored by one would start a day early on a device reading it in UTC.
+// `period` is the Protocol Period's stored JSON (its on/off cycle and its
+// Pauses), null when it has neither. `reminders_enabled` is synced plan data
+// ("remind me about this Protocol"). `archived_on` is the device's local
+// date when `deleted_at` was set, frozen then so no reader converts a
+// timestamp and travel never moves it; a row tombstoned by undo has
+// `deleted_at` but no `archived_on`.
 @DataClassName('ProtocolRow')
 class Protocols extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  DateTimeColumn get startDate => dateTime()();
-  DateTimeColumn get endDate => dateTime().nullable()();
+  TextColumn get startLocalDate => text()();
+  TextColumn get endLocalDate => text().nullable()();
+  TextColumn get period => text().nullable()();
+  BoolColumn get remindersEnabled => boolean().withDefault(
+        const Constant(false),
+      )();
+  TextColumn get archivedOn => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -827,6 +957,11 @@ class ProtocolCompounds extends Table {
   TextColumn get protocolId => text().references(Protocols, #id)();
   TextColumn get compoundId => text().references(Compounds, #id)();
   IntColumn get position => integer()();
+
+  // The local date this member was removed (archived), frozen when
+  // `deleted_at` is set, as `Protocols.archivedOn` is. A member row covers
+  // the dates from its first Schedule Version through this date.
+  TextColumn get archivedOn => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -838,36 +973,41 @@ class ProtocolCompounds extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-// A `Schedule` (CONTEXT.md, PROTOCOLS.md §1.4): the `Prescription` analog —
-// an OPTIONAL planned dose · frequency · route for one member `Compound` of a
-// `Protocol` (a `ProtocolCompound` row). A LIVE reference (a Drift FK, like
-// `ProtocolCompounds.compoundId`) — a Schedule is part of the mutable plan,
-// never a logged event, so it is never a self-describing snapshot. Purely
-// prescriptive: dose-response analysis is ALWAYS derived from the actual
-// logged `Dose`s, never a Schedule. Archives via `deleted_at`, never
-// cascades to a logged `Dose` (PROTOCOLS.md §7).
+// One Schedule Version (CONTEXT.md `Schedule Version`): one stored state of
+// a Protocol Member's `Schedule`, applying from the local date
+// `effective_from`. Versions are insert-only: every changed save inserts a
+// row, and none is ever edited in place, so a Schedule edit never rewrites
+// how past days read. For a date, the version with the latest
+// `effective_from` on or before it applies, the larger id on a tie (UUIDv7
+// ids sort by creation time). `deleted_at` is set only when undo tombstones
+// the row it inserted, and readers ignore such a row.
+//
+// `rule` is the Schedule Rule's stored JSON. The planned amount, unit and
+// route are present for a `timed` or `untimed` rule and null for
+// `as_needed` and `unscheduled` (the shared validator's `amount_required`
+// and `amount_absent`). A LIVE reference to its member row (a Drift FK) — a
+// Schedule is plan data, never a self-describing logged event — and it never
+// touches a logged `Dose`.
 @DataClassName('ScheduleRow')
 @TableIndex(
-  name: 'schedules_protocol_compound_id_index',
-  columns: {#protocolCompoundId},
+  name: 'schedules_protocol_compound_effective_from_index',
+  columns: {#protocolCompoundId, #effectiveFrom},
 )
 class Schedules extends Table {
   TextColumn get id => text()();
   TextColumn get protocolCompoundId =>
       text().references(ProtocolCompounds, #id)();
+  TextColumn get effectiveFrom => text()();
+  TextColumn get rule => text()();
 
   // The planned dose amount, mirroring Doses' values-as-entered triplet
-  // (numeric projection + entered string, source of truth) + curated unit
-  // (PROTOCOLS.md §1.3).
-  RealColumn get doseAmountValue => real()();
-  TextColumn get doseAmountEntered => text()();
-  TextColumn get doseUnit => text()();
-
-  // The curated frequency registry name — never free-text.
-  TextColumn get frequency => text()();
+  // (numeric projection + entered string, source of truth) + curated unit.
+  RealColumn get doseAmountValue => real().nullable()();
+  TextColumn get doseAmountEntered => text().nullable()();
+  TextColumn get doseUnit => text().nullable()();
 
   // The curated route registry name, same registry as `Doses.route`.
-  TextColumn get route => text()();
+  TextColumn get route => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -977,6 +1117,66 @@ class SyncStates extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+// Sync bookkeeping: a pulled change that cannot be applied yet because a row it
+// references (a Drift FK) does not exist on this device, held verbatim until
+// that row arrives. One row per entity, keeping only the last-writer-wins
+// version of the change by (`updated_at`, `device_id`). See
+// `_applyPulledProtocolTargetOutcomeChange` in sync_repository.dart for why
+// this waits rather than storing the row without its reference.
+@DataClassName('DeferredSyncChangeRow')
+@TableIndex(
+  name: 'deferred_sync_changes_missing_entity_index',
+  columns: {#missingEntityTable, #missingEntityId},
+)
+class DeferredSyncChanges extends Table {
+  TextColumn get entityTable => text()();
+  TextColumn get entityId => text()();
+  TextColumn get missingEntityTable => text()();
+  TextColumn get missingEntityId => text()();
+
+  // The pulled change exactly as the server sent it, activity envelope
+  // included, so applying it later is the same as applying it on arrival.
+  TextColumn get changeJson => text()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get deviceId => text()();
+  DateTimeColumn get deferredAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {entityTable, entityId};
+}
+
+// Sync bookkeeping: a pulled change of a known entity type that this build
+// could not read or apply (a malformed envelope, an unparseable field, a
+// constraint it breaks), kept verbatim so it is never lost and never stalls
+// the pull. `SyncRepository` retries every held change at the end of each pull
+// batch, a later version of the same row from the server supersedes it, and a
+// full re-sync drops the ones the server no longer sends. See
+// `_applyPulledSyncChanges` in sync_repository.dart for the policy.
+@DataClassName('QuarantinedSyncChangeRow')
+@TableIndex(
+  name: 'quarantined_sync_changes_entity_index',
+  columns: {#entityTable, #entityId},
+  unique: true,
+)
+class QuarantinedSyncChanges extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // Null when the envelope itself was too malformed to say which row it was.
+  TextColumn get entityTable => text().nullable()();
+  TextColumn get entityId => text().nullable()();
+
+  // The pulled change as JSON, activity envelope included, so a retry is the
+  // same as the original arrival. A malformed envelope is kept exactly as the
+  // server sent it, for a later build that can read it.
+  TextColumn get changeJson => text()();
+
+  // A short category (`envelope`, `format`, `type`, `invalid_data`, `argument`,
+  // `constraint`), never the error message: messages can quote payload values,
+  // and payloads can hold Protocols data.
+  TextColumn get failureKind => text()();
+  DateTimeColumn get quarantinedAt => dateTime()();
+}
+
 @DataClassName('IntegrationDataClassConsentRow')
 @TableIndex(
   name: 'integration_data_class_consents_credential_data_class_index',
@@ -1053,6 +1253,7 @@ class RoutineEntries extends Table {
 @DriftDatabase(
   tables: <Type>[
     ExerciseCategories,
+    Focuses,
     Exercises,
     WorkoutSessions,
     MealTypes,
@@ -1060,7 +1261,6 @@ class RoutineEntries extends Table {
     Foods,
     FoodEntries,
     NutritionGoals,
-    OpenFoodFactsCache,
     WorkoutExercises,
     ExerciseGroups,
     ExerciseGroupMembers,
@@ -1069,18 +1269,23 @@ class RoutineEntries extends Table {
     IntervalTimers,
     ActivityLog,
     SyncStates,
+    DeferredSyncChanges,
+    QuarantinedSyncChanges,
     Measurements,
     MeasurementEntries,
     Metrics,
     MetricReadings,
+    Purposes,
     Compounds,
     Doses,
+    ProtocolSkips,
     Protocols,
     ProtocolCompounds,
     Schedules,
     ProtocolTargetOutcomes,
     MonitoringSeriesCache,
     IntegrationDataClassConsents,
+    UserProfileSections,
     UserSettings,
     WorkoutTemplates,
     TemplateExercises,
@@ -1107,14 +1312,16 @@ class AppDatabase extends _$AppDatabase {
     return AppDatabase(
       LazyDatabase(() async {
         final directory = await getApplicationDocumentsDirectory();
-        final file =
-            File(path.join(directory.path, 'open_workout_logger.sqlite'));
+        // Renaming this file after release silently hands every existing install
+        // an empty database; a rename needs a move-on-open migration.
+        final file = File(path.join(directory.path, 'perennia.sqlite'));
         return NativeDatabase(file);
       }),
     );
   }
 
   static const exerciseCategoriesTable = 'exercise_categories';
+  static const focusesTable = 'focuses';
   static const exercisesTable = 'exercises';
   static const workoutSessionsTable = 'workout_sessions';
   static const mealTypesTable = 'meal_types';
@@ -1122,7 +1329,6 @@ class AppDatabase extends _$AppDatabase {
   static const foodsTable = 'foods';
   static const foodEntriesTable = 'food_entries';
   static const nutritionGoalsTable = 'nutrition_goals';
-  static const openFoodFactsCacheTable = 'open_food_facts_cache';
   static const workoutExercisesTable = 'workout_exercises';
   static const exerciseGroupsTable = 'exercise_groups';
   static const exerciseGroupMembersTable = 'exercise_group_members';
@@ -1141,8 +1347,10 @@ class AppDatabase extends _$AppDatabase {
   static const measurementEntriesTable = 'measurement_entries';
   static const metricsTable = 'metrics';
   static const metricReadingsTable = 'metric_readings';
+  static const purposesTable = 'purposes';
   static const compoundsTable = 'compounds';
   static const dosesTable = 'doses';
+  static const protocolSkipsTable = 'protocol_skips';
   static const protocolsTable = 'protocols';
   static const protocolCompoundsTable = 'protocol_compounds';
   static const schedulesTable = 'schedules';
@@ -1152,10 +1360,14 @@ class AppDatabase extends _$AppDatabase {
       'integration_data_class_consents';
   static const activityLogTable = 'activity_log';
   static const syncStatesTable = 'sync_states';
+  static const deferredSyncChangesTable = 'deferred_sync_changes';
+  static const quarantinedSyncChangesTable = 'quarantined_sync_changes';
+  static const userProfileSectionsTable = 'user_profile_sections';
   static const userSettingsTable = 'user_settings';
 
   static const tableNames = <String>[
     exerciseCategoriesTable,
+    focusesTable,
     exercisesTable,
     workoutSessionsTable,
     mealTypesTable,
@@ -1181,12 +1393,15 @@ class AppDatabase extends _$AppDatabase {
     measurementEntriesTable,
     metricsTable,
     metricReadingsTable,
+    purposesTable,
     compoundsTable,
     dosesTable,
+    protocolSkipsTable,
     protocolsTable,
     protocolCompoundsTable,
     schedulesTable,
     protocolTargetOutcomesTable,
+    userProfileSectionsTable,
     userSettingsTable,
     activityLogTable,
   ];
@@ -1194,13 +1409,14 @@ class AppDatabase extends _$AppDatabase {
   static const schemaTableNames = <String>[
     ...tableNames,
     monitoringSeriesCacheTable,
-    openFoodFactsCacheTable,
     integrationDataClassConsentsTable,
     syncStatesTable,
+    deferredSyncChangesTable,
+    quarantinedSyncChangesTable,
   ];
 
   @override
-  int get schemaVersion => 57;
+  int get schemaVersion => 67;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1330,9 +1546,6 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 30 && from < 32) {
             await migrator.addColumn(foods, foods.recipeIngredientsJson);
             await migrator.addColumn(foods, foods.recipeServingCount);
-          }
-          if (from < 33) {
-            await migrator.createTable(openFoodFactsCache);
           }
           if (from < 34) {
             await migrator.createTable(nutritionGoals);
@@ -1465,9 +1678,10 @@ class AppDatabase extends _$AppDatabase {
             await migrator.createTable(protocolCompounds);
           }
           if (from < 42) {
-            // the OPTIONAL `Schedule` per member Compound of a
-            // Protocol (PROTOCOLS.md §1.4) — planned dose · frequency · route.
-            // Purely prescriptive plan data; never touches a logged Dose.
+            // the `Schedule` of each Protocol Member, created here in the
+            // current shape: one row per Schedule Version (a dated rule and
+            // its planned amount). Purely prescriptive plan data; never
+            // touches a logged Dose.
             await migrator.createTable(schedules);
           }
           if (from < 43) {
@@ -1828,6 +2042,161 @@ class AppDatabase extends _$AppDatabase {
               'AND after_image IS NOT NULL',
             );
           }
+          if (from < 58) {
+            await migrator.createTable(deferredSyncChanges);
+            await migrator.createIndex(deferredSyncChangesMissingEntityIndex);
+          }
+          if (from < 59) {
+            // Focus: a new table plus the optional references to it. The
+            // columns are added only where an older table exists without them,
+            // so an upgrade from a version that creates these tables above
+            // (already in their current shape) is a no-op here.
+            await migrator.createTable(focuses);
+            for (final entry in <({
+              String tableName,
+              GeneratedColumn<Object> column,
+              Future<void> Function() add,
+            })>[
+              (
+                tableName: exercises.actualTableName,
+                column: exercises.focusIds,
+                add: () => migrator.addColumn(exercises, exercises.focusIds),
+              ),
+              (
+                tableName: workoutSessions.actualTableName,
+                column: workoutSessions.focusId,
+                add: () => migrator.addColumn(
+                      workoutSessions,
+                      workoutSessions.focusId,
+                    ),
+              ),
+              (
+                tableName: workoutTemplates.actualTableName,
+                column: workoutTemplates.focusId,
+                add: () => migrator.addColumn(
+                      workoutTemplates,
+                      workoutTemplates.focusId,
+                    ),
+              ),
+            ]) {
+              if (await _tableExists(entry.tableName) &&
+                  !await _columnExists(
+                    entry.tableName,
+                    entry.column.name,
+                  )) {
+                await entry.add();
+              }
+            }
+            // Drift's addColumn() and createTable() do not install
+            // @TableIndex declarations. Some upgrade paths reach here before
+            // workout_sessions exists; its own creation installs the index.
+            if (await _tableExists(workoutSessions.actualTableName)) {
+              await customStatement(
+                'CREATE INDEX IF NOT EXISTS workout_sessions_focus_id_index '
+                'ON workout_sessions (focus_id)',
+              );
+            }
+          }
+          if (from < 60) {
+            await migrator.createTable(quarantinedSyncChanges);
+            await migrator.createIndex(quarantinedSyncChangesEntityIndex);
+          }
+          if (from < 61) {
+            await _clearProtocolPlans(migrator);
+          }
+          if (from < 62) {
+            // The Open Food Facts cache moved to FoodReferenceDatabase, a
+            // separate file of rebuildable reference data. Its rows are not
+            // copied: the app was unreleased, so no user held a cache worth
+            // keeping, and Food Entries and the Recent list never depended
+            // on it (docs/designs/open-food-facts.md).
+            await customStatement('DROP TABLE IF EXISTS open_food_facts_cache');
+          }
+          if (from < 63) {
+            // Null means the Focus uses its default color
+            // (docs/designs/progress-overview.md, D6), so no backfill.
+            // Upgrades that create focuses above already have the column.
+            if (await _tableExists(focuses.actualTableName) &&
+                !await _columnExists(
+                  focuses.actualTableName,
+                  focuses.colorHex.name,
+                )) {
+              await migrator.addColumn(focuses, focuses.colorHex);
+            }
+          }
+          if (from < 64) {
+            // Skips (docs/designs/protocol-schedules-and-reminders.md, D8).
+            // A new table, so nothing to backfill. createTable() does not
+            // install @TableIndex declarations, so the index is created on
+            // its own.
+            if (!await _tableExists(protocolSkips.actualTableName)) {
+              await migrator.createTable(protocolSkips);
+              await migrator.createIndex(protocolSkipsLocalDateIndex);
+            }
+          }
+          if (from < 65) {
+            // A Meal's frozen UTC offset and time precision
+            // (docs/designs/meal-logging.md §1). No value changes and no
+            // backfill: existing Meals read `instant` with a null offset,
+            // and readers use the device zone for a null offset, as they do
+            // for legacy Doses. Upgrades that create meals above already
+            // have both columns.
+            if (await _tableExists(meals.actualTableName)) {
+              if (!await _columnExists(
+                meals.actualTableName,
+                meals.timezoneOffsetMinutes.name,
+              )) {
+                await migrator.addColumn(meals, meals.timezoneOffsetMinutes);
+              }
+              if (!await _columnExists(
+                meals.actualTableName,
+                meals.timePrecision.name,
+              )) {
+                await migrator.addColumn(meals, meals.timePrecision);
+              }
+            }
+          }
+          if (from < 66) {
+            // Purposes: a new table and the Compound's list of them
+            // (docs/designs/compound-purposes.md, D1 and D2). Each only if
+            // missing, because an upgrade that creates compounds above already
+            // has the column in its current shape.
+            if (!await _tableExists(purposes.actualTableName)) {
+              await migrator.createTable(purposes);
+            }
+            if (await _tableExists(compounds.actualTableName) &&
+                !await _columnExists(
+                  compounds.actualTableName,
+                  compounds.purposeIds.name,
+                )) {
+              await migrator.addColumn(compounds, compounds.purposeIds);
+            }
+            // A build from before this change skips the unknown `purposes`
+            // entity but still advances its pull cursor past those changes, so
+            // the upgraded device would never pull them. Clearing the cursor
+            // makes its next Sync Run a full pull.
+            if (await _tableExists(syncStates.actualTableName)) {
+              await customStatement(
+                'UPDATE sync_states SET pull_cursor = NULL',
+              );
+            }
+          }
+          if (from < 67) {
+            // The User Profile (docs/designs/user-profile.md, Data model). No
+            // rows are written: a section with no row is unset.
+            if (!await _tableExists(userProfileSections.actualTableName)) {
+              await migrator.createTable(userProfileSections);
+            }
+            // A build from before this change skips the unknown
+            // `user_profile_sections` entity but still advances its pull cursor
+            // past those changes, so the upgraded device would never pull them.
+            // Clearing the cursor makes its next Sync Run a full pull.
+            if (await _tableExists(syncStates.actualTableName)) {
+              await customStatement(
+                'UPDATE sync_states SET pull_cursor = NULL',
+              );
+            }
+          }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),
       );
@@ -1956,6 +2325,79 @@ class AppDatabase extends _$AppDatabase {
           ),
         ),
       );
+    }
+  }
+
+  /// The v61 cutover to the Protocol plan shape (Schedule Versions, local-date
+  /// bounds, the Protocol Period). Nothing has shipped, so the only plans in
+  /// the old shape are developer data: they are cleared once and re-entered
+  /// (the test-data generator recreates them) rather than converted, which
+  /// would keep a converter and legacy columns for users who don't exist.
+  ///
+  /// Compounds and Doses are untouched: a Dose keeps its Protocol tag and
+  /// name snapshot, so it still renders and still counts. Nothing is marked
+  /// pending sync, so the clear pushes nothing; the server clears its own
+  /// copy in a migration of its own. Activity Log, deferred and quarantined
+  /// rows for the four tables go first, so an old image can never be pushed,
+  /// replayed or applied later. Guards cover the intentionally partial
+  /// historical migration fixtures.
+  Future<void> _clearProtocolPlans(Migrator migrator) async {
+    const planTables = <String>[
+      protocolTargetOutcomesTable,
+      schedulesTable,
+      protocolCompoundsTable,
+      protocolsTable,
+    ];
+    final quotedPlanTables = planTables.map((table) => "'$table'").join(', ');
+    for (final bookkeepingTable in <String>[
+      activityLogTable,
+      deferredSyncChangesTable,
+      quarantinedSyncChangesTable,
+    ]) {
+      if (await _tableExists(bookkeepingTable)) {
+        await customStatement(
+          'DELETE FROM $bookkeepingTable '
+          'WHERE entity_table IN ($quotedPlanTables)',
+        );
+      }
+    }
+
+    // Children before parents, so the clear stays valid even when
+    // foreign-key enforcement is on.
+    for (final table in planTables) {
+      if (await _tableExists(table)) {
+        await customStatement('DELETE FROM $table');
+      }
+    }
+
+    // `start_date`, `end_date` and `frequency` are gone; the new columns
+    // have no value an old row could supply. The tables are empty, so they
+    // are rebuilt in the new shape rather than altered.
+    for (final table in <TableInfo<Table, Object?>>[schedules, protocols]) {
+      if (await _tableExists(table.actualTableName)) {
+        await migrator.deleteTable(table.actualTableName);
+      }
+    }
+    await migrator.createTable(protocols);
+    await migrator.createTable(schedules);
+    // Drift's createTable() does not install @TableIndex declarations.
+    await migrator.createIndex(schedulesProtocolCompoundEffectiveFromIndex);
+
+    // Upgrades from below 37 and 41 created these tables above in the
+    // current shape already.
+    if (await _tableExists(doses.actualTableName) &&
+        !await _columnExists(
+          doses.actualTableName,
+          doses.timezoneOffsetMinutes.name,
+        )) {
+      await migrator.addColumn(doses, doses.timezoneOffsetMinutes);
+    }
+    if (await _tableExists(protocolCompounds.actualTableName) &&
+        !await _columnExists(
+          protocolCompounds.actualTableName,
+          protocolCompounds.archivedOn.name,
+        )) {
+      await migrator.addColumn(protocolCompounds, protocolCompounds.archivedOn);
     }
   }
 

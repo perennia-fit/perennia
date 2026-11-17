@@ -80,7 +80,7 @@ final class TemplateMaterializeRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -99,9 +99,35 @@ final class TemplateMaterializeRepository {
     return row == null ? null : _templateLinkRecordFromRow(row);
   }
 
+  /// Watches the active Template Links of [workoutIds], at most one per
+  /// Workout.
+  ///
+  /// The Workout screen and Today title a Workout by its Template's current
+  /// name through these links: a link is a reference, never a snapshot, so a
+  /// renamed Template renames its past Workouts too.
+  Stream<List<TemplateLinkRecord>> watchByWorkoutIds(Set<String> workoutIds) {
+    if (workoutIds.isEmpty) {
+      return Stream<List<TemplateLinkRecord>>.value(
+        const <TemplateLinkRecord>[],
+      );
+    }
+    final query = _database.select(_database.templateLinks)
+      ..where(
+        (row) => row.workoutId.isIn(workoutIds) & row.deletedAt.isNull(),
+      )
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.workoutId),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
+    return query.watch().map(
+          (rows) =>
+              rows.map(_templateLinkRecordFromRow).toList(growable: false),
+        );
+  }
+
   Future<TemplateMaterializeResult> _materialize(
     TemplateMaterializeRequest request,
-    _WriteContext context, {
+    WriteContext context, {
     DateTime? now,
     String? timezone,
   }) async {
@@ -132,6 +158,7 @@ final class TemplateMaterializeRepository {
         startedAt: localNow,
         timezone: timezone ?? localNow.timeZoneName,
         localDate: localDate,
+        focusId: template.focusId,
       ),
       context,
     );
@@ -226,7 +253,7 @@ final class TemplateMaterializeRepository {
       );
     }
 
-    final linkId = _repositories.createId(context.timestamp);
+    final linkId = _repositories._ids.create(context.timestamp);
     await _database.into(_database.templateLinks).insert(
           TemplateLinksCompanion.insert(
             id: linkId,
@@ -254,7 +281,7 @@ final class TemplateMaterializeRepository {
               groupIds: exerciseGroupRows.map((group) => group.id).toSet(),
             )
             .get();
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateLinksTable,
       entityId: linkId,

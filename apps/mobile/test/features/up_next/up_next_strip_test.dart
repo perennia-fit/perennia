@@ -10,10 +10,16 @@ import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/template_materialize/repositories/template_materialize_feature_repository.dart';
+import 'package:perennia/features/template_materialize/widgets/empty_template_start_dialog.dart';
+import 'package:perennia/features/template_picker/widgets/template_picker_sheet.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/features/up_next/widgets/up_next_strip.dart';
+import 'package:perennia/features/workout_templates/repositories/workout_template_feature_repository.dart';
 import 'package:perennia/l10n/app_localizations.dart';
 import 'package:perennia/theme/theme.dart';
+
+import '../template_picker/upper_b_template_fixture.dart';
+import '../workout_templates/workout_template_test_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +70,7 @@ void main() {
       'shows a not-done card and a ticked done card, remaining session first',
       (tester) async {
     await _setLargePhone(tester);
+    final semantics = tester.ensureSemantics();
     final suggestion = _weeklySuggestion(doneSecondCard: true);
     final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
     await tester.pumpWidget(
@@ -89,9 +96,15 @@ void main() {
       find.byKey(UpNextStrip.cardKey('routine-1', 'template-done')),
       findsNothing,
     );
+    expect(
+      find.byKey(UpNextStrip.startButtonKey('routine-1', 'template-done')),
+      findsNothing,
+    );
+    expect(find.bySemanticsLabel(RegExp('^Swim Drills, done')), findsOneWidget);
+    semantics.dispose();
   });
 
-  testWidgets('tapping a suggested card materializes with the Routine slot',
+  testWidgets("a suggested card's ▶ materializes with the Routine slot",
       (tester) async {
     await _setLargePhone(tester);
     final suggestion = _weeklySuggestion(doneSecondCard: false);
@@ -108,7 +121,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     await tester.tap(
-      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+      find.byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining')),
     );
     await tester.pump();
 
@@ -122,8 +135,8 @@ void main() {
   });
 
   testWidgets(
-      'tapping a suggested card materializes and lands on the Workout '
-      'screen with the returned id — the ≤ 2-taps covenant', (tester) async {
+      "a suggested card's ▶ materializes and lands on the Workout screen "
+      'with the returned id — the ≤ 2-taps covenant', (tester) async {
     await _setLargePhone(tester);
     final suggestion = _weeklySuggestion(doneSecondCard: false);
     final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
@@ -140,7 +153,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     await tester.tap(
-      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+      find.byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining')),
     );
     // A pushed MaterialPageRoute animates in; a bounded pump loop (not
     // pumpAndSettle) waits it out without risking a hang on any
@@ -153,6 +166,288 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets(
+      'a card for a Template with no exercises says so and its ▶ asks '
+      'before starting an empty Workout', (tester) async {
+    await _setLargePhone(tester);
+    final suggestion = _weeklySuggestion(doneSecondCard: false);
+    final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {'template-remaining': 'Push A'},
+    );
+    await tester.pumpWidget(
+      _testApp(
+        repository: repository,
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    // The cards subscribe to the empty-Template ids once they are built, so
+    // the label lands one frame after the suggestions.
+    await tester.pump();
+
+    expect(find.text('No exercises'), findsOneWidget);
+
+    final card = find
+        .byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining'));
+    await tester.tap(card);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(EmptyTemplateStartDialog), findsOneWidget);
+    expect(find.text('"Push A" has no exercises'), findsOneWidget);
+
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.cancelButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(EmptyTemplateStartDialog), findsNothing);
+    expect(materializeRepository.calls, isEmpty);
+
+    await tester.tap(card);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.confirmButtonKey));
+    await tester.pump();
+
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
+
+  testWidgets("a card's ▶ for a Template with exercises starts with no prompt",
+      (tester) async {
+    await _setLargePhone(tester);
+    final suggestion = _weeklySuggestion(doneSecondCard: false);
+    final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {},
+    );
+    await tester.pumpWidget(
+      _testApp(
+        repository: repository,
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+
+    expect(find.text('No exercises'), findsNothing);
+    await tester.tap(
+      find.byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining')),
+    );
+    await tester.pump();
+
+    expect(find.byType(EmptyTemplateStartDialog), findsNothing);
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
+
+  testWidgets(
+      'tapping a card previews its exercises, Prescriptions and supersets '
+      'and starts nothing (CUJ 12)', (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository =
+        _ResolvingTemplateMaterializeFeatureRepository('workout-materialized');
+    final workoutTemplateRepository = _upperBTemplateRepository();
+    addTearDown(workoutTemplateRepository.close);
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        workoutTemplateRepository: workoutTemplateRepository,
+        homeRepository: StubHomeRepository(),
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(
+      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+    );
+    await _pumpUntilFound(tester, find.text('Superset A'));
+
+    expect(find.byType(TemplatePickerPreviewSheet), findsOneWidget);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(
+      find.text('3 × (60 kg · 10 reps, Rest after 90 sec)'),
+      findsOneWidget,
+    );
+    expect(find.text('Superset A'), findsOneWidget);
+    expect(find.text('Cable Row'), findsOneWidget);
+    expect(find.text('Curl'), findsOneWidget);
+    expect(
+      find.byKey(TemplatePickerPreviewSheet.startButtonKey),
+      findsOneWidget,
+    );
+    // Nothing is started: no Workout is materialized, none is opened.
+    expect(materializeRepository.calls, isEmpty);
+    expect(find.byType(WorkoutScreen), findsNothing);
+
+    Navigator.of(tester.element(find.byType(TemplatePickerPreviewSheet))).pop();
+    await _pumpUntilGone(tester, find.byType(TemplatePickerPreviewSheet));
+    expect(materializeRepository.calls, isEmpty);
+    expect(find.byType(WorkoutScreen), findsNothing);
+  });
+
+  testWidgets(
+      "the preview's Start runs the card's start path: it materializes "
+      'with the Routine slot and opens the Workout', (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository =
+        _ResolvingTemplateMaterializeFeatureRepository('workout-materialized');
+    final workoutTemplateRepository = _upperBTemplateRepository();
+    addTearDown(workoutTemplateRepository.close);
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        workoutTemplateRepository: workoutTemplateRepository,
+        homeRepository: StubHomeRepository(),
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(
+      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(TemplatePickerPreviewSheet.startButtonKey),
+    );
+    // Let the sheet finish sliding in so Start is on screen.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilFound(tester, find.byType(WorkoutScreen));
+
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+    expect(materializeRepository.calls, hasLength(1));
+    expect(
+      materializeRepository.calls.single.workoutTemplateId,
+      'template-remaining',
+    );
+    expect(materializeRepository.calls.single.routineId, 'routine-1');
+    expect(materializeRepository.calls.single.slot, DateTime.monday);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets(
+      "the preview's Start on an empty Template asks before starting, like "
+      'the ▶', (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {'template-remaining': 'Push A'},
+    );
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository();
+    addTearDown(workoutTemplateRepository.close);
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        workoutTemplateRepository: workoutTemplateRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(TemplatePickerPreviewSheet.startButtonKey),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilFound(tester, find.byType(EmptyTemplateStartDialog));
+
+    expect(find.byType(EmptyTemplateStartDialog), findsOneWidget);
+    expect(find.text('"Push A" has no exercises'), findsOneWidget);
+    expect(materializeRepository.calls, isEmpty);
+
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.confirmButtonKey));
+    await tester.pump();
+
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
+
+  testWidgets("a double tap on a card's ▶ starts one Workout, not two",
+      (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository =
+        _RecordingTemplateMaterializeFeatureRepository();
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final start = find
+        .byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining'));
+    // Both taps land before the first start has finished: the recording
+    // repository never resolves, so the first start is still in flight.
+    await tester.tap(start);
+    await tester.tap(start);
+    await tester.pump();
+    await tester.tap(start);
+    await tester.pump();
+
+    expect(materializeRepository.calls, hasLength(1));
+  });
+
+  testWidgets(
+      "a card's ▶ is a 48 dp target labelled \"Start <name>\", and its body "
+      'is labelled as a preview', (tester) async {
+    await _setLargePhone(tester);
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: true),
+        ]),
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final start = find
+        .byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining'));
+    final size = tester.getSize(start);
+    expect(size.width, greaterThanOrEqualTo(AppDimens.touchTarget));
+    expect(size.height, greaterThanOrEqualTo(AppDimens.touchTarget));
+    expect(find.byTooltip('Start Push A'), findsOneWidget);
+    expect(
+      tester.getSemantics(start),
+      isSemantics(
+        tooltip: 'Start Push A',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+          )
+          .height,
+      greaterThanOrEqualTo(AppDimens.touchTarget),
+    );
+    expect(find.bySemanticsLabel(RegExp('^Preview Push A')), findsOneWidget);
+    semantics.dispose();
   });
 }
 
@@ -176,6 +471,17 @@ UpNextSuggestionView _weeklySuggestion({required bool doneSecondCard}) {
         isDone: doneSecondCard,
       ),
     ],
+  );
+}
+
+/// Serves the shared Upper B Template under the Up next card's Template
+/// id, so the preview has exercises, Prescriptions and a superset to show.
+StubWorkoutTemplateFeatureRepository _upperBTemplateRepository() {
+  return StubWorkoutTemplateFeatureRepository(
+    details: <String, WorkoutTemplateDetail>{
+      'template-remaining':
+          upperBTemplateDetail(templateId: 'template-remaining'),
+    },
   );
 }
 
@@ -223,6 +529,17 @@ class _RecordingTemplateMaterializeFeatureRepository
     );
     return _completer.future;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 /// Records materialize calls and resolves immediately with a fixed
@@ -251,12 +568,59 @@ class _ResolvingTemplateMaterializeFeatureRepository
     );
     return _workoutId;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
+}
+
+/// Reports the given Templates as empty and records, without resolving,
+/// every materialize call, so a test can assert the empty-Template prompt
+/// gates the start.
+class _EmptyTemplateMaterializeFeatureRepository
+    implements TemplateMaterializeFeatureRepository {
+  _EmptyTemplateMaterializeFeatureRepository({
+    required this.emptyTemplateNames,
+  });
+
+  final Map<String, String> emptyTemplateNames;
+  final List<String> calls = <String>[];
+
+  @override
+  Future<String> materializeTemplate({
+    required String workoutTemplateId,
+    String? routineId,
+    int? slot,
+  }) {
+    calls.add(workoutTemplateId);
+    return Completer<String>().future;
+  }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(emptyTemplateNames.keys.toSet());
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async =>
+      emptyTemplateNames[workoutTemplateId];
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({
   required Widget home,
   required UpNextFeatureRepository repository,
   TemplateMaterializeFeatureRepository? materializeRepository,
+  WorkoutTemplateFeatureRepository? workoutTemplateRepository,
   HomeRepository? homeRepository,
   Brightness brightness = Brightness.light,
 }) {
@@ -268,6 +632,9 @@ Widget _testApp({
             materializeRepository ??
             _RecordingTemplateMaterializeFeatureRepository(),
       ),
+      if (workoutTemplateRepository != null)
+        workoutTemplateFeatureRepositoryProvider
+            .overrideWith((ref) => workoutTemplateRepository),
       if (homeRepository != null)
         homeRepositoryProvider.overrideWith((ref) => homeRepository),
       selectedTrainingDayProvider.overrideWith(
@@ -304,6 +671,21 @@ Future<void> _setLargePhone(WidgetTester tester) async {
   tester.view.physicalSize = const Size(800, 1400);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// Pumps short frames until [finder] resolves to nothing, bounded like
+/// [_pumpUntilFound].
+Future<void> _pumpUntilGone(
+  WidgetTester tester,
+  Finder finder, {
+  int maxPumps = 40,
+}) async {
+  for (var attempt = 0; attempt < maxPumps; attempt += 1) {
+    if (finder.evaluate().isEmpty) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 }
 
 /// Bounded alternative to `pumpAndSettle` for trees that may contain a

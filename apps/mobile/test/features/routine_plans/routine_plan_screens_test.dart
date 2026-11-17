@@ -6,11 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
-import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_editor_screen.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
-import 'package:perennia/features/routine_plans/widgets/routine_start_sheet.dart';
 import 'package:perennia/features/template_materialize/repositories/template_materialize_feature_repository.dart';
 import 'package:perennia/features/workout_templates/widgets/workout_template_editor_screen.dart';
 import 'package:perennia/l10n/app_localizations.dart';
@@ -128,42 +126,6 @@ void main() {
           await _disposeWidgetTree(tester);
         },
       );
-
-      testWidgets(
-        'Start sheet meets contrast, target, and label guidelines in ${brightness.name}',
-        (tester) async {
-          await _setLargePhone(tester);
-          final fixture = await _fixture();
-          _closeAfterTest(fixture);
-          await tester.pumpWidget(
-            _testApp(
-              adapter: fixture.adapter,
-              brightness: brightness,
-              home: const RoutinePlanListScreen(),
-            ),
-          );
-          await tester.pumpAndSettle();
-
-          await tester.tap(
-            find.byKey(
-              RoutinePlanListScreen.startButtonKey(fixture.routineId),
-            ),
-          );
-          await tester.pumpAndSettle();
-
-          expect(find.byKey(RoutineStartSheet.sheetKey), findsOneWidget);
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          await expectLater(
-            tester,
-            meetsGuideline(androidTapTargetGuideline),
-          );
-          await expectLater(
-            tester,
-            meetsGuideline(labeledTapTargetGuideline),
-          );
-          await _disposeWidgetTree(tester);
-        },
-      );
     }
   });
 
@@ -248,61 +210,6 @@ void main() {
   });
 
   testWidgets(
-      'Start opens the session picker and materializes the chosen entry '
-      'with its Routine and slot', (tester) async {
-    await _setLargePhone(tester);
-    final fixture = await _fixture();
-    _closeAfterTest(fixture);
-    await fixture.adapter.setCadence(
-      routineId: fixture.routineId,
-      cadence: const Cadence.rotating(3),
-    );
-    await fixture.adapter.moveTemplateReferenceToSlot(
-      routineEntryId: fixture.strengthEntryId,
-      slot: 2,
-    );
-    await tester.pumpWidget(
-      _testApp(
-        adapter: fixture.adapter,
-        materializeRepository: RepositoryTemplateMaterializeFeatureRepository(
-          fixture.repositories,
-        ),
-        trainingRepositories: fixture.repositories,
-        home: const RoutinePlanListScreen(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byKey(RoutinePlanListScreen.startButtonKey(fixture.routineId)),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(RoutineStartSheet.sheetKey), findsOneWidget);
-    // The archived-template entry (runEntryId) is not offered.
-    expect(
-      find.byKey(RoutineStartSheet.entryKey(fixture.runEntryId)),
-      findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(RoutineStartSheet.entryKey(fixture.strengthEntryId)),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(RoutineStartSheet.sheetKey), findsNothing);
-    expect(find.byType(WorkoutScreen), findsOneWidget);
-
-    final links = await fixture.repositories.database
-        .select(fixture.repositories.database.templateLinks)
-        .get();
-    expect(links, hasLength(1));
-    expect(links.single.routineId, fixture.routineId);
-    expect(links.single.slot, 2);
-    await _disposeWidgetTree(tester);
-  });
-
-  testWidgets(
       'editor manages ordered live references and restores an archived template',
       (tester) async {
     await _setLargePhone(tester);
@@ -316,7 +223,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Archived Workout Template'), findsOneWidget);
+    expect(find.text('Archived workout'), findsOneWidget);
     expect(find.byIcon(Icons.archive_outlined), findsOneWidget);
     await tester.tap(
       find.byKey(
@@ -324,7 +231,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Archived Workout Template'), findsNothing);
+    expect(find.text('Archived workout'), findsNothing);
 
     await tester.tap(
       find.byKey(RoutinePlanEditorScreen.addTemplateButtonKey),
@@ -963,6 +870,17 @@ class _UnusedTemplateMaterializeFeatureRepository
       'This test did not provide a TemplateMaterializeFeatureRepository.',
     );
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({
@@ -978,7 +896,8 @@ Widget _testApp({
       routinePlanFeatureRepositoryProvider.overrideWith((ref) => adapter),
       templateMaterializeFeatureRepositoryProvider.overrideWith(
         (ref) =>
-            materializeRepository ?? _UnusedTemplateMaterializeFeatureRepository(),
+            materializeRepository ??
+            _UnusedTemplateMaterializeFeatureRepository(),
       ),
       if (trainingRepositories != null)
         trainingRepositoriesProvider.overrideWithValue(trainingRepositories),

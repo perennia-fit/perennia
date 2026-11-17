@@ -9,6 +9,23 @@ final templateMaterializeControllerProvider =
   );
 });
 
+/// Active Workout Templates that would start an empty Workout. Start
+/// surfaces read `.value` and treat "not loaded" as "none empty", so a
+/// missing value never blocks or mislabels a start.
+final emptyWorkoutTemplateIdsProvider = StreamProvider<Set<String>>((ref) {
+  return ref
+      .watch(templateMaterializeFeatureRepositoryProvider)
+      .watchEmptyTemplateIds();
+});
+
+/// The linked Template's plan notes for one Workout, or null.
+final workoutTemplateGuidanceProvider = StreamProvider.autoDispose
+    .family<WorkoutTemplateGuidance?, String>((ref, workoutId) {
+      return ref
+          .watch(templateMaterializeFeatureRepositoryProvider)
+          .watchTemplateGuidance(workoutId);
+    });
+
 /// Thin command boundary over [TemplateMaterializeFeatureRepository]. Kept
 /// as a controller (rather than calling the feature repository directly
 /// from widgets) so screens depend on one stable, presentation-facing verb.
@@ -32,5 +49,11 @@ class TemplateMaterializeController {
       routineId: routineId,
       slot: slot,
     );
+  }
+
+  /// The Template's name when starting [workoutTemplateId] would give an
+  /// empty Workout; null when it would not.
+  Future<String?> emptyTemplateName(String workoutTemplateId) {
+    return _repository.emptyTemplateName(workoutTemplateId);
   }
 }

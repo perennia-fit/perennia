@@ -9,7 +9,7 @@
   "homeHealthMetricsTitle": "Health metrics",
   "homeLibraryTitle": "Library",
   "homeLibraryTrainingSection": "TRAINING",
-  "homeLibrarySupplementsSection": "SUPPLEMENTS",
+  "homeLibraryProtocolsSection": "PROTOCOLS",
   "homeCreateExercise": "Create exercise",
   "homeCreateExerciseSubtitle": "Add an exercise to your User Library",
   "exerciseCatalogCreateExercise": "Create exercise",
@@ -29,20 +29,18 @@
   "homeLocalOnlyStatus": "Local only",
   "homeSignInToSync": "Sign in to sync",
   "homeManageAccountAndSync": "Manage account and sync",
-  "homeManageRoutines": "Manage routines",
   "homeLogAction": "Log",
   "homeLogSheetTitle": "Log for this day",
   "homeLogWorkout": "Workout",
   "homeStartWorkoutFailed": "Could not start workout. Try again.",
-  "homeLogFood": "Food",
-  "homeLogSupplement": "Supplement",
+  "homeLogDose": "Dose",
   "homeDomainToggleLabel": "Home domain",
   "homeTrainingDomain": "Training",
   "homeNutritionDomain": "Nutrition",
   "homeUnavailable": "Home unavailable",
   "homeNutritionUnavailable": "Nutrition Day unavailable",
-  "homeStartNewWorkout": "Start New Workout",
-  "homeLoadRoutine": "Load Routine",
+  "homeStartNewWorkout": "Start workout",
+  "homeLoadRoutine": "Routines",
   "homeAddExercise": "Add exercise",
   "homeSessionHeader": "Session {time}",
   "@homeSessionHeader": {
@@ -82,6 +80,14 @@
       }
     }
   },
+  "homeUpNextPreviewLabel": "Preview {templateName}",
+  "@homeUpNextPreviewLabel": {
+    "placeholders": {
+      "templateName": {
+        "type": "String"
+      }
+    }
+  },
   "homeUpNextDoneLabel": "{templateName}, done",
   "@homeUpNextDoneLabel": {
     "placeholders": {
@@ -91,25 +97,36 @@
     }
   },
   "homeUpNextStartFailed": "Could not start this session. Try again.",
-  "templatePickerTitle": "Load a Template",
-  "templatePickerTodayUpNextHeading": "Today / Up next",
-  "templatePickerRoutinesHeading": "Routines",
-  "templatePickerAllTemplatesHeading": "All Templates",
-  "templatePickerSearchHint": "Search templates",
-  "templatePickerEmptyTitle": "No plans yet",
-  "templatePickerEmptyMessage": "Finish a workout, then save it as a template.",
-  "templatePickerNoSearchResults": "No templates match your search.",
-  "templatePickerCustomizeTooltip": "Customize {templateName}",
-  "@templatePickerCustomizeTooltip": {
-    "placeholders": {
-      "templateName": {
-        "type": "String"
-      }
-    }
-  },
   "templatePickerPreviewStart": "Start workout",
   "templatePickerPreviewExercisesHeading": "Exercises",
-  "templatePickerPreviewEmptyExercises": "No exercises in this template yet.",
+  "templatePickerPreviewEmptyExercises": "No exercises in this workout yet.",
+  "routinesSheetTitle": "Routines",
+  "routinesSheetManage": "Manage",
+  "routinesSheetEdit": "Edit",
+  "routinesSheetBack": "All routines",
+  "routinesSheetNext": "Next: {name}",
+  "@routinesSheetNext": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinesSheetUpNext": "Up next",
+  "routinesSheetDone": "Done",
+  "routinesSheetWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@routinesSheetWorkoutCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinesSheetExerciseCount": "{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}",
+  "@routinesSheetExerciseCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinesSheetOtherWorkouts": "Other saved workouts",
+  "routinesSheetNotInRoutine": "Not in a routine",
+  "routinesSheetStartTooltip": "Start {name}",
+  "@routinesSheetStartTooltip": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinesSheetEmptyTitle": "No routines yet",
+  "routinesSheetEmptyMessage": "Create a routine to start its workouts from here.",
+  "routinesSheetEmptyAction": "Create a routine",
   "workoutTitle": "Workout",
   "workoutUnavailable": "Workout unavailable",
   "workoutSummaryListTitle": "Workouts",
@@ -140,9 +157,33 @@
   },
   "workoutFinish": "Finish Workout",
   "workoutResume": "Resume Workout",
-  "workoutFinished": "Workout finished",
   "workoutResumed": "Workout resumed",
-  "workoutShareAction": "Share",
+  "finishSummaryFacts": "{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}",
+  "@finishSummaryFacts": {
+    "description": "The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.",
+    "placeholders": {
+      "duration": {"type": "String"},
+      "sets": {"type": "String"},
+      "exercises": {"type": "int"}
+    }
+  },
+  "finishSummaryNewBests": "New bests",
+  "finishSummaryNoNewBests": "None",
+  "finishSummaryUpdate": "Update \"{template}\"",
+  "@finishSummaryUpdate": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdated": "\"{template}\" updated",
+  "@finishSummaryUpdated": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdateFailed": "Couldn't update \"{template}\"",
+  "@finishSummaryUpdateFailed": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryCopy": "Copy summary",
+  "finishSummaryCopied": "Copied",
+  "finishSummaryDone": "Done",
   "workoutEditStartTime": "Edit start time",
   "workoutEditFinishTime": "Edit finish time",
   "workoutStartTimeUpdated": "Start time updated",
@@ -207,6 +248,39 @@
       }
     }
   },
+  "workoutExerciseDone": "Done",
+  "@workoutExerciseDone": {
+    "description": "A Workout Exercise with Sets and no Planned Set left, shown with a check icon."
+  },
+  "workoutPerformedSetFraction": "{performed}/{total} sets",
+  "@workoutPerformedSetFraction": {
+    "description": "A Workout Exercise's Performed Sets out of all its Sets, while it still has a Planned Set.",
+    "placeholders": {
+      "performed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutPerformedSetsOfTotal": "{performed} of {total} sets",
+  "@workoutPerformedSetsOfTotal": {
+    "description": "Performed Sets out of all Sets: Today's Workout tile while the Workout has a Planned Set, and the spoken form of workoutPerformedSetFraction.",
+    "placeholders": {
+      "performed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutGroupRound": "Round {round} of {total}",
+  "@workoutGroupRound": {
+    "description": "The round an Exercise Group is on, on its first card.",
+    "placeholders": {
+      "round": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutGroupAllRoundsDone": "All rounds done",
+  "workoutCurrentExercise": "Now",
+  "@workoutCurrentExercise": {
+    "description": "Marks the Current Exercise (or its group's first card) on an open Workout."
+  },
   "cancelAction": "Cancel",
   "workoutDurationInProgress": "In progress",
   "workoutDurationHours": "{hours}h",
@@ -247,10 +321,25 @@
   "navSignIn": "Sign in",
   "navRecentActivity": "Recent activity",
   "navRoutines": "Routines",
+  "navCompounds": "Compounds",
+  "protocolsDomainTitle": "Protocols",
+  "protocolsLibrarySubtitle": "What you take, when, and for how long",
+  "compoundsLibrarySubtitle": "Everything you take, and each one's history",
+  "protocolsYourProtocols": "Your protocols",
+  "protocolsNewProtocol": "New protocol",
+  "protocolsLogDose": "Log a dose",
+  "protocolsLoggedHeading": "Logged",
+  "protocolsNothingToday": "Nothing planned or logged on this day.",
+  "protocolsIntroTitle": "Plan what you take",
+  "protocolsIntroMessage": "A protocol lists what you take and when. With times set, it can remind you when each dose is due.",
+  "protocolsLockedTitle": "Protocols are locked",
+  "protocolsLockUnavailableTitle": "Protocols lock unavailable",
+  "protocolsLockUnavailableMessage": "Protocols stay hidden because the device's secure storage could not be read.",
+  "privacyShowProtocolsOnToday": "Show Protocols on Today",
+  "privacyShowProtocolsOnTodaySubtitle": "Off hides the tab on this device. Protocols stay in Library.",
   "navSettings": "Settings",
   "navBodyTracker": "Body Tracker",
   "navMetrics": "Metrics",
-  "navSupplements": "Supplements",
   "agentKeysSignedOutTitle": "Sign in to manage agent keys",
   "agentKeysSignIn": "Sign in",
   "agentKeysNameLabel": "Agent key name",
@@ -516,6 +605,14 @@
     }
   },
   "activityUndoGenericConflict": "Activity could not be undone",
+  "activityUndoDependentConflict": "Can't undo: foods were added to this meal afterwards.",
+  "@activityUndoDependentConflict": {
+    "description": "Shown when undoing the change that created a Meal is refused because foods were added to that Meal later."
+  },
+  "activityUndoDuplicatePurposeNameConflict": "Can't undo: another purpose now has this name.",
+  "@activityUndoDuplicatePurposeNameConflict": {
+    "description": "Shown when undoing a change to a Purpose is refused because it would bring back a name another active Purpose now holds."
+  },
   "activityRelativeLessThanOneMinuteAgo": "less than 1 min ago",
   "activityRelativeMinutesAgo": "{count} min ago",
   "@activityRelativeMinutesAgo": {
@@ -545,7 +642,6 @@
   "trainingFallbackTitle": "Exercise",
   "trainingUnavailable": "Exercise unavailable",
   "trainingOpenNavigationTooltip": "Open navigation",
-  "trainingSetSaved": "Set saved",
   "trainingExercisesTitle": "Exercises",
   "trainingNoExercisesYet": "No exercises yet",
   "trainingGroupsTitle": "Groups",
@@ -590,7 +686,6 @@
   },
   "trainingCancel": "Cancel",
   "trainingSaveGroup": "Save group",
-  "trainingRestTimer": "Rest timer",
   "trainingRestCountdown": "Rest {remaining}",
   "@trainingRestCountdown": {
     "placeholders": {
@@ -599,16 +694,74 @@
       }
     }
   },
-  "trainingRestComplete": "Rest complete",
-  "trainingRestSecondsLabel": "Rest sec",
-  "trainingStartTimer": "Start",
-  "trainingUpdateTimer": "Update",
-  "trainingCancelTimerTooltip": "Cancel timer",
+  "trainingRestStripRemainingLabel": "Rest, {minutes} minutes {seconds} seconds left",
+  "@trainingRestStripRemainingLabel": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingRestStripShorten": "−15 s",
+  "trainingRestStripShortenLabel": "Rest 15 seconds less",
+  "trainingRestStripLengthen": "+15 s",
+  "trainingRestStripLengthenLabel": "Rest 15 seconds more",
+  "trainingStopRestTooltip": "Stop rest",
+  "trainingStartRest": "Start rest",
+  "trainingRestVolumeTitle": "Alert volume",
+  "trainingRestGetReady": "Get ready · {time}",
+  "@trainingRestGetReady": {
+    "description": "The rest strip in the last 10 seconds of a rest longer than 15 seconds, with the remaining time as m:ss.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestOver": "Rest over",
+  "trainingRestOverElapsed": "+{time}",
+  "@trainingRestOverElapsed": {
+    "description": "How long ago the rest ended, as m:ss, beside Rest over on the rest strip.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestNotificationTitle": "Rest timer",
+  "trainingRestNotificationCountdown": "Rest",
+  "trainingRestNotificationGetReady": "Get ready · {exercise} · Set {number}",
+  "@trainingRestNotificationGetReady": {
+    "description": "The notification 10 seconds before a rest ends, naming the Set that comes next.",
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingRestNotificationPrepare": "{exercise} · Set {number} in {time}",
+  "@trainingRestNotificationPrepare": {
+    "description": "The notification 3 seconds before a rest ends, naming the Set that comes next, with the time as m:ss.",
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "number": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestNotificationOver": "Rest over",
   "trainingPersonalRecordTooltip": "Personal record",
-  "trainingEditSetTooltip": "Edit set",
-  "trainingDeleteSetTooltip": "Delete set",
-  "trainingMarkSetCompleteLabel": "Mark set complete",
-  "trainingMarkSetIncompleteLabel": "Mark set incomplete",
   "trainingReorderSetLabel": "Reorder set",
   "trainingDecreaseDimensionTooltip": "Decrease {dimension}",
   "@trainingDecreaseDimensionTooltip": {
@@ -632,8 +785,6 @@
   "trainingSideRight": "R",
   "trainingSideRightTooltip": "Right side",
   "trainingRpeLabel": "RPE",
-  "trainingSaveSet": "Save set",
-  "trainingSaveChanges": "Save changes",
   "trainingCompletedSet": "Completed set",
   "trainingSetComplete": "Complete",
   "trainingSetInProgress": "In progress",
@@ -660,22 +811,178 @@
   "trainingUnitSecond": "sec",
   "trainingUnitKilometer": "km",
   "trainingUnitMile": "mi",
-  "workoutTemplatesTitle": "Workout Templates",
-  "workoutTemplatesLibrarySubtitle": "Reusable plans for one Workout",
-  "workoutTemplatesNew": "New Workout Template",
-  "workoutTemplatesCreateTitle": "Create Workout Template",
-  "workoutTemplatesCreate": "Create Workout Template",
-  "workoutTemplatesNameLabel": "Workout Template name",
+  "trainingLogSet": "Log set",
+  "trainingLogSetOf": "Log set {number} of {total}",
+  "@trainingLogSetOf": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetLogged": "Set {number} logged",
+  "@trainingSetLogged": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetLoggedCarried": "Set {number} logged · {count, plural, =1{1 later set updated} other{{count} later sets updated}}",
+  "@trainingSetLoggedCarried": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetNotLogged": "Set not logged: {reason}",
+  "@trainingSetNotLogged": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetNotUpdated": "Set not updated: {reason}",
+  "@trainingSetNotUpdated": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingPlannedSetRemoved": "Planned set removed",
+  "trainingSetDeleted": "Set deleted",
+  "trainingRoundAdded": "Round added",
+  "trainingUndo": "Undo",
+  "trainingUndoConflict": "Couldn't undo: changed since",
+  "trainingRestAfterLabel": "Rest after",
+  "trainingRestOff": "Off",
+  "trainingDecreaseRestTooltip": "Decrease rest",
+  "trainingIncreaseRestTooltip": "Increase rest",
+  "trainingContextRoundNext": "{groupName} · Round {round} of {total} · Next: {exerciseName}",
+  "@trainingContextRoundNext": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      },
+      "round": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingContextRound": "{groupName} · Round {round} of {total}",
+  "@trainingContextRound": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      },
+      "round": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingContextAllRoundsDone": "{groupName} · All rounds done",
+  "@trainingContextAllRoundsDone": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingAddSet": "Add set",
+  "trainingAddRound": "Add round",
+  "trainingNotDone": "Not done",
+  "trainingUpdateSet": "Update",
+  "trainingDeleteSet": "Delete",
+  "trainingNextExercise": "Next: {exerciseName}",
+  "@trainingNextExercise": {
+    "placeholders": {
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingScreenMenuTooltip": "More options",
+  "trainingExerciseOverviewMenuItem": "Exercise overview",
+  "replaceExerciseMenuItem": "Replace exercise",
+  "replaceExerciseReplaced": "Replaced",
+  "replaceExerciseAlreadyInWorkout": "Already in this workout",
+  "replaceExerciseNotReplaced": "Exercise not replaced",
+  "workoutExerciseOptionsTooltip": "Options for {exerciseName}",
+  "@workoutExerciseOptionsTooltip": {
+    "placeholders": {
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetRowDoneLabel": "Set {number}, done, {values}",
+  "@trainingSetRowDoneLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetRowNextLabel": "Set {number}, next, {values}",
+  "@trainingSetRowNextLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetRowPlannedLabel": "Set {number}, planned, {values}",
+  "@trainingSetRowPlannedLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemovePlannedSetAction": "Remove planned set",
+  "workoutTemplatesTitle": "Saved workouts",
+  "workoutTemplatesLibrarySubtitle": "Reusable plans for one workout",
+  "workoutTemplatesNew": "New saved workout",
+  "workoutTemplatesCreateTitle": "Create saved workout",
+  "workoutTemplatesCreate": "Create saved workout",
+  "workoutTemplatesNameLabel": "Workout name",
   "workoutTemplatesNotesLabel": "Standing notes",
   "workoutTemplatesCancel": "Cancel",
-  "workoutTemplatesActiveHeading": "Active Workout Templates",
-  "workoutTemplatesArchivedHeading": "Archived Workout Templates",
-  "workoutTemplatesShowArchived": "Show archived Workout Templates",
-  "workoutTemplatesHideArchived": "Hide archived Workout Templates",
-  "workoutTemplatesEmptyTitle": "No Workout Templates yet",
+  "workoutTemplatesActiveHeading": "Active",
+  "workoutTemplatesArchivedHeading": "Archived",
+  "workoutTemplatesShowArchived": "Show archived workouts",
+  "workoutTemplatesHideArchived": "Hide archived workouts",
+  "workoutTemplatesEmptyTitle": "No saved workouts yet",
   "workoutTemplatesEmptyMessage": "Create a reusable plan for one Workout.",
-  "workoutTemplatesArchivedEmpty": "No archived Workout Templates.",
-  "workoutTemplatesExerciseCount": "{count, plural, =0{No Template Exercises} =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "workoutTemplatesArchivedEmpty": "No archived workouts.",
+  "workoutTemplatesExerciseCount": "{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}",
   "@workoutTemplatesExerciseCount": {
     "placeholders": {
       "count": {"type": "int"}
@@ -687,11 +994,11 @@
       "name": {"type": "String"}
     }
   },
-  "workoutTemplatesArchive": "Archive Workout Template",
-  "workoutTemplatesArchiveTitle": "Archive Workout Template?",
-  "workoutTemplatesArchiveMessage": "This hides the template from active lists and pickers. Logged Workouts remain unchanged.",
-  "workoutTemplatesRestore": "Restore Workout Template",
-  "workoutTemplatesActionFailed": "The Workout Template could not be updated.",
+  "workoutTemplatesArchive": "Archive saved workout",
+  "workoutTemplatesArchiveTitle": "Archive saved workout?",
+  "workoutTemplatesArchiveMessage": "This hides it from active lists and pickers. Logged workouts remain unchanged.",
+  "workoutTemplatesRestore": "Restore saved workout",
+  "workoutTemplatesActionFailed": "The saved workout could not be updated.",
   "workoutTemplatesStartTooltip": "Start {name}",
   "@workoutTemplatesStartTooltip": {
     "placeholders": {
@@ -699,19 +1006,19 @@
     }
   },
   "workoutTemplatesStartFailed": "The Workout could not be started.",
-  "workoutTemplateEditorTitle": "Edit Workout Template",
-  "workoutTemplateSaveDetails": "Save Workout Template details",
-  "workoutTemplateDetailsSaved": "Workout Template details saved",
-  "workoutTemplateExercisesHeading": "Template Exercises",
-  "workoutTemplateAddExercise": "Add Template Exercise",
-  "workoutTemplateNoExercises": "No Template Exercises. Add one to build the plan.",
+  "workoutTemplateEditorTitle": "Edit saved workout",
+  "workoutTemplateSaveDetails": "Save details",
+  "workoutTemplateDetailsSaved": "Details saved",
+  "workoutTemplateExercisesHeading": "Exercises",
+  "workoutTemplateAddExercise": "Add exercise",
+  "workoutTemplateNoExercises": "No exercises. Add one to build the plan.",
   "workoutTemplateExerciseNotes": "Exercise standing notes",
   "workoutTemplateEditExerciseNotes": "Edit exercise notes",
   "workoutTemplateSaveExerciseNotes": "Save exercise notes",
-  "workoutTemplateRemoveExercise": "Remove Template Exercise",
-  "workoutTemplateRemoveExerciseTitle": "Remove Template Exercise?",
+  "workoutTemplateRemoveExercise": "Remove exercise",
+  "workoutTemplateRemoveExerciseTitle": "Remove exercise?",
   "workoutTemplateRemoveExerciseMessage": "Its Prescriptions are removed from this plan. Logged Workouts remain unchanged.",
-  "workoutTemplateReorderExercise": "Reorder Template Exercise",
+  "workoutTemplateReorderExercise": "Reorder exercise",
   "workoutTemplatePrescriptionsHeading": "Prescriptions",
   "workoutTemplateAddPrescription": "Add Prescription",
   "workoutTemplateNoPrescriptions": "No Prescriptions",
@@ -719,7 +1026,7 @@
   "workoutTemplatePrescriptionMode": "Prescription mode",
   "workoutTemplatePrescriptionFixed": "Fixed values",
   "workoutTemplatePrescriptionCopyPrevious": "Copy previous",
-  "workoutTemplatePrescriptionCopyPreviousHelp": "Use the values from the previous session when this template is loaded.",
+  "workoutTemplatePrescriptionCopyPreviousHelp": "Use the values from the previous session when this workout is started.",
   "workoutTemplatePrescriptionRepeat": "Repeat",
   "workoutTemplatePrescriptionRestAfter": "Rest after",
   "workoutTemplatePrescriptionSeconds": "sec",
@@ -731,12 +1038,12 @@
   "workoutTemplatePrescriptionInvalid": "Enter valid non-negative values, a repeat of at least 1, and optional non-negative rest.",
   "workoutTemplatePrescriptionWarningTitle": "Check Prescription values",
   "workoutTemplatePrescriptionSaveAnyway": "Save anyway",
-  "workoutTemplateUnavailable": "Workout Template unavailable",
-  "workoutTemplateExercisePickerTitle": "Add Template Exercise",
+  "workoutTemplateUnavailable": "Saved workout unavailable",
+  "workoutTemplateExercisePickerTitle": "Add exercise",
   "workoutTemplateGroupsHeading": "Groups",
   "workoutTemplateAddGroup": "Add Group",
   "workoutTemplateNoGroups": "No Groups. Add a superset or circuit to this plan.",
-  "workoutTemplateGroupNeedsExercises": "Add at least two ungrouped Template Exercises first.",
+  "workoutTemplateGroupNeedsExercises": "Add at least two ungrouped exercises first.",
   "workoutTemplateCreateGroup": "Create Group",
   "workoutTemplateEditGroup": "Edit Group",
   "workoutTemplateGroupName": "Group name",
@@ -747,10 +1054,10 @@
   },
   "workoutTemplateGroupRounds": "Rounds",
   "workoutTemplateGroupRoundsHelp": "A round is one pass through every exercise in this Group.",
-  "workoutTemplateGroupMembers": "Template Exercises",
-  "workoutTemplateSelectedGroupMembers": "Selected Template Exercises",
-  "workoutTemplateAvailableGroupMembers": "Available Template Exercises",
-  "workoutTemplateNoSelectedGroupMembers": "Select at least two Template Exercises below.",
+  "workoutTemplateGroupMembers": "Exercises",
+  "workoutTemplateSelectedGroupMembers": "Selected exercises",
+  "workoutTemplateAvailableGroupMembers": "Available exercises",
+  "workoutTemplateNoSelectedGroupMembers": "Select at least two exercises below.",
   "workoutTemplateReorderGroupMember": "Reorder {name}",
   "@workoutTemplateReorderGroupMember": {
     "placeholders": {"name": {"type": "String"}}
@@ -767,14 +1074,14 @@
   "workoutTemplateGroupNameRequired": "Enter a Group name.",
   "workoutTemplateGroupColorInvalid": "Enter a color as #RRGGBB.",
   "workoutTemplateGroupRoundsInvalid": "Rounds must be a whole number of at least 1.",
-  "workoutTemplateGroupMembersInvalid": "Select at least two Template Exercises.",
+  "workoutTemplateGroupMembersInvalid": "Select at least two exercises.",
   "workoutTemplateSaveGroup": "Save Group",
   "workoutTemplateGroupActionFailed": "The Group could not be updated.",
   "workoutTemplateGroupRoundsCount": "{rounds, plural, =1{1 round} other{{rounds} rounds}}",
   "@workoutTemplateGroupRoundsCount": {
     "placeholders": {"rounds": {"type": "int"}}
   },
-  "workoutTemplateGroupMemberCount": "{count, plural, =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "workoutTemplateGroupMemberCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
   "@workoutTemplateGroupMemberCount": {
     "placeholders": {"count": {"type": "int"}}
   },
@@ -804,13 +1111,13 @@
   "@workoutTemplateDissolveGroupTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "workoutTemplateDissolveGroupMessage": "Exercises and Prescriptions stay in this Workout Template.",
+  "workoutTemplateDissolveGroupMessage": "Exercises and Prescriptions stay in this saved workout.",
   "workoutTemplateDissolveGroupSuccess": "Group dissolved",
   "workoutTemplateGroupedExerciseRemoveTitle": "Remove from {name} first",
   "@workoutTemplateGroupedExerciseRemoveTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "workoutTemplateGroupedExerciseRemoveMessage": "Edit or dissolve the Group before removing this Template Exercise.",
+  "workoutTemplateGroupedExerciseRemoveMessage": "Edit or dissolve the Group before removing this exercise.",
   "routinePlansTitle": "Routines",
   "routinePlansNew": "New Routine",
   "routinePlansCreateTitle": "Create Routine",
@@ -821,13 +1128,13 @@
   "routinePlansUnavailable": "Routines unavailable",
   "routinePlansActionFailed": "The Routine could not be updated.",
   "routinePlansEmptyTitle": "No Routines yet",
-  "routinePlansEmptyMessage": "Create a Routine to keep an ordered collection of Workout Templates.",
+  "routinePlansEmptyMessage": "Create a Routine to keep the workouts of one plan together.",
   "routinePlansActiveHeading": "ACTIVE",
   "routinePlansShowArchived": "Show archived Routines",
   "routinePlansHideArchived": "Hide archived Routines",
   "routinePlansArchivedHeading": "ARCHIVED",
   "routinePlansArchivedEmpty": "No archived Routines",
-  "routinePlansTemplateCount": "{count, plural, =1{1 Workout Template} other{{count} Workout Templates}}",
+  "routinePlansTemplateCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
   "@routinePlansTemplateCount": {
     "placeholders": {"count": {"type": "int"}}
   },
@@ -845,29 +1152,19 @@
   },
   "routinePlansArchive": "Archive Routine",
   "routinePlansRestore": "Restore Routine",
-  "routinePlansStartTooltip": "Start {name}",
-  "@routinePlansStartTooltip": {
-    "placeholders": {"name": {"type": "String"}}
-  },
-  "routinePlansStartSheetTitle": "Start {name}",
-  "@routinePlansStartSheetTitle": {
-    "placeholders": {"name": {"type": "String"}}
-  },
-  "routinePlansStartEmptyMessage": "Add a Workout Template to this Routine first.",
-  "routinePlansStartFailed": "The Workout could not be started.",
   "routinePlansCancel": "Cancel",
   "routinePlansArchiveTitle": "Archive {name}?",
   "@routinePlansArchiveTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansArchiveMessage": "Workout Templates and this Routine's references remain unchanged and restorable.",
+  "routinePlansArchiveMessage": "Its saved workouts remain unchanged, and the Routine can be restored.",
   "routinePlansSaveDetails": "Save Routine",
-  "routinePlansTemplatesHeading": "Workout Templates",
-  "routinePlansAddTemplate": "Add Workout Template",
-  "routinePlansNoTemplates": "No Workout Templates in this Routine yet.",
-  "routinePlansTemplateLabel": "Workout Template",
-  "routinePlansArchivedTemplateLabel": "Archived Workout Template",
-  "routinePlansRestoreTemplate": "Restore Workout Template",
+  "routinePlansTemplatesHeading": "Workouts",
+  "routinePlansAddTemplate": "Add workout",
+  "routinePlansNoTemplates": "No workouts in this Routine yet.",
+  "routinePlansTemplateLabel": "Workout",
+  "routinePlansArchivedTemplateLabel": "Archived workout",
+  "routinePlansRestoreTemplate": "Restore workout",
   "routinePlansReorderTemplate": "Reorder {name}",
   "@routinePlansReorderTemplate": {
     "placeholders": {"name": {"type": "String"}}
@@ -883,19 +1180,19 @@
   "@routinePlansRemoveReferenceTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansRemoveReferenceMessage": "This removes only the reference from {name}. The Workout Template remains available everywhere else.",
+  "routinePlansRemoveReferenceMessage": "This removes it only from {name}. The saved workout remains available everywhere else.",
   "@routinePlansRemoveReferenceMessage": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansTemplatePickerTitle": "Add Workout Template",
-  "routinePlansNoAvailableTemplates": "Create an active Workout Template in Library before adding one to this Routine.",
+  "routinePlansTemplatePickerTitle": "Add workout",
+  "routinePlansNoAvailableTemplates": "Create a saved workout in Library before adding one to this Routine.",
   "routinePlansCadenceHeading": "Cadence",
   "routinePlansCadenceLabel": "Routine cadence",
   "routinePlansCadenceNone": "None",
   "routinePlansCadenceWeekly": "Weekly",
   "routinePlansCadenceRotating": "Rotating",
   "routinePlansRotatingWindowLabel": "Number of positions",
-  "routinePlansRotatingWindowHelp": "Each position can contain more than one Workout Template.",
+  "routinePlansRotatingWindowHelp": "Each position can hold more than one workout.",
   "routinePlansRotatingWindowError": "Enter a whole number of 1 or more.",
   "routinePlansCadenceInvalid": "Choose a valid Cadence.",
   "routinePlansSaveCadence": "Save Cadence",
@@ -913,7 +1210,7 @@
   "@routinePlansRotatingSlot": {
     "placeholders": {"slot": {"type": "int"}}
   },
-  "routinePlansAddTemplateToSlot": "Add Workout Template to {slot}",
+  "routinePlansAddTemplateToSlot": "Add workout to {slot}",
   "@routinePlansAddTemplateToSlot": {
     "placeholders": {"slot": {"type": "String"}}
   },
@@ -929,8 +1226,8 @@
     "placeholders": {"name": {"type": "String"}}
   },
   "routinePlansCurrentSlot": "Current slot",
-  "workoutCaptureMenuAction": "Save as Workout Template",
-  "workoutCaptureTitle": "Save workout as template",
+  "workoutCaptureMenuAction": "Save for reuse",
+  "workoutCaptureTitle": "Save workout for reuse",
   "workoutCaptureLoading": "Preparing capture preview",
   "workoutCapturePreviewUnavailable": "This workout could not be prepared for capture. Try again.",
   "workoutCaptureRetry": "Try again",
@@ -956,8 +1253,8 @@
   "@workoutCaptureGroupCount": {
     "placeholders": {"count": {"type": "int"}}
   },
-  "workoutCaptureNameLabel": "Workout Template name",
-  "workoutCaptureNameRequired": "Enter a Workout Template name.",
+  "workoutCaptureNameLabel": "Workout name",
+  "workoutCaptureNameRequired": "Enter a workout name.",
   "workoutCaptureRoutineLabel": "Add to Routine",
   "workoutCaptureRoutineHelp": "Optional. Collection Routines append the reference; Cadence Routines require a slot.",
   "workoutCaptureRoutineNone": "None",
@@ -984,23 +1281,2020 @@
   },
   "workoutCaptureSlotOutOfRange": "Enter an available slot number.",
   "workoutCaptureChooseSlotAction": "Choose slot",
-  "workoutCaptureReferenceNote": "This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.",
+  "workoutCaptureReferenceNote": "This creates a new saved workout from what you logged. The logged workout stays unchanged; adding it to a Routine adds only a reference.",
   "workoutCaptureErrorsTitle": "Cannot save yet",
   "workoutCaptureWarningsTitle": "Review before saving",
   "workoutCaptureAcceptWarnings": "I reviewed these warnings and want to save anyway.",
-  "workoutCaptureSave": "Save Template",
+  "workoutCaptureSave": "Save",
   "workoutCaptureSaving": "Saving...",
-  "workoutCaptureSaveFailed": "The Workout Template could not be saved. Review your choices and try again.",
-  "workoutCaptureSaved": "Workout Template saved.",
-  "workoutUpdateTemplateMenuAction": "Update template",
+  "workoutCaptureSaveFailed": "The saved workout could not be created. Review your choices and try again.",
+  "workoutCaptureSaved": "Saved for reuse.",
+  "workoutUpdateTemplateMenuAction": "Update saved workout",
   "templateUpdatePromptTitle": "Update \"{name}\"?",
   "@templateUpdatePromptTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
   "templateUpdateDismissAction": "Not now",
-  "templateUpdateConfirmAction": "Update template",
-  "templateUpdateConfirmedMessage": "Template updated.",
-  "templateUpdateNotLinkedMessage": "This workout isn't linked to a Workout Template.",
+  "templateUpdateConfirmAction": "Update saved workout",
+  "templateUpdateConfirmedMessage": "Saved workout updated.",
+  "templateUpdateNotLinkedMessage": "This workout didn't start from a saved workout.",
   "templateUpdateGroupsChangedNote": "Exercise groups changed",
-  "templateUpdateNoChangesNote": "No changes to update"
+  "templateUpdateNoChangesNote": "No changes to update",
+  "templateChangeAdd": "Add {exercise}",
+  "@templateChangeAdd": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeRemove": "Remove {exercise}",
+  "@templateChangeRemove": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeSets": "{exercise}: sets changed",
+  "@templateChangeSets": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateStartNoExercises": "No exercises",
+  "templateStartEmptyTitle": "\"{name}\" has no exercises",
+  "@templateStartEmptyTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "templateStartEmptyMessage": "Starting it opens an empty workout. Add exercises to it to have them load when you start it.",
+  "templateStartEmptyConfirmAction": "Start empty workout",
+  "workoutTemplateNotesTitle": "Plan notes",
+  "workoutTemplateNotesSource": "From {name}",
+  "@workoutTemplateNotesSource": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateNotesShowMore": "Show more",
+  "workoutTemplateNotesShowLess": "Show less",
+  "activityBackupRestoreActor": "Backup restore",
+  "backupRestoreSectionTitle": "Restore",
+  "backupRestoreDescription": "Bring in workouts, food, and body readings from a Perennia backup file. Restoring only adds and updates; nothing on this device is erased.",
+  "backupRestoreButton": "Restore from backup",
+  "backupRestoreReadingProgress": "Reading backup…",
+  "backupRestoreRestoringProgress": "Restoring…",
+  "backupRestorePassphraseTitle": "Encrypted backup",
+  "backupRestorePassphraseMessage": "Enter the passphrase this backup was made with.",
+  "backupRestorePassphraseLabel": "Backup passphrase",
+  "backupRestorePassphraseRejected": "That passphrase didn't unlock this backup.",
+  "backupRestoreUnlockAction": "Unlock",
+  "backupRestoreCancelAction": "Cancel",
+  "backupRestoreConfirmTitle": "Restore this backup?",
+  "backupRestoreCreatedAt": "Made {date}",
+  "@backupRestoreCreatedAt": {"placeholders": {"date": {"type": "String"}}},
+  "backupRestoreWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@backupRestoreWorkoutCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreSetCount": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@backupRestoreSetCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreFoodEntryCount": "{count, plural, =1{1 food entry} other{{count} food entries}}",
+  "@backupRestoreFoodEntryCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreMetricReadingCount": "{count, plural, =1{1 metric reading} other{{count} metric readings}}",
+  "@backupRestoreMetricReadingCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreMergeExplanation": "Restoring adds anything this device is missing. Nothing here is erased: when the backup and this device both have the same item, the more recently edited one is kept. You can undo the restore from Recent activity.",
+  "backupRestoreConfirmAction": "Restore",
+  "backupRestoreDoneTitle": "Backup restored",
+  "backupRestoreChangedCount": "{count, plural, =0{Nothing new: this device already had everything in the backup.} =1{1 item added or updated.} other{{count} items added or updated.}}",
+  "@backupRestoreChangedCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreUnchangedCount": "{count, plural, =1{1 item was already up to date.} other{{count} items were already up to date.}}",
+  "@backupRestoreUnchangedCount": {"placeholders": {"count": {"type": "int"}}},
+  "backupRestoreDoneAction": "Done",
+  "backupRestoreFailedTitle": "Couldn't restore this backup",
+  "backupRestoreUnreadableMessage": "This file isn't a Perennia backup, or it's damaged. Nothing on this device was changed.",
+  "backupRestoreNewerVersionMessage": "This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.",
+  "backupSettingsTitle": "Backup & restore",
+  "backupSettingsHubSubtitle": "Back up to a file or restore one",
+  "backupNowSectionTitle": "Back up",
+  "backupNowDescription": "Save your workouts, food, and body readings to a backup file. Keep it somewhere off this phone, like a cloud drive, so you can restore it on a new one.",
+  "backupNowButton": "Back up now",
+  "backupNowProgress": "Backing up…",
+  "backupNowSavedMessage": "Backup saved.",
+  "backupNowFailedTitle": "Couldn't save the backup",
+  "backupNowFailedMessage": "The backup file couldn't be written there. Try again, or choose another place.",
+  "backupNowUnsupportedMessage": "This device can't save a backup file.",
+  "backupPassphraseLabel": "Backup passphrase",
+  "backupPassphraseHelper": "Optional. When set, backups are encrypted, and restoring one asks for this passphrase. Without it the backup can't be opened.",
+  "autoBackupSwitchTitle": "Auto-backup",
+  "autoBackupChooseFolderButton": "Choose backup folder",
+  "autoBackupFolderWarningLabel": "Auto-backup folder warning",
+  "autoBackupGrantPrompt": "Choose a backup folder again to resume auto-backup.",
+  "startWorkoutSheetTitle": "Start a workout",
+  "startWorkoutFocusSection": "Focus",
+  "startWorkoutEditFocusesTooltip": "Edit focuses",
+  "startWorkoutEmpty": "Empty workout",
+  "startWorkoutEmptySubtitle": "Start without a focus",
+  "startWorkoutFocusTileLabel": "Start a workout: {focus}",
+  "@startWorkoutFocusTileLabel": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutNoFocus": "No focus",
+  "workoutFocusSemanticLabel": "Focus: {focus}. Change focus",
+  "@workoutFocusSemanticLabel": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutChooseFocus": "Choose a focus",
+  "workoutFocusChanged": "Focus set to {focus}",
+  "@workoutFocusChanged": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutFocusCleared": "Focus removed",
+  "focusPickerTitle": "Focus",
+  "focusPickerNone": "No focus",
+  "focusPickerEdit": "Edit focuses",
+  "focusArchivedName": "{focus} (archived)",
+  "@focusArchivedName": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryYourExercises": "Recent under {focus}",
+  "@focusLibraryYourExercises": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryCatalog": "More {focus} exercises",
+  "@focusLibraryCatalog": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryBrowseAll": "Browse all {focus} exercises",
+  "@focusLibraryBrowseAll": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibrarySearchAll": "Search all exercises",
+  "focusLibraryAddExerciseTooltip": "Add {exercise}",
+  "@focusLibraryAddExerciseTooltip": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      }
+    }
+  },
+  "focusUseToday": "Today",
+  "focusUseYesterday": "Yesterday",
+  "focusUseWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@focusUseWorkoutCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "focusUseSubtitle": "{when} · {count}",
+  "@focusUseSubtitle": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseCatalogFocusAll": "All",
+  "exerciseCatalogFocusFilterLabel": "Focus",
+  "exerciseCatalogInFocus": "In {focus}",
+  "@exerciseCatalogInFocus": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseCatalogOtherExercises": "Other exercises",
+  "focusManagerTitle": "Focuses",
+  "focusManagerLibrarySubtitle": "What you train, for starting a workout",
+  "focusManagerAdd": "Add focus",
+  "focusManagerNameLabel": "Name",
+  "focusManagerRename": "Rename",
+  "focusManagerArchive": "Archive",
+  "focusManagerSave": "Save",
+  "focusManagerReorderHint": "Press and hold to reorder.",
+  "focusManagerArchiveTitle": "Archive {focus}?",
+  "@focusManagerArchiveTitle": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusColorMenu": "Color",
+  "focusColorDialogTitle": "Color for {name}",
+  "@focusColorDialogTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "focusColorBack": "Back",
+  "focusColorCardio": "Cardio",
+  "focusColorCore": "Core",
+  "focusColorShoulders": "Shoulders",
+  "focusColorArms": "Arms",
+  "focusColorLegs": "Legs",
+  "focusColorChest": "Chest",
+  "focusManagerArchiveBody": "Workouts already logged under it keep it. It stops being offered when you start a workout.",
+  "focusManagerDuplicateName": "A focus with that name already exists.",
+  "focusManagerEmptyName": "Enter a name.",
+  "focusManagerEmpty": "No focuses. Add one to start workouts from it.",
+  "exerciseEditorFocusesLabel": "Focuses",
+  "exerciseEditorFocusesHelp": "Offered first when you start a workout under one of these.",
+  "workoutTemplateFocusLabel": "Focus",
+  "homeSessionHeaderWithFocus": "{focus} · {time}",
+  "@homeSessionHeaderWithFocus": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryHeading": "Add your first exercise",
+  "focusLibraryStaples": "{focus} staples",
+  "@focusLibraryStaples": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusManagerSaveFailed": "Could not save the focus. Try again.",
+  "protocolEditorNewTitle": "New Protocol",
+  "protocolEditorEditTitle": "Edit Protocol",
+  "protocolEditorNameLabel": "Name",
+  "protocolEditorStartDateLabel": "Start date",
+  "protocolEditorPeriodHeading": "Period",
+  "protocolEditorUntilLabel": "Until an end date",
+  "protocolEditorOngoing": "Ongoing, with no end date",
+  "protocolEditorEndDateLabel": "End date",
+  "protocolEditorDoseCountButton": "Set the end date from a number of doses",
+  "protocolEditorDoseCountTitle": "End after a number of doses",
+  "protocolEditorDoseCountMemberLabel": "Count the doses of",
+  "protocolEditorDoseCountLabel": "Number of doses",
+  "protocolEditorDoseCountResult": "Ends {date}",
+  "@protocolEditorDoseCountResult": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorDoseCountUnavailable": "Unavailable for this Schedule",
+  "protocolEditorDoseCountRange": "Enter a number from {min} to {max}",
+  "@protocolEditorDoseCountRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorDoseCountApply": "Set end date",
+  "protocolEditorCancel": "Cancel",
+  "protocolEditorCycleLabel": "Cycle",
+  "protocolEditorCycleSubtitle": "Days on, then days off, repeating",
+  "protocolEditorCycleOnDaysLabel": "Days on",
+  "protocolEditorCycleOffDaysLabel": "Days off",
+  "protocolEditorCycleAnchorLabel": "Cycle counted from",
+  "protocolEditorAnchorIsStart": "{date} (the start date)",
+  "@protocolEditorAnchorIsStart": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPausesHeading": "Pauses",
+  "protocolEditorPausesEmpty": "No Pauses",
+  "protocolEditorAddPause": "Add a Pause",
+  "protocolEditorRemovePause": "Remove Pause",
+  "protocolEditorDateRange": "{from} – {to}",
+  "@protocolEditorDateRange": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorCompoundsHeading": "Compounds",
+  "protocolEditorScheduleTitle": "{compound} Schedule",
+  "@protocolEditorScheduleTitle": {
+    "placeholders": {
+      "compound": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorScheduleCurrentVersion": "Current Schedule applies from {date}",
+  "@protocolEditorScheduleCurrentVersion": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorRuleTimed": "At set times",
+  "protocolEditorRuleUntimed": "Any time",
+  "protocolEditorRuleAsNeeded": "As needed",
+  "protocolEditorRuleNone": "No schedule",
+  "protocolEditorDaysDaily": "Every day",
+  "protocolEditorDaysWeekdays": "Weekdays",
+  "protocolEditorDaysEveryN": "Every N days",
+  "protocolEditorEveryNLabel": "Every how many days",
+  "protocolEditorEveryNAnchorLabel": "Counted from",
+  "protocolEditorTimesHeading": "Times",
+  "protocolEditorAddTime": "Add a time",
+  "protocolEditorRemoveTime": "Remove {time}",
+  "@protocolEditorRemoveTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorUntimedCountLabel": "Doses a day",
+  "protocolEditorPlannedAmountLabel": "Planned amount",
+  "protocolEditorUnitLabel": "Unit",
+  "protocolEditorRouteLabel": "Route",
+  "protocolEditorTargetOutcomesHeading": "Target outcomes (optional)",
+  "protocolEditorTargetOutcomesHelp": "Which Metrics or performance to correlate — seeds the later Effect view; no analysis happens here.",
+  "protocolEditorPerformance": "Performance",
+  "protocolEditorSave": "Save",
+  "protocolEditorArchive": "Archive",
+  "protocolEditorDelete": "Delete",
+  "protocolArchiveConfirmTitle": "Archive {name}?",
+  "@protocolArchiveConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolArchiveConfirmMessage": "Doses you logged stay in your history. From tomorrow it plans nothing, and today's doses you haven't logged are no longer expected.",
+  "protocolDeleteConfirmTitle": "Delete {name}?",
+  "@protocolDeleteConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolDeleteConfirmMessage": "Nothing has been logged for this Protocol, so it is removed completely. You can still recover it from the Activity Log.",
+  "protocolOnlyArchivable": "Something was logged for this Protocol, so it can only be archived.",
+  "protocolEditorNameRequired": "Name is required.",
+  "protocolEditorCompoundRequired": "A Protocol requires at least one Compound.",
+  "protocolEditorFixIssues": "Fix the marked fields to save.",
+  "protocolEditorSaveFailed": "Could not save the Protocol: {error}",
+  "@protocolEditorSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorDeleteFailed": "Could not delete the Protocol: {error}",
+  "@protocolEditorDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorArchiveFailed": "Could not archive the Protocol: {error}",
+  "@protocolEditorArchiveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorCompoundFallback": "Compound",
+  "protocolPlanIssueTimesFormat": "Each time must be HH:MM, from 00:00 to 23:59.",
+  "protocolPlanIssueTimesCount": "Plan 1 to {max} times a day.",
+  "@protocolPlanIssueTimesCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueTimesDistinct": "The same time is planned twice.",
+  "protocolPlanIssueUntimedCount": "Plan 1 to {max} doses a day.",
+  "@protocolPlanIssueUntimedCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueWeekdaysValid": "Choose at least one weekday.",
+  "protocolPlanIssueEveryNRange": "Every N days takes a number from {min} to {max}.",
+  "@protocolPlanIssueEveryNRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueAnchorDate": "Choose a real date to count from.",
+  "protocolPlanIssueAmountRequired": "Enter a planned amount, unit and route that a Dose could log.",
+  "protocolPlanIssueAmountAbsent": "As needed and No schedule carry no amount, unit or route.",
+  "protocolPlanIssueCycleLengths": "A cycle is 1 to {max} days on and 1 to {max} days off.",
+  "@protocolPlanIssueCycleLengths": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueBoundsOrder": "The end date can't be before the start date.",
+  "protocolPlanIssuePauseCount": "A Protocol holds at most {max} Pauses.",
+  "@protocolPlanIssuePauseCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssuePauseOrder": "A Pause can't end before it starts.",
+  "protocolPlanIssuePauseBounds": "Each Pause must fall within the Protocol's dates.",
+  "protocolPlanIssuePauseOverlap": "Two Pauses can't overlap.",
+  "protocolPlanIssueTimesMany": "More than {count} times a day is unusual. Check the times before saving.",
+  "@protocolPlanIssueTimesMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "effectPlanBreaksCountedAsDuring": "Off-cycle and paused days are counted as during.",
+  "plannedListRowLogged": "Logged",
+  "plannedListRowPending": "Pending",
+  "plannedListRowNotLogged": "Not logged",
+  "plannedListRowSkipped": "Skipped",
+  "plannedListAnyTime": "Any time",
+  "plannedListLogAll": "Log all planned",
+  "logDoseDateLabel": "Date",
+  "logDoseSkip": "Skip",
+  "logDoseUnskip": "Undo skip",
+  "dayStatusNotPlanned": "Not planned",
+  "dayStatusPaused": "Paused",
+  "dayStatusOffCycle": "Off cycle",
+  "dayStatusPending": "Pending",
+  "dayStatusLogged": "Logged",
+  "dayStatusPartlyLogged": "Partly logged",
+  "dayStatusNotLogged": "Not logged",
+  "dayStatusSkipped": "Skipped",
+  "notPlannedReasonNotScheduledToday": "Not scheduled that day",
+  "notPlannedReasonAsNeeded": "As needed",
+  "notPlannedReasonNoSchedule": "No schedule",
+  "notPlannedReasonRemoved": "Removed",
+  "notPlannedReasonOutside": "Outside the Protocol's dates",
+  "consistencyButton": "Consistency",
+  "consistencyScreenTitle": "Consistency · {name}",
+  "@consistencyScreenTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "consistencyRangeDays": "{count} days",
+  "@consistencyRangeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencyRangeCustom": "Custom",
+  "consistencyPlanned": "Planned",
+  "consistencyExtra": "Extra",
+  "consistencyExtraCount": "{count} extra",
+  "@consistencyExtraCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencySkippedCount": "{count, plural, other{{count} skipped}}",
+  "@consistencySkippedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencyNotInProtocol": "Not in a Protocol, so its days have no Day Status. Its Doses are listed by date.",
+  "consistencyNoDoses": "No Doses logged in this range.",
+  "consistencyLoadError": "Could not load this range.",
+  "consistencyChartEmpty": "Nothing planned or logged in this range.",
+  "consistencyChartLoggedLegend": "Logged Dose",
+  "consistencyChartExtraLegend": "Extra Dose",
+  "consistencyChartPlannedLegend": "Planned time",
+  "consistencyChartSemantics": "Dose times against planned times, {from} – {to}",
+  "@consistencyChartSemantics": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolReminderTitle": "Protocols",
+  "protocolReminderBody": "Planned for {time}",
+  "@protocolReminderBody": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolReminderChannelName": "Reminders",
+  "protocolRemindersSwitchLabel": "Reminders",
+  "protocolRemindersSwitchSubtitle": "A notification at each planned time",
+  "protocolRemindersPermissionDenied": "Notifications are off for Perennia",
+  "protocolRemindersOpenSettings": "Open settings",
+  "protocolRemindersScheduledThrough": "Reminders scheduled through {date}",
+  "@protocolRemindersScheduledThrough": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolRemindersBanner": "Reminders are off on this device",
+  "protocolRemindersAllow": "Allow",
+  "protocolRemindersSettingsTile": "Protocol reminders",
+  "protocolRemindersSettingsTileSubtitle": "Reminders on this device and notification permission",
+  "protocolRemindersSettingsTitle": "Protocol reminders",
+  "protocolRemindersDeviceSwitch": "Reminders on this device",
+  "protocolRemindersDeviceSwitchSubtitle": "Applies to this device only",
+  "protocolRemindersPermissionLabel": "Notifications",
+  "protocolRemindersPermissionGranted": "Allowed",
+  "protocolRemindersPermissionNotDetermined": "Not asked yet",
+  "protocolRemindersPermissionUnsupported": "Not available on this device",
+  "progressPeriodWeeks4": "4 wk",
+  "progressPeriodWeeks12": "12 wk",
+  "progressPeriodYear": "1 yr",
+  "progressRoutinesAction": "Routines",
+  "progressCardUnavailable": "Unavailable right now",
+  "progressFocusesAction": "Focuses",
+  "progressThisWeekTitle": "This week",
+  "progressThisWeekEmpty": "Plan your week with a Routine",
+  "progressThisWeekNothingLogged": "Nothing logged yet this week",
+  "progressThisWeekComparing": "Comparing {names}",
+  "@progressThisWeekComparing": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekComparingWeeklyOnly": "Comparing {names}. Weekly Routines only.",
+  "@progressThisWeekComparingWeeklyOnly": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekWeeklyOnly": "Weekly Routines only.",
+  "progressThisWeekSemantics": "This week: {days}.",
+  "@progressThisWeekSemantics": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekDaySemantics": "{weekday} {status}",
+  "@progressThisWeekDaySemantics": {
+    "placeholders": {
+      "weekday": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "progressStatusDone": "Done",
+  "progressStatusPartlyDone": "Partly done",
+  "progressStatusDoneDifferently": "Done differently",
+  "progressStatusNotDone": "Not done",
+  "progressStatusPending": "Pending",
+  "progressStatusPlanned": "Planned",
+  "progressStatusTrained": "Trained",
+  "progressStatusRest": "Rest",
+  "progressStatusNoPlan": "No plan",
+  "progressStatusSpoken": "{status, select, done{done} partly_done{partly done} done_differently{done differently} not_done{not done} pending{pending} planned{planned} trained{trained} rest{rest} no_plan{no plan} other{}}",
+  "@progressStatusSpoken": {
+    "description": "A Training Day Status as read inside a sentence, keyed by its wire value.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "progressCountDone": "{count, plural, other{{count} done}}",
+  "@progressCountDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPartlyDone": "{count, plural, other{{count} partly done}}",
+  "@progressCountPartlyDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountDoneDifferently": "{count, plural, other{{count} done differently}}",
+  "@progressCountDoneDifferently": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountNotDone": "{count, plural, other{{count} not done}}",
+  "@progressCountNotDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountTrained": "{count, plural, other{{count} trained}}",
+  "@progressCountTrained": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysTitle": "Trained days",
+  "progressTrainedDaysCount": "{count, plural, =1{1 trained day} other{{count} trained days}}",
+  "@progressTrainedDaysCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysSemantics": "{count, plural, =1{1 trained day in the last {weeks} weeks.} other{{count} trained days in the last {weeks} weeks.}}",
+  "@progressTrainedDaysSemantics": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "weeks": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysEmpty": "Logged workouts show here",
+  "progressFocusTimeTitle": "Time by Focus",
+  "progressFocusTimeEmpty": "Finished workouts show here",
+  "progressFocusTimeNoFocus": "No Focus",
+  "progressFocusTimeUnknownFocus": "Focus",
+  "@progressFocusTimeUnknownFocus": {
+    "description": "A Focus that has not reached this device yet."
+  },
+  "progressFocusTimeAxisHours": "{hours}h",
+  "@progressFocusTimeAxisHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "progressFocusTimeEntry": "{name} {duration}",
+  "@progressFocusTimeEntry": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "progressFocusTimeSemantics": "Time by Focus, this week: {entries}",
+  "@progressFocusTimeSemantics": {
+    "placeholders": {
+      "entries": {
+        "type": "String"
+      }
+    }
+  },
+  "progressHoursSpoken": "{count, plural, =1{1 hour} other{{count} hours}}",
+  "@progressHoursSpoken": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressMinutesSpoken": "{count, plural, =1{1 minute} other{{count} minutes}}",
+  "@progressMinutesSpoken": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressHoursMinutesSpoken": "{hours} {minutes}",
+  "@progressHoursMinutesSpoken": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "progressProtocolsTitle": "Protocols",
+  "progressProtocolsUnlock": "Unlock",
+  "progressProtocolsAll": "All protocols",
+  "progressProtocolsEmpty": "No protocol days in this period",
+  "progressCountLogged": "{count, plural, other{{count} logged}}",
+  "@progressCountLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPartlyLogged": "{count, plural, other{{count} partly logged}}",
+  "@progressCountPartlyLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountNotLogged": "{count, plural, other{{count} not logged}}",
+  "@progressCountNotLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPaused": "{count, plural, other{{count} paused}}",
+  "@progressCountPaused": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountSkipped": "{count, plural, other{{count} skipped}}",
+  "@progressCountSkipped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressKeyExercisesTitle": "Key exercises",
+  "progressKeyExercisesEmpty": "Mark exercises as favorites to chart them here",
+  "progressKeyExercisesNoCharted": "Your favorites have no charted records",
+  "progressKeyExercisesNoSessions": "No sessions this period",
+  "progressMeasureEstimatedOneRepMax": "e1RM",
+  "@progressMeasureEstimatedOneRepMax": {
+    "description": "The estimated one-rep max measure's label."
+  },
+  "progressMeasureMaxLoad": "heaviest",
+  "progressMeasureMaxReps": "most reps",
+  "progressMeasureMaxDuration": "longest",
+  "progressMeasureMinDuration": "shortest",
+  "progressMeasureMaxDistance": "farthest",
+  "progressMeasureFastestPace": "fastest pace",
+  "progressBest": "Best {value}",
+  "@progressBest": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonHigher": "↑ {difference} on before",
+  "@progressComparisonHigher": {
+    "description": "A higher-is-better measure beat the best before the period by {difference}.",
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonFaster": "{difference} faster than before",
+  "@progressComparisonFaster": {
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonShorter": "{difference} shorter than before",
+  "@progressComparisonShorter": {
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonSame": "Same as before",
+  "progressComparisonBestBefore": "Best before {value}",
+  "@progressComparisonBestBefore": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonFirst": "First sessions",
+  "@progressComparisonFirst": {
+    "description": "The exercise has no point before the period."
+  },
+  "progressNewBestOn": "New best on {date}",
+  "@progressNewBestOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "progressNewBestsTitle": "New bests",
+  "progressNewBestsTitleCount": "New bests · {count}",
+  "@progressNewBestsTitleCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressNewBestsEmpty": "No new bests in this period",
+  "progressNewBestRow": "{exercise} · {value}",
+  "@progressNewBestRow": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressNewBestEstimated": "e1RM {value}",
+  "@progressNewBestEstimated": {
+    "description": "An estimated one-rep max New Best's value.",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueKilograms": "{value} kg",
+  "@progressValueKilograms": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePounds": "{value} lb",
+  "@progressValuePounds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueReps": "{count, plural, =1{1 rep} other{{count} reps}}",
+  "@progressValueReps": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressValueKilometers": "{value} km",
+  "@progressValueKilometers": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueMiles": "{value} mi",
+  "@progressValueMiles": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePacePerKilometer": "{pace} /km",
+  "@progressValuePacePerKilometer": {
+    "placeholders": {
+      "pace": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePacePerMile": "{pace} /mi",
+  "@progressValuePacePerMile": {
+    "placeholders": {
+      "pace": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueSeconds": "{seconds} s",
+  "@progressValueSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "progressBodyTitle": "Body",
+  "progressBodyTrackerAction": "Body Tracker",
+  "progressBodyEmpty": "Log a measurement to see its trend",
+  "progressBodyTrendHint": "Smoothed over about 10 days",
+  "@progressBodyTrendHint": {
+    "description": "Under the Body card's title: how the Trend shown beside each measurement is smoothed."
+  },
+  "progressBodyChangeUp": "↑ {change}",
+  "@progressBodyChangeUp": {
+    "description": "The Trend rose over the period by {change}, a value with its unit.",
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "progressBodyChangeDown": "↓ {change}",
+  "@progressBodyChangeDown": {
+    "description": "The Trend fell over the period by {change}, a value with its unit.",
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "progressBodyNoChange": "No change",
+  "@progressBodyNoChange": {
+    "description": "The Trend's change over the period rounds to 0.0."
+  },
+  "progressBodyChartSemantics": "{count, plural, =1{{name}: 1 reading and its trend in this period} other{{name}: {count} readings and their trend in this period}}",
+  "@progressBodyChartSemantics": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeLogMeal": "Meal",
+  "@homeLogMeal": {
+    "description": "The Log sheet item that opens the Meal screen for the selected day."
+  },
+  "nutritionLogMeal": "Log meal",
+  "@nutritionLogMeal": {
+    "description": "The Nutrition Day button that opens the Meal screen for that day."
+  },
+  "nutritionMealCardSemantics": "{time}, {type}. Open meal",
+  "@nutritionMealCardSemantics": {
+    "description": "Screen reader label of a Meal card on the Nutrition Day; tapping the card opens the Meal screen. The type may carry the 'add foods' hint.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealScreenTitle": "Meal",
+  "@mealScreenTitle": {
+    "description": "The Meal screen's app bar title."
+  },
+  "mealHeaderNow": "now",
+  "@mealHeaderNow": {
+    "description": "The Meal screen header's time while a new Meal on today has no chosen time: it is logged at the time of the first write."
+  },
+  "mealHeaderChooseTime": "Choose time",
+  "@mealHeaderChooseTime": {
+    "description": "The Meal screen header on a new Meal on a past day before a time is chosen."
+  },
+  "mealHeaderAddFoods": "add foods",
+  "@mealHeaderAddFoods": {
+    "description": "Appended to a saved Meal's header and card when the Meal has no Food Entries."
+  },
+  "mealTimeNotRecorded": "time not recorded",
+  "@mealTimeNotRecorded": {
+    "description": "Shown in place of a Meal's clock time when only its date is known (an imported date-only Meal)."
+  },
+  "mealHeaderLabel": "{time} · {type}",
+  "@mealHeaderLabel": {
+    "description": "The Meal screen header: the Meal's time (or 'now') and its Meal Type.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealHeaderSemantics": "{time}, {type}. Change time or meal type",
+  "@mealHeaderSemantics": {
+    "description": "Screen reader label of the Meal screen header button.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealTimeShift15": "−15 min",
+  "@mealTimeShift15": {
+    "description": "Time-shift button: sets the Meal's time to 15 minutes before now."
+  },
+  "mealTimeShift30": "−30 min",
+  "@mealTimeShift30": {
+    "description": "Time-shift button: sets the Meal's time to 30 minutes before now."
+  },
+  "mealTimeShift60": "−1 h",
+  "@mealTimeShift60": {
+    "description": "Time-shift button: sets the Meal's time to 1 hour before now."
+  },
+  "mealTimeShift15Semantics": "15 minutes ago",
+  "@mealTimeShift15Semantics": {
+    "description": "Screen reader label of the −15 min time-shift button."
+  },
+  "mealTimeShift30Semantics": "30 minutes ago",
+  "@mealTimeShift30Semantics": {
+    "description": "Screen reader label of the −30 min time-shift button."
+  },
+  "mealTimeShift60Semantics": "1 hour ago",
+  "@mealTimeShift60Semantics": {
+    "description": "Screen reader label of the −1 h time-shift button."
+  },
+  "mealTimeSheetDate": "Date",
+  "@mealTimeSheetDate": {
+    "description": "The Meal time sheet's date row label."
+  },
+  "mealTimeSheetTime": "Time",
+  "@mealTimeSheetTime": {
+    "description": "The Meal time sheet's time row label."
+  },
+  "mealTimeSheetType": "Meal type",
+  "@mealTimeSheetType": {
+    "description": "The Meal time sheet's Meal Type list heading."
+  },
+  "mealAddFoodsLater": "Add foods later",
+  "@mealAddFoodsLater": {
+    "description": "Saves a new Meal with its time and Meal Type and no Food Entries."
+  },
+  "mealYourMeals": "Your meals",
+  "@mealYourMeals": {
+    "description": "Heading of the Meal screen's list of meals the user repeats."
+  },
+  "mealAddToRecent": "Add to {time} · {type}",
+  "@mealAddToRecent": {
+    "description": "Recent-Meal shortcut on a new Meal screen: opens the Meal logged in the last 30 minutes.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealLogged": "Meal logged",
+  "@mealLogged": {
+    "description": "Undo bar message after a Your meals row logs the Meal again."
+  },
+  "mealUndo": "Undo",
+  "@mealUndo": {
+    "description": "The Undo bar action on the Meal screen."
+  },
+  "mealFoodRemoved": "Food removed",
+  "@mealFoodRemoved": {
+    "description": "Undo bar message after a Food Entry is removed from a Meal."
+  },
+  "mealPortionUpdated": "Portion updated",
+  "@mealPortionUpdated": {
+    "description": "Undo bar message after a Food Entry's Portion is changed."
+  },
+  "mealDelete": "Delete meal",
+  "@mealDelete": {
+    "description": "Overflow menu item that archives the Meal and its Food Entries."
+  },
+  "mealDeleteConfirmTitle": "Delete this meal?",
+  "@mealDeleteConfirmTitle": {
+    "description": "Title of the Delete meal confirmation."
+  },
+  "mealDeleteConfirmBody": "The meal and its foods are removed from the day.",
+  "@mealDeleteConfirmBody": {
+    "description": "Body of the Delete meal confirmation."
+  },
+  "mealDeleteConfirmAction": "Delete",
+  "@mealDeleteConfirmAction": {
+    "description": "Confirms Delete meal."
+  },
+  "mealFutureTimeTitle": "Time is in the future",
+  "@mealFutureTimeTitle": {
+    "description": "Title of the confirmation shown when a chosen Meal time is more than 5 minutes ahead of now."
+  },
+  "mealFutureTimeBody": "Save {time} anyway?",
+  "@mealFutureTimeBody": {
+    "description": "Body of the future-time confirmation, naming the chosen time.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "mealFutureTimeConfirm": "Save",
+  "@mealFutureTimeConfirm": {
+    "description": "Confirms a Meal time in the future."
+  },
+  "mealRemoveEntry": "Remove {food}",
+  "@mealRemoveEntry": {
+    "description": "Tooltip and screen reader label of a Food Entry's remove button on the Meal screen.",
+    "placeholders": {
+      "food": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundListViewByDay": "View by day",
+  "compoundListSearchHint": "Search compounds",
+  "compoundListEmpty": "No compounds yet.",
+  "compoundListNoMatches": "No compounds match your search.",
+  "compoundListFavorites": "Favorites",
+  "compoundListRecent": "Recent",
+  "compoundListAll": "All compounds",
+  "compoundListAdd": "Add a compound",
+  "compoundListRemoveFavorite": "Remove favorite",
+  "compoundListAddFavorite": "Add favorite",
+  "compoundListEditAction": "Edit",
+  "@compoundListEditAction": {
+    "description": "Accessibility action on a Compound row that opens the Compound editor, the same as a long-press."
+  },
+  "compoundEditorNewTitle": "New compound",
+  "compoundEditorEditTitle": "Edit compound",
+  "compoundEditorName": "Name",
+  "compoundEditorStrength": "Strength (optional, e.g. 5 mg/capsule)",
+  "compoundEditorDefaultUnit": "Default unit",
+  "compoundEditorDefaultRoute": "Default route",
+  "compoundEditorSave": "Save",
+  "compoundEditorArchive": "Archive",
+  "compoundEditorNameRequired": "Enter a name",
+  "@compoundEditorNameRequired": {
+    "description": "Inline error on the Compound editor's name field when it is empty."
+  },
+  "compoundEditorStrengthInvalid": "Use the form 5 mg/capsule",
+  "@compoundEditorStrengthInvalid": {
+    "description": "Inline error on the Compound editor's strength field when it doesn't parse."
+  },
+  "compoundArchiveTitle": "Archive {name}?",
+  "@compoundArchiveTitle": {
+    "description": "Title of the confirmation before archiving a Compound.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveInProtocols": "{count, plural, =1{{name} is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.} other{{name} is in {count} active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.}}",
+  "@compoundArchiveInProtocols": {
+    "description": "Body of the archive confirmation for a Compound that one or more active Protocols hold.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveUnused": "Archiving hides {name} from the list and the picker. Its logged Doses stay.",
+  "@compoundArchiveUnused": {
+    "description": "Body of the archive confirmation for a Compound no active Protocol holds.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveConfirm": "Archive",
+  "@compoundArchiveConfirm": {
+    "description": "Confirms archiving a Compound."
+  },
+  "compoundListMenuTooltip": "More options",
+  "@compoundListMenuTooltip": {
+    "description": "Tooltip of the Compound list's app bar overflow menu."
+  },
+  "compoundEditorPurposes": "Purposes",
+  "@compoundEditorPurposes": {
+    "description": "Label above the Compound editor's Purpose chips."
+  },
+  "purposeFilterLabel": "Filter by purpose",
+  "@purposeFilterLabel": {
+    "description": "Screen reader label of the row of Purpose filter chips on the Compound list and in the Compound picker."
+  },
+  "purposeFilterAll": "All",
+  "@purposeFilterAll": {
+    "description": "The filter chip that clears the Purpose filter."
+  },
+  "purposeFilterEmpty": "No compounds with this purpose.",
+  "@purposeFilterEmpty": {
+    "description": "Shown when no Compound carries the selected Purpose. It never names the Purpose."
+  },
+  "purposeManagerTitle": "Purposes",
+  "@purposeManagerTitle": {
+    "description": "Title of the screen that manages Purposes, and the Compound list's menu item that opens it."
+  },
+  "purposeManagerAdd": "Add a Purpose",
+  "purposeManagerRowMenuTooltip": "More options",
+  "@purposeManagerRowMenuTooltip": {
+    "description": "Tooltip of the menu on a row of the Purpose manager. It never names the Purpose."
+  },
+  "purposeManagerNameLabel": "Name",
+  "purposeManagerRename": "Rename",
+  "purposeManagerArchive": "Archive",
+  "purposeManagerSave": "Save",
+  "purposeManagerReorderHint": "Press and hold to reorder.",
+  "purposeManagerArchiveBody": "Archive this purpose? Compounds keep the tag; it stops showing.",
+  "@purposeManagerArchiveBody": {
+    "description": "Body of the dialog confirming a Purpose's archive. Its title is the Purpose's name alone: a Purpose's name is never combined with a verb in one string."
+  },
+  "purposeManagerNameRequired": "Enter a name.",
+  "purposeManagerDuplicateName": "A purpose with that name already exists.",
+  "purposeManagerSaveFailed": "Could not save the purpose. Try again.",
+  "purposeManagerEmpty": "No purposes. Add one to filter compounds by it.",
+  "compoundPickerTitle": "Add Compounds",
+  "@compoundPickerTitle": {
+    "description": "Title of the sheet that picks a Protocol's Compounds."
+  },
+  "compoundPickerDone": "Done",
+  "@compoundPickerDone": {
+    "description": "Closes the Compound picker with its selection, when none of the listed Compounds is selected."
+  },
+  "compoundPickerDoneCount": "Done · {count}",
+  "@compoundPickerDoneCount": {
+    "description": "Closes the Compound picker with its selection, with the number of listed Compounds selected.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "compoundPickerCreate": "Create \"{name}\"",
+  "@compoundPickerCreate": {
+    "description": "Last row of the Compound picker: creates a Compound with the name the user searched for.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorAddCompounds": "Add Compounds",
+  "@protocolEditorAddCompounds": {
+    "description": "Button under a Protocol's member rows that opens the Compound picker."
+  },
+  "protocolEditorMemberArchived": "Archived",
+  "@protocolEditorMemberArchived": {
+    "description": "Marks a Protocol member row whose Compound is archived."
+  },
+  "protocolEditorRemoveMember": "Remove {compound}",
+  "@protocolEditorRemoveMember": {
+    "description": "Tooltip of a Protocol member row's remove button.",
+    "placeholders": {
+      "compound": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorFixSchedule": "Fix this Schedule",
+  "@protocolEditorFixSchedule": {
+    "description": "Under a Protocol member row after a save attempt, when that member's Schedule has issues."
+  },
+  "protocolScheduleSummaryAddAmount": "Add an amount",
+  "@protocolScheduleSummaryAddAmount": {
+    "description": "In a Protocol member row's Schedule summary, where the planned amount goes when it is empty."
+  },
+  "protocolScheduleSummaryEveryNDays": "{count, plural, =1{Every day} other{Every {count} days}}",
+  "@protocolScheduleSummaryEveryNDays": {
+    "description": "In a Schedule summary: the days of a Schedule planned every N days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryPerDay": "{count, plural, =1{1 a day} other{{count} a day}}",
+  "@protocolScheduleSummaryPerDay": {
+    "description": "In a Schedule summary: how many untimed doses an Any time Schedule plans each day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryTablets": "{count, plural, =1{{amount} tablet} other{{amount} tablets}}",
+  "@protocolScheduleSummaryTablets": {
+    "description": "In a Schedule summary: a planned amount in tablets, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryCapsules": "{count, plural, =1{{amount} capsule} other{{amount} capsules}}",
+  "@protocolScheduleSummaryCapsules": {
+    "description": "In a Schedule summary: a planned amount in capsules, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryDrops": "{count, plural, =1{{amount} drop} other{{amount} drops}}",
+  "@protocolScheduleSummaryDrops": {
+    "description": "In a Schedule summary: a planned amount in drops, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummarySprays": "{count, plural, =1{{amount} spray} other{{amount} sprays}}",
+  "@protocolScheduleSummarySprays": {
+    "description": "In a Schedule summary: a planned amount in sprays, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPuffs": "{count, plural, =1{{amount} puff} other{{amount} puffs}}",
+  "@protocolScheduleSummaryPuffs": {
+    "description": "In a Schedule summary: a planned amount in puffs, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPatches": "{count, plural, =1{{amount} patch} other{{amount} patches}}",
+  "@protocolScheduleSummaryPatches": {
+    "description": "In a Schedule summary: a planned amount in patches, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryUnits": "{count, plural, =1{{amount} unit} other{{amount} units}}",
+  "@protocolScheduleSummaryUnits": {
+    "description": "In a Schedule summary: a planned amount in units, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorWhenHeading": "When",
+  "@protocolEditorWhenHeading": {
+    "description": "Heading of the Protocol editor's section for its start, end, cycle and Pauses."
+  },
+  "protocolEditorPeriodStarts": "Starts {date}",
+  "@protocolEditorPeriodStarts": {
+    "description": "In the When section's summary: the Protocol's start date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodOngoing": "Ongoing",
+  "@protocolEditorPeriodOngoing": {
+    "description": "In the When section's summary: the Protocol has no end date."
+  },
+  "protocolEditorPeriodUntil": "until {date}",
+  "@protocolEditorPeriodUntil": {
+    "description": "In the When section's summary, after the start date: the Protocol's end date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodEnded": "Ended {date}",
+  "@protocolEditorPeriodEnded": {
+    "description": "The When section's summary for a Protocol whose end date has passed.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodCycle": "{onDays} on, {offDays} off",
+  "@protocolEditorPeriodCycle": {
+    "description": "In the When section's summary: the Protocol's cycle, in days.",
+    "placeholders": {
+      "onDays": {
+        "type": "int"
+      },
+      "offDays": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorPeriodPauses": "{count, plural, =1{1 Pause} other{{count} Pauses}}",
+  "@protocolEditorPeriodPauses": {
+    "description": "In the When section's summary: how many Pauses the Protocol has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorDiscardNewTitle": "Discard this Protocol?",
+  "@protocolEditorDiscardNewTitle": {
+    "description": "Dialog on leaving a new Protocol that has unsaved values."
+  },
+  "protocolEditorDiscardChangesTitle": "Discard changes?",
+  "@protocolEditorDiscardChangesTitle": {
+    "description": "Dialog on leaving a saved Protocol's editor with unsaved changes."
+  },
+  "protocolEditorKeepEditing": "Keep editing",
+  "@protocolEditorKeepEditing": {
+    "description": "Discard dialog button that returns to the Protocol editor as it was."
+  },
+  "protocolEditorDiscard": "Discard",
+  "@protocolEditorDiscard": {
+    "description": "Discard dialog button that closes the Protocol editor without saving."
+  },
+  "navProfile": "Profile",
+  "@navProfile": {
+    "description": "Account & app sheet tile that opens the User Profile."
+  },
+  "profileTitle": "Profile",
+  "@profileTitle": {
+    "description": "Profile screen title."
+  },
+  "profileDisclosureLocalOnly": "Stored on this phone and in its backups. If you sign in, it syncs to your account, where the server's operator and any agent you connect can read it.",
+  "@profileDisclosureLocalOnly": {
+    "description": "Disclosure line under the Profile title in Local-only Mode."
+  },
+  "profileDisclosureSynced": "Synced to {host}. The server's operator and any agent you connect can read it. Change history on the server is kept for up to 180 days.",
+  "@profileDisclosureSynced": {
+    "description": "Disclosure line under the Profile title in Synced Mode.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "profileAgentHistoryLine": "Agent activity history shows that this section changed, not the text.",
+  "@profileAgentHistoryLine": {
+    "description": "Extra line in the Health & limitations and General Notes editors."
+  },
+  "profileHealthMedicationsLine": "Medications and supplements belong in Protocols.",
+  "@profileHealthMedicationsLine": {
+    "description": "Extra line in the Health & limitations editor."
+  },
+  "profileNotSet": "Not set",
+  "@profileNotSet": {
+    "description": "A User Profile field or section with no value."
+  },
+  "profileNone": "None",
+  "@profileNone": {
+    "description": "The explicit none choice in a User Profile section."
+  },
+  "profileSave": "Save",
+  "@profileSave": {
+    "description": "Save button in a User Profile editor sheet."
+  },
+  "profileSectionAboutYou": "About you",
+  "@profileSectionAboutYou": {
+    "description": "User Profile section title."
+  },
+  "profileSectionTrainingGoals": "Training Goals",
+  "@profileSectionTrainingGoals": {
+    "description": "User Profile section title."
+  },
+  "profileSectionExperience": "Experience",
+  "@profileSectionExperience": {
+    "description": "User Profile section title."
+  },
+  "profileSectionTrainingSetup": "Training setup",
+  "@profileSectionTrainingSetup": {
+    "description": "User Profile section title."
+  },
+  "profileSectionHealth": "Health & limitations",
+  "@profileSectionHealth": {
+    "description": "User Profile section title."
+  },
+  "profileSectionGeneralNotes": "General Notes",
+  "@profileSectionGeneralNotes": {
+    "description": "User Profile section title."
+  },
+  "profileFieldValue": "{label}: {value}",
+  "@profileFieldValue": {
+    "description": "One field on a Profile card.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "profileFieldSex": "Sex used for default reference ranges",
+  "@profileFieldSex": {
+    "description": "User Profile field label. It names the field's purpose, which is why the choices are Female, Male and Not set."
+  },
+  "profileFieldBirthYear": "Birth year",
+  "@profileFieldBirthYear": {
+    "description": "User Profile field label."
+  },
+  "profileFieldHeight": "Height",
+  "@profileFieldHeight": {
+    "description": "User Profile field label on a card."
+  },
+  "profileFieldHeightCentimetres": "Height (cm)",
+  "@profileFieldHeightCentimetres": {
+    "description": "About you editor: height in centimetres."
+  },
+  "profileFieldHeightFeet": "Height (ft)",
+  "@profileFieldHeightFeet": {
+    "description": "About you editor: the feet part of a height."
+  },
+  "profileFieldHeightInches": "Inches",
+  "@profileFieldHeightInches": {
+    "description": "About you editor: the inches part of a height."
+  },
+  "profileFieldEquipment": "Equipment",
+  "@profileFieldEquipment": {
+    "description": "User Profile field label."
+  },
+  "profileFieldDaysPerWeek": "Days per week",
+  "@profileFieldDaysPerWeek": {
+    "description": "User Profile field label."
+  },
+  "profileFieldSessionLength": "Session length",
+  "@profileFieldSessionLength": {
+    "description": "User Profile field label on a card."
+  },
+  "profileFieldSessionMinutes": "Session length (minutes)",
+  "@profileFieldSessionMinutes": {
+    "description": "Training setup editor: usual session length."
+  },
+  "profileHeightCentimetresValue": "{value} cm",
+  "@profileHeightCentimetresValue": {
+    "description": "A height on a Profile card, metric.",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "profileHeightFeetInchesValue": "{feet} ft {inches} in",
+  "@profileHeightFeetInchesValue": {
+    "description": "A height on a Profile card, imperial.",
+    "placeholders": {
+      "feet": {
+        "type": "String"
+      },
+      "inches": {
+        "type": "String"
+      }
+    }
+  },
+  "profileSessionMinutesValue": "{minutes} min",
+  "@profileSessionMinutesValue": {
+    "description": "A session length on a Profile card.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "profileDaysPerWeekDecrease": "Fewer days per week",
+  "@profileDaysPerWeekDecrease": {
+    "description": "Tooltip on the days-per-week stepper's minus button."
+  },
+  "profileDaysPerWeekIncrease": "More days per week",
+  "@profileDaysPerWeekIncrease": {
+    "description": "Tooltip on the days-per-week stepper's plus button."
+  },
+  "profileCharacterCount": "{count} / {limit}",
+  "@profileCharacterCount": {
+    "description": "Counter under a User Profile free-text field. Counts UTF-16 code units, as the validator does.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileCharacterCountSemantics": "{count} of {limit} characters",
+  "@profileCharacterCountSemantics": {
+    "description": "What a screen reader says for the free-text counter.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSexFemale": "Female",
+  "@profileSexFemale": {
+    "description": "About you: sex used for default reference ranges."
+  },
+  "profileSexMale": "Male",
+  "@profileSexMale": {
+    "description": "About you: sex used for default reference ranges."
+  },
+  "profileGoalLongevity": "Longevity",
+  "@profileGoalLongevity": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalStrength": "Strength",
+  "@profileGoalStrength": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalMuscleGain": "Muscle gain",
+  "@profileGoalMuscleGain": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalBodyComposition": "Body composition",
+  "@profileGoalBodyComposition": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalEndurance": "Endurance performance",
+  "@profileGoalEndurance": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalMobility": "Mobility",
+  "@profileGoalMobility": {
+    "description": "Training Goal chip."
+  },
+  "profileGoalGeneralFitness": "General fitness",
+  "@profileGoalGeneralFitness": {
+    "description": "Training Goal chip."
+  },
+  "profileLevelBeginner": "Beginner",
+  "@profileLevelBeginner": {
+    "description": "Experience level."
+  },
+  "profileLevelIntermediate": "Intermediate",
+  "@profileLevelIntermediate": {
+    "description": "Experience level."
+  },
+  "profileLevelAdvanced": "Advanced",
+  "@profileLevelAdvanced": {
+    "description": "Experience level."
+  },
+  "profileLevelBeginnerMeaning": "Under a year of regular training in this Focus.",
+  "@profileLevelBeginnerMeaning": {
+    "description": "What the Beginner level means."
+  },
+  "profileLevelIntermediateMeaning": "One to three years.",
+  "@profileLevelIntermediateMeaning": {
+    "description": "What the Intermediate level means."
+  },
+  "profileLevelAdvancedMeaning": "More than three years.",
+  "@profileLevelAdvancedMeaning": {
+    "description": "What the Advanced level means."
+  },
+  "profileWarningTitle": "Check this value",
+  "@profileWarningTitle": {
+    "description": "Title of the dialog that confirms a soft validation warning."
+  },
+  "profileWarningEdit": "Edit",
+  "@profileWarningEdit": {
+    "description": "Soft-warning dialog button that returns to the field."
+  },
+  "profileWarningSaveAnyway": "Save anyway",
+  "@profileWarningSaveAnyway": {
+    "description": "Soft-warning dialog button that saves the value."
+  },
+  "profileValidationBirthYearFuture": "Birth year can't be in the future.",
+  "@profileValidationBirthYearFuture": {
+    "description": "Validation rule birth_year.future."
+  },
+  "profileValidationBirthYearTooOld": "Birth year can't be more than 130 years ago.",
+  "@profileValidationBirthYearTooOld": {
+    "description": "Validation rule birth_year.too_old."
+  },
+  "profileValidationBirthYearImprobable": "That makes you {age}. Check the birth year.",
+  "@profileValidationBirthYearImprobable": {
+    "description": "Validation rule birth_year.improbable_age.",
+    "placeholders": {
+      "age": {
+        "type": "int"
+      }
+    }
+  },
+  "profileValidationHeightNonPositive": "Height must be more than zero.",
+  "@profileValidationHeightNonPositive": {
+    "description": "Validation rule height.non_positive."
+  },
+  "profileValidationHeightTooTall": "Height must be 300 cm (118.1 in) or less.",
+  "@profileValidationHeightTooTall": {
+    "description": "Validation rule height.too_tall."
+  },
+  "profileValidationHeightUnit": "Height must be in cm or in.",
+  "@profileValidationHeightUnit": {
+    "description": "Validation rule height.unit."
+  },
+  "profileValidationHeightImprobable": "A height of {height} is unusual. Check it.",
+  "@profileValidationHeightImprobable": {
+    "description": "Validation rule height.improbable.",
+    "placeholders": {
+      "height": {
+        "type": "String"
+      }
+    }
+  },
+  "profileValidationDaysPerWeekRange": "Days per week must be 1 to 7.",
+  "@profileValidationDaysPerWeekRange": {
+    "description": "Validation rule days_per_week.range."
+  },
+  "profileValidationSessionMinutesRange": "Session length must be 1 to 600 minutes.",
+  "@profileValidationSessionMinutesRange": {
+    "description": "Validation rule session_minutes.range."
+  },
+  "profileValidationSessionMinutesImprobable": "Sessions over 4 hours are unusual. Check the length.",
+  "@profileValidationSessionMinutesImprobable": {
+    "description": "Validation rule session_minutes.improbable."
+  },
+  "profileValidationGoalsUnknown": "Unknown Training Goal.",
+  "@profileValidationGoalsUnknown": {
+    "description": "Validation rule goals.unknown."
+  },
+  "profileValidationDuplicate": "Each item can appear once.",
+  "@profileValidationDuplicate": {
+    "description": "Validation rules goals.duplicate and equipment.duplicate."
+  },
+  "profileValidationEquipmentInvalid": "Equipment ids must be 1 to 64 characters.",
+  "@profileValidationEquipmentInvalid": {
+    "description": "Validation rule equipment.invalid."
+  },
+  "profileValidationLevelsUnknownLevel": "Level must be Beginner, Intermediate or Advanced.",
+  "@profileValidationLevelsUnknownLevel": {
+    "description": "Validation rule levels.unknown_level."
+  },
+  "profileValidationLevelsInvalidFocus": "Each level needs a Focus.",
+  "@profileValidationLevelsInvalidFocus": {
+    "description": "Validation rule levels.invalid_focus."
+  },
+  "profileValidationLevelsDuplicateFocus": "Each Focus can have one level.",
+  "@profileValidationLevelsDuplicateFocus": {
+    "description": "Validation rule levels.duplicate_focus."
+  },
+  "profileValidationTextTooLong": "Keep this under {limit} characters.",
+  "@profileValidationTextTooLong": {
+    "description": "Validation rule text.too_long.",
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "profileValidationSexUnknown": "Sex must be Female, Male or Not set.",
+  "@profileValidationSexUnknown": {
+    "description": "Validation rule sex.unknown."
+  },
+  "onboardingTitleAboutYou": "About you",
+  "@onboardingTitleAboutYou": {
+    "description": "Title of onboarding screen 1."
+  },
+  "onboardingTitleGoalsExperience": "Training Goals and Experience",
+  "@onboardingTitleGoalsExperience": {
+    "description": "Title of onboarding screen 2."
+  },
+  "onboardingTitleTrainingSetup": "Training setup",
+  "@onboardingTitleTrainingSetup": {
+    "description": "Title of onboarding screen 3."
+  },
+  "onboardingSkipAll": "Skip all",
+  "@onboardingSkipAll": {
+    "description": "App bar action that leaves onboarding from any screen and saves nothing on that screen."
+  },
+  "onboardingSkipThis": "Skip this",
+  "@onboardingSkipThis": {
+    "description": "Bottom action that moves to the next onboarding screen and saves nothing on this one."
+  },
+  "onboardingNext": "Next",
+  "@onboardingNext": {
+    "description": "Bottom action that saves what was entered on an onboarding screen and moves on."
+  },
+  "onboardingDone": "Done",
+  "@onboardingDone": {
+    "description": "The Next action on the last onboarding screen."
+  },
+  "onboardingBack": "Back",
+  "@onboardingBack": {
+    "description": "Tooltip of the back arrow on onboarding screens 2 and 3."
+  },
+  "onboardingSignInLink": "Already use Perennia? Sign in",
+  "@onboardingSignInLink": {
+    "description": "Link on onboarding screen 1 that opens the sign-in screen."
+  },
+  "onboardingUnitsLabel": "Units",
+  "@onboardingUnitsLabel": {
+    "description": "Label of the unit system control on onboarding screen 1."
+  },
+  "onboardingWeekStartLabel": "Week starts",
+  "@onboardingWeekStartLabel": {
+    "description": "Label of the week start day control on onboarding screen 1."
+  },
+  "onboardingStepOf": "Step {step} of {total}",
+  "@onboardingStepOf": {
+    "description": "App bar title on onboarding screens: where the user is in the flow.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "onboardingLeadAboutYou": "Perennia uses these to pick default reference ranges for your Metrics, and an agent you connect can read them. Every field is optional, and you can change them later in Account & app, Profile.",
+  "@onboardingLeadAboutYou": {
+    "description": "Lead under the title of onboarding screen 1: what the screen is for."
+  },
+  "onboardingLeadGoalsExperience": "Logging works the same whatever you pick. This tells an agent you connect what you are working toward and what you already train, so its suggestions fit you.",
+  "@onboardingLeadGoalsExperience": {
+    "description": "Lead under the title of onboarding screen 2: what the screen is for."
+  },
+  "onboardingLeadTrainingSetup": "What you can train with and how much time you usually have, so an agent suggests workouts you can actually do.",
+  "@onboardingLeadTrainingSetup": {
+    "description": "Lead under the title of onboarding screen 3: what the screen is for."
+  },
+  "onboardingGoalsQuestion": "What are you training for? Pick any that apply.",
+  "@onboardingGoalsQuestion": {
+    "description": "Question under the Training Goals subheading on onboarding screen 2."
+  },
+  "profileExperienceQuestion": "Which kinds of training do you do? Pick each one, then your level in it.",
+  "@profileExperienceQuestion": {
+    "description": "Question at the top of the Experience fields, in onboarding and the Profile editor."
+  },
+  "profileExperiencePickLevel": "Pick a level",
+  "@profileExperiencePickLevel": {
+    "description": "Prompt under a Focus the user selected but has not given a level yet."
+  },
+  "profileExperienceMissingLevel": "Pick a level for {focus}, or unselect it.",
+  "@profileExperienceMissingLevel": {
+    "description": "Error when Next or Save is tapped while a selected Focus has no level.",
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "profileExperienceNone": "New to all of these",
+  "@profileExperienceNone": {
+    "description": "Experience option that stores an empty list: the user has no experience in any Focus."
+  },
+  "profileFocusDescriptionWeights": "Barbells, dumbbells and machines, for strength and muscle.",
+  "@profileFocusDescriptionWeights": {
+    "description": "What the starter Weights Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionEndurance": "Running, cycling, rowing, swimming and other cardio, steady or in intervals.",
+  "@profileFocusDescriptionEndurance": {
+    "description": "What the starter Endurance Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionFunctional": "Mixed strength and conditioning: CrossFit-style workouts, HYROX-style races, kettlebell flows.",
+  "@profileFocusDescriptionFunctional": {
+    "description": "What the starter Functional Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionCalisthenics": "Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits.",
+  "@profileFocusDescriptionCalisthenics": {
+    "description": "What the starter Calisthenics Focus covers, shown in the Experience fields."
+  },
+  "profileFocusDescriptionMobility": "Stretching, yoga and mobility flows.",
+  "@profileFocusDescriptionMobility": {
+    "description": "What the starter Mobility Focus covers, shown in the Experience fields."
+  },
+  "profileEquipmentWhere": "Where do you train?",
+  "@profileEquipmentWhere": {
+    "description": "Label of the equipment preset chips in the Training setup fields."
+  },
+  "profileEquipmentPresetGym": "Gym",
+  "@profileEquipmentPresetGym": {
+    "description": "Equipment preset: a typical commercial gym."
+  },
+  "profileEquipmentPresetHome": "Home",
+  "@profileEquipmentPresetHome": {
+    "description": "Equipment preset: a home setup."
+  },
+  "profileEquipmentPresetBodyweightOnly": "Bodyweight only",
+  "@profileEquipmentPresetBodyweightOnly": {
+    "description": "Equipment preset that stores an empty equipment list. Also how the Profile screen shows that list."
+  },
+  "profileEquipmentGroupFreeWeights": "Free weights",
+  "@profileEquipmentGroupFreeWeights": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupRacksMachines": "Racks, benches and machines",
+  "@profileEquipmentGroupRacksMachines": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupConditioning": "Conditioning",
+  "@profileEquipmentGroupConditioning": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupAccessories": "Accessories",
+  "@profileEquipmentGroupAccessories": {
+    "description": "Heading of an equipment chip group."
+  },
+  "profileEquipmentGroupOther": "Other",
+  "@profileEquipmentGroupOther": {
+    "description": "Heading of the group that holds stored equipment ids outside the registry."
+  }
 }

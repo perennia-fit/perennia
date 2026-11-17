@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
+import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
 /// The Track-tab analog for logging a `Dose` (PROTOCOLS.md §5): an
@@ -293,6 +296,9 @@ void main() {
         protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
       );
 
+      // The date field makes the sheet taller than the test surface.
+      await tester.ensureVisible(find.byKey(LogDoseSheet.protocolFieldKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(LogDoseSheet.protocolFieldKey));
       await tester.pumpAndSettle();
       await tester.tap(find.text('None (ad-hoc)').last);
@@ -307,6 +313,551 @@ void main() {
       expect(controller.editedDoses.single.draft.protocolName, isNull);
     },
   );
+
+  group('the time default (D6)', () {
+    testWidgets(
+      'on today the time is now, never the last Dose\'s time of day',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        // The last Dose was at 08:00 two days ago; that time is not reused.
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: _doseRecord(
+            amountValue: 2,
+            amountEntered: '2',
+            unit: DoseUnit.capsule,
+            route: DoseRoute.sublingual,
+          ),
+          controller: controller,
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '3:30 PM');
+        expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'on today a planned time is ignored: the time is still now',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _today,
+          initialTime: const TimeOfDay(hour: 9, minute: 0),
+        );
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'on a past day the time is the planned time on that date (CUJ 7)',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _yesterday,
+          initialTime: const TimeOfDay(hour: 21, minute: 0),
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 26, 2026');
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 PM');
+
+        await _save(tester);
+        final dose = controller.loggedDoses.single;
+        expect(dose.tookAt, DateTime(2026, 10, 26, 21));
+        // The local date is frozen from the new moment by the repository.
+        expect(dose.localDate, isNull);
+      },
+    );
+
+    testWidgets(
+      'on a past day with no planned time the time is 12:00',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _yesterday,
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '12:00 PM');
+        await _save(tester);
+        expect(
+            controller.loggedDoses.single.tookAt, DateTime(2026, 10, 26, 12));
+      },
+    );
+
+    testWidgets(
+      'a future day reads as today, so the time is now and never a moment '
+      'still to come',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _tomorrow,
+          initialTime: const TimeOfDay(hour: 9, minute: 0),
+        );
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+  });
+
+  testWidgets(
+    'a Planned list row prefills its planned amount, unit and route over the '
+    'last Dose, tagged with its Protocol',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: _doseRecord(
+          amountValue: 2,
+          amountEntered: '2',
+          unit: DoseUnit.capsule,
+          route: DoseRoute.sublingual,
+        ),
+        controller: controller,
+        protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
+        plannedAmount: const PlanAmount(
+          amountValue: 2000,
+          amountEntered: '2000',
+          unit: DoseUnit.internationalUnit,
+          route: DoseRoute.oral,
+        ),
+        plannedRoute: DoseRoute.oral,
+        protocol: _leanBulkProtocolOption(),
+      );
+
+      expect(find.text('2000'), findsOneWidget);
+      expect(
+        _chipSelected(
+          tester,
+          LogDoseSheet.unitChipKey(DoseUnit.internationalUnit),
+        ),
+        isTrue,
+      );
+      expect(
+        _chipSelected(tester, LogDoseSheet.routeChipKey(DoseRoute.oral)),
+        isTrue,
+      );
+      expect(find.text('Lean bulk'), findsOneWidget);
+
+      await _save(tester);
+      final dose = controller.loggedDoses.single;
+      expect(dose.amountEntered, '2000');
+      expect(dose.unit, DoseUnit.internationalUnit);
+      expect(dose.route, DoseRoute.oral);
+      expect(dose.protocolId, 'protocol-1');
+      expect(dose.protocolName, 'Lean bulk');
+    },
+  );
+
+  testWidgets(
+    'the date field moves a new Dose to another day, keeping its time',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: null,
+        controller: controller,
+      );
+
+      await _pickDay(tester, '25');
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 25, 2026');
+
+      await _save(tester);
+      expect(
+        controller.loggedDoses.single.tookAt,
+        DateTime(2026, 10, 25, 15, 30),
+      );
+    },
+  );
+
+  testWidgets(
+    'the date picker offers no day after today',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: null,
+        controller: controller,
+      );
+
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 27));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'editing a Dose can change its date; the local date and offset are then '
+    'frozen again from the new time',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      final dose = _editableDose(tookAt: DateTime(2026, 10, 27, 9));
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      await _pickDay(tester, '26');
+
+      await _save(tester);
+      final edited = controller.editedDoses.single;
+      expect(edited.doseId, dose.id);
+      expect(edited.draft.tookAt, DateTime(2026, 10, 26, 9));
+      // Left out, so the repository freezes both again from the new time.
+      expect(edited.draft.localDate, isNull);
+      expect(edited.draft.timezone, isNull);
+    },
+  );
+
+  testWidgets(
+    'an edit that keeps the date and time keeps the frozen local date and '
+    'timezone',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      final dose = _editableDose(tookAt: DateTime(2026, 10, 27, 9));
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      await tester.tap(find.byKey(LogDoseSheet.incrementButtonKey));
+      await tester.pump();
+      await _save(tester);
+
+      final edited = controller.editedDoses.single;
+      expect(edited.draft.tookAt, DateTime(2026, 10, 27, 9));
+      expect(edited.draft.localDate, dose.localDate);
+      expect(edited.draft.timezone, dose.timezone);
+    },
+  );
+
+  testWidgets(
+    'the edit sheet shows a Dose\'s date and time at its frozen offset, and '
+    'reads a changed date at that offset',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Logged in Honolulu (UTC−10:00) at 09:00 on 2026-10-27 there, which
+      // is 19:00 UTC: the sheet shows it as it was there, whatever the
+      // device's zone.
+      final dose = DoseRecord(
+        id: 'dose-honolulu',
+        compoundId: 'compound-vitamin-d',
+        compoundName: 'Vitamin D',
+        amountValue: 1,
+        amountEntered: '1',
+        unit: DoseUnit.internationalUnit,
+        route: DoseRoute.oral,
+        tookAt: DateTime.utc(2026, 10, 27, 19),
+        timezone: 'HST',
+        localDate: _today,
+        provenance: DoseProvenance.manual,
+        updatedAt: DateTime.utc(2026, 10, 27, 19),
+        timezoneOffsetMinutes: -600,
+      );
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 AM');
+
+      await _pickDay(tester, '26');
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 26, 2026');
+      expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 AM');
+
+      await _save(tester);
+      final edited = controller.editedDoses.single;
+      // 09:00 on 2026-10-26 at UTC−10:00.
+      expect(
+        edited.draft.tookAt.isAtSameMomentAs(DateTime.utc(2026, 10, 26, 19)),
+        isTrue,
+      );
+      // Left out: the repository keeps the offset and label, and freezes the
+      // local date again from the new time at that offset.
+      expect(edited.draft.localDate, isNull);
+      expect(edited.draft.timezone, isNull);
+    },
+  );
+
+  testWidgets(
+    'editing a Dose logged at a western offset, the date picker ends at '
+    'today where it was taken, not the device\'s today',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Now is 11:30 UTC on 2026-10-28: 23:30 on 2026-10-27 at UTC−12:00,
+      // where the Dose was logged, and 2026-10-28 in almost every device
+      // zone. Picking 2026-10-28 would move the Dose to a moment that has
+      // not happened where it was taken.
+      final dose = _offsetDose(
+        tookAt: DateTime.utc(2026, 10, 27, 21),
+        localDate: _today,
+        offsetMinutes: -720,
+      );
+      await _pumpEditSheet(
+        tester,
+        dose: dose,
+        controller: controller,
+        now: DateTime.utc(2026, 10, 28, 11, 30),
+      );
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 27));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'editing a Dose logged at an eastern offset, the date picker offers '
+    'today where it was taken, even when the device is still a day behind',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Now is 10:30 UTC on 2026-10-28: 00:30 on 2026-10-29 at UTC+14:00,
+      // where the Dose was logged (09:00 on 2026-10-28 there).
+      final dose = _offsetDose(
+        tookAt: DateTime.utc(2026, 10, 27, 19),
+        localDate: _tomorrow,
+        offsetMinutes: 840,
+      );
+      await _pumpEditSheet(
+        tester,
+        dose: dose,
+        controller: controller,
+        now: DateTime.utc(2026, 10, 28, 10, 30),
+      );
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 28, 2026');
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 29));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  group('Skip and Undo skip (D8)', () {
+    testWidgets(
+      'without a planned dose the sheet has Save alone, full width',
+      (tester) async {
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: _FakeProtocolDayController(),
+        );
+
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        expect(find.byKey(LogDoseSheet.saveButtonKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Skip and Save share one row as two equal buttons, each at least 48 dp',
+      (tester) async {
+        await _pumpPlannedSheet(tester, _FakeProtocolDayController());
+
+        final skip = tester.getRect(find.byKey(LogDoseSheet.skipButtonKey));
+        final save = tester.getRect(find.byKey(LogDoseSheet.saveButtonKey));
+        expect(find.text('Skip'), findsOneWidget);
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        expect(tester.widget(find.byKey(LogDoseSheet.skipButtonKey)),
+            isA<TextButton>());
+        expect(tester.widget(find.byKey(LogDoseSheet.saveButtonKey)),
+            isA<FilledButton>());
+        expect(skip.center.dy, save.center.dy);
+        expect(skip.width, save.width);
+        expect(skip.left, lessThan(save.left));
+        expect(skip.height, greaterThanOrEqualTo(48));
+        expect(save.height, greaterThanOrEqualTo(48));
+      },
+    );
+
+    testWidgets(
+      'Skip writes the planned dose\'s own values, not the sheet\'s fields',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(tester, controller);
+
+        // Changing the amount and the date doesn't change what Skip names.
+        await tester.ensureVisible(
+          find.byKey(LogDoseSheet.incrementButtonKey),
+        );
+        await tester.tap(find.byKey(LogDoseSheet.incrementButtonKey));
+        await _pickDay(tester, '20');
+        await _tapSkip(tester);
+
+        final target = controller.skippedTargets.single;
+        expect(target.protocolId, 'protocol-1');
+        expect(target.compoundId, 'compound-vitamin-d');
+        expect(target.localDate, _today);
+        expect(target.plannedLocalTime, '09:00');
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a double tap on Skip writes one Skip: both buttons are disabled while '
+      'it runs',
+      (tester) async {
+        final gate = Completer<void>();
+        final controller = _FakeProtocolDayController()..writeGate = gate;
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(plannedLocalTime: null),
+        );
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(
+          find.byKey(LogDoseSheet.skipButtonKey),
+          warnIfMissed: false,
+        );
+        await tester.pump();
+
+        expect(controller.skippedTargets, hasLength(1));
+        expect(
+          tester
+              .widget<TextButton>(find.byKey(LogDoseSheet.skipButtonKey))
+              .onPressed,
+          isNull,
+        );
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(LogDoseSheet.saveButtonKey))
+              .onPressed,
+          isNull,
+        );
+        await tester.tap(
+          find.byKey(LogDoseSheet.saveButtonKey),
+          warnIfMissed: false,
+        );
+        await tester.pump();
+        expect(controller.loggedDoses, isEmpty);
+
+        gate.complete();
+        await tester.pump();
+        expect(controller.skippedTargets, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'a Skipped row\'s sheet offers Undo skip where Skip was, and it removes '
+      'that Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(skipId: 'skip-1'),
+        );
+
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(find.text('Undo skip'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.pump();
+
+        expect(controller.unskippedIds, <String>['skip-1']);
+        expect(controller.skippedTargets, isEmpty);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Save from a Skipped row logs the Dose and removes the Skip in the same '
+      'write (CUJ 16)',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(skipId: 'skip-1'),
+        );
+
+        await _save(tester);
+
+        expect(controller.loggedDoses, hasLength(1));
+        expect(controller.unskipIdsOnLog, <String?>['skip-1']);
+        // Not a separate Undo skip write: the Dose's own write removes it.
+        expect(controller.unskippedIds, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Save from a Pending row removes no Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(tester, controller);
+
+        await _save(tester);
+
+        expect(controller.unskipIdsOnLog, <String?>[null]);
+      },
+    );
+
+    testWidgets(
+      'the Skip and Undo skip rows meet accessibility guidelines in both '
+      'themes',
+      (tester) async {
+        for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+          for (final skipId in <String?>[null, 'skip-1']) {
+            final semantics = tester.ensureSemantics();
+            await _pumpPlannedSheet(
+              tester,
+              _FakeProtocolDayController(),
+              target: _plannedTarget(skipId: skipId),
+              theme: theme,
+            );
+
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+            await expectLater(
+              tester,
+              meetsGuideline(androidTapTargetGuideline),
+            );
+            await expectLater(
+              tester,
+              meetsGuideline(labeledTapTargetGuideline),
+            );
+
+            semantics.dispose();
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
+        }
+      },
+    );
+  });
 
   testWidgets('Log Dose sheet meets accessibility guidelines in both themes', (
     tester,
@@ -337,6 +888,127 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+}
+
+/// The value text of a date or time field: its last Text.
+String? _fieldValue(WidgetTester tester, Key key) {
+  final texts = tester
+      .widgetList<Text>(
+        find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+      )
+      .toList();
+  return texts.last.data;
+}
+
+Future<void> _tapSkip(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+  await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+  await tester.pump();
+}
+
+/// A Planned list row's target: "Lean bulk"'s 09:00 Vitamin D today.
+PlannedDoseTarget _plannedTarget({
+  String? plannedLocalTime = '09:00',
+  String? skipId,
+}) {
+  return PlannedDoseTarget(
+    protocolId: 'protocol-1',
+    compoundId: 'compound-vitamin-d',
+    localDate: _today,
+    plannedLocalTime: plannedLocalTime,
+    skipId: skipId,
+  );
+}
+
+/// The sheet as a Planned list row opens it: the planned amount, route and
+/// Protocol, and the row's target.
+Future<void> _pumpPlannedSheet(
+  WidgetTester tester,
+  _FakeProtocolDayController controller, {
+  PlannedDoseTarget? target,
+  ThemeData? theme,
+}) {
+  return _pumpSheet(
+    tester,
+    compound: _vitaminD(),
+    lastDose: null,
+    controller: controller,
+    theme: theme,
+    protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
+    initialDate: _today,
+    initialTime: const TimeOfDay(hour: 9, minute: 0),
+    plannedAmount: const PlanAmount(
+      amountValue: 2,
+      amountEntered: '2',
+      unit: DoseUnit.capsule,
+      route: DoseRoute.oral,
+    ),
+    plannedRoute: DoseRoute.oral,
+    protocol: _leanBulkProtocolOption(),
+    plannedDose: target ?? _plannedTarget(),
+  );
+}
+
+Future<void> _save(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+  await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+  await tester.pump();
+}
+
+/// Opens the date field and picks [day] of the shown month.
+Future<void> _pickDay(WidgetTester tester, String day) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.dateFieldKey));
+  await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.descendant(
+      of: find.byType(CalendarDatePicker),
+      matching: find.text(day),
+    ),
+  );
+  await tester.pump();
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+}
+
+/// A Vitamin D Dose logged at a frozen UTC offset of [offsetMinutes].
+DoseRecord _offsetDose({
+  required DateTime tookAt,
+  required ProtocolDayDate localDate,
+  required int offsetMinutes,
+}) {
+  return DoseRecord(
+    id: 'dose-offset',
+    compoundId: 'compound-vitamin-d',
+    compoundName: 'Vitamin D',
+    amountValue: 1,
+    amountEntered: '1',
+    unit: DoseUnit.internationalUnit,
+    route: DoseRoute.oral,
+    tookAt: tookAt,
+    timezone: 'UTC${offsetMinutes < 0 ? '-' : '+'}${offsetMinutes.abs() ~/ 60}',
+    localDate: localDate,
+    provenance: DoseProvenance.manual,
+    updatedAt: tookAt,
+    timezoneOffsetMinutes: offsetMinutes,
+  );
+}
+
+DoseRecord _editableDose({required DateTime tookAt}) {
+  return DoseRecord(
+    id: 'dose-edit',
+    compoundId: 'compound-vitamin-d',
+    compoundName: 'Vitamin D',
+    amountValue: 1,
+    amountEntered: '1',
+    unit: DoseUnit.internationalUnit,
+    route: DoseRoute.oral,
+    tookAt: tookAt.toUtc(),
+    timezone: 'AEST',
+    localDate: ProtocolDayDate.fromDateTime(tookAt),
+    provenance: DoseProvenance.manual,
+    updatedAt: tookAt.toUtc(),
+  );
 }
 
 bool _chipSelected(WidgetTester tester, Key key) {
@@ -411,13 +1083,39 @@ class _FakeProtocolDayController extends ProtocolDayController {
     );
   }
 
+  final unskipIdsOnLog = <String?>[];
+  final skippedTargets = <PlannedDoseTarget>[];
+  final unskippedIds = <String>[];
+
+  /// When set, Skip and Undo skip wait for it, so a test can tap again while
+  /// a write is in flight.
+  Completer<void>? writeGate;
+
   @override
-  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) async {
+  Future<LogDoseResult> logDose(
+    DoseSnapshotDraft draft, {
+    String? unskipId,
+  }) async {
     loggedDoses.add(draft);
+    unskipIdsOnLog.add(unskipId);
     return LogDoseResult(
       batchId: 'batch-${loggedDoses.length}',
       doseId: 'dose-${loggedDoses.length}',
     );
+  }
+
+  @override
+  Future<String> skipPlannedDose(PlannedDoseTarget target) async {
+    skippedTargets.add(target);
+    await writeGate?.future;
+    return 'batch-skip-${skippedTargets.length}';
+  }
+
+  @override
+  Future<String> unskipPlannedDose(String skipId) async {
+    unskippedIds.add(skipId);
+    await writeGate?.future;
+    return 'batch-unskip-${unskippedIds.length}';
   }
 
   @override
@@ -427,6 +1125,12 @@ class _FakeProtocolDayController extends ProtocolDayController {
   }
 }
 
+/// "Now" for every sheet here: the afternoon of 2026-10-27, local time.
+final DateTime _now = DateTime(2026, 10, 27, 15, 30);
+const _today = ProtocolDayDate(year: 2026, month: 10, day: 27);
+const _yesterday = ProtocolDayDate(year: 2026, month: 10, day: 26);
+const _tomorrow = ProtocolDayDate(year: 2026, month: 10, day: 28);
+
 Future<void> _pumpSheet(
   WidgetTester tester, {
   required CompoundRecord compound,
@@ -434,6 +1138,12 @@ Future<void> _pumpSheet(
   required _FakeProtocolDayController controller,
   ThemeData? theme,
   List<ProtocolOptionRecord> protocolOptions = const <ProtocolOptionRecord>[],
+  ProtocolDayDate? initialDate,
+  TimeOfDay? initialTime,
+  PlanAmount? plannedAmount,
+  DoseRoute? plannedRoute,
+  ProtocolOptionRecord? protocol,
+  PlannedDoseTarget? plannedDose,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -442,11 +1152,23 @@ Future<void> _pumpSheet(
         protocolOptionListProvider.overrideWith(
           (ref) => Stream<List<ProtocolOptionRecord>>.value(protocolOptions),
         ),
+        protocolsClockProvider.overrideWithValue(() => _now),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
         home: Scaffold(
-          body: LogDoseSheet(compound: compound, lastDose: lastDose),
+          body: LogDoseSheet(
+            compound: compound,
+            lastDose: lastDose,
+            initialDate: initialDate,
+            initialTime: initialTime,
+            plannedAmount: plannedAmount,
+            plannedRoute: plannedRoute,
+            protocol: protocol,
+            plannedDose: plannedDose,
+          ),
         ),
       ),
     ),
@@ -460,7 +1182,9 @@ Future<void> _pumpEditSheet(
   required _FakeProtocolDayController controller,
   ThemeData? theme,
   List<ProtocolOptionRecord> protocolOptions = const <ProtocolOptionRecord>[],
+  DateTime? now,
 }) async {
+  final clock = now ?? _now;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -468,8 +1192,11 @@ Future<void> _pumpEditSheet(
         protocolOptionListProvider.overrideWith(
           (ref) => Stream<List<ProtocolOptionRecord>>.value(protocolOptions),
         ),
+        protocolsClockProvider.overrideWithValue(() => clock),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
         home: Scaffold(
           body: LogDoseSheet.edit(dose: dose),

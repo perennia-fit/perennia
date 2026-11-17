@@ -213,7 +213,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -229,7 +229,7 @@ class RoutinePlanRepository {
       ).throwIfRejected();
 
       final beforeCadence = _cadenceFromRow(beforeRoutine);
-      if (_cadencesEqual(beforeCadence, cadence)) {
+      if (cadencesEqual(beforeCadence, cadence)) {
         final result = _validateRoutineCadence(
           cadence,
           slots: entries.map((entry) => entry.slot),
@@ -240,7 +240,7 @@ class RoutinePlanRepository {
 
       final defaultSlots = <String, int?>{
         for (final entry in entries)
-          entry.id: _defaultRoutineEntrySlot(entry.position, cadence),
+          entry.id: defaultRoutineEntrySlot(entry.position, cadence),
       };
       final result = _validateRoutineCadence(
         cadence,
@@ -258,7 +258,7 @@ class RoutinePlanRepository {
         ),
       );
       final afterRoutine = await _requireRoutineRow(routineId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: routineId,
@@ -286,7 +286,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -327,7 +327,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -353,12 +353,12 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
     return _database.transaction(() async {
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.planRoutines).insert(
             PlanRoutinesCompanion.insert(
               id: id,
@@ -368,7 +368,7 @@ class RoutinePlanRepository {
             ),
           );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -386,7 +386,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -407,7 +407,7 @@ class RoutinePlanRepository {
         ),
       );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -450,7 +450,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -475,7 +475,7 @@ class RoutinePlanRepository {
     required String workoutTemplateId,
     required int? requestedSlot,
     required _RoutineEntrySlotResolution slotResolution,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final routine = await _requireActiveRoutineRow(routineId);
     await _requireActiveWorkoutTemplateRow(workoutTemplateId);
@@ -485,7 +485,7 @@ class RoutinePlanRepository {
     final position = activeEntries.length;
     final resolvedSlot = switch (slotResolution) {
       _RoutineEntrySlotResolution.defaultFromOrder =>
-        requestedSlot ?? _defaultRoutineEntrySlot(position, cadence),
+        requestedSlot ?? defaultRoutineEntrySlot(position, cadence),
       _RoutineEntrySlotResolution.exact => requestedSlot,
     };
     _validateRoutineCadence(
@@ -495,7 +495,7 @@ class RoutinePlanRepository {
         resolvedSlot,
       ],
     ).throwIfRejected();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.routineEntries).insert(
           RoutineEntriesCompanion.insert(
             id: id,
@@ -507,7 +507,7 @@ class RoutinePlanRepository {
           ),
         );
     final after = await _requireEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: id,
@@ -522,7 +522,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -544,7 +544,7 @@ class RoutinePlanRepository {
         ),
       );
       final archived = await _requireEntryRow(entryId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.routineEntriesTable,
         entityId: entryId,
@@ -570,7 +570,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -597,7 +597,7 @@ class RoutinePlanRepository {
     required String actor,
     required String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -615,7 +615,7 @@ class RoutinePlanRepository {
         ),
       );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -768,7 +768,7 @@ class RoutinePlanRepository {
   Future<void> _setEntryPosition(
     RoutineEntryRow before,
     int position,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.routineEntries)
           ..where((row) => row.id.equals(before.id)))
@@ -779,7 +779,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,
@@ -791,7 +791,7 @@ class RoutinePlanRepository {
   Future<void> _setEntrySlot(
     RoutineEntryRow before,
     int? slot,
-    _WriteContext context, {
+    WriteContext context, {
     bool forceWrite = false,
   }) async {
     if (!forceWrite && before.slot == slot) {
@@ -806,7 +806,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,
@@ -819,7 +819,7 @@ class RoutinePlanRepository {
     RoutineEntryRow before, {
     required int position,
     required int slot,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     if (before.position == position && before.slot == slot) {
       return;
@@ -834,7 +834,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,
@@ -877,35 +877,6 @@ Cadence? _cadenceFromRow(PlanRoutineRow row) {
 }
 
 enum _RoutineEntrySlotResolution { defaultFromOrder, exact }
-
-bool _cadencesEqual(Cadence? left, Cadence? right) {
-  return left?.kind == right?.kind && left?.window == right?.window;
-}
-
-int? _defaultRoutineEntrySlot(int position, Cadence? cadence) {
-  if (cadence == null) {
-    return null;
-  }
-  final slotCount = cadence.slotCount;
-  if (slotCount < 1) {
-    throw StateError('Cadence must have at least one slot.');
-  }
-  return (position % slotCount) + 1;
-}
-
-int? _reconciledRoutineEntrySlot(
-  int? slot, {
-  required int position,
-  required Cadence? cadence,
-}) {
-  if (cadence == null) {
-    return null;
-  }
-  if (slot != null && slot >= 1 && slot <= cadence.slotCount) {
-    return slot;
-  }
-  return _defaultRoutineEntrySlot(position, cadence);
-}
 
 String _normalizeRoutinePlanName(String name) {
   final normalized = name.trim();

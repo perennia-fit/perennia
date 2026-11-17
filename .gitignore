@@ -1,5 +1,7 @@
 # ── Scratch & local notes ──
 /.scratch/
+# EGM working files (briefs, drafts, review and drift reports); specs are committed under docs/designs/
+/.egm/
 
 # ── Agent / editor tooling ──
 /.claude/

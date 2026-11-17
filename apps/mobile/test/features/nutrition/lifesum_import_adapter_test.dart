@@ -56,6 +56,28 @@ Date,Meal,Food,Amount,Unit,Calories (kcal),Carbs (g),Protein (g),Fat (g)
       expect(meal.localDate, const NutritionDayDate(year: 2026, month: 6, day: 1));
     });
 
+    test('sets date precision for a bare date, instant for a date-time', () {
+      // docs/designs/meal-logging.md §1.
+      final csvMeal = adapter.parse(csv).meals.first;
+      expect(csvMeal.timePrecision, MealTimePrecision.date);
+      expect(csvMeal.startedAt, DateTime(2026, 6, 1));
+
+      final jsonMeal = adapter.parse(json).meals.first;
+      expect(jsonMeal.timePrecision, MealTimePrecision.date);
+
+      const timed = '''
+{
+  "food_items": [
+    {"date":"2026-06-01 08:30","meal":"breakfast","name":"Oats","amount":100,"unit":"g",
+     "nutrients":{"calories (kcal)":389}}
+  ]
+}
+''';
+      final timedMeal = adapter.parse(timed).meals.single;
+      expect(timedMeal.timePrecision, MealTimePrecision.instant);
+      expect(timedMeal.startedAt, DateTime(2026, 6, 1, 8, 30));
+    });
+
     test('normalises absolute amounts to a self-describing per-100 vector', () {
       final oats = adapter.parse(csv).meals.first.entries.single;
       expect(oats.portion.unit, PortionUnit.gram);

@@ -63,6 +63,34 @@ test("buildAgentSkillCommandTable maps every agent-key operation to exactly one 
   }
 });
 
+test("the Purpose operations have their skill commands and MCP tools", async () => {
+  const document = await loadOpenApiDocument();
+  const commands = buildAgentSkillCommandTable(document);
+  const tools = buildAgentMcpToolTable(document);
+  const commandOf = (operationId) =>
+    commands.find((row) => row.operationId === operationId);
+  const toolOf = (operationId) => tools.find((row) => row.operationId === operationId);
+
+  assert.deepEqual(
+    [
+      commandOf("listAgentPurposes").command,
+      commandOf("listAgentPurposes").method,
+      commandOf("listAgentPurposes").path
+    ],
+    ["list-purposes", "GET", "/agent/protocols/purposes"]
+  );
+  assert.deepEqual(
+    [
+      commandOf("batchWriteAgentPurposes").command,
+      commandOf("batchWriteAgentPurposes").method,
+      commandOf("batchWriteAgentPurposes").path
+    ],
+    ["manage-purposes", "POST", "/agent/protocols/purposes/batch-write"]
+  );
+  assert.equal(toolOf("listAgentPurposes").tool, "agent_list_purposes");
+  assert.equal(toolOf("batchWriteAgentPurposes").tool, "agent_batch_write_purposes");
+});
+
 test("buildAgentSkillCommandTable throws when an agent-key operation has no registered command name", () => {
   const fakeDocument = {
     paths: {

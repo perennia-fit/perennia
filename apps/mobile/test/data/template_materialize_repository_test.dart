@@ -616,5 +616,44 @@ void main() {
       expect(first.workoutId, isNot(second.workoutId));
       expect(first.templateLinkId, isNot(second.templateLinkId));
     });
+
+    test(
+        'watchByWorkoutIds emits the Template Links of exactly the Workouts '
+        'asked for', () async {
+      final templateId = await repositories.workoutTemplates.create(
+        const WorkoutTemplateDraft(name: 'Upper B'),
+      );
+      final first = await repositories.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: templateId),
+        now: DateTime(2026, 7, 12, 8),
+      );
+      final second = await repositories.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: templateId),
+        now: DateTime(2026, 7, 12, 18),
+      );
+      final unlinkedWorkoutId = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 7, 12, 12),
+          timezone: 'UTC',
+        ),
+      );
+
+      final links = await repositories.templateMaterialize.watchByWorkoutIds(
+          <String>{first.workoutId, unlinkedWorkoutId}).first;
+      expect(links, hasLength(1));
+      expect(links.single.id, first.templateLinkId);
+      expect(links.single.workoutId, first.workoutId);
+      expect(links.single.workoutTemplateId, templateId);
+      expect(
+        links.map((link) => link.workoutId),
+        isNot(contains(second.workoutId)),
+      );
+
+      expect(
+        await repositories.templateMaterialize
+            .watchByWorkoutIds(const <String>{}).first,
+        isEmpty,
+      );
+    });
   });
 }

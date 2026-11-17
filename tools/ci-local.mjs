@@ -18,7 +18,8 @@
 //   pnpm ci:local --publish --dry-run        # print what would be posted, send nothing
 //
 // Jobs that need Postgres spin up an ephemeral postgres:16-alpine container
-// (host port 55432, auto-removed on exit). Requires Docker to be running.
+// (named per run, on a free loopback port Docker assigns, removed on exit), so
+// several worktrees can run the gate at once. Requires Docker to be running.
 //
 // This script intentionally runs the SAME commands as ci.yml so a green run
 // here means a green run there. When you change ci.yml, update this file too.
@@ -29,10 +30,32 @@ import process from 'node:process';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const MOBILE = `${ROOT}/apps/mobile`;
 
-const PG_CONTAINER = 'prn-ci-local-postgres';
+// Run from a git hook (tools/git-hooks/pre-push), we inherit git's repo-local
+// environment — GIT_DIR above all. Every child process then sees it, including
+// the git calls Flutter makes inside its own SDK folder to work out its version.
+// In a linked worktree GIT_DIR is absolute (.git/worktrees/<name>), so Flutter
+// reads THIS repo as its framework checkout, reports "0.0.0-unknown", and pub
+// fails to solve any SDK-constrained package (fl_chart first). In the main
+// checkout it is the relative ".git", which happens to resolve to Flutter's
+// own repo — which is why only worktree pushes broke. Drop the variables git
+// itself lists as repo-local (the set git's own submodule scripts clear); every
+// command here runs with cwd inside the repo, so git still finds it from cwd.
+{
+  const res = spawnSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' });
+  for (const name of (res.stdout || '').split('\n')) if (name) delete process.env[name];
+}
+
+// Each run owns its container and host port. Several worktrees (or agent
+// sessions) often run the gate at once on one machine; a fixed name and port
+// made one run's `docker rm -f` tear down another run's database mid-test. The
+// pid is unique among live runs, and Docker picks a free port (`-p 127.0.0.1::5432`)
+// that startPostgres() reads back. The owner label lets a later run sweep
+// containers left by a run that was killed before its `finally` could clean up.
+const PG_CONTAINER = `prn-ci-local-postgres-${process.pid}`;
+const PG_OWNER_LABEL = 'prn-ci-local.owner-pid';
 const PG_IMAGE = 'postgres:16-alpine';
-const PG_PORT = 55432; // host port; avoids clashing with any local 5432
 const PG_BOOTSTRAP_DB = 'perennia_test';
+let pgPort; // host port, assigned by Docker in startPostgres()
 
 // Every DB job gets its OWN database, recreated immediately before it runs.
 // ci.yml declares a `services: postgres` block per job, so on hosted CI each job
@@ -40,8 +63,10 @@ const PG_BOOTSTRAP_DB = 'perennia_test';
 // job satisfy — or contradict — a later job's assertions, which is exactly the
 // kind of divergence this script exists to rule out.
 const dbNameFor = (job) => `${PG_BOOTSTRAP_DB}_${job}`;
+// 127.0.0.1, not localhost: the port is published on IPv4 loopback only, and
+// localhost can resolve to ::1 first.
 const dbUrlFor = (job) =>
-  `postgres://postgres:postgres@localhost:${PG_PORT}/${dbNameFor(job)}`;
+  `postgres://postgres:postgres@127.0.0.1:${pgPort}/${dbNameFor(job)}`;
 
 // ---- shell helpers ---------------------------------------------------------
 
@@ -81,7 +106,12 @@ function have(tool) {
 //   'skip'-> nothing to do locally (e.g. tool missing)
 
 const JS_PATHS = [
-  'apps/server/**', 'tools/generate-wger-platform-exercises.mjs',
+  // The server tests read the Open Food Facts bundle, and check the Nutrient
+  // ids and the bundle format against the two Dart files.
+  'apps/server/**', 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz',
+  'apps/mobile/lib/domain/nutrition/nutrition.dart',
+  'apps/mobile/lib/domain/nutrition/open_food_facts.dart',
+  'tools/generate-wger-platform-exercises.mjs',
   'tools/platform-exercise-cleanup.mjs',
   'packages/contract/**', 'packages/golden-vectors/**',
   'sidecars/**', '.node-version', 'package.json', 'pnpm-workspace.yaml',
@@ -97,11 +127,35 @@ const DEPENDENCY_HYGIENE_PATHS = [
   '.github/workflows/ci.yml',
 ];
 
+// The ci.yml "Dart golden vectors" step: every Dart test that reads
+// packages/golden-vectors, discovered with the same `git grep` rather than
+// listed, so a new vector runner cannot be left out. The list is built here
+// instead of with `$(...)` so the command also works under cmd.exe.
+function runDartGoldenRunners() {
+  const found = capture(
+    'git grep -l -e golden-vectors -- "test/*_test.dart"', { cwd: MOBILE },
+  );
+  const runners = found.ok ? found.out.split('\n').filter(Boolean) : [];
+  if (!runners.length) {
+    console.error('  ✖ No Dart test reads packages/golden-vectors');
+    return false;
+  }
+  console.log(runners.map((f) => `  ${f}`).join('\n'));
+  return run(`flutter test ${runners.join(' ')}`, { cwd: MOBILE });
+}
+
 const JOBS = {
   dependency_hygiene: {
     title: 'Dependency update coverage',
     paths: DEPENDENCY_HYGIENE_PATHS,
     run: () => run('node tools/check-dependency-hygiene.mjs'),
+  },
+
+  release_version: {
+    title: 'Release version consistency',
+    paths: ['apps/mobile/pubspec.yaml', 'apps/server/package.json',
+      'CHANGELOG.md', 'tools/check-release.mjs', '.github/workflows/ci.yml'],
+    run: () => run('node tools/check-release.mjs'),
   },
 
   mobile: {
@@ -112,7 +166,8 @@ const JOBS = {
       run('flutter pub get') &&
       run('dart run melos bootstrap') &&
       run('dart run build_runner build', { cwd: MOBILE }) &&
-      run('git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart') &&
+      run('git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart apps/mobile/lib/data/local/food_reference_database.g.dart') &&
+      run('dart run tool/drift_schema_snapshots.dart --check', { cwd: MOBILE }) &&
       run('dart run tool/generate_design_tokens.dart', { cwd: MOBILE }) &&
       run('git diff --exit-code -- apps/mobile/lib/theme/design_tokens.g.dart') &&
       run('flutter analyze', { cwd: MOBILE }) &&
@@ -124,16 +179,32 @@ const JOBS = {
     title: 'Golden-vector parity (TS + Dart)',
     paths: [
       'apps/server/src/analytics/**', 'apps/server/src/metric-reading-normalization.ts',
+      'apps/server/src/agent-validation.ts', 'apps/server/src/agent-plan-capture.ts',
       'apps/server/test/analytics.golden.test.mjs',
       'apps/server/test/metric-reading-normalization.golden.test.mjs',
+      'apps/server/test/agent-validation.golden.test.mjs',
+      'apps/server/test/agent-plan-capture.golden.test.mjs',
       'apps/server/test/nutrition-analytics.golden.test.mjs',
+      'apps/server/src/agent-protocols.ts',
+      'apps/server/test/effect-window.golden.test.mjs',
+      'apps/server/src/protocol-plan.ts',
+      'apps/server/test/protocol-plan.golden.test.mjs',
+      'apps/server/src/barcode-candidates.ts',
+      'apps/server/test/barcode-candidates.golden.test.mjs',
+      'apps/server/src/food-history.ts',
+      'apps/server/test/food-history.golden.test.mjs',
+      'apps/server/src/meal-history.ts',
+      'apps/server/test/meal-history.golden.test.mjs',
+      'apps/server/src/timezone.ts',
+      'apps/server/test/timezone.test.mjs',
+      'apps/server/test/training-progress.golden.test.mjs',
+      'apps/server/test/progress-measure.golden.test.mjs',
+      'apps/server/test/metric-trend.golden.test.mjs',
+      'apps/server/src/compound-purposes.ts',
+      'apps/server/test/compound-purposes.golden.test.mjs',
       'apps/server/package.json', '.node-version',
-      'apps/mobile/lib/domain/analytics/**', 'apps/mobile/lib/domain/metrics/**',
-      'apps/mobile/lib/domain/nutrition/**',
-      'apps/mobile/lib/domain/training/training_dimensions.dart',
-      'apps/mobile/test/domain/exercise_analytics_test.dart',
-      'apps/mobile/test/domain/metric_reading_normalization_test.dart',
-      'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart',
+      'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
+      'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
       'apps/mobile/pubspec.yaml', 'pubspec.yaml', 'pubspec.lock',
       'packages/golden-vectors/**', 'pnpm-workspace.yaml', 'pnpm-lock.yaml',
       'tsconfig.base.json', '.github/workflows/ci.yml',
@@ -142,7 +213,7 @@ const JOBS = {
     run: () =>
       run('flutter pub get') &&
       run('corepack pnpm --filter @perennia/server test:golden-vectors') &&
-      run('flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart', { cwd: MOBILE }),
+      runDartGoldenRunners(),
   },
 
   contract: {
@@ -151,12 +222,15 @@ const JOBS = {
       'apps/mobile/assets/seeds/usda_foods.json',
       'apps/mobile/lib/api/**', 'apps/mobile/pubspec.yaml',
       'packages/contract/**', 'tools/generate-server-platform-exercise-seed.mjs',
+      'tools/platform-exercise-focus.mjs',
+      'tools/data/platform-exercise-focus-overrides.json',
       'tools/generate-server-usda-food-seed.mjs',
       '.node-version', 'package.json', 'pnpm-workspace.yaml',
       'pnpm-lock.yaml', 'tsconfig.base.json', '.github/workflows/ci.yml'],
     pnpm: true,
     run: () =>
       run('node tools/generate-server-platform-exercise-seed.mjs --check') &&
+      run('node tools/platform-exercise-focus.mjs --check') &&
       run('node tools/generate-server-usda-food-seed.mjs --check') &&
       run('corepack pnpm --filter @perennia/contract check:drift'),
   },
@@ -230,15 +304,54 @@ function changedFiles() {
 
 // ---- Postgres lifecycle ----------------------------------------------------
 
-function startPostgres() {
-  console.log(`\n▸ Starting ephemeral Postgres (${PG_IMAGE}) on host port ${PG_PORT}…`);
-  capture(`docker rm -f ${PG_CONTAINER}`); // clear any stale container
-  const up = run(
-    `docker run -d --rm --name ${PG_CONTAINER} ` +
-    `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
-    `-e POSTGRES_DB=${PG_BOOTSTRAP_DB} -p ${PG_PORT}:5432 ${PG_IMAGE}`,
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM'; // exists, owned by someone else
+  }
+}
+
+// Remove a Postgres container and its data. The image declares an anonymous data
+// volume, and `docker rm -f` without `-v` leaves it behind even for a `--rm`
+// container, so every run would leak one database's worth of disk.
+function removePostgres(container) {
+  capture(`docker rm -fv ${container}`);
+}
+
+// Remove containers whose owning run is gone (killed by Ctrl-C or a crash, so
+// its `finally` never ran). Containers of live runs are left alone.
+function sweepOrphanedPostgres() {
+  const list = capture(
+    `docker ps -a --filter label=${PG_OWNER_LABEL} --format "{{.ID}} {{.Labels}}"`,
   );
-  if (!up) throw new Error('Failed to start Postgres container (is Docker running? is the port free?)');
+  if (!list.ok) return;
+  const owner = new RegExp(`(?:^|,)${PG_OWNER_LABEL.replace('.', '\\.')}=(\\d+)`);
+  for (const line of list.out.split('\n')) {
+    const [id, labels = ''] = line.trim().split(/\s+(.*)/);
+    const pid = owner.exec(labels)?.[1];
+    if (id && pid && !pidAlive(Number(pid))) removePostgres(id);
+  }
+}
+
+function startPostgres() {
+  console.log(`\n▸ Starting ephemeral Postgres (${PG_IMAGE}) as ${PG_CONTAINER}…`);
+  sweepOrphanedPostgres();
+  removePostgres(PG_CONTAINER); // a dead run that had our pid
+  const up = run(
+    `docker run -d --rm --name ${PG_CONTAINER} --label ${PG_OWNER_LABEL}=${process.pid} ` +
+    `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
+    `-e POSTGRES_DB=${PG_BOOTSTRAP_DB} -p 127.0.0.1::5432 ${PG_IMAGE}`,
+  );
+  if (!up) throw new Error('Failed to start Postgres container (is Docker running?)');
+
+  // `docker port` prints the binding, e.g. "127.0.0.1:61234".
+  const port = capture(`docker port ${PG_CONTAINER} 5432/tcp`);
+  const match = port.ok && /:(\d+)\s*$/m.exec(port.out.split('\n')[0]);
+  if (!match) throw new Error(`Could not read Postgres host port: ${port.out}`);
+  pgPort = Number(match[1]);
+  console.log(`  host port ${pgPort}`);
 
   // The postgres:*-alpine entrypoint starts a TEMPORARY server to run init
   // scripts, then RESTARTS into the real one. `pg_isready` transiently succeeds
@@ -292,7 +405,7 @@ function resetDatabase(job) {
 }
 
 function stopPostgres() {
-  capture(`docker rm -f ${PG_CONTAINER}`);
+  removePostgres(PG_CONTAINER);
 }
 
 // ---- GitHub publish (commit status + sticky PR comment) --------------------

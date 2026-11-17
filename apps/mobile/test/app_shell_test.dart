@@ -2,17 +2,24 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderFlex;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:perennia/app.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/analytics/progress_measure.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
+import 'package:perennia/domain/training/training_progress.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/auth/widgets/sign_in_screen.dart';
 import 'package:perennia/features/body_tracker/widgets/body_tracker_screen.dart';
@@ -20,33 +27,50 @@ import 'package:perennia/features/catalog/repositories/exercise_catalog_reposito
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/catalog/widgets/exercise_editor_screen.dart';
 import 'package:perennia/features/exercise/widgets/exercise_page.dart';
+import 'package:perennia/features/focus/controllers/focus_providers.dart';
+import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
+import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
+import 'package:perennia/features/home/widgets/start_workout_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/metrics/controllers/metrics_controller.dart';
 import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
+import 'package:perennia/features/nutrition/widgets/meal_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
+import 'package:perennia/features/profile/widgets/profile_screen.dart';
+import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
+import 'package:perennia/features/progress/widgets/body_card.dart';
+import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
+import 'package:perennia/features/progress/widgets/new_bests_card.dart';
+import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
-import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
+import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
+import 'package:perennia/features/protocols/widgets/purpose_manager_screen.dart';
 import 'package:perennia/features/routine_plans/controllers/routine_plan_controller.dart';
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
 import 'package:perennia/features/settings/repositories/integration_consent_repository.dart';
-import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
 import 'package:perennia/features/settings/widgets/settings_screen.dart';
 import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
 import 'package:perennia/features/sync/services/sync_coordinator.dart';
 import 'package:perennia/features/sync/services/sync_providers.dart';
+import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
+import 'package:perennia/features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'package:perennia/features/template_picker/widgets/template_picker_sheet.dart';
+import 'package:perennia/features/training/widgets/plan_progress_labels.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+
+import 'support/clipboard_capture.dart';
 
 void main() {
   testWidgets('launches home through the ProviderScope app root',
@@ -75,6 +99,43 @@ void main() {
     expect(context.colors.save, DesignTokens.save);
   });
 
+  testWidgets(
+      'an Open Food Facts install that cannot find its cache directory fails '
+      'quietly', (tester) async {
+    final requests = <http.Request>[];
+    final openFoodFacts = DriftOpenFoodFactsRepository(
+      databaseFile: () async => throw MissingPluginException('path_provider'),
+      client: OpenFoodFactsClient(
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 500);
+        }),
+      ),
+    );
+
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [_homeNutritionDayOverride()],
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+        openFoodFactsRepository: openFoodFacts,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    final status = await tester.runAsync(
+      () => openFoodFacts.watchBundleStatus().first,
+    );
+    expect(status, BundleStatus.failed);
+    expect(requests, isEmpty, reason: 'installing sends nothing');
+    // The reference database never opened, so there is nothing to close;
+    // open_food_facts_repository_test.dart closes this same case.
+  });
+
   testWidgets('root navigation separates Today, Progress, and Library', (
     tester,
   ) async {
@@ -96,8 +157,10 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
 
-    expect(find.text('Body'), findsOneWidget);
-    expect(find.text('Health metrics'), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available when the Training Day fails', (
@@ -121,8 +184,10 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
 
-    expect(find.text('Body'), findsOneWidget);
-    expect(find.text('Health metrics'), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available while the Training Day loads', (
@@ -145,7 +210,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Routines'), findsOneWidget);
-    expect(find.text('Supplements'), findsWidgets);
+    expect(find.byKey(HomeScreen.libraryProtocolsButtonKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.libraryCompoundsButtonKey), findsOneWidget);
   });
 
   testWidgets('Progress and Library meet accessibility guidelines', (
@@ -167,6 +233,11 @@ void main() {
               (ref) => const _DateEchoHomeRepository(),
             ),
             _homeNutritionDayOverride(),
+            // Every Progress card populated, the Protocols one unlocked.
+            progressFeatureRepositoryProvider.overrideWith(
+              (ref) => _populatedProgressRepository(),
+            ),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
           ],
           child: MaterialApp(
             theme: theme,
@@ -189,6 +260,138 @@ void main() {
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       }
+
+      // The cards below the fold, populated.
+      await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
+      await tester.pumpAndSettle();
+      for (final (card, content) in <(Type, String)>[
+        (KeyExercisesCard, 'Bench press'),
+        (NewBestsCard, 'Bench press'),
+        (BodyCard, 'Body Weight'),
+      ]) {
+        await tester.scrollUntilVisible(
+          find.byType(card),
+          200,
+          scrollable: find.descendant(
+            of: find.byKey(ProgressOverview.listKey),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining(content), findsWidgets);
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      }
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets(
+      'the Purpose filter rows and manager meet accessibility guidelines at '
+      '320 dp and 1.3x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final purposes = <PurposeRecord>[
+      for (final (index, name) in <String>[
+        'Sleep',
+        'Body composition',
+        'General health',
+      ].indexed)
+        PurposeRecord(
+          id: 'p-$index',
+          name: name,
+          sortOrder: index,
+          updatedAt: DateTime.utc(2026, 6, 30),
+        ),
+    ];
+    final compounds = <CompoundRecord>[
+      CompoundRecord(
+        id: 'c-1',
+        name: 'Melatonin',
+        defaultUnit: DoseUnit.milligram,
+        defaultRoute: DoseRoute.oral,
+        purposeIds: const <String>['p-0'],
+        updatedAt: DateTime.utc(2026, 6, 30),
+      ),
+    ];
+
+    Future<void> expectAccessible() async {
+      expect(tester.takeException(), isNull);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    }
+
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ProviderScope(
+          // A new scope per theme, so each loop starts on the list.
+          key: UniqueKey(),
+          overrides: [
+            compoundListProvider.overrideWith(
+              (ref) => Stream<List<CompoundRecord>>.value(compounds),
+            ),
+            recentCompoundIdsProvider.overrideWith(
+              (ref) => Stream<List<String>>.value(const <String>[]),
+            ),
+            activePurposesProvider.overrideWith(
+              (ref) => Stream<List<PurposeRecord>>.value(purposes),
+            ),
+            protocolDayControllerProvider.overrideWith(
+              _StubProtocolDayController.new,
+            ),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
+          ],
+          child: MaterialApp(
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: const CompoundListScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The list's filter row, with a filter selected.
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')));
+      await tester.pumpAndSettle();
+      await expectAccessible();
+
+      // The picker's filter row, from a page that opens it.
+      final context = tester.element(find.byType(CompoundListScreen));
+      unawaited(
+        showCompoundPickerSheet(context, selectedIds: const <String>[]),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(CompoundPickerSheet.searchFieldKey), findsOneWidget);
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')).last);
+      await tester.pumpAndSettle();
+      await expectAccessible();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+
+      // The manager, and its name dialog.
+      await tester.tap(find.byKey(CompoundListScreen.menuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundListScreen.purposesMenuKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(PurposeManagerScreen), findsOneWidget);
+      await expectAccessible();
+      await tester.tap(find.byKey(PurposeManagerScreen.addButtonKey));
+      await tester.pumpAndSettle();
+      await expectAccessible();
 
       semantics.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -274,15 +477,15 @@ void main() {
     await tester.pump();
 
     expect(find.text('No meals logged yet'), findsNothing);
-    expect(find.text('Manage routines'), findsOneWidget);
+    expect(find.byKey(HomeScreen.routinesButtonKey), findsOneWidget);
 
     await tester.tap(find.text('Log'));
     await tester.pumpAndSettle();
 
     expect(find.text('Log for this day'), findsOneWidget);
     expect(find.text('Workout'), findsOneWidget);
-    expect(find.text('Food'), findsOneWidget);
-    expect(find.text('Supplement'), findsOneWidget);
+    expect(find.text('Meal'), findsOneWidget);
+    expect(find.text('Dose'), findsOneWidget);
   });
 
   testWidgets('follows platform brightness', (tester) async {
@@ -575,6 +778,57 @@ void main() {
     expect(find.text('qa@example.com'), findsOneWidget);
     expect(find.text('Manage account and sync'), findsOneWidget);
     expect(find.text('Local only'), findsNothing);
+
+    final statusTile = find.byKey(HomeScreen.accountAndAppSignInKey);
+    final profileTile = find.byKey(HomeScreen.accountAndAppProfileKey);
+    final settingsTile = find.byKey(HomeScreen.accountAndAppSettingsKey);
+    expect(
+      find.descendant(of: profileTile, matching: find.text('Profile')),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(profileTile).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(statusTile).dy),
+    );
+    expect(
+      tester.getTopLeft(settingsTile).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(profileTile).dy),
+    );
+  });
+
+  testWidgets('Account and app opens the Profile screen', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [
+          _homeNutritionDayOverride(),
+          _disabledSyncCoordinatorOverride(),
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          activeFocusesProvider.overrideWith(
+            (ref) => Stream<List<FocusRecord>>.value(const <FocusRecord>[]),
+          ),
+        ],
+        authRepository: InMemoryAuthRepository(),
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+        settingsRepository: InMemorySettingsRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.accountAndAppButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.accountAndAppProfileKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProfileScreen), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('Account and app waits for the live auth state', (tester) async {
@@ -642,7 +896,8 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Body'));
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    await tester.tap(find.byKey(ProgressOverview.bodyTrackerTileKey));
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(tester, find.byType(BodyTrackerScreen));
 
@@ -674,7 +929,8 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Health metrics'));
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    await tester.tap(find.byKey(ProgressOverview.healthMetricsTileKey));
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(tester, find.byType(MetricsScreen));
 
@@ -699,11 +955,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The "Load Routine" affordance now opens the picker sheet (M34-03)
-    // rather than switching to the Library tab — that interim M33-06
-    // destination is retired.
-    expect(find.byKey(HomeScreen.loadRoutineButtonKey), findsOneWidget);
-    await tester.tap(find.byKey(HomeScreen.loadRoutineButtonKey));
+    // Routines opens the Routines sheet; with nothing yet it offers to
+    // create one, and managing Routines lives in Library, not on Today.
+    expect(find.byKey(HomeScreen.routinesButtonKey), findsOneWidget);
+    await tester.tap(find.byKey(HomeScreen.routinesButtonKey));
     await tester.pumpAndSettle();
     expect(find.byType(TemplatePickerSheet), findsOneWidget);
     expect(find.byKey(TemplatePickerSheet.emptyStateKey), findsOneWidget);
@@ -722,12 +977,6 @@ void main() {
     expect(find.byType(RoutinePlanListScreen), findsOneWidget);
     Navigator.of(tester.element(find.byType(RoutinePlanListScreen))).pop();
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(HomeScreen.todayDestinationKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(HomeScreen.manageRoutinesButtonKey));
-    await tester.pumpAndSettle();
-    expect(find.byType(RoutinePlanListScreen), findsOneWidget);
   });
 
   testWidgets('Library opens the New Exercise editor', (tester) async {
@@ -783,6 +1032,9 @@ void main() {
           recentCompoundIdsProvider.overrideWith(
             (ref) => Stream<List<String>>.value(const <String>[]),
           ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+          ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,
           ),
@@ -797,27 +1049,64 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.libraryDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Supplements').last);
+    await tester.ensureVisible(
+      find.byKey(HomeScreen.libraryCompoundsButtonKey),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.libraryCompoundsButtonKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(CompoundListScreen), findsOneWidget);
   });
 
-  testWidgets('Today Log opens the selected Nutrition Day for Food', (
-    tester,
-  ) async {
+  testWidgets(
+      'Today Log offers Meal, which opens the Meal screen for the '
+      'selected day', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
     final selectedDate =
-        TrainingDayDate.fromDateTime(DateTime.now()).addDays(1);
+        TrainingDayDate.fromDateTime(DateTime.now()).addDays(-1);
 
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
           _homeNutritionDayOverride(),
-          nutritionDayControllerProvider.overrideWith(
-            _StubNutritionDayController.new,
-          ),
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
         ],
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: const _DateEchoHomeRepository(),
+        settingsRepository: InMemorySettingsRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.previousDayButtonKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.logButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Meal'), findsOneWidget);
+    expect(find.text('Food'), findsNothing);
+    await tester.tap(find.byKey(HomeScreen.logMealKey));
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<MealScreen>(find.byType(MealScreen));
+    expect(screen.mealId, isNull);
+    expect(screen.day, nutritionDayDateFromTrainingDay(selectedDate));
+    expect(find.byType(NutritionDayView), findsNothing);
+
+    // Unmount inside the test so the database streams' closing timers run
+    // before the binding checks for pending timers.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(Duration.zero);
+  });
+
+  testWidgets('Today Log hides Meal on a future day', (tester) async {
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [_homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _DateEchoHomeRepository(),
       ),
@@ -828,17 +1117,10 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(HomeScreen.logFoodKey));
-    await tester.pumpAndSettle();
 
-    expect(find.byType(NutritionDayView), findsOneWidget);
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(NutritionDayView)),
-    );
-    expect(
-      container.read(selectedNutritionDayProvider),
-      nutritionDayDateFromTrainingDay(selectedDate),
-    );
+    expect(find.byKey(HomeScreen.logWorkoutKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logDoseKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logMealKey), findsNothing);
   });
 
   testWidgets('Today Log opens a new Workout', (tester) async {
@@ -855,6 +1137,9 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.logWorkoutKey));
+    await tester.pumpAndSettle();
+    // Workout opens the start sheet; an empty workout is still one choice.
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutScreen), findsOneWidget);
@@ -874,6 +1159,9 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.logWorkoutKey));
+    await tester.pumpAndSettle();
+    // Workout opens the start sheet; an empty workout is still one choice.
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
     await tester.pumpAndSettle();
 
     expect(find.text('Could not start workout. Try again.'), findsOneWidget);
@@ -904,6 +1192,9 @@ void main() {
               const <String>[],
             ),
           ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+          ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,
           ),
@@ -923,32 +1214,34 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
-    expect(find.byKey(HomeScreen.logSupplementKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logDoseKey), findsOneWidget);
     // Neutral capsule iconography — never a syringe.
     expect(
       find.descendant(
-        of: find.byKey(HomeScreen.logSupplementKey),
+        of: find.byKey(HomeScreen.logDoseKey),
         matching: find.byIcon(Icons.medication_outlined),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: find.byKey(HomeScreen.logSupplementKey),
+        of: find.byKey(HomeScreen.logDoseKey),
         matching: find.byIcon(Icons.vaccines),
       ),
       findsNothing,
     );
 
-    await tester.tap(find.byKey(HomeScreen.logSupplementKey));
+    await tester.tap(find.byKey(HomeScreen.logDoseKey));
     await tester.pump(const Duration(milliseconds: 300));
-    await _pumpUntilFound(tester, find.byType(ProtocolsDayView));
+    await _pumpUntilFound(tester, find.byType(CompoundListScreen));
 
-    expect(find.byType(ProtocolsDayView), findsOneWidget);
+    // Log → Dose goes straight to picking what was taken.
+    expect(find.byType(CompoundListScreen), findsOneWidget);
   });
 
   testWidgets(
-    'the Training|Nutrition domain toggle never carries a Supplements segment',
+    'the domain toggle offers Protocols, and drops it when hidden on this '
+    'device',
     (tester) async {
       final today = TrainingDayDate.fromDateTime(DateTime.now());
 
@@ -970,6 +1263,9 @@ void main() {
             mealTypeListProvider.overrideWith(
               (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
             ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => InMemorySettingsRepository(),
+            ),
           ],
           child: const PerenniaApp(),
         ),
@@ -985,6 +1281,26 @@ void main() {
       );
       expect(
         segmentedButton.segments.map((segment) => segment.value),
+        <HomeDomain>[
+          HomeDomain.training,
+          HomeDomain.nutrition,
+          HomeDomain.protocols,
+        ],
+      );
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byKey(HomeScreen.domainToggleKey)),
+      );
+      await container
+          .read(settingsControllerProvider.notifier)
+          .setShowProtocolsOnToday(false);
+      await tester.pump();
+
+      final hiddenToggle = tester.widget<SegmentedButton<HomeDomain>>(
+        find.byKey(HomeScreen.domainToggleKey),
+      );
+      expect(
+        hiddenToggle.segments.map((segment) => segment.value),
         <HomeDomain>[HomeDomain.training, HomeDomain.nutrition],
       );
     },
@@ -1023,7 +1339,7 @@ void main() {
 
     expect(find.byKey(HomeScreen.todayDestinationKey), findsOneWidget);
     expect(find.text('Controller state from repository'), findsOneWidget);
-    expect(find.text('Start New Workout'), findsOneWidget);
+    expect(find.text('Start workout'), findsOneWidget);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(HomeScreen)),
@@ -1118,7 +1434,8 @@ void main() {
     expect(find.byKey(HomeScreen.trainingDomainBodyKey), findsNothing);
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
     expect(find.byKey(NutritionDayView.daySummaryKey), findsOneWidget);
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.trainingDomainButtonKey));
     await tester.pumpAndSettle();
@@ -1162,14 +1479,16 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.nutritionDomainButtonKey));
     await tester.pumpAndSettle();
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
     await tester.pumpAndSettle();
 
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
     expect(find.byKey(NutritionDayView.daySummaryKey), findsOneWidget);
-    expect(find.text('Nutrition ${nextDay.storageValue}'), findsOneWidget);
+    expect(find.textContaining('Nutrition ${nextDay.storageValue}'),
+        findsOneWidget);
 
     await tester.fling(
       find.byKey(HomeScreen.dayHeaderKey),
@@ -1179,7 +1498,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.trainingDomainButtonKey));
     await tester.pumpAndSettle();
@@ -1245,14 +1565,61 @@ void main() {
     }
   });
 
-  testWidgets('home nutrition start meal uses the shared selected date', (
+  testWidgets('Today app bar fits a 360 dp screen at text scale 2.0', (
     tester,
   ) async {
-    final controller = _HomeStartMealNutritionController();
-    final selectedDate = TrainingDayDate.fromDateTime(DateTime.now()).addDays(
-      1,
-    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            upNextFeatureRepositoryProvider.overrideWith(
+              (ref) => const StubUpNextFeatureRepository(),
+            ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => InMemorySettingsRepository(),
+            ),
+            homeRepositoryProvider.overrideWith(
+              (ref) => const _DateEchoHomeRepository(),
+            ),
+            _homeNutritionDayOverride(),
+          ],
+          child: MaterialApp(
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(2),
+              ),
+              child: child!,
+            ),
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(HomeScreen.trainingDomainBodyKey),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(HomeScreen.domainToggleKey), findsOneWidget);
+      expect(find.byKey(HomeScreen.protocolsDomainButtonKey), findsOneWidget);
+      expect(find.byKey(HomeScreen.accountAndAppButtonKey), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets("Today's Nutrition view shows Log meal, hidden on a future day", (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -1262,13 +1629,7 @@ void main() {
           homeRepositoryProvider.overrideWith(
             (ref) => const _DateEchoHomeRepository(),
           ),
-          homeNutritionDayProvider.overrideWith((ref) {
-            final selectedDate = ref.watch(selectedTrainingDayProvider);
-            return Stream<NutritionDayRecord>.value(
-              _nutritionDayFor(selectedDate),
-            );
-          }),
-          nutritionDayControllerProvider.overrideWith(() => controller),
+          _homeNutritionDayOverride(),
           mealTypeListProvider.overrideWith(
             (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
           ),
@@ -1281,31 +1642,26 @@ void main() {
       find.byKey(HomeScreen.trainingDomainBodyKey),
     );
 
-    await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.nutritionDomainButtonKey));
     await tester.pumpAndSettle();
 
-    final startMealButton = find.byKey(
-      NutritionDayView.startMealButtonKey('meal-type-breakfast'),
-    );
+    final logMealButton = find.byKey(NutritionDayView.logMealButtonKey);
     await tester.scrollUntilVisible(
-      startMealButton,
+      logMealButton,
       240,
       scrollable: find.byType(Scrollable).first,
     );
-    await Scrollable.ensureVisible(
-      tester.element(startMealButton),
-      alignment: 0.5,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(startMealButton);
-    await tester.pump();
+    expect(logMealButton, findsOneWidget);
+    expect(find.text('Log meal'), findsOneWidget);
 
-    expect(
-      controller.startedMealDates,
-      <NutritionDayDate>[nutritionDayDateFromTrainingDay(selectedDate)],
+    await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(NutritionDayView.manageMealTypesButtonKey),
+      240,
+      scrollable: find.byType(Scrollable).first,
     );
+    expect(logMealButton, findsNothing);
   });
 
   testWidgets('starting a workout opens the empty workout page', (
@@ -1321,6 +1677,12 @@ void main() {
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
+          templatePickerFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubFocusFeatureRepository(),
+          ),
           _homeNutritionDayOverride(),
           homeRepositoryProvider.overrideWith((ref) => repository),
         ],
@@ -1331,6 +1693,8 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.byKey(HomeScreen.startWorkoutButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutScreen), findsOneWidget);
@@ -1380,6 +1744,234 @@ void main() {
       find.byKey(HomeScreen.openWorkoutButtonKey('morning')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('CUJ 11: Today and the Workout show where the user is', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pumpPlanProgressApp(tester, _PlanProgressHomeRepository());
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 6 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Upper B')),
+      findsOneWidget,
+    );
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3', 'Now']);
+    _expectCardTexts('pull-up', <String>['2/3 sets']);
+    _expectCardTexts('pushdown', <String>['0/2 sets']);
+    _expectCardTexts('curl', <String>['Done']);
+    expect(
+      find.descendant(
+        of: find.byKey(WorkoutScreen.exerciseCardKey('curl')),
+        matching: find.byIcon(Icons.check),
+      ),
+      findsOneWidget,
+    );
+    // Now and the round line sit on the superset's first card only.
+    expect(find.text('Now'), findsOneWidget);
+    expect(find.textContaining('Round'), findsOneWidget);
+    // The fraction is spoken in words, not as a slash, and Now and the
+    // round are in the card's label, so its state is never colour alone.
+    expect(find.bySemanticsLabel(RegExp('2 of 3 sets')), findsNWidgets(2));
+    expect(find.bySemanticsLabel(RegExp('0 of 2 sets')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Incline Press.*Now', dotAll: true)),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Dumbbell Curl.*Done', dotAll: true)),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'an ended Workout with no Template shows no Now and is titled Workout', (
+    tester,
+  ) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(templateName: null, ended: true),
+    );
+
+    expect(
+      find.text('Finished - 1h - 4 exercises - 6 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Workout')),
+      findsOneWidget,
+    );
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3']);
+    expect(find.text('Now'), findsNothing);
+  });
+
+  testWidgets(
+      'a finished superset reads All rounds done and Now moves to the next '
+      'exercise with a plan', (tester) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(supersetDone: true),
+    );
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 8 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    _expectCardTexts('incline', <String>['Done', 'All rounds done']);
+    _expectCardTexts('pull-up', <String>['Done']);
+    // Dumbbell Curl holds the latest Performed Set; the walk from it wraps
+    // past the finished superset to Triceps Pushdown.
+    _expectCardTexts('pushdown', <String>['0/2 sets', 'Now']);
+    expect(find.text('Now'), findsOneWidget);
+  });
+
+  testWidgets('a Workout with every Set performed reads n sets on Today', (
+    tester,
+  ) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(supersetDone: true, pushdownDone: true),
+    );
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Done'), findsNWidgets(4));
+    expect(find.text('Now'), findsNothing);
+  });
+
+  testWidgets('Workout progress cards are accessible at text scale 2.0', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(),
+      surfaceSize: const Size(360, 3200),
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    // The Home app bar and the Workout header overflow at this scale on a
+    // 360 dp phone. That predates progress and lies outside the cards, so
+    // it is cleared here and the cards' own rows are checked instead.
+    tester.takeException();
+    for (final id in <String>['incline', 'pull-up', 'pushdown', 'curl']) {
+      final flexes = tester.renderObjectList<RenderFlex>(
+        find.descendant(
+          of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
+          matching: find.byWidgetPredicate((widget) => widget is Flex),
+        ),
+      );
+      expect(flexes, isNotEmpty);
+      for (final flex in flexes) {
+        expect(
+          flex.toStringShort(),
+          isNot(contains('OVERFLOWING')),
+          reason: id,
+        );
+      }
+    }
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3', 'Now']);
+    _expectCardTexts('curl', <String>['Done']);
+    for (final id in <String>['incline', 'pull-up', 'pushdown', 'curl']) {
+      final card = tester.getSize(
+        find.byKey(WorkoutScreen.openExerciseButtonKey(id)),
+      );
+      expect(card.height, greaterThanOrEqualTo(AppDimens.touchTarget));
+    }
+    // Now is on-primary ink on a Signal Cyan fill, which passes AA in the
+    // light theme where cyan text on a white card would not. (The screen's
+    // header buttons fail textContrastGuideline in the light theme before
+    // progress, so the guideline is not run over the whole screen here.)
+    final now = tester.widget<Text>(find.text('Now'));
+    final nowFill = tester
+        .widget<DecoratedBox>(
+          find
+              .ancestor(
+                of: find.text('Now'),
+                matching: find.byType(DecoratedBox),
+              )
+              .first,
+        )
+        .decoration as BoxDecoration;
+    expect(
+      _contrastRatio(now.style!.color!, nowFill.color!),
+      greaterThanOrEqualTo(4.5),
+    );
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'a card\'s exercise name keeps the row the count leaves on a 360 dp '
+      'phone', (tester) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(),
+      surfaceSize: const Size(360, 3200),
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    for (final (id, name) in <(String, String)>[
+      ('incline', 'Incline Press'),
+      ('pushdown', 'Triceps Pushdown'),
+      ('curl', 'Dumbbell Curl'),
+    ]) {
+      final card = find.byKey(WorkoutScreen.exerciseCardKey(id));
+      final nameFinder = find.descendant(of: card, matching: find.text(name));
+      final row = tester.renderObject<RenderFlex>(
+        find.ancestor(of: nameFinder, matching: find.byType(Row)).first,
+      );
+      // The name is the row's only flexible child, so it takes all the
+      // width the count, the gaps and the chevron leave: nothing unclaimed,
+      // as there was when the count shared the free width half and half.
+      var claimed = 0.0;
+      var child = row.firstChild;
+      while (child != null) {
+        claimed += child.size.width;
+        child = row.childAfter(child);
+      }
+      expect(claimed, moreOrLessEquals(row.size.width), reason: id);
+      final countWidth = tester
+          .getSize(
+            find.descendant(
+              of: card,
+              matching: find.byType(ExerciseProgressCount),
+            ),
+          )
+          .width;
+      expect(tester.getSize(nameFinder).width, greaterThan(countWidth),
+          reason: id);
+    }
   });
 
   testWidgets(
@@ -1682,42 +2274,12 @@ void main() {
   });
 
   testWidgets(
-      'finishing a workout pops to Home and shows a Share action in the '
-      'snackbar', (tester) async {
+      'finishing a workout opens the summary over the Workout, and Done '
+      'returns to Home', (tester) async {
     final repository = _FinishableWorkoutHomeRepository();
-    final copiedSummaries = <String>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final arguments = call.arguments as Map<Object?, Object?>;
-          copiedSummaries.add(arguments['text']! as String);
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      );
-    });
+    final copiedSummaries = captureClipboard(tester);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -1734,22 +2296,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
-    // Finish pops the WorkoutScreen back to Home.
-    expect(find.byType(WorkoutScreen), findsNothing);
-    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    // The sheet opens over the Workout: nothing pops until it closes.
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Workout finished'), findsNothing);
 
-    expect(find.text('Workout finished'), findsOneWidget);
-    final shareActionFinder = find.descendant(
-      of: find.byType(SnackBar),
-      matching: find.widgetWithText(SnackBarAction, 'Share'),
-    );
-    expect(shareActionFinder, findsOneWidget);
-
-    await tester.tap(shareActionFinder);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(FinishSummarySheet.copySummaryKey));
+    await tester.pump();
+    await tester.pump();
 
     expect(copiedSummaries, <String>['Workout summary']);
-    expect(find.text('Workout summary copied'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(FinishSummarySheet.copySummaryKey),
+        matching: find.text('Copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+    expect(find.byType(WorkoutScreen), findsNothing);
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('finishing a zero-set workout pops to Home without error', (
@@ -1757,21 +2329,7 @@ void main() {
   ) async {
     final repository = _FinishableWorkoutHomeRepository();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -1786,8 +2344,48 @@ void main() {
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
     expect(tester.takeException(), isNull);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
     expect(find.byType(WorkoutScreen), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('the Workout menu\'s Share copies the text, and says so for 2 s',
+      (tester) async {
+    final repository = _FinishableWorkoutHomeRepository();
+    final copiedSummaries = captureClipboard(tester);
+
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(WorkoutScreen.optionsButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Share workout'));
+    await tester.pumpAndSettle();
+
+    expect(copiedSummaries, <String>['Workout summary']);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text('Workout summary copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 1900));
+    expect(find.byType(SnackBar), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('workout notes screen deletes existing notes', (
@@ -1851,7 +2449,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Back Squat'), findsOneWidget);
-    expect(find.text('2 sets'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
     expect(find.text('100 kg × 5 reps'), findsNothing);
     expect(find.text('105 kg × 5 reps'), findsNothing);
     expect(find.byIcon(Icons.link_off), findsNWidgets(2));
@@ -1890,6 +2489,13 @@ void main() {
       findsOneWidget,
     );
 
+    // The header's Focus row pushes the last card toward the fold.
+    await tester.ensureVisible(
+      find.byKey(
+        WorkoutScreen.reorderExerciseHandleKey('workout-exercise-curl'),
+      ),
+    );
+    await tester.pumpAndSettle();
     final cardFinder = find.byKey(
       WorkoutScreen.exerciseCardKey('workout-exercise-curl'),
     );
@@ -2099,21 +2705,6 @@ class _StubProtocolDayController extends ProtocolDayController {
   Future<void> ensureOtcLibrarySeeded() async {}
 }
 
-class _StubNutritionDayController extends NutritionDayController {
-  @override
-  Stream<NutritionDayState> build() {
-    final selectedDate = ref.watch(selectedNutritionDayProvider);
-    return Stream<NutritionDayState>.value(
-      NutritionDayState(
-        day: NutritionDayRecord(
-          localDate: selectedDate,
-          meals: <NutritionDayMealRecord>[],
-        ),
-      ),
-    );
-  }
-}
-
 class _StubRoutinePlanListController extends RoutinePlanListController {
   @override
   Stream<RoutinePlanListSnapshot> build() {
@@ -2121,6 +2712,199 @@ class _StubRoutinePlanListController extends RoutinePlanListController {
       RoutinePlanListSnapshot.empty,
     );
   }
+}
+
+/// Scrolls Progress Overview until the More tile keyed [key] is built and
+/// on screen; the list builds its rows lazily.
+Future<void> _scrollToProgressTile(WidgetTester tester, Key key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(key),
+    200,
+    scrollable: find.descendant(
+      of: find.byKey(ProgressOverview.listKey),
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.ensureVisible(find.byKey(key));
+  await tester.pumpAndSettle();
+}
+
+/// A [StubProgressFeatureRepository] that fills every Progress card around
+/// the real current date: a weekly Routine, Workouts under two Focuses and
+/// none, more Compounds than the Protocols card lists, two charted
+/// Favorites with New Bests, and a month of Body Weight Readings.
+StubProgressFeatureRepository _populatedProgressRepository() {
+  final today = TrainingDayDate.fromDateTime(DateTime.now());
+  ProgressPoint point(int daysAgo, double value, {bool isNewBest = false}) {
+    final date = today.addDays(-daysAgo);
+    return ProgressPoint(
+      workoutId: 'workout-$daysAgo-none',
+      localDate: date,
+      startedAt: date.atLocalTimeOf(DateTime(2000, 1, 1, 7)),
+      setId: 'set-$daysAgo',
+      value: value,
+      unit: TrainingUnit.kilogram,
+      isNewBest: isNewBest,
+    );
+  }
+
+  ExerciseRecord favorite(String id, String name) => ExerciseRecord(
+        id: id,
+        origin: ExerciseLibraryOrigin.user,
+        name: name,
+        type: ExerciseType(const <DimensionId>[
+          DimensionId.load,
+          DimensionId.reps,
+        ]),
+        defaultLoadUnit: TrainingUnit.kilogram,
+        loadMode: ExerciseLoadMode.added,
+        recordProfile: RecordProfile.maxLoad,
+        categoryId: null,
+        notes: null,
+        isFavorite: true,
+        updatedAt: DateTime.utc(2026),
+      );
+  final series = <ProgressSeries>[
+    ProgressSeries(
+      exerciseId: 'exercise-bench',
+      measure: ProgressMeasureKind.maxLoad,
+      betterIs: ProgressBetterIs.higher,
+      points: <ProgressPoint>[
+        point(120, 95),
+        point(30, 97.5, isNewBest: true),
+        point(3, 100, isNewBest: true),
+      ],
+    ),
+    ProgressSeries(
+      exerciseId: 'exercise-squat',
+      measure: ProgressMeasureKind.maxLoad,
+      betterIs: ProgressBetterIs.higher,
+      points: <ProgressPoint>[point(27, 140), point(6, 135)],
+    ),
+  ];
+  // Each Workout is linked to the template its weekday plans, if any.
+  ProgressWorkout workout(int daysAgo, {String? focusId}) {
+    final date = today.addDays(-daysAgo);
+    final startedAt = date.atLocalTimeOf(DateTime(2000, 1, 1, 7));
+    return ProgressWorkout(
+      workoutId: 'workout-$daysAgo-${focusId ?? 'none'}',
+      localDate: date,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(minutes: 70)),
+      focusId: focusId,
+      linkedTemplateId: 'template-${date.toLocalDateTime().weekday}',
+      performedSetCount: 3,
+    );
+  }
+
+  final bodyWeight = MeasurementRecord(
+    id: 'measurement-body-weight',
+    name: 'Body Weight',
+    unit: MeasurementUnit.kilogram,
+    goalType: MeasurementGoalType.decrease,
+    enabled: true,
+    sortOrder: 0,
+    updatedAt: DateTime.utc(2026),
+  );
+  // Newest first, as Body Tracker reads them.
+  final bodyWeightEntries = <MeasurementEntryRecord>[
+    for (var daysAgo = 0; daysAgo < 30; daysAgo += 2)
+      MeasurementEntryRecord(
+        id: 'reading-$daysAgo',
+        measurementId: bodyWeight.id,
+        value: 80 + daysAgo / 20 + (daysAgo % 4 == 0 ? 0.6 : 0),
+        valueEntered: '80',
+        measuredAt: today
+            .addDays(-daysAgo)
+            .atLocalTimeOf(DateTime(2000, 1, 1, 7))
+            .toUtc(),
+        updatedAt: DateTime.utc(2026),
+      ),
+  ];
+
+  return StubProgressFeatureRepository(
+    curatedMeasurements: <MeasurementRecord>[bodyWeight],
+    measurementEntries: <String, List<MeasurementHistoryEntry>>{
+      bodyWeight.id: <MeasurementHistoryEntry>[
+        for (final (index, entry) in bodyWeightEntries.indexed)
+          MeasurementHistoryEntry(
+            measurement: bodyWeight,
+            entry: entry,
+            previousEntry: index + 1 < bodyWeightEntries.length
+                ? bodyWeightEntries[index + 1]
+                : null,
+          ),
+      ],
+    },
+    weeklyPlans: <WeeklyPlanFacts>[
+      WeeklyPlanFacts(
+        routineId: 'routine-hybrid',
+        routineName: 'Hybrid block',
+        entries: <WeeklyPlanEntry>[
+          for (final weekday in <int>[1, 2, 4, 6])
+            WeeklyPlanEntry(
+              workoutTemplateId: 'template-$weekday',
+              weekday: weekday,
+            ),
+        ],
+      ),
+    ],
+    hasRotatingRoutine: true,
+    workouts: <ProgressWorkout>[
+      for (var daysAgo = 0; daysAgo < 80; daysAgo += 3)
+        workout(daysAgo, focusId: daysAgo % 2 == 0 ? 'focus-weights' : null),
+      workout(1, focusId: 'focus-endurance'),
+    ],
+    focusesById: <String, FocusRecord>{
+      'focus-weights': FocusRecord(
+        id: 'focus-weights',
+        name: 'Weights',
+        sortOrder: 0,
+        updatedAt: DateTime.utc(2026),
+      ),
+      'focus-endurance': FocusRecord(
+        id: 'focus-endurance',
+        name: 'Endurance',
+        sortOrder: 1,
+        colorHex: '#E0608F',
+        updatedAt: DateTime.utc(2026),
+      ),
+    },
+    consistencySummaries: <CompoundConsistencySummary>[
+      for (var index = 0; index < 7; index += 1)
+        CompoundConsistencySummary(
+          compoundId: 'compound-$index',
+          compoundName: 'Compound $index',
+          logged: 20 + index,
+          partlyLogged: index % 2,
+          notLogged: 2,
+          paused: index == 3 ? 4 : 0,
+        ),
+    ],
+    favorites: <ExerciseRecord>[
+      favorite('exercise-bench', 'Bench press'),
+      favorite('exercise-squat', 'Squat'),
+    ],
+    exerciseNames: const <String, String>{
+      'exercise-bench': 'Bench press',
+      'exercise-squat': 'Squat',
+    },
+    progressSeries: series,
+    newBests: <NewBest>[
+      for (final point in series.first.points.reversed)
+        if (point.isNewBest)
+          NewBest(
+            exerciseId: 'exercise-bench',
+            measure: ProgressMeasureKind.maxLoad,
+            workoutId: point.workoutId,
+            localDate: point.localDate,
+            startedAt: point.startedAt,
+            setId: point.setId,
+            value: point.value,
+            unit: point.unit,
+          ),
+    ],
+  );
 }
 
 /// An in-memory `ProtocolsLockStore` fake that never reports a configured
@@ -2163,7 +2947,10 @@ class _DeferredAuthRepository extends InMemoryAuthRepository {
 
 class _FailingStartHomeRepository extends StubHomeRepository {
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     throw StateError('Database unavailable');
   }
 }
@@ -2252,7 +3039,10 @@ class _ErrorHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     throw StateError('Training Day unavailable');
   }
 
@@ -2292,11 +3082,6 @@ class _ErrorHomeRepository extends _HomeRepositoryTestDefaults {
   }) async {
     throw StateError('Training Day unavailable');
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {
-    throw StateError('Training Day unavailable');
-  }
 }
 
 class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2308,7 +3093,10 @@ class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-loading';
   }
 
@@ -2342,9 +3130,6 @@ class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2372,7 +3157,10 @@ class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-new';
   }
 
@@ -2405,9 +3193,6 @@ class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2425,7 +3210,10 @@ class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-${localDate.storageValue}';
   }
 
@@ -2474,9 +3262,6 @@ class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2503,7 +3288,10 @@ class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     startedDates.add(localDate);
     final workoutId = 'workout-${startedDates.length}';
     _workouts.add(
@@ -2558,9 +3346,6 @@ class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   HomeSummary _emptyDay(TrainingDayDate localDate) {
@@ -2612,7 +3397,10 @@ class _AddExerciseHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2669,9 +3457,6 @@ class _AddExerciseHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 
   Future<void> dispose() => _controller.close();
 
@@ -2731,7 +3516,10 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2769,13 +3557,31 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
-/// An open, zero-set workout used to exercise the Finish flow:
-/// popping to Home, the Share snackbar action, and the zero-set finish path.
+/// The app over [repository], with a Workout that has no divergence and no
+/// New Bests, for the Finish flow.
+Widget _finishableWorkoutApp(_FinishableWorkoutHomeRepository repository) {
+  return ProviderScope(
+    overrides: [
+      upNextFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubUpNextFeatureRepository(),
+      ),
+      _homeNutritionDayOverride(),
+      homeRepositoryProvider.overrideWith((ref) => repository),
+      templateDivergenceFeatureRepositoryProvider.overrideWith(
+        (ref) => const _NoDivergenceRepository(),
+      ),
+      progressFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubProgressFeatureRepository(),
+      ),
+    ],
+    child: const PerenniaApp(),
+  );
+}
+
+/// An open, zero-set workout used to exercise the Finish flow: the summary
+/// sheet, Copy summary, the return to Home, and the zero-set finish path.
 class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   final finishedWorkoutIds = <String>[];
 
@@ -2804,7 +3610,10 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2845,9 +3654,6 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 /// Always reports "not linked" — keeps the Finish flow in these tests from
@@ -2937,7 +3743,10 @@ class _WorkoutExerciseManagementHomeRepository
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -3046,9 +3855,6 @@ class _WorkoutExerciseManagementHomeRepository
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   void _emit() {
@@ -3141,7 +3947,10 @@ class _MultiSessionHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'new-workout';
   }
 
@@ -3176,36 +3985,6 @@ class _MultiSessionHomeRepository extends _HomeRepositoryTestDefaults {
   @override
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
-  }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-}
-
-class _HomeStartMealNutritionController extends NutritionDayController {
-  final startedMealDates = <NutritionDayDate>[];
-
-  @override
-  Stream<NutritionDayState> build() {
-    const localDate = NutritionDayDate(year: 1970, month: 1, day: 1);
-    return Stream<NutritionDayState>.value(
-      NutritionDayState(
-        day: NutritionDayRecord(
-          localDate: localDate,
-          meals: <NutritionDayMealRecord>[],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Future<String> startMeal({
-    required MealTypeRecord mealType,
-    DateTime? startedAt,
-    NutritionDayDate? localDate,
-  }) async {
-    startedMealDates.add(localDate!);
-    return 'created-meal-id';
   }
 }
 
@@ -3243,6 +4022,161 @@ Future<void> _openAccountAndAppSettings(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(HomeScreen.accountAndAppSettingsKey));
   await tester.pumpAndSettle();
+}
+
+double _contrastRatio(Color a, Color b) {
+  final lighter = a.computeLuminance() > b.computeLuminance() ? a : b;
+  final darker = identical(lighter, a) ? b : a;
+  return (lighter.computeLuminance() + 0.05) /
+      (darker.computeLuminance() + 0.05);
+}
+
+Future<void> _pumpPlanProgressApp(
+  WidgetTester tester,
+  HomeRepository repository, {
+  Size surfaceSize = const Size(800, 2400),
+}) async {
+  // Tall enough for every card without scrolling.
+  tester.view.physicalSize = surfaceSize;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        upNextFeatureRepositoryProvider.overrideWith(
+          (ref) => const StubUpNextFeatureRepository(),
+        ),
+        _homeNutritionDayOverride(),
+        homeRepositoryProvider.overrideWith((ref) => repository),
+      ],
+      child: const PerenniaApp(),
+    ),
+  );
+  await tester.pump();
+  await tester.pumpAndSettle();
+}
+
+/// Expects each of [texts] once on the Workout screen card [workoutExerciseId].
+void _expectCardTexts(String workoutExerciseId, List<String> texts) {
+  for (final text in texts) {
+    expect(
+      find.descendant(
+        of: find.byKey(WorkoutScreen.exerciseCardKey(workoutExerciseId)),
+        matching: find.text(text),
+      ),
+      findsOneWidget,
+      reason: '$text on $workoutExerciseId',
+    );
+  }
+}
+
+/// CUJ 11: a Workout from "Upper B" whose superset of Incline Press and
+/// Pull-Up (2 of 3 each) is in progress, Triceps Pushdown with 0 of 2 done,
+/// and Dumbbell Curl with 2 Performed Sets and no plan.
+///
+/// [supersetDone] performs the superset's third round, and [pushdownDone]
+/// both Pushdown Sets; Dumbbell Curl's Sets are always the latest performed.
+class _PlanProgressHomeRepository extends StubHomeRepository {
+  _PlanProgressHomeRepository({
+    this.templateName = 'Upper B',
+    this.ended = false,
+    this.supersetDone = false,
+    this.pushdownDone = false,
+  });
+
+  final String? templateName;
+  final bool ended;
+  final bool supersetDone;
+  final bool pushdownDone;
+
+  static final _startedAt = DateTime(2026, 6, 14, 7);
+
+  HomeWorkoutSummary get _workout {
+    var minute = 0;
+    List<HomeSetSummary> setsFor(String id, int total, int performed) {
+      return <HomeSetSummary>[
+        for (var index = 0; index < total; index += 1)
+          HomeSetSummary(
+            id: '$id-set-$index',
+            description: '$id set ${index + 1}',
+            isCompleted: index < performed,
+            performedAt: index < performed
+                ? _startedAt.add(Duration(minutes: minute += 2))
+                : null,
+          ),
+      ];
+    }
+
+    HomeWorkoutExerciseSummary exercise(
+      String id,
+      String name,
+      List<HomeSetSummary> sets,
+    ) {
+      return HomeWorkoutExerciseSummary(
+        id: id,
+        workoutId: 'workout-1',
+        exerciseId: '$id-exercise',
+        name: name,
+        type: ExerciseType(
+          const <DimensionId>[DimensionId.load, DimensionId.reps],
+        ),
+        sets: sets,
+      );
+    }
+
+    final supersetPerformed = supersetDone ? 3 : 2;
+    return HomeWorkoutSummary(
+      id: 'workout-1',
+      startedAt: _startedAt,
+      endedAt: ended ? _startedAt.add(const Duration(hours: 1)) : null,
+      templateName: templateName,
+      workoutExercises: <HomeWorkoutExerciseSummary>[
+        exercise(
+          'incline',
+          'Incline Press',
+          setsFor('incline', 3, supersetPerformed),
+        ),
+        exercise(
+          'pull-up',
+          'Pull-Up',
+          setsFor('pull-up', 3, supersetPerformed),
+        ),
+        exercise(
+          'pushdown',
+          'Triceps Pushdown',
+          setsFor('pushdown', 2, pushdownDone ? 2 : 0),
+        ),
+        exercise('curl', 'Dumbbell Curl', setsFor('curl', 2, 2)),
+      ],
+      exerciseGroups: <HomeExerciseGroupSummary>[
+        HomeExerciseGroupSummary(
+          id: 'superset',
+          name: 'Superset A',
+          colorHex: '#2F6FED',
+          workoutExerciseIds: const <String>['incline', 'pull-up'],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Stream<HomeSummary> watchTrainingDay(TrainingDayDate localDate) {
+    final workout = _workout;
+    return Stream<HomeSummary>.value(
+      HomeSummary(
+        title: 'Training Day',
+        selectedDate: localDate,
+        status: 'In progress',
+        workouts: <HomeWorkoutSummary>[workout],
+        workoutExercises: workout.workoutExercises,
+      ),
+    );
+  }
+
+  @override
+  Stream<HomeWorkoutSummary?> watchWorkout(String workoutId) {
+    return Stream<HomeWorkoutSummary?>.value(_workout);
+  }
 }
 
 Override _homeNutritionDayOverride({

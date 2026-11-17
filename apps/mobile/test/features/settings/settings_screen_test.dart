@@ -12,13 +12,13 @@ import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/activity/widgets/activity_feed_screen.dart';
 import 'package:perennia/features/agent_keys/repositories/agent_api_key_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
-import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
-import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/settings/services/auto_backup_service.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
 import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
 import 'package:perennia/features/sync/repositories/sync_device_id_repository.dart';
@@ -104,7 +104,10 @@ void main() {
         find.byKey(SettingsScreen.confirmEraseAllDataButtonKey),
         findsOneWidget,
       );
-      expect(find.textContaining('Backup restore is separate'), findsOneWidget);
+      expect(
+        find.textContaining('Settings and the built-in exercise library stay'),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(SettingsScreen.confirmEraseAllDataButtonKey),
@@ -112,7 +115,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(eraseCount, 1);
-      expect(find.text('Local data erased'), findsOneWidget);
+      expect(find.text('All data erased'), findsOneWidget);
     });
 
     testWidgets('shows nutrition data credits and the honest offline boundary',
@@ -148,21 +151,20 @@ void main() {
       expect(find.byKey(SettingsScreen.nutritionCreditsKey), findsOneWidget);
       expect(find.text('Nutrition data'), findsOneWidget);
       expect(find.textContaining('Open Food Facts'), findsAtLeastNWidgets(1));
-      expect(find.textContaining('ODbL'), findsOneWidget);
+      expect(find.textContaining('ODbL'), findsAtLeastNWidgets(1));
       expect(
         find.textContaining('USDA FoodData Central'),
         findsAtLeastNWidgets(1),
       );
       expect(find.textContaining('CC0'), findsAtLeastNWidgets(1));
       expect(
-        find.textContaining('USDA logging works fully offline'),
+        find.textContaining(
+          'USDA foods and the offline Open Food Facts list work with no '
+          'network',
+        ),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Open Food Facts branded/barcode lookups need '
-            'network once'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('need network once'), findsNothing);
       expect(
           find.textContaining('Quick Entry stays available'), findsOneWidget);
     });
@@ -286,6 +288,35 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('shows how many pulled changes are held back', (
+      tester,
+    ) async {
+      await _pumpSettings(
+        tester,
+        syncStatus: SyncStatusState(
+          kind: SyncStatusKind.synced,
+          lastSuccessfulSyncAt: DateTime.utc(2026, 6, 22, 10),
+          observedAt: DateTime.utc(2026, 6, 22, 12),
+          quarantinedChangeCount: 2,
+        ),
+      );
+
+      await _openHubScreen(tester, SettingsScreen.syncTileKey);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.quarantinedChangesRowKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.text('Changes held back'), findsOneWidget);
+      expect(
+        find.textContaining('2 changes from the server could not be applied'),
+        findsOneWidget,
+      );
+      // Sync keeps working around held changes: no failure banner.
+      expect(find.byKey(SettingsScreen.syncFailureBannerKey), findsNothing);
     });
 
     testWidgets('shows Garmin stale status with manual FIT fallback', (
@@ -685,7 +716,7 @@ void main() {
             final change = changes.single! as Map<String, Object?>;
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': <String>[change['id']! as String],
                 'serverClock': '2026-06-25T10:00:01.000Z',
                 'applied': <Object?>[
@@ -867,6 +898,10 @@ void main() {
       expect(purgeRepository.calls.map((call) => call.scope),
           <ImportedDataPurgeScope>[ImportedDataPurgeScope.gpsOnly]);
       expect(find.text('Garmin GPS purged'), findsOneWidget);
+      // The floating bar would otherwise cover the buttons tapped below.
+      ScaffoldMessenger.of(tester.element(find.text('Garmin GPS purged')))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
 
       await tester.ensureVisible(
         find.byKey(SettingsScreen.garminImportDisconnectButtonKey),
@@ -987,6 +1022,7 @@ void main() {
             autoBackupLastStatus: AutoBackupStatus.skippedMissingFolderGrant,
           ),
         ),
+        extraOverrides: [_autoBackupAvailable],
       );
       await _openHubScreen(tester, SettingsScreen.backupTileKey);
 
@@ -999,11 +1035,24 @@ void main() {
       expect(find.byKey(SettingsScreen.autoBackupSwitchKey), findsOneWidget);
       expect(
           find.byKey(SettingsScreen.autoBackupFolderButtonKey), findsOneWidget);
-      expect(find.byKey(SettingsScreen.autoBackupPassphraseFieldKey),
+      expect(find.byKey(SettingsScreen.backupPassphraseFieldKey),
           findsOneWidget);
       expect(
           find.byKey(SettingsScreen.autoBackupGrantPromptKey), findsOneWidget);
       expect(find.text('Folder access needed'), findsOneWidget);
+    });
+
+    testWidgets(
+        'offers Back up now but no auto-backup where the platform has no '
+        'folder handler', (tester) async {
+      await _pumpSettings(tester);
+      await _openHubScreen(tester, SettingsScreen.backupTileKey);
+
+      expect(find.text('Back up now'), findsOneWidget);
+      expect(find.byKey(SettingsScreen.backupPassphraseFieldKey),
+          findsOneWidget);
+      expect(find.byKey(SettingsScreen.autoBackupSwitchKey), findsNothing);
+      expect(find.byKey(SettingsScreen.autoBackupFolderButtonKey), findsNothing);
     });
 
     testWidgets(
@@ -1023,6 +1072,7 @@ void main() {
           tester,
           theme: theme,
           settingsRepository: InMemorySettingsRepository(settings),
+          extraOverrides: [_autoBackupAvailable],
         );
         await _openHubScreen(tester, SettingsScreen.backupTileKey);
 
@@ -1263,7 +1313,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Increment 2.5 · PR tracking on'), findsOneWidget);
-      expect(find.text('Auto-backup off'), findsOneWidget);
+      expect(find.text('Back up to a file or restore one'), findsOneWidget);
       expect(find.text('Crash reporting off'), findsOneWidget);
       // Destructive controls live on sub-screens, never on the hub.
       expect(find.byKey(SettingsScreen.eraseAllDataButtonKey), findsNothing);
@@ -1288,6 +1338,7 @@ void main() {
         SettingsScreen.backupTileKey: BackupSettingsScreen,
         SettingsScreen.dataManagementTileKey: DataManagementScreen,
         SettingsScreen.privacyTileKey: PrivacySettingsScreen,
+        SettingsScreen.foodDataTileKey: FoodDataSettingsScreen,
         SettingsScreen.aboutTileKey: AboutScreen,
       };
 
@@ -1297,6 +1348,105 @@ void main() {
         await tester.pageBack();
         await tester.pumpAndSettle();
       }
+    });
+
+    testWidgets('the Food data tile shows the online lookups setting', (
+      tester,
+    ) async {
+      final settingsRepository = InMemorySettingsRepository();
+      await _pumpSettings(tester, settingsRepository: settingsRepository);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.foodDataTileKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(SettingsScreen.foodDataTileKey),
+          matching: find.text('Online lookups on'),
+        ),
+        findsOneWidget,
+      );
+
+      await _openHubScreen(tester, SettingsScreen.foodDataTileKey);
+      await tester.tap(
+        find.byKey(FoodDataSettingsScreen.onlineFoodLookupsSwitchKey),
+      );
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(SettingsScreen.foodDataTileKey),
+          matching: find.text('Online lookups off'),
+        ),
+        findsOneWidget,
+      );
+      expect((await settingsRepository.load()).onlineFoodLookups, isFalse);
+    });
+
+    testWidgets(
+        'the default Erase all data handler resets Open Food Facts after the '
+        'erase', (tester) async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      final mealId = await repositories.nutrition.createMeal(
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: DateTime(2026, 10, 27, 7),
+          mealTypeName: 'Breakfast',
+        ),
+      );
+      final openFoodFacts = _ResetRecordingOpenFoodFactsRepository(
+        mealStillLive: () async =>
+            (await repositories.nutrition.getMealById(mealId))?.deletedAt ==
+            null,
+      );
+
+      await _pumpSettings(
+        tester,
+        trainingRepositories: repositories,
+        openFoodFactsRepository: openFoodFacts,
+      );
+      await _openHubScreen(tester, SettingsScreen.dataManagementTileKey);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.eraseAllDataButtonKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester
+          .ensureVisible(find.byKey(SettingsScreen.eraseAllDataButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SettingsScreen.eraseAllDataButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          'Open Food Facts products you opened or scanned are cleared from '
+          'this device too, and undo does not bring them back.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(SettingsScreen.confirmEraseAllDataButtonKey));
+      await tester.pump();
+      // The erase does real database work, so let real time pass.
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100 && openFoodFacts.resets == 0; i += 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(openFoodFacts.resets, 1);
+      expect(
+        openFoodFacts.mealLiveAtReset,
+        isFalse,
+        reason: 'the erase runs first',
+      );
     });
 
     testWidgets('Activity Log is a Data and privacy destination', (
@@ -1388,65 +1538,15 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
       }
     });
-
-    testWidgets(
-      'the Supplements tile opens the discreet Compound list surface',
-      (tester) async {
-        // This is a NAVIGATION smoke test, not a Protocols data test (that's
-        // protocols_repository_test.dart + compound_list_screen_test.dart):
-        // stub the Compound-list providers so no real Drift `.watch()` stream
-        // is ever created here, keeping the assertion to "does the tile land
-        // on CompoundListScreen".
-        await _pumpSettings(
-          tester,
-          extraOverrides: [
-            compoundListProvider.overrideWith(
-              (ref) => Stream<List<CompoundRecord>>.value(
-                const <CompoundRecord>[],
-              ),
-            ),
-            recentCompoundIdsProvider.overrideWith(
-              (ref) => Stream<List<String>>.value(
-                const <String>[],
-              ),
-            ),
-            protocolDayControllerProvider.overrideWith(
-              _StubProtocolDayController.new,
-            ),
-          ],
-        );
-
-        await tester.scrollUntilVisible(
-          find.byKey(SettingsScreen.supplementsTileKey),
-          400,
-          scrollable: find.byType(Scrollable).first,
-        );
-        // Neutral capsule iconography, never a syringe.
-        expect(
-          find.descendant(
-            of: find.byKey(SettingsScreen.supplementsTileKey),
-            matching: find.byIcon(Icons.medication_outlined),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: find.byKey(SettingsScreen.supplementsTileKey),
-            matching: find.byIcon(Icons.vaccines),
-          ),
-          findsNothing,
-        );
-
-        await tester.tap(find.byKey(SettingsScreen.supplementsTileKey));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(CompoundListScreen), findsOneWidget);
-      },
-    );
   });
 }
 
 const _garminCredentialId = 'credential-garmin-1';
+
+/// Stands in for a platform that implements the auto-backup folder channel;
+/// without it the test binding has no handler and Settings hides auto-backup.
+final _autoBackupAvailable =
+    autoBackupAvailableProvider.overrideWith((ref) async => true);
 
 Future<void> _openHubScreen(WidgetTester tester, Key tileKey) async {
   await tester.scrollUntilVisible(
@@ -1494,7 +1594,7 @@ Future<void> _pullGarminConsentRows(
       httpClient: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'nextCursor': 'cursor-consent-1',
             'serverClock': '2026-06-25T10:00:00.000Z',
             'changes': <Object?>[
@@ -1603,6 +1703,7 @@ Future<void> _pumpSettings(
   List<Override> extraOverrides = const <Override>[],
   SettingsSyncNow? settingsSyncNow,
   String syncDeviceId = 'device-a',
+  OpenFoodFactsRepository? openFoodFactsRepository,
 }) async {
   final resolvedSyncStatus =
       syncStatus ?? SyncStatusState.initial(DateTime.utc(2026, 6, 22, 12));
@@ -1674,6 +1775,12 @@ Future<void> _pumpSettings(
         protocolsLockStoreProvider.overrideWith(
           (ref) => protocolsLockStore ?? _InMemoryProtocolsLockStore(),
         ),
+        // The About screen reads the bundle header; Erase all data resets
+        // the reference database.
+        openFoodFactsRepositoryProvider.overrideWith(
+          (ref) =>
+              openFoodFactsRepository ?? const StubOpenFoodFactsRepository(),
+        ),
         ...extraOverrides,
       ],
       child: MaterialApp(
@@ -1685,6 +1792,23 @@ Future<void> _pumpSettings(
     ),
   );
   await tester.pump();
+}
+
+/// Records when Erase all data resets the reference database, and whether the
+/// erase had already happened.
+class _ResetRecordingOpenFoodFactsRepository
+    extends StubOpenFoodFactsRepository {
+  _ResetRecordingOpenFoodFactsRepository({required this.mealStillLive});
+
+  final Future<bool> Function() mealStillLive;
+  int resets = 0;
+  bool? mealLiveAtReset;
+
+  @override
+  Future<void> resetDeviceData() async {
+    resets += 1;
+    mealLiveAtReset = await mealStillLive();
+  }
 }
 
 class _StubSyncStatusController extends SyncStatusController {
@@ -1699,23 +1823,6 @@ class _StubSyncStatusController extends SyncStatusController {
 /// A stub for the Supplements-tile navigation smoke test: emits an empty
 /// derived Protocol Day without ever touching the real repository/Drift
 /// streams (mirrors protocols_day_view_test.dart's fake-controller pattern).
-class _StubProtocolDayController extends ProtocolDayController {
-  @override
-  Stream<ProtocolDayState> build() {
-    return Stream<ProtocolDayState>.value(
-      ProtocolDayState(
-        day: ProtocolDayRecord(
-          localDate: const ProtocolDayDate(year: 2026, month: 6, day: 30),
-          doses: <DoseRecord>[],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Future<void> ensureOtcLibrarySeeded() async {}
-}
-
 class _FakeClientCrashReporter implements ClientCrashReporter {
   final enabledValues = <bool>[];
   final capturedThrowables = <Object>[];

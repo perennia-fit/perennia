@@ -11,7 +11,8 @@ import {
   AGENT_SKILL_SESSION_AUTHENTICATED_OPERATION_IDS,
   buildAgentMcpToolTable
 } from "../../../packages/contract/src/agent-skill-reference.ts";
-import { createAgentMcpServer } from "../src/index.ts";
+import { createAgentMcpServer, createApp } from "../src/index.ts";
+import { dayStatuses, planDays } from "../src/protocol-plan.ts";
 
 // Guards MCP/REST tool-parity drift: every agent REST operation in
 // the committed OpenAPI contract, except the probe and key-management
@@ -65,6 +66,560 @@ test("the MCP toolset registers a tool for every mapped agent REST operation", a
     await close();
   }
 });
+
+test("the planned-day and Day Status tools answer exactly as their REST reads do", async () => {
+  const store = planReadStore();
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (offset) => addDays(today, offset);
+  const rest = (path, query) =>
+    app.request(`${path}?${new URLSearchParams(query).toString()}`, {
+      headers: { authorization: "Bearer prn_agent_secret" }
+    });
+  const mcp = (name, query) =>
+    client.callTool({ name, arguments: { apiKey: "prn_agent_secret", query } });
+
+  try {
+    const reads = [
+      ["/agent/protocols/planned-days", "agent_list_protocol_planned_days", { fromLocalDate: day(-3), toLocalDate: day(3) }],
+      ["/agent/protocols/planned-days", "agent_list_protocol_planned_days", { fromLocalDate: day(-3), toLocalDate: day(0), compoundId: "compound-a", protocolId: "protocol-1" }],
+      ["/agent/protocols/day-statuses", "agent_list_protocol_day_statuses", { fromLocalDate: day(-3), toLocalDate: day(0), today }],
+      ["/agent/protocols/day-statuses", "agent_list_protocol_day_statuses", { fromLocalDate: day(-3), toLocalDate: day(-1), today, detail: "doses", compoundId: "compound-a" }]
+    ];
+    for (const [path, tool, query] of reads) {
+      const restResponse = await rest(path, query);
+      assert.equal(restResponse.status, 200, `${path} ${JSON.stringify(query)}`);
+      const mcpResponse = await mcp(tool, query);
+      assert.equal(mcpResponse.isError, undefined, JSON.stringify(mcpResponse.content));
+      assert.deepEqual(mcpResponse.structuredContent, await restResponse.json());
+    }
+
+    // Each refusal is the same refusal on both surfaces.
+    const refused = [
+      ["/agent/protocols/planned-days", "agent_list_protocol_planned_days", { fromLocalDate: day(1), toLocalDate: day(0) }],
+      ["/agent/protocols/planned-days", "agent_list_protocol_planned_days", { fromLocalDate: day(-366), toLocalDate: day(0) }],
+      ["/agent/protocols/day-statuses", "agent_list_protocol_day_statuses", { fromLocalDate: day(-3), toLocalDate: day(1), today }],
+      ["/agent/protocols/day-statuses", "agent_list_protocol_day_statuses", { fromLocalDate: day(-3), toLocalDate: day(3), today: day(3) }]
+    ];
+    for (const [path, tool, query] of refused) {
+      const restResponse = await rest(path, query);
+      assert.equal(restResponse.status, 400, `${path} ${JSON.stringify(query)}`);
+      const mcpResponse = await mcp(tool, query);
+      assert.equal(mcpResponse.isError, true);
+      assert.deepEqual(mcpResponse.structuredContent, await restResponse.json());
+      assert.equal(mcpResponse.structuredContent.code, "agent_protocol_days_invalid_request");
+    }
+
+    // A Day Status read without today is malformed on both.
+    const noToday = { fromLocalDate: day(-3), toLocalDate: day(-1) };
+    assert.equal((await rest("/agent/protocols/day-statuses", noToday)).status, 400);
+    assert.equal((await mcp("agent_list_protocol_day_statuses", noToday)).isError, true);
+    assert.equal(store.calls, reads.length * 2);
+  } finally {
+    await close();
+  }
+});
+
+test("the Purpose tools answer exactly as their REST routes do, refusal included", async () => {
+  const listQueries = [];
+  const writes = [];
+  const sleep = {
+    id: "019200ff-0000-7000-8000-000000000101",
+    name: "Sleep",
+    sortOrder: 0,
+    starter: true,
+    deletedAt: null
+  };
+  const store = {
+    async listPurposes({ query }) {
+      listQueries.push(query);
+      return { purposes: query.includeArchived === "true" ? [sleep] : [] };
+    },
+    async writePurposeBatch(input) {
+      writes.push(input);
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-06T09:00:00.000Z",
+        accepted: input.purposes.map((purpose) => purpose.id),
+        applied: input.purposes.map((purpose) => ({
+          id: purpose.id,
+          updatedAt: "2026-11-06T09:00:00.000Z",
+          deviceId: input.deviceId
+        })),
+        validationErrors:
+          input.purposes[0].payload.name === ""
+            ? [
+                {
+                  field: "purposes[0].name",
+                  rule: "purpose_name_required",
+                  message: "A Purpose name must not be empty after trimming.",
+                  itemIndex: 0,
+                  entityId: input.purposes[0].id
+                }
+              ]
+            : []
+      };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const write = async (request) => [
+    await app.request("/agent/protocols/purposes/batch-write", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    }),
+    await client.callTool({
+      name: "agent_batch_write_purposes",
+      arguments: { apiKey: "prn_agent_secret", request }
+    })
+  ];
+
+  try {
+    for (const query of [{}, { includeArchived: "true" }, { includeArchived: "false" }]) {
+      const restResponse = await app.request(
+        `/agent/protocols/purposes?${new URLSearchParams(query).toString()}`,
+        { headers: { authorization: "Bearer prn_agent_secret" } }
+      );
+      assert.equal(restResponse.status, 200);
+      const mcpResponse = await client.callTool({
+        name: "agent_list_purposes",
+        arguments: { apiKey: "prn_agent_secret", query }
+      });
+      assert.equal(mcpResponse.isError, undefined, JSON.stringify(mcpResponse.content));
+      assert.deepEqual(mcpResponse.structuredContent, await restResponse.json());
+    }
+    assert.deepEqual(
+      listQueries.map((query) => query.includeArchived),
+      ["false", "false", "true", "true", "false", "false"]
+    );
+
+    const purpose = {
+      id: "019a0000-0000-7000-8000-000000000001",
+      name: "  Skin ",
+      sortOrder: 6
+    };
+    const [restWrite, mcpWrite] = await write({
+      idempotencyKey: "purposes-parity",
+      purposes: [purpose]
+    });
+    assert.equal(restWrite.status, 200);
+    assert.equal(mcpWrite.isError, undefined, JSON.stringify(mcpWrite.content));
+    assert.deepEqual(mcpWrite.structuredContent, await restWrite.json());
+    assert.deepEqual(mcpWrite.structuredContent.purposes, [
+      { id: purpose.id, name: "Skin", outcome: "applied" }
+    ]);
+    assert.deepEqual(
+      writes.map((input) => input.purposes[0].payload.name),
+      ["Skin", "Skin"]
+    );
+
+    // The store's name refusal is the same refusal on both surfaces.
+    const [restRefused, mcpRefused] = await write({
+      idempotencyKey: "purposes-parity-refused",
+      purposes: [{ ...purpose, name: "   " }]
+    });
+    assert.equal(restRefused.status, 422);
+    assert.equal(mcpRefused.isError, true);
+    const refusedBody = await restRefused.json();
+    assert.deepEqual(mcpRefused.structuredContent, refusedBody);
+    assert.equal(refusedBody.errors[0].rule, "purpose_name_required");
+
+    // So is the pure step's refusal of a repeated id, which no store sees.
+    const writesBefore = writes.length;
+    const [restRepeat, mcpRepeat] = await write({
+      idempotencyKey: "purposes-parity-repeat",
+      purposes: [purpose, purpose]
+    });
+    assert.equal(restRepeat.status, 422);
+    assert.equal(mcpRepeat.isError, true);
+    const repeatBody = await restRepeat.json();
+    assert.deepEqual(mcpRepeat.structuredContent, repeatBody);
+    assert.equal(repeatBody.errors[0].rule, "duplicate_purpose_id");
+    assert.equal(writes.length, writesBefore);
+  } finally {
+    await close();
+  }
+});
+
+test("the Protocol delete tool answers exactly as its REST route does, refusal included", async () => {
+  const calls = [];
+  const nudges = [];
+  const issue = {
+    field: "protocolIds[0]",
+    rule: "protocol_not_found",
+    message: "No Protocol with this id exists for this account.",
+    itemIndex: 0,
+    entityId: "protocol-unknown"
+  };
+  const store = {
+    async deleteProtocols(input) {
+      calls.push(input);
+      const refused = input.protocolIds.includes("protocol-unknown");
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-02T00:00:00.000Z",
+        accepted: refused ? [] : ["protocol-1"],
+        applied: refused
+          ? []
+          : [{ id: "protocol-1", updatedAt: "2026-11-02T00:00:00.000Z", deviceId: input.deviceId }],
+        validationErrors: refused ? [issue] : [],
+        protocols: refused ? [] : [{ id: "protocol-1", outcome: "deleted" }]
+      };
+    }
+  };
+  const syncNudgePublisher = {
+    async enqueueSyncNudge(input) {
+      nudges.push(input);
+      return { enqueued: true, jobId: `nudge-${nudges.length}` };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store,
+    syncNudgePublisher
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      syncNudgePublisher,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const rest = (request) =>
+    app.request("/agent/protocols/delete", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    });
+  const mcp = (request) =>
+    client.callTool({
+      name: "agent_delete_protocols",
+      arguments: { apiKey: "prn_agent_secret", request }
+    });
+
+  try {
+    const deleted = { idempotencyKey: "delete-1", protocolIds: ["protocol-1"] };
+    const restDeleted = await rest(deleted);
+    assert.equal(restDeleted.status, 200);
+    const mcpDeleted = await mcp(deleted);
+    assert.equal(mcpDeleted.isError, undefined, JSON.stringify(mcpDeleted.content));
+    assert.deepEqual(mcpDeleted.structuredContent, await restDeleted.json());
+
+    const refused = { idempotencyKey: "delete-2", protocolIds: ["protocol-unknown"] };
+    const restRefused = await rest(refused);
+    assert.equal(restRefused.status, 422);
+    const mcpRefused = await mcp(refused);
+    assert.equal(mcpRefused.isError, true);
+    assert.deepEqual(mcpRefused.structuredContent, await restRefused.json());
+    assert.equal(mcpRefused.structuredContent.code, "agent_protocol_delete_failed");
+
+    // The same store call and the same nudge on both surfaces: one each per delete.
+    assert.equal(calls.length, 4);
+    assert.deepEqual(calls[1], calls[0]);
+    assert.deepEqual(calls[3], calls[2]);
+    assert.equal(nudges.length, 2);
+  } finally {
+    await close();
+  }
+});
+
+test("the Skip write tool answers exactly as its REST route does, both refusals included", async () => {
+  const calls = [];
+  const nudges = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const skipId = "01900000-0000-7000-8000-000000000001";
+  const unknownSkipId = "01900000-0000-7000-8000-000000000002";
+  const skip = (id, fields = {}) => ({
+    id,
+    protocolId: "protocol-1",
+    compoundId: "compound-a",
+    localDate: today,
+    plannedLocalTime: "21:00",
+    ...fields
+  });
+  const store = {
+    async writeProtocolSkipBatch(input) {
+      calls.push(input);
+      const refused = input.skips.some((row) => row.id === unknownSkipId);
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-02T00:00:00.000Z",
+        accepted: refused ? [] : [skipId],
+        applied: refused
+          ? []
+          : [{ id: skipId, updatedAt: "2026-11-02T00:00:00.000Z", deviceId: input.deviceId }],
+        validationErrors: refused
+          ? [
+              {
+                field: "skips[0].protocolId",
+                rule: "protocol_not_found",
+                message: "No Protocol with this id exists for this account.",
+                itemIndex: 0,
+                entityId: unknownSkipId
+              }
+            ]
+          : [],
+        skips: refused ? [] : [{ id: skipId, outcome: "applied" }]
+      };
+    }
+  };
+  const syncNudgePublisher = {
+    async enqueueSyncNudge(input) {
+      nudges.push(input);
+      return { enqueued: true, jobId: `nudge-${nudges.length}` };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store,
+    syncNudgePublisher
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      syncNudgePublisher,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const rest = (request) =>
+    app.request("/agent/protocols/skips/batch-write", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    });
+  const mcp = (request) =>
+    client.callTool({
+      name: "agent_batch_write_protocol_skips",
+      arguments: { apiKey: "prn_agent_secret", request }
+    });
+
+  try {
+    const written = { idempotencyKey: "skip-1", today, skips: [skip(skipId)] };
+    const restWritten = await rest(written);
+    assert.equal(restWritten.status, 200);
+    const mcpWritten = await mcp(written);
+    assert.equal(mcpWritten.isError, undefined, JSON.stringify(mcpWritten.content));
+    assert.deepEqual(mcpWritten.structuredContent, await restWritten.json());
+
+    // A refusal the store judges (protocol_not_found).
+    const storeRefused = { idempotencyKey: "skip-2", today, skips: [skip(unknownSkipId)] };
+    const restStoreRefused = await rest(storeRefused);
+    assert.equal(restStoreRefused.status, 422);
+    const mcpStoreRefused = await mcp(storeRefused);
+    assert.equal(mcpStoreRefused.isError, true);
+    assert.deepEqual(mcpStoreRefused.structuredContent, await restStoreRefused.json());
+    assert.equal(
+      mcpStoreRefused.structuredContent.code,
+      "agent_protocol_skip_batch_write_failed"
+    );
+
+    // A refusal the shared validator judges, before the store.
+    const validatorRefused = {
+      idempotencyKey: "skip-3",
+      today,
+      skips: [skip(skipId, { plannedLocalTime: "9:00" })]
+    };
+    const restValidatorRefused = await rest(validatorRefused);
+    assert.equal(restValidatorRefused.status, 422);
+    const mcpValidatorRefused = await mcp(validatorRefused);
+    assert.equal(mcpValidatorRefused.isError, true);
+    assert.deepEqual(mcpValidatorRefused.structuredContent, await restValidatorRefused.json());
+    assert.deepEqual(
+      mcpValidatorRefused.structuredContent.issues.map((issue) => issue.rule),
+      ["skip_time_format"]
+    );
+
+    // The same store call and the same nudge on both surfaces; the
+    // validator's refusal never reaches the store.
+    assert.equal(calls.length, 4);
+    assert.deepEqual(calls[1], { ...calls[0], skips: calls[1].skips });
+    assert.deepEqual(
+      calls[1].skips.map(({ updatedAt: _u, payload: { updated_at: _p, ...payload }, ...row }) => ({ ...row, payload })),
+      calls[0].skips.map(({ updatedAt: _u, payload: { updated_at: _p, ...payload }, ...row }) => ({ ...row, payload }))
+    );
+    assert.equal(nudges.length, 2);
+  } finally {
+    await close();
+  }
+});
+
+/**
+ * A Protocols store whose two plan reads answer through the shared core over
+ * one fixed plan, honoring the filters, so both surfaces have a real answer to
+ * agree on.
+ */
+function planReadStore() {
+  const today = new Date().toISOString().slice(0, 10);
+  const protocols = [
+    {
+      protocolId: "protocol-1",
+      startLocalDate: addDays(today, -10),
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: "member-1",
+          compoundId: "compound-a",
+          versions: [
+            {
+              id: "version-1",
+              effectiveFrom: addDays(today, -10),
+              rule: { v: 1, kind: "timed", days: { kind: "daily" }, times: ["09:00", "21:00"] },
+              amountValue: 5,
+              amountEntered: "5",
+              unit: "milligram",
+              route: "oral"
+            }
+          ]
+        },
+        {
+          memberId: "member-2",
+          compoundId: "compound-b",
+          versions: [
+            {
+              id: "version-2",
+              effectiveFrom: addDays(today, -10),
+              rule: { v: 1, kind: "as_needed" }
+            }
+          ]
+        }
+      ]
+    }
+  ];
+  const doses = [
+    { doseId: "dose-1", compoundId: "compound-a", localDate: addDays(today, -1), localTime: "08:55", sequence: 0 }
+  ];
+  // A Skip of the evening dose the Dose didn't fill, so both reads agree on
+  // a skipped slot and a skippedCount too (D8).
+  const skips = [
+    {
+      skipId: "skip-1",
+      protocolId: "protocol-1",
+      compoundId: "compound-a",
+      localDate: addDays(today, -1),
+      plannedLocalTime: "21:00"
+    }
+  ];
+  const plan = (query) =>
+    planDays(
+      protocols.filter((protocol) => query.protocolId === undefined || protocol.protocolId === query.protocolId),
+      query.fromLocalDate,
+      query.toLocalDate
+    ).filter((planDay) => query.compoundId === undefined || planDay.compoundId === query.compoundId);
+  const amounts = (amount) => ({
+    amountValue: amount.amountValue ?? null,
+    amountEntered: amount.amountEntered ?? null,
+    unit: amount.unit ?? null,
+    route: amount.route ?? null
+  });
+  const store = {
+    calls: 0,
+    async listProtocolPlannedDays({ query }) {
+      store.calls += 1;
+      return {
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        plannedDays: plan(query).map((planDay) => ({
+          ...planDay,
+          planned: planDay.planned.map((planned) => ({ localTime: planned.localTime, ...amounts(planned) }))
+        }))
+      };
+    },
+    async listProtocolDayStatuses({ query }) {
+      store.calls += 1;
+      return {
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        today: query.today,
+        detail: query.detail,
+        dayStatuses: dayStatuses(plan(query), doses, skips, query.today).map(({ fills, ...summary }) =>
+          query.detail === "doses"
+            ? {
+                ...summary,
+                fills: fills.map((fill) => ({
+                  slot: fill.slot,
+                  protocolId: fill.protocolId,
+                  plannedLocalTime: fill.plannedLocalTime,
+                  ...amounts(fill),
+                  doseId: fill.doseId,
+                  skipId: fill.skipId
+                }))
+              }
+            : summary
+        )
+      };
+    }
+  };
+  return store;
+}
+
+function authenticatingKeyStore() {
+  return {
+    async authenticateAgentApiKey(secret) {
+      return secret === "prn_agent_secret"
+        ? { userId: "user-1", keyId: "agent-key-1", keyName: "Parity" }
+        : null;
+    },
+    async createAgentApiKey() {
+      throw new Error("not used");
+    },
+    async listAgentApiKeys() {
+      throw new Error("not used");
+    },
+    async revokeAgentApiKey() {
+      throw new Error("not used");
+    },
+    async verifySessionBearerToken() {
+      throw new Error("not used");
+    }
+  };
+}
+
+function addDays(localDate, days) {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 function fullyWiredMcpServer() {
   return createAgentMcpServer({
@@ -158,6 +713,9 @@ function fullyWiredMcpServer() {
       async listCompounds() {
         throw new Error("not used");
       },
+      async listPurposes() {
+        throw new Error("not used");
+      },
       async listProtocols() {
         throw new Error("not used");
       },
@@ -167,13 +725,28 @@ function fullyWiredMcpServer() {
       async readEffectWindow() {
         throw new Error("not used");
       },
+      async listProtocolPlannedDays() {
+        throw new Error("not used");
+      },
+      async listProtocolDayStatuses() {
+        throw new Error("not used");
+      },
       async writeDoseBatch() {
         throw new Error("not used");
       },
       async writeCompoundBatch() {
         throw new Error("not used");
       },
+      async writePurposeBatch() {
+        throw new Error("not used");
+      },
       async writeProtocolBatch() {
+        throw new Error("not used");
+      },
+      async deleteProtocols() {
+        throw new Error("not used");
+      },
+      async writeProtocolSkipBatch() {
         throw new Error("not used");
       }
     },

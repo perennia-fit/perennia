@@ -9,7 +9,8 @@ import {
   schema,
   SYNC_TOMBSTONE_GC_JOB_NAME,
   SYNC_TOMBSTONE_GC_SCHEDULE_CRON,
-  SYNC_TOMBSTONE_GC_SCHEDULE_KEY
+  SYNC_TOMBSTONE_GC_SCHEDULE_KEY,
+  SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -159,7 +160,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100
         })
@@ -228,7 +229,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: "lagging-device",
           entity: "logged_sets",
           changes: [
@@ -279,7 +280,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: "2025-01-01T00:00:00.000Z|stale-row",
           limit: 100
         })

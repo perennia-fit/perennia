@@ -4,56 +4,134 @@ import test from "node:test";
 
 import {
   DOSE_VALIDATION_LIMITS,
+  MEAL_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
-  PREDEFINED_SET_VALIDATION_LIMITS,
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
+  USER_PROFILE_VALIDATION_LIMITS,
+  localDateAtOffset,
   validateAgentDose,
   validateAgentFoodEntry,
+  validateAgentMealTime,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
+  validateAgentProtocolPeriod,
+  validateAgentProtocolSkip,
   validateAgentRoutineCadence,
-  validateAgentPredefinedSet,
+  validateAgentScheduleRule,
   validateAgentSet,
   validateAgentSettings,
-  validateAgentTemplateGroup
+  validateAgentTemplateGroup,
+  validateUserProfileSection
 } from "../src/index.ts";
 
-const SHARED_VALIDATION_DOMAINS = new Set([
-  "set-validation",
-  "nutrient-validation",
-  "dose-validation",
-  "nutrition-goal-validation",
-  "plan-validation",
-  "predefined-set-validation",
-  "settings-validation"
+// One entry per shared validation domain this runner implements. Dispatch is a
+// lookup, not a fallthrough: a vector whose domain is missing here fails loudly
+// rather than being judged by whichever validator happened to sit last.
+const VALIDATORS_BY_DOMAIN = new Map([
+  ["set-validation", (vectorCase) => validateAgentSet(vectorCase.input)],
+  ["nutrient-validation", (vectorCase) => validateAgentFoodEntry(vectorCase.input)],
+  ["dose-validation", (vectorCase) => validateAgentDose(vectorCase.input)],
+  [
+    "nutrition-goal-validation",
+    (vectorCase) => validateAgentNutritionGoalTargets(vectorCase.input)
+  ],
+  ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
+  ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)],
+  ["protocol-plan-validation", (vectorCase) => validateProtocolPlanVectorCase(vectorCase)],
+  ["meal-validation", (vectorCase) => validateMealVectorCase(vectorCase)],
+  [
+    "user-profile-validation",
+    ({ input }) =>
+      validateUserProfileSection(input.section, input.values, {
+        referenceYear: input.referenceYear
+      })
+  ]
+]);
+
+// Every other domain under packages/golden-vectors, with who checks it. Every
+// vector must land in exactly one place, so a domain in neither table is a
+// vector no TypeScript code checks — the silent gap this guard exists to close.
+const DOMAINS_OWNED_ELSEWHERE = new Set([
+  "analytics", // analytics.golden.test.mjs (also claims vectors with no domain)
+  "nutrition-analytics", // nutrition-analytics.golden.test.mjs
+  "reading-normalization", // metric-reading-normalization.golden.test.mjs
+  "workout-capture", // agent-plan-capture.golden.test.mjs
+  "plan-divergence", // agent-plan-capture.golden.test.mjs
+  "template-materialize", // agent-plan-materialize.test.mjs (needs Postgres)
+  "routine-up-next", // agent-plan-reads.test.mjs (needs Postgres)
+  "effect-window", // effect-window.golden.test.mjs
+  "protocol-plan", // protocol-plan.golden.test.mjs
+  "barcode-candidates", // barcode-candidates.golden.test.mjs
+  "food-history", // food-history.golden.test.mjs
+  "meal-history", // meal-history.golden.test.mjs
+  "training-progress", // training-progress.golden.test.mjs
+  "progress-measure", // progress-measure.golden.test.mjs
+  "metric-trend", // metric-trend.golden.test.mjs
+  "compound-purposes", // compound-purposes.golden.test.mjs
+  // Dart only: Body Tracker measurements have no server implementation, so
+  // these vectors pin the app against its own spec.
+  "measurement-validation",
+  "measurement-delta"
 ]);
 
 test("server validation matches the shared golden vectors", async () => {
   const vectorsUrl = new URL("../../../packages/golden-vectors/vectors/", import.meta.url);
-  const filenames = (await readdir(vectorsUrl)).filter((name) => name.endsWith(".json"));
+  const filenames = (await readdir(vectorsUrl)).filter(
+    (name) => name.endsWith(".json") && !name.endsWith(".schema.json")
+  );
 
   for (const filename of filenames) {
     const vector = JSON.parse(await readFile(new URL(filename, vectorsUrl), "utf8"));
-    if (!SHARED_VALIDATION_DOMAINS.has(vector.domain)) {
+    if (vector.domain === undefined || DOMAINS_OWNED_ELSEWHERE.has(vector.domain)) {
       continue;
     }
+    const validate = VALIDATORS_BY_DOMAIN.get(vector.domain);
+    assert.ok(
+      validate,
+      `${filename}: no TypeScript golden runner implements domain ` +
+        `"${String(vector.domain)}". Add it to VALIDATORS_BY_DOMAIN, or to ` +
+        "DOMAINS_OWNED_ELSEWHERE if another runner checks it."
+    );
 
     // The TS limits and the vector's limits block must agree exactly so the
     // implementation and the spec stay in lockstep.
     if (vector.domain === "dose-validation") {
       assert.deepEqual(vector.limits, DOSE_VALIDATION_LIMITS, `${filename} limits`);
     }
-    if (vector.domain === "predefined-set-validation") {
-      assert.deepEqual(
-        vector.limits,
-        PREDEFINED_SET_VALIDATION_LIMITS,
-        `${filename} limits`
-      );
-    }
     if (vector.domain === "plan-validation") {
       assert.deepEqual(
         vector.limits,
         PLAN_VALIDATION_LIMITS,
+        `${filename} limits`
+      );
+    }
+    if (vector.domain === "protocol-plan-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+      assert.deepEqual(
+        vector.limits,
+        PROTOCOL_PLAN_VALIDATION_LIMITS,
+        `${filename} limits`
+      );
+    }
+    if (vector.domain === "meal-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+      assert.deepEqual(vector.limits, MEAL_VALIDATION_LIMITS, `${filename} limits`);
+    }
+    if (vector.domain === "user-profile-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+      assert.deepEqual(
+        vector.limits,
+        USER_PROFILE_VALIDATION_LIMITS,
         `${filename} limits`
       );
     }
@@ -66,20 +144,7 @@ test("server validation matches the shared golden vectors", async () => {
     }
 
     for (const vectorCase of vector.cases) {
-      const result =
-        vector.domain === "set-validation"
-          ? validateAgentSet(vectorCase.input)
-          : vector.domain === "nutrient-validation"
-            ? validateAgentFoodEntry(vectorCase.input)
-            : vector.domain === "nutrition-goal-validation"
-              ? validateAgentNutritionGoalTargets(vectorCase.input)
-              : vector.domain === "predefined-set-validation"
-                ? validateAgentPredefinedSet(vectorCase.input)
-                : vector.domain === "plan-validation"
-                  ? validatePlanVectorCase(vectorCase)
-                : vector.domain === "settings-validation"
-                  ? validateAgentSettings(vectorCase.input)
-                  : validateAgentDose(vectorCase.input);
+      const result = validate(vectorCase);
       const expected = vectorCase.expected;
       const reason = `${filename} ${vectorCase.name}`;
 
@@ -96,6 +161,37 @@ test("server validation matches the shared golden vectors", async () => {
       );
     }
   }
+});
+
+test("User Profile messages carry the same values as the Dart module", () => {
+  const options = { referenceYear: 2026 };
+  assert.equal(
+    validateUserProfileSection("about_you", { birth_year: 1915 }, options).warnings[0].message,
+    "That makes you 111. Check the birth year."
+  );
+  assert.equal(
+    validateUserProfileSection("about_you", { height: { value: 110, unit: "cm" } }, options)
+      .warnings[0].message,
+    "A height of 110 cm is unusual. Check it."
+  );
+  assert.equal(
+    validateUserProfileSection("about_you", { height: { value: 47.2, unit: "in" } }, options)
+      .warnings[0].message,
+    "A height of 47.2 in is unusual. Check it."
+  );
+  assert.equal(
+    validateUserProfileSection(
+      "health_limitations",
+      { text: "h".repeat(1001), none: false },
+      options
+    ).errors[0].message,
+    "Keep this under 1000 characters."
+  );
+  assert.equal(
+    validateUserProfileSection("general_notes", { text: "n".repeat(2001) }, options).errors[0]
+      .message,
+    "Keep this under 2000 characters."
+  );
 });
 
 test("plan validation rejects non-finite rest", () => {
@@ -167,4 +263,47 @@ function validatePlanVectorCase(vectorCase) {
     return validateAgentRoutineCadence(vectorCase.input);
   }
   throw new Error(`Unknown plan validator: ${String(vectorCase.validator)}.`);
+}
+
+// Rules and periods reach the validators as stored JSON, as they reach the
+// Dart twin, so a value the codecs would reject (a time of "9:00", a count of
+// 2.5) is still judged and reported under its check id.
+function validateProtocolPlanVectorCase(vectorCase) {
+  const { input } = vectorCase;
+  if (vectorCase.validator === "schedule_rule") {
+    return validateAgentScheduleRule(input.rule, {
+      amountValue: input.amountValue,
+      amountEntered: input.amountEntered,
+      unit: input.unit,
+      route: input.route
+    });
+  }
+  if (vectorCase.validator === "protocol_period") {
+    return validateAgentProtocolPeriod({
+      startLocalDate: input.startLocalDate,
+      endLocalDate: input.endLocalDate,
+      period: input.period
+    });
+  }
+  if (vectorCase.validator === "protocol_skip") {
+    return validateAgentProtocolSkip({
+      localDate: input.localDate,
+      plannedLocalTime: input.plannedLocalTime,
+      today: input.today
+    });
+  }
+  throw new Error(`Unknown protocol plan validator: ${String(vectorCase.validator)}.`);
+}
+
+// Runs the Meal-time rules, and also pins the local-date rule the same vector
+// carries: a Meal's localDate is the date of startedAt at its frozen offset
+// (docs/designs/meal-logging.md §1), in both directions across midnight.
+function validateMealVectorCase(vectorCase) {
+  const { input, expected } = vectorCase;
+  assert.equal(
+    localDateAtOffset(new Date(input.startedAt), input.timezoneOffsetMinutes),
+    expected.localDate,
+    `m39-meal-validation.json ${vectorCase.name} localDate`
+  );
+  return validateAgentMealTime(input, { now: new Date(input.now) });
 }

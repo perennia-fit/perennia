@@ -48,6 +48,7 @@ import {
   createPrivacyLogger,
   createSentryCrashReporterFromEnv
 } from "./observability.js";
+import { SERVER_VERSION } from "./server-version.js";
 
 export type StartedWorker = {
   database: DatabaseClient;
@@ -182,7 +183,7 @@ if (isMainModule) {
   startWorker().catch((error) => {
     const startupLogger = createPrivacyLogger(pino());
     const startupCrashReporter = createSentryCrashReporterFromEnv(process.env, {
-      release: process.env.npm_package_version ?? "0.0.0"
+      release: SERVER_VERSION
     });
     startupCrashReporter?.captureException(error, {
       correlationId: "worker-startup",

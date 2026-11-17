@@ -1,0 +1,448 @@
+import 'dart:io';
+
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart' hide Column, Table;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
+import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
+import 'package:perennia/l10n/l10n.dart';
+import 'package:perennia/theme/theme.dart';
+
+import '../../support/kill_point_snapshot_interceptor.dart';
+
+/// Kill-and-reopen for "Log all planned" (D6), following the repository's
+/// standing scenario (`test/data/plan_tree_reopen_test.dart`): a database
+/// file that is closed and opened again.
+///
+/// A process kill mid-write can't be staged inside one test process, so the
+/// kill is taken as what it leaves on disk. A query interceptor copies the
+/// database file and its journal at two moments of "Log all planned": just
+/// before the Batch's second Dose is inserted, and just before the commit.
+/// Each copy is exactly the disk a kill at that moment leaves behind, and
+/// opening it runs SQLite's crash recovery. Had the Doses been written in
+/// more than one transaction, the first Dose would already be committed in
+/// both copies.
+void main() {
+  group('the Protocol editor across a kill and reopen', () {
+    late Directory directory;
+    late File file;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'prn_protocol_editor_reopen_',
+      );
+      file = File('${directory.path}/plan.sqlite');
+    });
+
+    tearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    // The form holds a Protocol in memory until Save, so a kill mid-edit is the
+    // form going away with nothing written for it. The Compound was written the
+    // moment the picker's sheet saved it, and stays.
+    testWidgets(
+        'an unsaved Protocol is not persisted, and a Compound created inline '
+        'is', (tester) async {
+      final database = AppDatabase.openFile(file);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith(
+              (ref) => TrainingRepositories(database),
+            ),
+            protocolsClockProvider.overrideWithValue(() => _now),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const ProtocolFormScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Sleep stack',
+      );
+      await tester.tap(find.byKey(ProtocolFormScreen.addCompoundsKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'Glycine',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+      // Mid-edit: the member is on the form, and nothing has been saved.
+      expect(find.text('Glycine'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+      await tester.runAsync(database.close);
+
+      final reopened = AppDatabase.openFile(file);
+      await tester.runAsync(() async {
+        try {
+          expect(await reopened.select(reopened.protocols).get(), isEmpty);
+          expect(
+            await reopened.select(reopened.protocolCompounds).get(),
+            isEmpty,
+          );
+          final compounds = await reopened.select(reopened.compounds).get();
+          expect(
+            compounds.map((compound) => compound.name),
+            contains('Glycine'),
+          );
+        } finally {
+          await reopened.close();
+        }
+      });
+    });
+  });
+
+  group('Log all planned across a kill and reopen', () {
+    late Directory directory;
+    late File file;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'prn_protocol_plan_reopen_',
+      );
+      file = File('${directory.path}/plan.sqlite');
+    });
+
+    tearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    test(
+      'a kill before the commit leaves no part of the Batch, and the '
+      'Planned list still reads Pending',
+      () async {
+        await _seedDailyStack(file);
+        final killPoints = _KillPointInterceptor(file, directory);
+        final database = AppDatabase(
+          NativeDatabase(file).interceptWith(killPoints),
+        );
+        final container = _container(database);
+        final activityBefore = await _activityLogCount(database);
+
+        final results = await container
+            .read(protocolDayControllerProvider.notifier)
+            .logAllPlanned();
+        container.dispose();
+        await database.close();
+
+        // The live write itself went through: two Doses, one Batch.
+        expect(results, hasLength(2));
+        expect(results.map((result) => result.batchId).toSet(), hasLength(1));
+        // Both kill points were reached.
+        expect(
+          killPoints.snapshots.keys.toSet(),
+          <String>{'before-second-dose', 'before-commit'},
+        );
+
+        for (final entry in killPoints.snapshots.entries) {
+          final reopened = AppDatabase.openFile(entry.value);
+          final repositories = TrainingRepositories(reopened);
+          try {
+            expect(
+              await reopened.select(reopened.doses).get(),
+              isEmpty,
+              reason: 'killed ${entry.key}: no Dose of the Batch survives',
+            );
+            expect(
+              await _activityLogCount(reopened),
+              activityBefore,
+              reason: 'killed ${entry.key}: no Activity Log entry survives',
+            );
+            final planned = await repositories.protocolPlan
+                .watchPlannedDay(_today, today: _today)
+                .first;
+            expect(
+              _labels(planned),
+              <String, PlannedRowStatus>{
+                'TRT': PlannedRowStatus.pending,
+                'AgeMate': PlannedRowStatus.pending,
+                'Creatine': PlannedRowStatus.pending,
+              },
+              reason: 'killed ${entry.key}',
+            );
+          } finally {
+            await reopened.close();
+          }
+        }
+      },
+    );
+
+    test(
+      'a kill after the commit keeps the whole Batch, and the Planned list '
+      'reads Logged',
+      () async {
+        await _seedDailyStack(file);
+        var database = AppDatabase.openFile(file);
+        final container = _container(database);
+
+        final results = await container
+            .read(protocolDayControllerProvider.notifier)
+            .logAllPlanned();
+        container.dispose();
+        // The process dies straight after the commit returns.
+        await database.close();
+
+        database = AppDatabase.openFile(file);
+        addTearDown(database.close);
+        final repositories = TrainingRepositories(database);
+
+        final doses = await database.select(database.doses).get();
+        expect(doses.map((dose) => dose.id).toSet(), {
+          for (final result in results) result.doseId,
+        });
+        expect(
+          doses.map((dose) => dose.compoundName).toSet(),
+          <String>{'TRT', 'AgeMate'},
+        );
+        // Each Dose carries its row's planned amount and Protocol tag.
+        for (final dose in doses) {
+          expect(dose.protocolName, 'Daily');
+          expect(dose.amountEntered, dose.compoundName == 'TRT' ? '0.5' : '1');
+          expect(dose.tookAt.isAtSameMomentAs(_now), isTrue);
+        }
+        final batchEntries = (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == results.first.batchId);
+        expect(batchEntries, hasLength(2));
+
+        final planned = await repositories.protocolPlan
+            .watchPlannedDay(_today, today: _today)
+            .first;
+        expect(_labels(planned), <String, PlannedRowStatus>{
+          'TRT': PlannedRowStatus.logged,
+          'AgeMate': PlannedRowStatus.logged,
+          'Creatine': PlannedRowStatus.pending,
+        });
+        expect(
+          await database.customSelect('PRAGMA foreign_key_check').get(),
+          isEmpty,
+        );
+      },
+    );
+  });
+
+  group('A Skip across a kill and reopen (D8)', () {
+    late Directory directory;
+    late File file;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'prn_protocol_skip_reopen_',
+      );
+      file = File('${directory.path}/plan.sqlite');
+    });
+
+    tearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    test('a skipped planned dose still reads Skipped after the reopen',
+        () async {
+      await _seedDailyStack(file);
+      var database = AppDatabase.openFile(file);
+      var repositories = TrainingRepositories(database);
+      final before =
+          await repositories.protocolPlan.plannedDay(_today, today: _today);
+      final creatineRow = before.groups.single.rows.singleWhere(
+        (row) => before.compounds[row.compoundId]!.name == 'Creatine',
+      );
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: creatineRow.protocolId,
+          compoundId: creatineRow.compoundId,
+          localDate: _today,
+          plannedLocalTime: creatineRow.plannedLocalTime,
+        ),
+        today: _today,
+      );
+      // The process dies straight after the write returns.
+      await database.close();
+
+      database = AppDatabase.openFile(file);
+      addTearDown(database.close);
+      repositories = TrainingRepositories(database);
+
+      final planned = await repositories.protocolPlan
+          .watchPlannedDay(_today, today: _today)
+          .first;
+      expect(_labels(planned), <String, PlannedRowStatus>{
+        'TRT': PlannedRowStatus.pending,
+        'AgeMate': PlannedRowStatus.pending,
+        'Creatine': PlannedRowStatus.skipped,
+      });
+      final skipped = planned.groups.single.rows.singleWhere(
+        (row) => row.status == PlannedRowStatus.skipped,
+      );
+      final skip = await database.select(database.protocolSkips).getSingle();
+      expect(skipped.skipId, skip.id);
+      expect(skip.plannedLocalTime, '17:00');
+      expect(skip.deletedAt, equals(null));
+    });
+  });
+}
+
+/// CUJ 1 at 09:30: TRT and AgeMate are due at 09:00, creatine at 17:00.
+final DateTime _now = DateTime(2026, 10, 27, 9, 30);
+final ProtocolDayDate _today = ProtocolDayDate.fromDateTime(_now);
+
+ProviderContainer _container(AppDatabase database) {
+  return ProviderContainer(
+    overrides: [
+      trainingRepositoriesProvider.overrideWith(
+        (ref) => TrainingRepositories(database),
+      ),
+      protocolsClockProvider.overrideWithValue(() => _now),
+    ],
+  );
+}
+
+/// Writes CUJ 1's "Daily" Protocol, then closes the file, so each test
+/// starts from a committed plan.
+Future<void> _seedDailyStack(File file) async {
+  final database = AppDatabase.openFile(file);
+  final repositories = TrainingRepositories(database);
+  Future<String> compound(String name, DoseUnit unit, DoseRoute route) async {
+    final result = await repositories.protocols.createCompound(
+      CompoundDraft(name: name, defaultUnit: unit, defaultRoute: route),
+    );
+    return result.compoundId;
+  }
+
+  final trt = await compound(
+    'TRT',
+    DoseUnit.milliliter,
+    DoseRoute.intramuscular,
+  );
+  final ageMate = await compound(
+    'AgeMate',
+    DoseUnit.capsule,
+    DoseRoute.oral,
+  );
+  final creatine = await compound('Creatine', DoseUnit.gram, DoseRoute.oral);
+  ScheduleDraft dailyAt(
+    String time,
+    String amount,
+    DoseUnit unit,
+    DoseRoute route,
+  ) {
+    return ScheduleDraft(
+      rule: TimedScheduleRule(
+        days: const DailyScheduleDays(),
+        times: <String>[time],
+      ),
+      doseAmountValue: double.parse(amount),
+      doseAmountEntered: amount,
+      doseUnit: unit,
+      route: route,
+    );
+  }
+
+  await repositories.protocols.createProtocol(
+    ProtocolDraft(
+      name: 'Daily',
+      startLocalDate: _today,
+      compoundIds: <String>[trt, ageMate, creatine],
+      remindersEnabled: true,
+      schedulesByCompoundId: <String, ScheduleDraft?>{
+        trt: dailyAt(
+            '09:00', '0.5', DoseUnit.milliliter, DoseRoute.intramuscular),
+        ageMate: dailyAt('09:00', '1', DoseUnit.capsule, DoseRoute.oral),
+        creatine: dailyAt('17:00', '5', DoseUnit.gram, DoseRoute.oral),
+      },
+    ),
+    today: _today,
+  );
+  await database.close();
+}
+
+Future<int> _activityLogCount(AppDatabase database) async {
+  final rows = await database.select(database.activityLog).get();
+  return rows.length;
+}
+
+Map<String, PlannedRowStatus> _labels(PlannedDay planned) {
+  return <String, PlannedRowStatus>{
+    for (final group in planned.groups)
+      for (final row in group.rows)
+        planned.compounds[row.compoundId]!.name: row.status,
+  };
+}
+
+/// Copies the database file and its journal, as a kill would leave them, at
+/// two moments of "Log all planned": just before the Batch's second Dose is
+/// inserted, and just before the last commit that follows a Dose insert.
+/// Had the Doses been written in separate transactions, the first Dose would
+/// already be committed at both moments, and its copy would hold it.
+class _KillPointInterceptor extends KillPointSnapshotInterceptor {
+  _KillPointInterceptor(super.file, super.directory);
+
+  var _doseInserts = 0;
+
+  @override
+  Future<int> runInsert(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (statement.contains('"doses"')) {
+      _doseInserts += 1;
+      if (_doseInserts == 2) {
+        snapshot('before-second-dose');
+      }
+    }
+    return super.runInsert(executor, statement, args);
+  }
+
+  @override
+  Future<void> commitTransaction(TransactionExecutor inner) {
+    if (_doseInserts > 0) {
+      snapshot('before-commit');
+    }
+    return super.commitTransaction(inner);
+  }
+}
+
+class _NoLockStore implements ProtocolsLockStore {
+  @override
+  Future<bool> isEnabled() async => false;
+
+  @override
+  Future<void> setEnabled(bool enabled) async {}
+
+  @override
+  Future<String?> readPinHash() async => null;
+
+  @override
+  Future<void> writePinHash(String hash) async {}
+
+  @override
+  Future<void> clearPin() async {}
+}

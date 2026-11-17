@@ -40,6 +40,14 @@ final protocolDetailProvider =
   return ref.watch(protocolsRepositoryProvider).watchProtocol(id);
 });
 
+/// Whether a `Protocol` has history (D8): the editor offers Archive when it
+/// does and Delete when it doesn't. Re-emits when a Dose, the Protocol or its
+/// members change, so a Dose synced in from another device flips the button.
+final protocolHasHistoryProvider =
+    StreamProvider.autoDispose.family<bool, String>((ref, id) {
+  return ref.watch(protocolsRepositoryProvider).watchProtocolHasHistory(id);
+});
+
 /// A `Protocol` is a MUTABLE PLAN: every write here touches only the
 /// Protocol/its membership, never a logged `Dose` (§1.4).
 class ProtocolListController
@@ -68,6 +76,14 @@ class ProtocolListController
   /// active list, history survives, never cascades to a logged `Dose`.
   Future<String> archiveProtocol(String protocolId) {
     return ref.read(protocolsRepositoryProvider).archiveProtocol(protocolId);
+  }
+
+  /// Deletes a `Protocol` with no history (D8): one tombstoned row, its
+  /// plan read as never having existed, recoverable from the Activity Log.
+  /// Throws `ProtocolHasHistoryException` when a Dose made it history
+  /// since the editor read it.
+  Future<String> deleteProtocol(String protocolId) {
+    return ref.read(protocolsRepositoryProvider).deleteProtocol(protocolId);
   }
 
   /// Loads one active `Protocol` detail for edit navigation from the summary

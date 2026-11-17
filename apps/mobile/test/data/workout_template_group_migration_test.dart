@@ -31,7 +31,7 @@ void main() {
 
     final database = AppDatabase.openFile(file);
     await database.customSelect('SELECT 1').get();
-    expect(database.schemaVersion, 57);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     expect(
       (await database
           .customSelect(
@@ -207,10 +207,86 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 57);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     expect(
       await _indexNames(database, AppDatabase.activityLogTable),
       contains('activity_log_pending_sync_index'),
+    );
+  });
+
+  test('schema 57 adds the deferred sync changes table', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'prn_deferred_sync_changes_migration_',
+    );
+    addTearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final file = File('${directory.path}/v57.sqlite');
+    final legacy = sqlite.sqlite3.open(file.path);
+    try {
+      legacy.execute('PRAGMA user_version = 57;');
+    } finally {
+      legacy.close();
+    }
+
+    final database = AppDatabase.openFile(file);
+    addTearDown(database.close);
+    await database.customSelect('SELECT 1').get();
+    final fresh = AppDatabase.inMemory();
+    addTearDown(fresh.close);
+
+    expect(database.schemaVersion, await _currentSchemaVersion());
+    expect(
+      await _columnNames(database, AppDatabase.deferredSyncChangesTable),
+      await _columnNames(fresh, AppDatabase.deferredSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.deferredSyncChangesTable),
+      await _indexNames(fresh, AppDatabase.deferredSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.deferredSyncChangesTable),
+      contains('deferred_sync_changes_missing_entity_index'),
+    );
+  });
+
+  test('schema 59 adds the quarantined sync changes table', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'prn_quarantined_sync_changes_migration_',
+    );
+    addTearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final file = File('${directory.path}/v59.sqlite');
+    final legacy = sqlite.sqlite3.open(file.path);
+    try {
+      legacy.execute('PRAGMA user_version = 59;');
+    } finally {
+      legacy.close();
+    }
+
+    final database = AppDatabase.openFile(file);
+    addTearDown(database.close);
+    await database.customSelect('SELECT 1').get();
+    final fresh = AppDatabase.inMemory();
+    addTearDown(fresh.close);
+
+    expect(database.schemaVersion, await _currentSchemaVersion());
+    expect(
+      await _columnNames(database, AppDatabase.quarantinedSyncChangesTable),
+      await _columnNames(fresh, AppDatabase.quarantinedSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.quarantinedSyncChangesTable),
+      await _indexNames(fresh, AppDatabase.quarantinedSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.quarantinedSyncChangesTable),
+      contains('quarantined_sync_changes_entity_index'),
     );
   });
 }
@@ -324,5 +400,16 @@ void _createV51Database(File file) {
     ''');
   } finally {
     database.close();
+  }
+}
+
+/// The schema version a fresh database is created at, so these upgrade
+/// tests keep asserting the latest schema as it moves.
+Future<int> _currentSchemaVersion() async {
+  final fresh = AppDatabase.inMemory();
+  try {
+    return fresh.schemaVersion;
+  } finally {
+    await fresh.close();
   }
 }

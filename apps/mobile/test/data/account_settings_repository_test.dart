@@ -1,8 +1,9 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
+import 'package:perennia/domain/settings/settings_validation.dart';
 
 void main() {
   setUpAll(() {
@@ -24,6 +25,45 @@ void main() {
 
     test('load returns null when the account settings row is absent', () async {
       expect(await repositories.accountSettings.load(), isNull);
+    });
+
+    test('save hard-rejects invalid settings and writes nothing', () async {
+      const unknownTheme = AccountSettings(
+        themePreference: 'midnight',
+        unitSystem: 'metric',
+        weekStartDay: 'monday',
+        defaultWeightIncrement: 2.5,
+        homeScreenDisplay: 'comfortable',
+        prTrackingEnabled: true,
+        markSetsCompleteByDefault: false,
+        autoSelectNextSet: true,
+      );
+      final oversizedIncrement =
+          AccountSettings.defaults.copyWith(defaultWeightIncrement: 150);
+
+      await expectLater(
+        repositories.accountSettings.save(unknownTheme),
+        throwsA(
+          isA<SettingsValidationException>().having(
+            (error) => error.errors.map((issue) => issue.rule),
+            'rules',
+            <String>['setting_enum_membership'],
+          ),
+        ),
+      );
+      await expectLater(
+        repositories.accountSettings.save(oversizedIncrement),
+        throwsA(
+          isA<SettingsValidationException>().having(
+            (error) => error.errors.map((issue) => issue.rule),
+            'rules',
+            <String>['setting_weight_increment_max'],
+          ),
+        ),
+      );
+
+      expect(await database.select(database.userSettings).get(), isEmpty);
+      expect(await database.select(database.activityLog).get(), isEmpty);
     });
 
     test('save creates the singleton row and records one Activity Log entry',
@@ -77,6 +117,30 @@ void main() {
       await repositories.accountSettings.save(AccountSettings.defaults);
       await repositories.accountSettings.save(AccountSettings.defaults);
 
+      final logRows = await (database.select(database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.userSettingsTable),
+            ))
+          .get();
+      expect(logRows, hasLength(1));
+    });
+
+    test(
+        'an unchanged save writes nothing even when the clock has moved on '
+        'since the last write', () async {
+      await repositories.accountSettings.save(AccountSettings.defaults);
+      // Backdate the row so the next save always lands in a later second
+      // than the stored `updated_at`, instead of only under load.
+      final lastWrite = DateTime.utc(2026, 1, 1, 12);
+      await database
+          .update(database.userSettings)
+          .write(UserSettingsCompanion(updatedAt: Value<DateTime>(lastWrite)));
+
+      await repositories.accountSettings.save(AccountSettings.defaults);
+
+      final row = await database.select(database.userSettings).getSingle();
+      expect(row.updatedAt.toUtc(), lastWrite);
       final logRows = await (database.select(database.activityLog)
             ..where(
               (row) =>

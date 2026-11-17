@@ -2102,6 +2102,7 @@ class SyncPushResponse {
     required this.accepted,
     required this.serverClock,
     required this.applied,
+    this.merged = const <SyncMergedChange>[],
   });
 
   factory SyncPushResponse.fromJson(Map<String, Object?> json) {
@@ -2127,6 +2128,11 @@ class SyncPushResponse {
       throw const FormatException('Expected applied to be a list.');
     }
 
+    final merged = json['merged'] ?? const <Object?>[];
+    if (merged is! List<Object?>) {
+      throw const FormatException('Expected merged to be a list.');
+    }
+
     return SyncPushResponse(
       protocolVersion: protocolVersion,
       accepted: accepted.cast<String>(),
@@ -2140,6 +2146,15 @@ class SyncPushResponse {
             return SyncAppliedChange.fromJson(change);
           })
           .toList(growable: false),
+      merged: merged
+          .map((change) {
+            if (change is! Map<String, Object?>) {
+              throw const FormatException(
+                  'Expected merged change to be an object.');
+            }
+            return SyncMergedChange.fromJson(change);
+          })
+          .toList(growable: false),
     );
   }
 
@@ -2147,6 +2162,34 @@ class SyncPushResponse {
   final List<String> accepted;
   final String serverClock;
   final List<SyncAppliedChange> applied;
+
+  /// Accepted rows the server stores under another id (\`intoId\`); see
+  /// the server's \`pushMetricsInTransaction\`.
+  final List<SyncMergedChange> merged;
+}
+
+class SyncMergedChange {
+  const SyncMergedChange({
+    required this.id,
+    required this.intoId,
+  });
+
+  factory SyncMergedChange.fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    if (id is! String || id.isEmpty) {
+      throw const FormatException('Expected id to be a non-empty string.');
+    }
+
+    final intoId = json['intoId'];
+    if (intoId is! String || intoId.isEmpty) {
+      throw const FormatException('Expected intoId to be a non-empty string.');
+    }
+
+    return SyncMergedChange(id: id, intoId: intoId);
+  }
+
+  final String id;
+  final String intoId;
 }
 
 class SyncAppliedChange {
@@ -2317,6 +2360,35 @@ class SyncPulledChange {
   final String? occurredAt;
 }
 
+/// A pulled change whose envelope [SyncPulledChange.fromJson] rejected, kept
+/// as the raw JSON value the server sent.
+///
+/// One bad entry must not fail the whole page: the page would never apply, the
+/// cursor would never advance, and every later pull would fetch and fail on
+/// the same entry. The caller decides what to do with it; [entity] and [id]
+/// are filled in when the envelope still says which row it was.
+class SyncMalformedPulledChange {
+  const SyncMalformedPulledChange({
+    required this.raw,
+    this.entity,
+    this.id,
+  });
+
+  factory SyncMalformedPulledChange.fromRaw(Object? raw) {
+    String? nonEmptyString(Object? value) =>
+        value is String && value.isNotEmpty ? value : null;
+    return SyncMalformedPulledChange(
+      raw: raw,
+      entity: raw is Map<String, Object?> ? nonEmptyString(raw['entity']) : null,
+      id: raw is Map<String, Object?> ? nonEmptyString(raw['id']) : null,
+    );
+  }
+
+  final Object? raw;
+  final String? entity;
+  final String? id;
+}
+
 class SyncPullResponse {
   const SyncPullResponse({
     required this.protocolVersion,
@@ -2324,6 +2396,7 @@ class SyncPullResponse {
     required this.changes,
     required this.nextCursor,
     required this.serverClock,
+    this.malformedChanges = const <SyncMalformedPulledChange>[],
   });
 
   factory SyncPullResponse.fromJson(Map<String, Object?> json) {
@@ -2354,25 +2427,37 @@ class SyncPullResponse {
           'Expected serverClock to be a non-empty string.');
     }
 
+    final parsedChanges = <SyncPulledChange>[];
+    final malformedChanges = <SyncMalformedPulledChange>[];
+    for (final change in changes) {
+      try {
+        if (change is! Map<String, Object?>) {
+          throw const FormatException('Expected change to be an object.');
+        }
+        parsedChanges.add(SyncPulledChange.fromJson(change));
+      } on FormatException {
+        malformedChanges.add(SyncMalformedPulledChange.fromRaw(change));
+      }
+    }
+
     return SyncPullResponse(
       protocolVersion: protocolVersion,
       fullResyncRequired: fullResyncRequired as bool? ?? false,
-      changes: changes
-          .map((change) {
-            if (change is! Map<String, Object?>) {
-              throw const FormatException('Expected change to be an object.');
-            }
-            return SyncPulledChange.fromJson(change);
-          })
-          .toList(growable: false),
+      changes: List<SyncPulledChange>.unmodifiable(parsedChanges),
       nextCursor: nextCursor as String?,
       serverClock: serverClock,
+      malformedChanges:
+          List<SyncMalformedPulledChange>.unmodifiable(malformedChanges),
     );
   }
 
   final int protocolVersion;
   final bool fullResyncRequired;
   final List<SyncPulledChange> changes;
+
+  /// Entries of \`changes\` whose envelope did not parse. Never part of
+  /// [changes]; see [SyncMalformedPulledChange].
+  final List<SyncMalformedPulledChange> malformedChanges;
   final String? nextCursor;
   final String serverClock;
 }`;

@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import {
   agentBatchRequestFingerprint,
@@ -10,6 +10,8 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
+import { parseJsonStringArray } from "./agent-catalog.js";
+import { createUuidV7 } from "./agent-plan-materialize.js";
 import {
   AgentDoseValidationIssueSchema,
   AgentDoseValidationLimitsSchema,
@@ -17,27 +19,70 @@ import {
   DOSE_UNITS,
   doseValidationLimitsResponse,
   validateAgentDose,
-  type AgentDoseValidationIssue
+  validateAgentProtocolPeriod,
+  validateAgentProtocolSkip,
+  validateAgentScheduleRule,
+  type AgentDoseValidationIssue,
+  type DoseUnit,
+  type AgentDoseValidationResult
 } from "./agent-validation.js";
+import {
+  PurposeNameError,
+  STARTER_PURPOSES,
+  normalizePurposeIds,
+  validatePurposeName
+} from "./compound-purposes.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
+import {
+  MS_PER_DAY,
+  ProtocolPlanCodecError,
+  applyingScheduleVersion,
+  compareIds,
+  compareScheduleVersions,
+  dayStatuses,
+  decodeProtocolPeriod,
+  decodeScheduleRule,
+  encodeScheduleRule,
+  epochDay,
+  isJsonObject,
+  isPlanLocalTime,
+  isValidLocalDate,
+  planDays,
+  pushToGroup,
+  type DayStatus,
+  type DayStatusValue,
+  type NotPlannedReason,
+  type PlanAmount,
+  type PlanDay,
+  type PlanDayState,
+  type PlanDose,
+  type PlanProtocol,
+  type PlanSkip,
+  type ProtocolPeriod,
+  type ScheduleRule
+} from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
   PROTOCOLS_SYNC_ENTITY,
   PROTOCOL_COMPOUNDS_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
   SCHEDULES_SYNC_ENTITY,
   pushCompoundsInTransaction,
   pushDosesInTransaction,
   pushProtocolCompoundsInTransaction,
+  pushProtocolSkipsInTransaction,
   pushProtocolsInTransaction,
   pushProtocolTargetOutcomesInTransaction,
+  pushPurposesInTransaction,
   pushSchedulesInTransaction,
   type SyncPushChange,
   type SyncPushResult
 } from "./sync.js";
+import { offsetMinutesInTimezone } from "./timezone.js";
 
 // Bounded-read page sizing (data-minimizing by default).
 export const AGENT_PROTOCOLS_DEFAULT_PAGE_LIMIT = 50;
@@ -46,10 +91,13 @@ export const AGENT_PROTOCOLS_MAX_PAGE_LIMIT = 200;
 // Batch-write item caps (mirror the meal/exercise catalogue caps).
 export const AGENT_DOSE_BATCH_WRITE_MAX_DOSES = 200;
 export const AGENT_COMPOUND_BATCH_WRITE_MAX_COMPOUNDS = 100;
+export const AGENT_PURPOSE_BATCH_WRITE_MAX_PURPOSES = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_PROTOCOLS = 50;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_MEMBERS = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_SCHEDULES = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_TARGET_OUTCOMES = 50;
+export const AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS = 100;
+export const AGENT_PROTOCOL_SKIP_BATCH_WRITE_MAX_SKIPS = 100;
 
 // Effect-window bucketing bounds — a descriptive read, never stored.
 export const AGENT_EFFECT_WINDOW_MAX_DOSES = 500;
@@ -108,6 +156,7 @@ const AGENT_COMPOUND_FIELDS = [
   "defaultUnit",
   "defaultRoute",
   "strength",
+  "purposeIds",
   "updatedAt",
   "deletedAt"
 ] as const;
@@ -123,6 +172,7 @@ const AGENT_DOSE_FIELDS = [
   "route",
   "tookAt",
   "timezone",
+  "timezoneOffsetMinutes",
   "localDate",
   "provenance",
   "protocolId",
@@ -133,6 +183,123 @@ const AGENT_DOSE_FIELDS = [
 
 const compoundFieldSet = new Set<string>(AGENT_COMPOUND_FIELDS);
 const doseFieldSet = new Set<string>(AGENT_DOSE_FIELDS);
+
+const DOSE_TIMEZONE_DESCRIPTION =
+  "Display label for the timezone the Dose was logged in, as captured at log time: an IANA name such as America/Sao_Paulo, or an abbreviation such as BRT. It is a label only; timezoneOffsetMinutes is what turns tookAt into the Dose's local clock time.";
+
+const DoseTimezoneOffsetReadSchema = z.number().int().nullable().openapi({
+  description:
+    "UTC offset in minutes east of UTC (UTC-3 is -180), frozen when the Dose was logged. Null for a Dose logged without one; its local time is then read in UTC."
+});
+
+/**
+ * The UTC offsets a frozen Dose offset, the Effect read and
+ * `effectBoundsFromLocalDates` accept (D2): UTC-12:00 to UTC+14:00.
+ */
+export const AGENT_PROTOCOLS_MIN_OFFSET_MINUTES = -720;
+export const AGENT_PROTOCOLS_MAX_OFFSET_MINUTES = 840;
+
+export const LocalDateSchema = z
+  .string()
+  .refine(isValidLocalDate, { message: "Must be a real YYYY-MM-DD date." })
+  .openapi({
+    description: "A local calendar date, YYYY-MM-DD.",
+    example: "2026-10-26"
+  });
+
+// ---------------------------------------------------------------------------
+// Schedule Rule and Protocol Period JSON (docs/designs/protocol-schedules-and-
+// reminders.md, "Data shapes"). Agents read and write the stored JSON itself,
+// with its snake_case keys, so what an Agent sends is exactly what the shared
+// codecs and the two-tier validators (D7) judge in both languages. These
+// schemas pin only the JSON types and the version and kinds; every value
+// (a time of "9:00", an anchor of "2026-02-30", a count of 2.5) is judged by
+// the shared validators and comes back as a 422 issue with its stable rule id.
+// ---------------------------------------------------------------------------
+
+const ScheduleRuleDaysSchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("daily") }),
+    z.object({
+      kind: z.literal("weekdays"),
+      weekdays: z.array(z.number()).openapi({
+        description: "ISO 8601 weekdays, 1 = Monday to 7 = Sunday. Stored sorted."
+      })
+    }),
+    z.object({
+      kind: z.literal("every_n_days"),
+      n: z.number().openapi({ description: "Due every n days, 2 to 365." }),
+      anchor: z.string().openapi({
+        description:
+          "YYYY-MM-DD date the rhythm is counted from; a date is due when (date - anchor) mod n = 0, before the anchor too."
+      }),
+      anchor_is_default: z.boolean().openapi({
+        description:
+          "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
+      })
+    })
+  ])
+  .openapi("AgentScheduleRuleDays");
+
+export const AgentScheduleRuleSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      v: z.literal(1),
+      kind: z.literal("timed"),
+      days: ScheduleRuleDaysSchema,
+      times: z.array(z.string()).openapi({
+        description: "1 to 12 distinct HH:MM wall-clock times. Stored sorted."
+      })
+    }),
+    z.object({
+      v: z.literal(1),
+      kind: z.literal("untimed"),
+      days: ScheduleRuleDaysSchema,
+      count: z.number().openapi({
+        description: "1 to 12 planned doses a day with no clock time."
+      })
+    }),
+    z.object({ v: z.literal(1), kind: z.literal("as_needed") }),
+    z.object({ v: z.literal(1), kind: z.literal("unscheduled") })
+  ])
+  .openapi("AgentScheduleRule", {
+    description:
+      "A Schedule Rule, version 1: when a Protocol Member's Compound is due on a day its Protocol is in effect. timed and untimed rules need a planned amount, unit and route; as_needed plans nothing; unscheduled is a member with no Schedule, and both carry no amount."
+  });
+
+export const AgentProtocolPeriodSchema = z
+  .object({
+    v: z.literal(1),
+    cycle: z
+      .object({
+        on_days: z.number().openapi({ description: "Days on, 1 to 3650." }),
+        off_days: z.number().openapi({ description: "Days off, 1 to 3650." }),
+        anchor: z.string().openapi({
+          description:
+            "YYYY-MM-DD date that is cycle day 0; a date is on-cycle when (date - anchor) mod (on + off) < on, before the anchor too."
+        }),
+        anchor_is_default: z.boolean().openapi({
+          description:
+            "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
+        })
+      })
+      .nullable()
+      .optional(),
+    pauses: z
+      .array(
+        z.object({
+          from: z.string().openapi({ description: "First paused YYYY-MM-DD date." }),
+          to: z.string().openapi({ description: "Last paused YYYY-MM-DD date, inclusive." })
+        })
+      )
+      .openapi({
+        description: "At most 100 non-overlapping Pauses inside the Protocol's dates."
+      })
+  })
+  .openapi("AgentProtocolPeriod", {
+    description:
+      "A Protocol Period, version 1: an optional on/off cycle and the Pauses. Null means no cycle and no Pause."
+  });
 
 const AgentCompoundStrengthSchema = z
   .object({
@@ -148,6 +315,9 @@ const AgentCompoundStrengthSchema = z
   })
   .openapi("AgentCompoundStrength");
 
+const COMPOUND_PURPOSE_IDS_DESCRIPTION =
+  "The ids of the Purposes this Compound is tagged with, in the order they were tagged. A Purpose is a label for why the user takes a Compound. The list can name an archived Purpose.";
+
 export const AgentCompoundSchema = z
   .object({
     id: z.string().min(1),
@@ -155,6 +325,9 @@ export const AgentCompoundSchema = z
     defaultUnit: DoseUnitSchema,
     defaultRoute: DoseRouteSchema,
     strength: AgentCompoundStrengthSchema.nullable(),
+    purposeIds: z.array(z.string()).openapi({
+      description: COMPOUND_PURPOSE_IDS_DESCRIPTION
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable()
   })
@@ -167,6 +340,9 @@ const AgentCompoundListItemSchema = z
     defaultUnit: DoseUnitSchema.optional(),
     defaultRoute: DoseRouteSchema.optional(),
     strength: AgentCompoundStrengthSchema.nullable().optional(),
+    purposeIds: z.array(z.string()).optional().openapi({
+      description: COMPOUND_PURPOSE_IDS_DESCRIPTION
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().optional()
   })
@@ -175,6 +351,27 @@ const AgentCompoundListItemSchema = z
 const AgentCompoundFieldSchema = z
   .enum(AGENT_COMPOUND_FIELDS)
   .openapi("AgentCompoundField");
+
+export const AgentPurposeSchema = z
+  .object({
+    id: z.string().min(1).openapi({
+      description:
+        "Stable Purpose id. Starter Purpose ids are fixed and identical on every device."
+    }),
+    name: z.string().min(1).openapi({
+      description: "User-visible Purpose name, after any rename by the user."
+    }),
+    sortOrder: z.number().int().openapi({
+      description: "User-defined display order; lower sorts first."
+    }),
+    starter: z.boolean().openapi({
+      description: "True for one of the six Purposes every account starts with."
+    }),
+    deletedAt: ISO8601StringSchema.nullable().openapi({
+      description: "When the Purpose was archived, or null while it is active."
+    })
+  })
+  .openapi("AgentPurpose");
 
 export const AgentDoseSchema = z
   .object({
@@ -187,7 +384,10 @@ export const AgentDoseSchema = z
     unit: DoseUnitSchema,
     route: DoseRouteSchema,
     tookAt: ISO8601StringSchema,
-    timezone: z.string().min(1),
+    timezone: z.string().min(1).openapi({
+      description: DOSE_TIMEZONE_DESCRIPTION
+    }),
+    timezoneOffsetMinutes: DoseTimezoneOffsetReadSchema,
     localDate: z.string().min(1),
     provenance: z.string().min(1),
     protocolId: z.string().min(1).nullable(),
@@ -208,7 +408,10 @@ const AgentDoseListItemSchema = z
     unit: DoseUnitSchema.optional(),
     route: DoseRouteSchema.optional(),
     tookAt: ISO8601StringSchema.optional(),
-    timezone: z.string().min(1).optional(),
+    timezone: z.string().min(1).optional().openapi({
+      description: DOSE_TIMEZONE_DESCRIPTION
+    }),
+    timezoneOffsetMinutes: DoseTimezoneOffsetReadSchema.optional(),
     localDate: z.string().min(1).optional(),
     provenance: z.string().min(1).optional(),
     protocolId: z.string().min(1).nullable().optional(),
@@ -222,35 +425,60 @@ const AgentDoseFieldSchema = z.enum(AGENT_DOSE_FIELDS).openapi("AgentDoseField")
 
 // A Protocol detail bundles its plan rows (members, schedules, target outcomes)
 // — all plan data, never derived analytics.
+const AgentProtocolScheduleVersionSchema = z
+  .object({
+    id: z.string().min(1),
+    protocolCompoundId: z.string().min(1),
+    effectiveFrom: z.string().min(1).openapi({
+      description:
+        "Local date (YYYY-MM-DD) this Schedule Version applies from. On any date the version with the latest effectiveFrom on or before it applies, the larger id on a tie."
+    }),
+    rule: AgentScheduleRuleSchema,
+    doseAmountValue: z.number().nullable(),
+    doseAmountEntered: z.string().min(1).nullable(),
+    doseUnit: DoseUnitSchema.nullable(),
+    route: DoseRouteSchema.nullable(),
+    updatedAt: ISO8601StringSchema
+  })
+  .openapi("AgentProtocolScheduleVersion");
+
 const AgentProtocolMemberSchema = z
   .object({
     id: z.string().min(1),
     compoundId: z.string().min(1),
     position: z.number().int().min(0),
+    archivedOn: z.string().min(1).nullable().openapi({
+      description:
+        "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. On that day its planned doses count only if a Dose fills them; it reads removed from the next day."
+    }),
+    versions: z.array(AgentProtocolScheduleVersionSchema).openapi({
+      description:
+        "Every Schedule Version of this member, sorted by effectiveFrom and then id. Versions are authored plan history, inserted on every changed save and never edited."
+    }),
+    currentVersion: AgentProtocolScheduleVersionSchema.nullable().openapi({
+      description:
+        "The version an editor shows: the latest effectiveFrom, the larger id on a tie. Null when the member has no Schedule Version."
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable()
   })
   .openapi("AgentProtocolMember");
 
-const AgentProtocolScheduleSchema = z
-  .object({
-    id: z.string().min(1),
-    protocolCompoundId: z.string().min(1),
-    doseAmountValue: z.number().nullable(),
-    doseAmountEntered: z.string().min(1).nullable(),
-    doseUnit: DoseUnitSchema.nullable(),
-    frequency: z.string().min(1),
-    route: DoseRouteSchema.nullable(),
-    updatedAt: ISO8601StringSchema,
-    deletedAt: ISO8601StringSchema.nullable()
-  })
-  .openapi("AgentProtocolSchedule");
-
 const AgentProtocolTargetOutcomeSchema = z
   .object({
     id: z.string().min(1),
     metricId: z.string().min(1).nullable(),
-    outcomeKind: z.string().min(1),
+    // Not the write's enum: the write accepted any string until
+    // docs/designs/protocol-target-outcome-sync-shape.md (D4), and one old row
+    // with another kind must not fail the read for the whole account.
+    outcomeKind: z.string().min(1).openapi({
+      description:
+        "metric (a Metric, named by metricId) or performance (Workout analytics broadly). An outcome an Agent stored before the kind was checked may hold another value; the app ignores it."
+    }),
+    position: z.number().int().min(0).openapi({
+      description:
+        "The outcome's place in the Protocol's list, as the app orders it. Outcomes are listed by position, then id."
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable()
   })
@@ -260,12 +488,28 @@ export const AgentProtocolSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
-    startDate: ISO8601StringSchema.nullable(),
-    endDate: ISO8601StringSchema.nullable(),
+    startLocalDate: z.string().min(1).nullable().openapi({
+      description: "Local date (YYYY-MM-DD) the Protocol starts."
+    }),
+    endLocalDate: z.string().min(1).nullable().openapi({
+      description: "Inclusive local end date (YYYY-MM-DD); null is ongoing."
+    }),
+    period: AgentProtocolPeriodSchema.nullable(),
+    remindersEnabled: z.boolean().openapi({
+      description:
+        "Plan data: the user asked to be reminded about this Protocol. Reminders themselves are device-local."
+    }),
+    archivedOn: z.string().min(1).nullable().openapi({
+      description:
+        "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date; on this date its planned doses count only if a Dose fills them."
+    }),
+    hasHistory: z.boolean().openapi({
+      description:
+        "At least one Dose not deleted is tagged to this Protocol, or is of one of its member Compounds (archived members included) on a date within its dates. Archive a Protocol with history; delete one without (delete-protocols)."
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable(),
     members: z.array(AgentProtocolMemberSchema),
-    schedules: z.array(AgentProtocolScheduleSchema),
     targetOutcomes: z.array(AgentProtocolTargetOutcomeSchema)
   })
   .openapi("AgentProtocol");
@@ -291,6 +535,11 @@ export const AgentCompoundListQuerySchema = z
       param: { name: "includeArchived", in: "query" },
       description: "When true, archived Compounds are included."
     }),
+    purpose: z.string().trim().min(1).optional().openapi({
+      param: { name: "purpose", in: "query" },
+      description:
+        "Optional Purpose id: only Compounds whose stored list names it. An unknown id returns an empty page."
+    }),
     limit: limitQuery.openapi({
       param: { name: "limit", in: "query" },
       description: "Maximum Compound rows to return."
@@ -306,6 +555,20 @@ export const AgentCompoundListQuerySchema = z
     })
   })
   .openapi("AgentCompoundListQuery");
+
+export const AgentPurposeListQuerySchema = z
+  .object({
+    // Not z.coerce.boolean(): it reads "false" as true (D9 in
+    // docs/designs/progress-overview.md).
+    includeArchived: z
+      .enum(["true", "false"])
+      .default("false")
+      .openapi({
+        param: { name: "includeArchived", in: "query" },
+        description: "When true, archived Purposes are included."
+      })
+  })
+  .openapi("AgentPurposeListQuery");
 
 export const AgentProtocolListQuerySchema = z
   .object({
@@ -380,6 +643,12 @@ export const AgentCompoundListResponseSchema = z
   })
   .openapi("AgentCompoundListResponse");
 
+export const AgentPurposeListResponseSchema = z
+  .object({
+    purposes: z.array(AgentPurposeSchema)
+  })
+  .openapi("AgentPurposeListResponse");
+
 export const AgentProtocolListResponseSchema = z
   .object({
     protocols: z.array(AgentProtocolSchema),
@@ -422,6 +691,10 @@ export const AgentCompoundBatchWriteCompoundSchema = z
     defaultUnit: DoseUnitSchema,
     defaultRoute: DoseRouteSchema,
     strength: CompoundStrengthInputSchema.nullable().default(null),
+    purposeIds: z.array(z.string().trim().min(1)).optional().openapi({
+      description:
+        "The ids of the Purposes to tag this Compound with, in order; repeats are dropped. Omit to keep the stored list; [] clears it. Every id must be an active Purpose (purpose_not_found), so drop an archived id read back from the list or omit purposeIds."
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
       description:
@@ -446,6 +719,44 @@ export const AgentCompoundBatchWriteRequestSchema = z
   })
   .openapi("AgentCompoundBatchWriteRequest");
 
+export const AgentPurposeBatchWritePurposeSchema = z
+  .object({
+    id: ClientRowIdSchema.openapi({
+      description:
+        "UUIDv7 Purpose id for a new row, or the id of a starter or existing Purpose for an edit or archive."
+    }),
+    // Left unchecked here so an empty name reaches the name rules and comes
+    // back as purpose_name_required, in the batch's error shape.
+    name: z.string().openapi({
+      description:
+        "Stored trimmed. Empty after trimming is refused (purpose_name_required), and so is the name of another active Purpose, trimmed and case-insensitive (duplicate_purpose_name)."
+    }),
+    sortOrder: z.number().int().min(0).openapi({
+      description: "User-defined display order; lower sorts first."
+    }),
+    deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
+      description:
+        "Set to archive the Purpose. Compounds tagged with it keep the tag."
+    })
+  })
+  .openapi("AgentPurposeBatchWritePurpose");
+
+export const AgentPurposeBatchWriteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. Replays with the same key do not append another Activity Log batch."
+    }),
+    purposes: z
+      .array(AgentPurposeBatchWritePurposeSchema)
+      .min(1)
+      .max(AGENT_PURPOSE_BATCH_WRITE_MAX_PURPOSES)
+      .openapi({
+        description: "Purposes to create, rename, reorder, or archive in one batch."
+      })
+  })
+  .openapi("AgentPurposeBatchWriteRequest");
+
 export const AgentDoseBatchWriteDoseSchema = z
   .object({
     id: ClientRowIdSchema.openapi({
@@ -469,8 +780,19 @@ export const AgentDoseBatchWriteDoseSchema = z
       description: "Instant the Dose was taken (its timezone is captured separately)."
     }),
     timezone: z.string().trim().min(1).openapi({
-      description: "IANA timezone captured at log time."
+      description:
+        "Display label for the timezone at log time: an IANA name such as America/Sao_Paulo, or an abbreviation such as BRT. When it is an IANA name and timezoneOffsetMinutes is absent, the server derives the offset from it and tookAt; an abbreviation cannot be converted, so the offset then stays null."
     }),
+    timezoneOffsetMinutes: z
+      .number()
+      .int()
+      .min(AGENT_PROTOCOLS_MIN_OFFSET_MINUTES)
+      .max(AGENT_PROTOCOLS_MAX_OFFSET_MINUTES)
+      .optional()
+      .openapi({
+        description:
+          "Optional UTC offset at log time, in minutes east of UTC (UTC-3 is -180), -720 to +840. Frozen on the Dose with tookAt so its local clock time never moves. Wins over the offset derived from timezone."
+      }),
     localDate: z.string().trim().min(1).openapi({
       description:
         "Protocol Day date (YYYY-MM-DD) the Dose falls on in its local timezone, frozen at log time."
@@ -507,35 +829,47 @@ export const AgentDoseBatchWriteRequestSchema = z
   })
   .openapi("AgentDoseBatchWriteRequest");
 
+const ArchivedFlagSchema = z.boolean().default(false);
+
 const AgentProtocolBatchWriteMemberSchema = z
   .object({
     id: ClientRowIdSchema.openapi({
       description:
-        "UUIDv7 Protocol member id for a new row, or an existing legacy id for an edit/archive."
+        "UUIDv7 Protocol Member id for a new row, or an existing id for an edit or archive."
     }),
     compoundId: AgentProtocolsReferenceIdSchema,
     position: z.number().int().min(0).default(0),
     updatedAt: ISO8601StringSchema.optional(),
-    deletedAt: ISO8601StringSchema.nullable().default(null)
+    archived: ArchivedFlagSchema.openapi({
+      description:
+        "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; that day its planned doses count only if a Dose fills them. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
+    })
   })
+  .strict()
   .openapi("AgentProtocolBatchWriteMember");
 
 const AgentProtocolBatchWriteScheduleSchema = z
   .object({
     id: ClientRowIdSchema.openapi({
       description:
-        "UUIDv7 Schedule id for a new row, or an existing legacy id for an edit/archive."
+        "UUIDv7 id of a new Schedule Version. Versions are insert-only: an id that already exists is rejected."
     }),
-    protocolCompoundId: AgentProtocolsReferenceIdSchema,
+    protocolCompoundId: AgentProtocolsReferenceIdSchema.openapi({
+      description:
+        "The Protocol Member this Schedule Version belongs to: one in this request, or an existing member of the same Protocol."
+    }),
+    rule: AgentScheduleRuleSchema,
     doseAmountValue: z.number().nullable().default(null),
-    doseAmountEntered: z.string().trim().min(1).nullable().default(null),
+    doseAmountEntered: z.string().nullable().default(null),
     doseUnit: DoseUnitSchema.nullable().default(null),
-    frequency: z.string().trim().min(1),
     route: DoseRouteSchema.nullable().default(null),
-    updatedAt: ISO8601StringSchema.optional(),
-    deletedAt: ISO8601StringSchema.nullable().default(null)
+    updatedAt: ISO8601StringSchema.optional()
   })
-  .openapi("AgentProtocolBatchWriteSchedule");
+  .strict()
+  .openapi("AgentProtocolBatchWriteSchedule", {
+    description:
+      "A new Schedule Version for one Protocol Member. The server dates it (effectiveFrom) exactly as the app does: a member's first version applies from the Protocol's start when the member is created with its Protocol or the start is still ahead, and from today otherwise; a later version applies from the later of today and the member's latest effectiveFrom. times and weekdays are stored sorted. Every edit is a new version; none is edited or archived."
+  });
 
 const AgentProtocolBatchWriteTargetOutcomeSchema = z
   .object({
@@ -547,7 +881,14 @@ const AgentProtocolBatchWriteTargetOutcomeSchema = z
       description:
         "Optional Metric id. Metric ids are opaque and may be canonical catalogue ids rather than Protocol-row UUIDv7 values."
     }),
-    outcomeKind: z.string().trim().min(1).default("metric"),
+    outcomeKind: z.enum(["metric", "performance"]).default("metric").openapi({
+      description:
+        "metric (a Metric, named by metricId) or performance (Workout analytics broadly; metricId null). A metric outcome without a metricId, or a performance outcome with one, is refused with target_outcome_metric_id."
+    }),
+    position: z.number().int().min(0).optional().openapi({
+      description:
+        "The outcome's place in the Protocol's list. Left out, an existing outcome keeps its position and a new one goes after the Protocol's other outcomes, in the order sent."
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().default(null)
   })
@@ -557,15 +898,25 @@ export const AgentProtocolBatchWriteProtocolSchema = z
   .object({
     id: ClientRowIdSchema.openapi({
       description:
-        "UUIDv7 Protocol id for a new row, or an existing legacy id for an edit/archive."
+        "UUIDv7 Protocol id for a new row, or an existing id for an edit or archive."
     }),
     name: z.string().trim().min(1),
-    startDate: ISO8601StringSchema.nullable().default(null),
-    endDate: ISO8601StringSchema.nullable().default(null),
-    updatedAt: ISO8601StringSchema.optional(),
-    deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
+    startLocalDate: LocalDateSchema.openapi({
       description:
-        "Set to archive the Protocol. Archiving is a plan edit — it never cascades to a logged Dose (PROTOCOLS.md §7)."
+        "Local date (YYYY-MM-DD) the Protocol starts. Moving it earlier inserts, for each member planned from the old start (archived ones included), a copy of its earliest Schedule Version dated from the new start; a member added after the old start keeps its own first date. Moving it later inserts nothing. Every-N and cycle anchors left at their default (anchor_is_default: true) are read as this date, so they follow the start without a write."
+    }),
+    endLocalDate: LocalDateSchema.nullable().default(null).openapi({
+      description: "Inclusive local end date (YYYY-MM-DD); null is ongoing."
+    }),
+    period: AgentProtocolPeriodSchema.nullable().default(null),
+    remindersEnabled: z.boolean().default(false).openapi({
+      description:
+        "Plan data: remind me about this Protocol. Each device schedules its own reminders. Left out, it is written as false."
+    }),
+    updatedAt: ISO8601StringSchema.optional(),
+    archived: ArchivedFlagSchema.openapi({
+      description:
+        "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date, and on that date its planned doses count only if a Dose fills them. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
     }),
     members: z
       .array(AgentProtocolBatchWriteMemberSchema)
@@ -580,7 +931,11 @@ export const AgentProtocolBatchWriteProtocolSchema = z
       .max(AGENT_PROTOCOL_BATCH_WRITE_MAX_TARGET_OUTCOMES)
       .default([])
   })
-  .openapi("AgentProtocolBatchWriteProtocol");
+  .strict()
+  .openapi("AgentProtocolBatchWriteProtocol", {
+    description:
+      "One Protocol as it should be stored. The write replaces the whole Protocol row, so a field left out takes its default: endLocalDate and period become null (no end, no cycle, no Pauses) and remindersEnabled becomes false. To edit one field, send every field as read."
+  });
 
 export const AgentProtocolBatchWriteRequestSchema = z
   .object({
@@ -588,16 +943,94 @@ export const AgentProtocolBatchWriteRequestSchema = z
       description:
         "Stable key for this agent request. Replays with the same key do not append another Activity Log batch."
     }),
+    today: LocalDateSchema.openapi({
+      description:
+        "The user's local date (YYYY-MM-DD). It dates Schedule Versions and archives exactly as the app does, and must be within one day of the server's UTC date."
+    }),
     protocols: z
       .array(AgentProtocolBatchWriteProtocolSchema)
       .min(1)
       .max(AGENT_PROTOCOL_BATCH_WRITE_MAX_PROTOCOLS)
       .openapi({
         description:
-          "Protocols (plus their members, schedules, and target outcomes) to create, edit, or archive. Plan writes never touch logged Doses."
+          "Protocols (plus their members, Schedule Versions, and target outcomes) to create, edit, or archive. Plan writes never touch logged Doses."
       })
   })
+  .strict()
   .openapi("AgentProtocolBatchWriteRequest");
+
+export const AgentProtocolDeleteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+    }),
+    protocolIds: z
+      .array(AgentProtocolsReferenceIdSchema)
+      .min(1)
+      .max(AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS)
+      .openapi({
+        description:
+          "Protocols to delete. Only a Protocol with no history (hasHistory false on list-protocols) can be deleted; archive one with history through manage-protocols. A repeated id is treated once."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolDeleteRequest");
+
+export const AgentProtocolSkipBatchWriteSkipSchema = z
+  .object({
+    id: ClientUuidV7Schema.openapi({
+      description:
+        "The Skip's id: a client-supplied UUIDv7 for a new Skip, or the id of a stored one (a fill's skipId) to remove it."
+    }),
+    protocolId: AgentProtocolsReferenceIdSchema.openapi({
+      description:
+        "The Protocol whose planned dose this Skip answers. It must name a Protocol of this account that wasn't deleted; an archived one is accepted, for its past days."
+    }),
+    compoundId: AgentProtocolsReferenceIdSchema.openapi({
+      description: "The planned dose's Compound."
+    }),
+    localDate: LocalDateSchema.openapi({
+      description: "The planned dose's local date (YYYY-MM-DD); not after today."
+    }),
+    plannedLocalTime: z.string().nullable().openapi({
+      description:
+        "The planned dose's time, HH:MM, or null for an untimed planned dose. A timed Skip names exactly one planned dose; an untimed one answers any one of that Protocol's untimed planned doses of the Compound that day."
+    }),
+    deletedAt: ISO8601StringSchema.refine((value) => !Number.isNaN(Date.parse(value)), {
+      message: "Must be an ISO 8601 timestamp."
+    })
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          "Set to remove the Skip. Removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, as the app's Undo skip does. A removed Skip is never brought back: skip again with a new id."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolSkipBatchWriteSkip");
+
+export const AgentProtocolSkipBatchWriteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+    }),
+    today: LocalDateSchema.openapi({
+      description:
+        "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. A Skip may not be for a day after it."
+    }),
+    skips: z
+      .array(AgentProtocolSkipBatchWriteSkipSchema)
+      .min(1)
+      .max(AGENT_PROTOCOL_SKIP_BATCH_WRITE_MAX_SKIPS)
+      .openapi({
+        description:
+          "Skips to write or remove atomically as one Activity Log batch. A Skip is never edited: it is written once and removed with deletedAt."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolSkipBatchWriteRequest");
 
 // ---------------------------------------------------------------------------
 // Write issue + response shapes
@@ -659,6 +1092,17 @@ export const AgentCompoundBatchWriteResponseSchema = z
   })
   .openapi("AgentCompoundBatchWriteResponse");
 
+export const AgentPurposeBatchWriteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1),
+    serverClock: z.string().min(1),
+    purposes: z.array(AgentEntityBatchWriteResultSchema)
+  })
+  .openapi("AgentPurposeBatchWriteResponse");
+
 export const AgentProtocolBatchWriteResponseSchema = z
   .object({
     accepted: z.literal(true),
@@ -666,7 +1110,11 @@ export const AgentProtocolBatchWriteResponseSchema = z
     idempotencyKey: z.string().min(1),
     batchId: z.string().min(1),
     serverClock: z.string().min(1),
-    protocols: z.array(AgentEntityBatchWriteResultSchema)
+    protocols: z.array(AgentEntityBatchWriteResultSchema),
+    warnings: z.array(AgentProtocolsBatchWriteIssueSchema).openapi({
+      description:
+        "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written. protocol_has_no_history is judged against stored Doses when the batch is written, so a replay (duplicate: true) repeats only the plan validators' warnings."
+    })
   })
   .openapi("AgentProtocolBatchWriteResponse");
 
@@ -689,6 +1137,75 @@ export const AgentProtocolsBatchWriteErrorResponseSchema = z
   })
   .openapi("AgentProtocolsBatchWriteErrorResponse");
 
+const AgentProtocolDeleteResultSchema = z
+  .object({
+    id: z.string().min(1),
+    outcome: z.enum(["deleted", "already_deleted"]).openapi({
+      description:
+        "deleted, or already_deleted for a Protocol already removed, by a delete or by undo."
+    })
+  })
+  .openapi("AgentProtocolDeleteResult");
+
+export const AgentProtocolDeleteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1).openapi({
+      description:
+        "The Activity Log batch. Undoing it (undo-activity-batch) restores every Protocol this request deleted."
+    }),
+    serverClock: z.string().min(1),
+    protocols: z.array(AgentProtocolDeleteResultSchema).openapi({
+      description: "One entry per distinct id, in the order first sent."
+    })
+  })
+  .openapi("AgentProtocolDeleteResponse");
+
+export const AgentProtocolDeleteErrorResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_delete_failed"),
+    message: z.string().min(1),
+    issues: z.array(AgentProtocolsBatchWriteIssueSchema)
+  })
+  .openapi("AgentProtocolDeleteErrorResponse");
+
+const AgentProtocolSkipBatchWriteResultSchema = z
+  .object({
+    id: z.string().min(1),
+    outcome: z.enum(["applied", "superseded", "duplicate", "refused"]).openapi({
+      description:
+        "As for Doses: applied, superseded (a newer stored version won), duplicate (an idempotent replay), or refused (the sync push didn't accept the row)."
+    })
+  })
+  .openapi("AgentProtocolSkipBatchWriteResult");
+
+export const AgentProtocolSkipBatchWriteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1).openapi({
+      description:
+        "The Activity Log batch. Undoing it (undo-activity-batch) reverses every row this request wrote, swept Skips included."
+    }),
+    serverClock: z.string().min(1),
+    skips: z.array(AgentProtocolSkipBatchWriteResultSchema).openapi({
+      description:
+        "One entry per Skip sent, in order. A Skip removed because it shares a removed timed Skip's Protocol, Compound, date and time gets its own entry, right after the item that removed it."
+    })
+  })
+  .openapi("AgentProtocolSkipBatchWriteResponse");
+
+export const AgentProtocolSkipBatchWriteErrorResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_skip_batch_write_failed"),
+    message: z.string().min(1),
+    issues: z.array(AgentProtocolsBatchWriteIssueSchema)
+  })
+  .openapi("AgentProtocolSkipBatchWriteErrorResponse");
+
 export const AgentProtocolsUnavailableResponseSchema = z
   .object({
     code: z.literal("agent_protocols_unavailable"),
@@ -705,12 +1222,12 @@ export const AgentEffectWindowQuerySchema = z
     compoundId: z.string().trim().min(1).optional().openapi({
       param: { name: "compoundId", in: "query" },
       description:
-        "The Compound whose logged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+        "The Compound whose logged Doses (earliest to latest) are the DURING span. Provide exactly one of compoundId or protocolId."
     }),
     protocolId: z.string().trim().min(1).optional().openapi({
       param: { name: "protocolId", in: "query" },
       description:
-        "The Protocol whose tagged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+        "The Protocol whose local start and end dates (read at timezoneOffsetMinutes) are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId."
     }),
     metricId: z.string().trim().min(1).optional().openapi({
       param: { name: "metricId", in: "query" },
@@ -724,12 +1241,25 @@ export const AgentEffectWindowQuerySchema = z
     }),
     from: z.string().trim().min(1).openapi({
       param: { name: "from", in: "query" },
-      description: "Inclusive ISO-8601 lower bound of the analysis range."
+      description:
+        "Inclusive ISO-8601 lower bound of the Dose markers returned. Does not move the window."
     }),
     to: z.string().trim().min(1).openapi({
       param: { name: "to", in: "query" },
-      description: "Exclusive ISO-8601 upper bound of the analysis range."
-    })
+      description:
+        "Exclusive ISO-8601 upper bound of the Dose markers returned. Does not move the window."
+    }),
+    timezoneOffsetMinutes: z.coerce
+      .number()
+      .int()
+      .min(AGENT_PROTOCOLS_MIN_OFFSET_MINUTES)
+      .max(AGENT_PROTOCOLS_MAX_OFFSET_MINUTES)
+      .default(0)
+      .openapi({
+        param: { name: "timezoneOffsetMinutes", in: "query" },
+        description:
+          "UTC offset, in minutes east of UTC (UTC-3 is -180), from -720 to +840, that turns a Protocol's local-date bounds into instants: DURING runs from local midnight of its start date to local midnight after its inclusive end date. Defaults to 0 (UTC). Ignored for a Compound source."
+      })
   })
   .openapi("AgentEffectWindowQuery");
 
@@ -798,6 +1328,230 @@ export const AgentEffectWindowErrorResponseSchema = z
   .openapi("AgentEffectWindowErrorResponse");
 
 // ---------------------------------------------------------------------------
+// Planned-day and Day Status reads (docs/designs/protocol-schedules-and-
+// reminders.md, D6 "Later stage"). Both are computed on read by the shared
+// plan core (protocol-plan.ts, the twin of the app's Dart core, pinned by the
+// m36 vectors), so an Agent and the app give the same answer for a day.
+// Nothing here is stored, and the responses carry statuses and counts only:
+// no ratio, streak or percentage.
+// ---------------------------------------------------------------------------
+
+/**
+ * The longest range either read accepts, in days, both ends included: the
+ * same 366 the app's Consistency view reads at most
+ * (`maxConsistencyRangeDays`).
+ */
+export const AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS = 366;
+
+/**
+ * Every value of the string union `T`, as a tuple `z.enum` takes. It is
+ * checked both ways at compile time: a value the union lacks fails the
+ * element type, and a union value the tuple leaves out fails the `missing`
+ * check. So when the shared core gains a state or status, this module stops
+ * compiling instead of the response schema refusing the core's output with a
+ * 500 at run time.
+ */
+export function unionValues<T extends string>() {
+  return <const V extends readonly [T, ...T[]]>(
+    values: V & ([Exclude<T, V[number]>] extends [never] ? unknown : { missing: Exclude<T, V[number]> })
+  ): V => values;
+}
+
+const PLAN_DAY_STATES = unionValues<PlanDayState>()([
+  "planned",
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside",
+  "paused",
+  "off_cycle"
+]);
+
+const DAY_STATUS_VALUES = unionValues<DayStatusValue>()([
+  "not_planned",
+  "paused",
+  "off_cycle",
+  "pending",
+  "logged",
+  "partly_logged",
+  "not_logged",
+  "skipped"
+]);
+
+const NOT_PLANNED_REASONS = unionValues<NotPlannedReason>()([
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside"
+]);
+
+const AgentProtocolDaysRangeQuerySchema = z.object({
+  fromLocalDate: LocalDateSchema.openapi({
+    param: { name: "fromLocalDate", in: "query" },
+    description: `Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, both ends included.`
+  }),
+  toLocalDate: LocalDateSchema.openapi({
+    param: { name: "toLocalDate", in: "query" },
+    description: "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate."
+  }),
+  compoundId: z.string().trim().min(1).optional().openapi({
+    param: { name: "compoundId", in: "query" },
+    description:
+      "Optional Compound id: only this Compound's days. An unknown id returns an empty list."
+  }),
+  protocolId: z.string().trim().min(1).optional().openapi({
+    param: { name: "protocolId", in: "query" },
+    description:
+      "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list."
+  })
+});
+
+export const AgentProtocolPlannedDaysQuerySchema = AgentProtocolDaysRangeQuerySchema.openapi(
+  "AgentProtocolPlannedDaysQuery"
+);
+
+export const AgentProtocolDayStatusesQuerySchema = AgentProtocolDaysRangeQuerySchema.extend({
+  today: LocalDateSchema.openapi({
+    param: { name: "today", in: "query" },
+    description:
+      "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. It decides Pending against Not logged, and toLocalDate must not be after it: a day still to come has no Day Status."
+  }),
+  detail: z
+    .enum(["summary", "doses"])
+    .default("summary")
+    .openapi({
+      param: { name: "detail", in: "query" },
+      description:
+        "summary (the default) returns each Day Status's status and counts; doses also returns its fills, the planned dose each logged Dose filled."
+    })
+}).openapi("AgentProtocolDayStatusesQuery");
+
+const PlanLocalTimeReadSchema = z.string().min(1).openapi({
+  description: "A wall-clock time, HH:MM."
+});
+
+const PlanAmountReadFields = {
+  amountValue: z.number().nullable(),
+  amountEntered: z.string().nullable(),
+  unit: DoseUnitSchema.nullable(),
+  route: DoseRouteSchema.nullable()
+};
+
+const AgentProtocolPlannedDoseSchema = z
+  .object({
+    localTime: PlanLocalTimeReadSchema.nullable().openapi({
+      description: "The planned wall-clock time, HH:MM; null for an untimed planned dose (any time that day)."
+    }),
+    ...PlanAmountReadFields
+  })
+  .openapi("AgentProtocolPlannedDose");
+
+const AgentProtocolPlannedDaySchema = z
+  .object({
+    protocolId: z.string().min(1),
+    compoundId: z.string().min(1),
+    localDate: z.string().min(1),
+    state: z
+      .enum(PLAN_DAY_STATES)
+      .openapi({
+        description:
+          "What the Protocol planned for the Compound that day: planned, or why nothing was (not scheduled that day, as needed, no Schedule, member removed, outside the Protocol's dates, paused, or off cycle)."
+      }),
+    planned: z.array(AgentProtocolPlannedDoseSchema).openapi({
+      description: "The planned doses, non-empty exactly when state is planned, in the rule's stored order."
+    }),
+    archiveDay: z.boolean().openapi({
+      description:
+        "True exactly when state is planned and the date is the Protocol's or the member's archive date. On an archive day, the planned doses are expected only if a Dose fills them; read Day Statuses for what is still expected."
+    })
+  })
+  .openapi("AgentProtocolPlannedDay");
+
+export const AgentProtocolPlannedDaysResponseSchema = z
+  .object({
+    fromLocalDate: z.string().min(1),
+    toLocalDate: z.string().min(1),
+    plannedDays: z.array(AgentProtocolPlannedDaySchema).openapi({
+      description:
+        "One entry per Protocol, Compound and date of the range, for every Compound with a member row in that Protocol, ordered by date, then Protocol id, then Compound id."
+    })
+  })
+  .openapi("AgentProtocolPlannedDaysResponse");
+
+const AgentProtocolDayStatusFillSchema = z
+  .object({
+    slot: z.number().int().min(0),
+    protocolId: z.string().min(1),
+    plannedLocalTime: PlanLocalTimeReadSchema.nullable().openapi({
+      description: "The slot's planned time, HH:MM; null for an untimed slot."
+    }),
+    ...PlanAmountReadFields,
+    doseId: z.string().min(1).nullable().openapi({
+      description: "The logged Dose that filled this slot; null when it is unfilled."
+    }),
+    skipId: z.string().min(1).nullable().openapi({
+      description:
+        "The Skip that marks this slot as not taken on purpose; null when none does. A slot never has both a doseId and a skipId."
+    })
+  })
+  .openapi("AgentProtocolDayStatusFill");
+
+const AgentProtocolDayStatusSchema = z
+  .object({
+    compoundId: z.string().min(1),
+    localDate: z.string().min(1),
+    status: z
+      .enum(DAY_STATUS_VALUES)
+      .openapi({
+        description:
+          "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled; skipped is every planned dose skipped and none logged. On an archive day, planned doses no Dose filled are dropped, so a day where every one was dropped is not_planned with reason removed."
+      }),
+    notPlannedReason: z
+      .enum(NOT_PLANNED_REASONS)
+      .optional()
+      .openapi({ description: "Present exactly when status is not_planned." }),
+    plannedCount: z.number().int().min(0).openapi({
+      description: "Planned doses that day, after an archive day's unfilled ones are dropped."
+    }),
+    loggedCount: z.number().int().min(0).openapi({
+      description: "Filled planned doses; never more than plannedCount."
+    }),
+    skippedCount: z.number().int().min(0).openapi({
+      description:
+        "Planned doses a Skip marks as not taken on purpose; loggedCount + skippedCount is never more than plannedCount."
+    }),
+    extraCount: z.number().int().min(0).openapi({
+      description: "Logged Doses that filled no planned dose. Extras never change the status."
+    }),
+    fills: z.array(AgentProtocolDayStatusFillSchema).optional().openapi({
+      description: "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it or the Skip that marks it."
+    })
+  })
+  .openapi("AgentProtocolDayStatus");
+
+export const AgentProtocolDayStatusesResponseSchema = z
+  .object({
+    fromLocalDate: z.string().min(1),
+    toLocalDate: z.string().min(1),
+    today: z.string().min(1),
+    detail: z.enum(["summary", "doses"]),
+    dayStatuses: z.array(AgentProtocolDayStatusSchema).openapi({
+      description:
+        "One per Compound and date that has at least one planned day in the plan read, ordered by date, then Compound id. A Compound in no Protocol read has none."
+    })
+  })
+  .openapi("AgentProtocolDayStatusesResponse");
+
+export const AgentProtocolDaysInvalidRequestResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_days_invalid_request"),
+    message: z.string().min(1)
+  })
+  .openapi("AgentProtocolDaysInvalidRequestResponse");
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -845,6 +1599,27 @@ export const agentCompoundListRoute = createRoute({
   }
 });
 
+export const agentPurposeListRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/purposes",
+  operationId: "listAgentPurposes",
+  tags: ["Agent Reads"],
+  summary: "List the caller's Purposes.",
+  description:
+    "Returns the caller's Purposes, sorted by sortOrder. A Purpose is a label for why the user takes a Compound. The six starter Purposes are merged in for an account that has never synced them, and a stored row wins by id. Archived Purposes are left out unless includeArchived is true.",
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentPurposeListQuerySchema },
+  responses: {
+    200: {
+      description: "The caller's Purposes.",
+      content: {
+        "application/json": { schema: AgentPurposeListResponseSchema }
+      }
+    },
+    ...readResponses401_503()
+  }
+});
+
 export const agentProtocolListRoute = createRoute({
   method: "get",
   path: "/agent/protocols",
@@ -852,7 +1627,7 @@ export const agentProtocolListRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "List the caller's Protocols with their plan detail.",
   description:
-    "Returns a bounded page of Protocols, each with its member Compounds, Schedules, and declared target outcomes (all plan data — never derived analytics).",
+    "Returns a bounded page of Protocols, each with its local-date bounds, Protocol Period, Protocol Members (with every Schedule Version and the current one), and declared target outcomes (all plan data — never derived analytics).",
   security: [{ bearerAuth: [] }],
   request: { query: AgentProtocolListQuerySchema },
   responses: {
@@ -985,14 +1760,49 @@ export const agentCompoundBatchWriteRoute = createRoute({
   }
 });
 
+export const agentPurposeBatchWriteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/purposes/batch-write",
+  operationId: "batchWriteAgentPurposes",
+  tags: ["Agent Writes"],
+  summary: "Batch-write Purposes as one Activity Log batch.",
+  description:
+    "Authenticated agent write path for Purposes, the labels for why the user takes a Compound. Creates, renames, reorders, and archives (deletedAt) Purposes in one idempotent batch. The name rules are checked after the whole batch is applied, against the active starter and stored Purposes, so a batch can swap two names. Archiving never touches a Compound: its tags keep the id.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentPurposeBatchWriteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The batch was accepted, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentPurposeBatchWriteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "One or more Purposes failed hard validation, or the idempotency key conflicts with an earlier request; no rows were written.",
+      content: {
+        "application/json": { schema: AgentProtocolsBatchWriteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
 export const agentProtocolBatchWriteRoute = createRoute({
   method: "post",
   path: "/agent/protocols/batch-write",
   operationId: "batchWriteAgentProtocols",
   tags: ["Agent Writes"],
-  summary: "Batch-write Protocols (plan + schedules + target outcomes).",
+  summary: "Batch-write Protocols (plan + Schedule Versions + target outcomes).",
   description:
-    "Authenticated agent write path for Protocol plans. Creates, edits, and archives Protocols with their member Compounds, Schedules, and target outcomes in one idempotent batch. Plan writes never touch logged Doses — archiving a Protocol never cascades (PROTOCOLS.md §7).",
+    "Authenticated agent write path for Protocol plans. Creates, edits, and archives Protocols with their Protocol Members, Schedule Versions, and target outcomes in one idempotent batch, validated by the shared two-tier plan validators. The request carries the user's local date as today, which dates every new Schedule Version and archive exactly as the app does; versions are insert-only. Plan writes never touch logged Doses: archiving a Protocol never cascades.",
   security: [{ bearerAuth: [] }],
   request: {
     body: {
@@ -1020,6 +1830,76 @@ export const agentProtocolBatchWriteRoute = createRoute({
   }
 });
 
+export const agentProtocolDeleteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/delete",
+  operationId: "deleteAgentProtocols",
+  tags: ["Agent Writes"],
+  summary: "Delete Protocols nothing was logged for, as one Activity Log batch.",
+  description:
+    "Authenticated agent delete for a Protocol with no history: no Dose that isn't deleted is tagged to it, or is of one of its member Compounds on a date within its dates (list-protocols reports this as hasHistory). Deleting writes one row per Protocol, the state undoing its creation leaves, and nothing else: its members, Schedule Versions and target outcomes are hidden through it, and no Dose, Compound or Metric changes. Archived Protocols with no history are accepted. Any refused id refuses the whole request. Undoing the batchId (undo-activity-batch) restores every Protocol the request deleted. Idempotent by idempotency key.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentProtocolDeleteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The delete was applied, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentProtocolDeleteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "A Protocol was not found or has history, or the idempotency key conflicts with an earlier request; nothing was written.",
+      content: {
+        "application/json": { schema: AgentProtocolDeleteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
+export const agentProtocolSkipBatchWriteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/skips/batch-write",
+  operationId: "batchWriteAgentProtocolSkips",
+  tags: ["Agent Writes"],
+  summary: "Skip planned doses, or remove Skips, as one Activity Log batch.",
+  description:
+    "Authenticated agent write for Skips: a Skip answers one planned dose on one local date as not taken, on purpose, so its Day Status reads skipped rather than pending or not_logged. It names the planned dose by Protocol, Compound, date and planned time (null when untimed), never by slot. A Skip is never edited: it is written once and removed with deletedAt, and removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, in the same batch. Find the Skips that matter in the Day Status read's fills (detail=doses). Any refused item refuses the whole request. Idempotent by idempotency key.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The batch was accepted, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "A Skip failed validation, names no live Protocol, or edits a stored Skip, or today is out of range, or the idempotency key conflicts with an earlier request; nothing was written.",
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
 export const agentEffectWindowRoute = createRoute({
   method: "get",
   path: "/agent/protocols/effect-window",
@@ -1027,7 +1907,7 @@ export const agentEffectWindowRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "Read a descriptive Effect window for a Compound/Protocol × Metric.",
   description:
-    "Computes a descriptive before/during/after summary of one outcome Metric around the logged Dose timeline of a Compound or Protocol over a range. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+    "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
   security: [{ bearerAuth: [] }],
   request: { query: AgentEffectWindowQuerySchema },
   responses: {
@@ -1048,14 +1928,89 @@ export const agentEffectWindowRoute = createRoute({
   }
 });
 
+// The app sets no validation hook, so a query the request schema refuses
+// never reaches the route or its checks, as for every route here.
+const PROTOCOL_DAYS_SCHEMA_400_NOTE =
+  "A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.";
+
+function protocolDaysInvalidResponse(description: string) {
+  return {
+    400: {
+      description,
+      content: {
+        "application/json": { schema: AgentProtocolDaysInvalidRequestResponseSchema }
+      }
+    }
+  };
+}
+
+export const agentProtocolPlannedDaysRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/planned-days",
+  operationId: "listAgentProtocolPlannedDays",
+  tags: ["Agent Reads"],
+  summary: "List what the caller's Protocols planned on each day of a range.",
+  description: `Returns one planned day per Protocol, Compound and local date from fromLocalDate through toLocalDate (both included, at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days; future dates allowed): the planned doses with their times and amounts, or why nothing was planned. Archived Protocols and removed members still plan the days before their archive. Computed on read by the same plan core the app uses, never stored.`,
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentProtocolPlannedDaysQuerySchema },
+  responses: {
+    200: {
+      description: "The planned days of the range.",
+      content: {
+        "application/json": { schema: AgentProtocolPlannedDaysResponseSchema }
+      }
+    },
+    ...protocolDaysInvalidResponse(
+      `The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
+    ),
+    ...readResponses401_503()
+  }
+});
+
+export const agentProtocolDayStatusesRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/day-statuses",
+  operationId: "listAgentProtocolDayStatuses",
+  tags: ["Agent Reads"],
+  summary: "List the Day Status of each Compound on each day of a range.",
+  description: `Returns one Day Status per Compound and local date from fromLocalDate through toLocalDate (both included, at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, ending no later than today), matching the logged Doses against the planned doses exactly as the app's Planned list and Consistency view do. A Dose's Protocol tag never decides what it fills. With detail=doses each Day Status also lists its fills. Statuses and counts only, computed on read and never stored.`,
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentProtocolDayStatusesQuerySchema },
+  responses: {
+    200: {
+      description: "The Day Statuses of the range.",
+      content: {
+        "application/json": { schema: AgentProtocolDayStatusesResponseSchema }
+      }
+    },
+    ...protocolDaysInvalidResponse(
+      `The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, toLocalDate after today, or a today more than one day from the server's UTC date. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
+    ),
+    ...readResponses401_503()
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
 
 export type AgentCompoundListQuery = z.infer<typeof AgentCompoundListQuerySchema>;
+export type AgentPurpose = z.infer<typeof AgentPurposeSchema>;
+export type AgentPurposeListQuery = z.infer<typeof AgentPurposeListQuerySchema>;
+export type AgentPurposeBatchWriteRequest = z.infer<
+  typeof AgentPurposeBatchWriteRequestSchema
+>;
 export type AgentProtocolListQuery = z.infer<typeof AgentProtocolListQuerySchema>;
 export type AgentDoseListQuery = z.infer<typeof AgentDoseListQuerySchema>;
 export type AgentEffectWindowQuery = z.infer<typeof AgentEffectWindowQuerySchema>;
+export type AgentProtocolPlannedDaysQuery = z.infer<typeof AgentProtocolPlannedDaysQuerySchema>;
+export type AgentProtocolDayStatusesQuery = z.infer<typeof AgentProtocolDayStatusesQuerySchema>;
+export type AgentProtocolPlannedDaysResponse = z.infer<
+  typeof AgentProtocolPlannedDaysResponseSchema
+>;
+export type AgentProtocolDayStatusesResponse = z.infer<
+  typeof AgentProtocolDayStatusesResponseSchema
+>;
 export type AgentCompoundBatchWriteRequest = z.infer<
   typeof AgentCompoundBatchWriteRequestSchema
 >;
@@ -1064,6 +2019,20 @@ export type AgentDoseBatchWriteRequest = z.infer<
 >;
 export type AgentProtocolBatchWriteRequest = z.infer<
   typeof AgentProtocolBatchWriteRequestSchema
+>;
+export type AgentProtocolDeleteRequest = z.infer<typeof AgentProtocolDeleteRequestSchema>;
+export type AgentProtocolDeleteResponse = z.infer<typeof AgentProtocolDeleteResponseSchema>;
+export type AgentProtocolDeleteErrorResponse = z.infer<
+  typeof AgentProtocolDeleteErrorResponseSchema
+>;
+export type AgentProtocolSkipBatchWriteRequest = z.infer<
+  typeof AgentProtocolSkipBatchWriteRequestSchema
+>;
+export type AgentProtocolSkipBatchWriteResponse = z.infer<
+  typeof AgentProtocolSkipBatchWriteResponseSchema
+>;
+export type AgentProtocolSkipBatchWriteErrorResponse = z.infer<
+  typeof AgentProtocolSkipBatchWriteErrorResponseSchema
 >;
 export type AgentDoseBatchWriteIssue = z.infer<typeof AgentDoseBatchWriteIssueSchema>;
 
@@ -1081,7 +2050,15 @@ type PreparedRow = {
   deletedAt: string | null;
   payload: Record<string, unknown>;
   references?: PreparedReference[];
+  /**
+   * Protocols and Protocol Members only: the request's `archived`. The store
+   * turns it into `deleted_at` and `archived_on`, because only the store can
+   * see whether the row is already archived.
+   */
+  archive?: boolean;
 };
+
+type AgentProtocolsBatchWriteIssue = z.infer<typeof AgentProtocolsBatchWriteIssueSchema>;
 
 type PreparedDoseResult = Omit<
   z.infer<typeof AgentDoseBatchWriteResultSchema>,
@@ -1113,6 +2090,25 @@ export type AgentProtocolsStoreWriteResult = {
   accepted: string[];
   applied: { id: string; updatedAt: string; deviceId: string }[];
   validationErrors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+  /**
+   * Soft warnings judged from stored data, which the pure prepare step can't
+   * see: only the Protocol batch write sets them (D8's
+   * `protocol_has_no_history`). Callers append them to the prepare step's.
+   */
+  warnings?: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+};
+
+/** A delete's store result: the write result plus one outcome per distinct id. */
+export type AgentProtocolDeleteStoreResult = AgentProtocolsStoreWriteResult & {
+  protocols: z.infer<typeof AgentProtocolDeleteResultSchema>[];
+};
+
+/**
+ * A Skip write's store result: the write result plus one outcome per Skip
+ * sent, each followed by the Skips its removal swept (D8).
+ */
+export type AgentProtocolSkipStoreResult = AgentProtocolsStoreWriteResult & {
+  skips: z.infer<typeof AgentProtocolSkipBatchWriteResultSchema>[];
 };
 
 export type AgentProtocolsStore = {
@@ -1120,6 +2116,10 @@ export type AgentProtocolsStore = {
     userId: string;
     query: AgentCompoundListQuery;
   }): Promise<z.infer<typeof AgentCompoundListResponseSchema>>;
+  listPurposes(input: {
+    userId: string;
+    query: AgentPurposeListQuery;
+  }): Promise<z.infer<typeof AgentPurposeListResponseSchema>>;
   listProtocols(input: {
     userId: string;
     query: AgentProtocolListQuery;
@@ -1135,6 +2135,21 @@ export type AgentProtocolsStore = {
     | { ok: true; value: z.infer<typeof AgentEffectWindowResponseSchema> }
     | { ok: false; message: string }
   >;
+  /**
+   * The range's planned days. The query is already checked by
+   * `checkAgentProtocolDaysQuery`, so the store never sees a bad range. The
+   * store parses its own response against the response schema, and REST and
+   * MCP return it as is, so a large range is schema-checked once.
+   */
+  listProtocolPlannedDays(input: {
+    userId: string;
+    query: AgentProtocolPlannedDaysQuery;
+  }): Promise<AgentProtocolPlannedDaysResponse>;
+  /** The range's Day Statuses, the query checked and the response parsed as above. */
+  listProtocolDayStatuses(input: {
+    userId: string;
+    query: AgentProtocolDayStatusesQuery;
+  }): Promise<AgentProtocolDayStatusesResponse>;
   writeDoseBatch(input: {
     userId: string;
     batchId: string;
@@ -1149,16 +2164,48 @@ export type AgentProtocolsStore = {
     deviceId: string;
     compounds: PreparedRow[];
   }): Promise<AgentProtocolsStoreWriteResult>;
+  writePurposeBatch(input: {
+    userId: string;
+    batchId: string;
+    requestFingerprint: string;
+    deviceId: string;
+    purposes: PreparedRow[];
+  }): Promise<AgentProtocolsStoreWriteResult>;
   writeProtocolBatch(input: {
     userId: string;
     batchId: string;
     requestFingerprint: string;
     deviceId: string;
+    /** The request's `today`: the user's local date, already bounds-checked. */
+    today: string;
     protocols: PreparedRow[];
     members: PreparedRow[];
     schedules: PreparedRow[];
     targetOutcomes: PreparedRow[];
   }): Promise<AgentProtocolsStoreWriteResult>;
+  /**
+   * Deletes Protocols with no history (D8) as one Activity Log batch keyed on
+   * `idempotencyKey`. A refused id refuses the whole request.
+   */
+  deleteProtocols(input: {
+    userId: string;
+    deviceId: string;
+    idempotencyKey: string;
+    protocolIds: string[];
+  }): Promise<AgentProtocolDeleteStoreResult>;
+  /**
+   * Writes and removes Skips (D8) as one Activity Log batch. Refuses the
+   * whole batch for an item naming no live Protocol (`protocol_not_found`)
+   * or editing a stored Skip (`skip_immutable`). A removed timed Skip's
+   * stored siblings are tombstoned in the same batch.
+   */
+  writeProtocolSkipBatch(input: {
+    userId: string;
+    batchId: string;
+    requestFingerprint: string;
+    deviceId: string;
+    skips: PreparedRow[];
+  }): Promise<AgentProtocolSkipStoreResult>;
 };
 
 // ---------------------------------------------------------------------------
@@ -1204,7 +2251,18 @@ export function prepareAgentDoseBatchWrite({
     for (const error of validation.errors) {
       errors.push(doseIssue(itemIndex, dose.id, error));
     }
-    if (validation.errors.length > 0) {
+    const compoundStrength = strengthPayload(dose.compoundStrength);
+    if (compoundStrength === undefined) {
+      errors.push(
+        doseIssue(itemIndex, dose.id, {
+          field: "compoundStrength",
+          rule: "compound_strength",
+          message: STRENGTH_REFUSAL_MESSAGE,
+          limit: null
+        })
+      );
+    }
+    if (validation.errors.length > 0 || compoundStrength === undefined) {
       continue;
     }
 
@@ -1241,7 +2299,7 @@ export function prepareAgentDoseBatchWrite({
         id: dose.id,
         compound_id: dose.compoundId,
         compound_name: dose.compoundName,
-        compound_strength: strengthPayload(dose.compoundStrength),
+        compound_strength: compoundStrength,
         amount_value: amountValue,
         amount_entered:
           typeof dose.amount === "string" ? dose.amount : String(dose.amount),
@@ -1249,6 +2307,7 @@ export function prepareAgentDoseBatchWrite({
         route: dose.route,
         took_at: dose.tookAt,
         timezone: dose.timezone,
+        timezone_offset_minutes: doseTimezoneOffsetMinutes(dose),
         local_date: dose.localDate,
         provenance: "agent",
         protocol_id: dose.protocolId,
@@ -1306,6 +2365,18 @@ export function prepareAgentCompoundBatchWrite({
     }
     seen.add(compound.id);
 
+    const strength = strengthPayload(compound.strength);
+    if (strength === undefined) {
+      errors.push(
+        entityIssue(itemIndex, compound.id, {
+          field: `compounds[${itemIndex}].strength`,
+          rule: "compound_strength",
+          message: STRENGTH_REFUSAL_MESSAGE
+        })
+      );
+      continue;
+    }
+
     const updatedAt = compound.updatedAt ?? nowIso;
     const deletedAt = compound.deletedAt ?? null;
     compounds.push({
@@ -1319,7 +2390,12 @@ export function prepareAgentCompoundBatchWrite({
         name: compound.name,
         default_unit: compound.defaultUnit,
         default_route: compound.defaultRoute,
-        strength: strengthPayload(compound.strength),
+        strength,
+        // Only when given: a payload without the key keeps the stored list
+        // through carry-forward, and "[]" clears it (D2).
+        ...(compound.purposeIds === undefined
+          ? {}
+          : { purpose_ids: JSON.stringify(normalizePurposeIds(compound.purposeIds)) }),
         updated_at: updatedAt,
         deleted_at: deletedAt
       }
@@ -1333,6 +2409,82 @@ export function prepareAgentCompoundBatchWrite({
   return { accepted: true, compounds, responseCompounds };
 }
 
+/**
+ * The Agent Purpose write's pure half. The name rules need stored data, so
+ * they run in the store's `writePurposeBatch`, which covers REST and MCP and
+ * which a replay skips.
+ */
+export function prepareAgentPurposeBatchWrite({
+  request,
+  now = new Date()
+}: {
+  request: AgentPurposeBatchWriteRequest;
+  now?: Date;
+}):
+  | {
+      accepted: true;
+      purposes: PreparedRow[];
+      responsePurposes: PreparedEntityResult[];
+    }
+  | {
+      accepted: false;
+      errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+    } {
+  const errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[] = [];
+  const purposes: PreparedRow[] = [];
+  const responsePurposes: PreparedEntityResult[] = [];
+  const updatedAt = now.toISOString();
+  const seen = new Set<string>();
+
+  for (const [itemIndex, purpose] of request.purposes.entries()) {
+    if (seen.has(purpose.id)) {
+      errors.push(
+        entityIssue(itemIndex, purpose.id, {
+          field: `purposes[${itemIndex}].id`,
+          rule: "duplicate_purpose_id",
+          message: "A Purpose id may appear only once per batch."
+        })
+      );
+      continue;
+    }
+    seen.add(purpose.id);
+
+    const name = purpose.name.trim();
+    const deletedAt = purpose.deletedAt ?? null;
+    purposes.push({
+      id: purpose.id,
+      itemIndex,
+      field: `purposes[${itemIndex}].id`,
+      updatedAt,
+      deletedAt,
+      payload: {
+        id: purpose.id,
+        name,
+        sort_order: purpose.sortOrder,
+        updated_at: updatedAt,
+        deleted_at: deletedAt
+      }
+    });
+    responsePurposes.push({ id: purpose.id, name });
+  }
+
+  if (errors.length > 0) {
+    return { accepted: false, errors };
+  }
+  return { accepted: true, purposes, responsePurposes };
+}
+
+/**
+ * The Agent Protocol write's pure half (docs/designs/protocol-schedules-and-
+ * reminders.md, D6 and D7): it checks the request's `today` against the
+ * server clock, runs every Protocol Period and Schedule Rule through the shared
+ * two-tier validators, and builds the synced row payloads, with each `rule`
+ * (its times and weekdays sorted, D7) and `period` stored as JSON text in the
+ * codec's encoding (Data shapes). Everything that needs stored data (dating
+ * Schedule Versions, refusing a reused version id or an archived Protocol,
+ * re-dated copies on a start move, archive stamps) is the store's
+ * `writeProtocolBatch`, inside its transaction, so REST and MCP share it.
+ */
 export function prepareAgentProtocolBatchWrite({
   request,
   now = new Date()
@@ -1342,17 +2494,21 @@ export function prepareAgentProtocolBatchWrite({
 }):
   | {
       accepted: true;
+      today: string;
       protocols: PreparedRow[];
       members: PreparedRow[];
       schedules: PreparedRow[];
       targetOutcomes: PreparedRow[];
       responseProtocols: PreparedEntityResult[];
+      warnings: AgentProtocolsBatchWriteIssue[];
     }
   | {
       accepted: false;
-      errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+      errors: AgentProtocolsBatchWriteIssue[];
+      warnings: AgentProtocolsBatchWriteIssue[];
     } {
-  const errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[] = [];
+  const errors: AgentProtocolsBatchWriteIssue[] = [];
+  const warnings: AgentProtocolsBatchWriteIssue[] = [];
   const protocols: PreparedRow[] = [];
   const members: PreparedRow[] = [];
   const schedules: PreparedRow[] = [];
@@ -1361,6 +2517,19 @@ export function prepareAgentProtocolBatchWrite({
   const nowIso = now.toISOString();
   const seenProtocol = new Set<string>();
   const seenRow = new Set<string>();
+
+  // `today` dates versions and archives, so it must be a date a person using
+  // the app could have: every real zone is within a day of UTC.
+  const todayMessage = todayOutOfRangeMessage(request.today, now);
+  if (todayMessage !== null) {
+    errors.push(
+      entityIssue(0, null, {
+        field: "today",
+        rule: "today_out_of_range",
+        message: todayMessage
+      })
+    );
+  }
 
   for (const [itemIndex, protocol] of request.protocols.entries()) {
     if (seenProtocol.has(protocol.id)) {
@@ -1375,21 +2544,47 @@ export function prepareAgentProtocolBatchWrite({
     }
     seenProtocol.add(protocol.id);
 
+    const periodValidation = validateAgentProtocolPeriod({
+      startLocalDate: protocol.startLocalDate,
+      endLocalDate: protocol.endLocalDate,
+      period: protocol.period
+    });
+    collectPlanIssues(periodValidation, {
+      itemIndex,
+      entityId: protocol.id,
+      fieldPrefix: `protocols[${itemIndex}]`,
+      errors,
+      warnings
+    });
+    const period =
+      periodValidation.errors.length > 0
+        ? null
+        : encodePlanJson(() => storedPeriodText(protocol.period), {
+            itemIndex,
+            entityId: protocol.id,
+            field: `protocols[${itemIndex}].period`,
+            rule: "period_format",
+            errors
+          });
+
     const updatedAt = protocol.updatedAt ?? nowIso;
-    const deletedAt = protocol.deletedAt ?? null;
     protocols.push({
       id: protocol.id,
       itemIndex,
       field: `protocols[${itemIndex}].id`,
       updatedAt,
-      deletedAt,
+      deletedAt: null,
+      archive: protocol.archived,
       payload: {
         id: protocol.id,
         name: protocol.name,
-        start_date: protocol.startDate,
-        end_date: protocol.endDate,
+        start_local_date: protocol.startLocalDate,
+        end_local_date: protocol.endLocalDate,
+        period: period ?? null,
+        reminders_enabled: protocol.remindersEnabled,
+        archived_on: null,
         updated_at: updatedAt,
-        deleted_at: deletedAt
+        deleted_at: null
       }
     });
 
@@ -1411,7 +2606,8 @@ export function prepareAgentProtocolBatchWrite({
         itemIndex,
         field: `protocols[${itemIndex}].members`,
         updatedAt: memberUpdatedAt,
-        deletedAt: member.deletedAt ?? null,
+        deletedAt: null,
+        archive: member.archived,
         references: [
           {
             field: `protocols[${itemIndex}].members.compoundId`,
@@ -1424,13 +2620,14 @@ export function prepareAgentProtocolBatchWrite({
           protocol_id: protocol.id,
           compound_id: member.compoundId,
           position: member.position,
+          archived_on: null,
           updated_at: memberUpdatedAt,
-          deleted_at: member.deletedAt ?? null
+          deleted_at: null
         }
       });
     }
 
-    for (const scheduleRow of protocol.schedules) {
+    for (const [scheduleIndex, scheduleRow] of protocol.schedules.entries()) {
       if (seenRow.has(scheduleRow.id)) {
         errors.push(
           entityIssue(itemIndex, scheduleRow.id, {
@@ -1442,13 +2639,43 @@ export function prepareAgentProtocolBatchWrite({
         continue;
       }
       seenRow.add(scheduleRow.id);
+      const field = `protocols[${itemIndex}].schedules[${scheduleIndex}]`;
+      const ruleValidation = validateAgentScheduleRule(scheduleRow.rule, {
+        amountValue: scheduleRow.doseAmountValue,
+        amountEntered: scheduleRow.doseAmountEntered,
+        unit: scheduleRow.doseUnit,
+        route: scheduleRow.route
+      });
+      collectPlanIssues(ruleValidation, {
+        itemIndex,
+        entityId: scheduleRow.id,
+        fieldPrefix: field,
+        errors,
+        warnings
+      });
+      const rule =
+        ruleValidation.errors.length > 0
+          ? null
+          : encodePlanJson(
+              // Stored as JSON text in the codec's encoding (Data shapes),
+              // with its times and weekdays sorted, as writers store them (D7).
+              () =>
+                JSON.stringify(encodeScheduleRule(sortedRule(scheduleRow.rule) as ScheduleRule)),
+              {
+                itemIndex,
+                entityId: scheduleRow.id,
+                field: `${field}.rule`,
+                rule: "rule_format",
+                errors
+              }
+            );
       const scheduleUpdatedAt = scheduleRow.updatedAt ?? nowIso;
       schedules.push({
         id: scheduleRow.id,
         itemIndex,
         field: `protocols[${itemIndex}].schedules`,
         updatedAt: scheduleUpdatedAt,
-        deletedAt: scheduleRow.deletedAt ?? null,
+        deletedAt: null,
         references: [
           {
             field: `protocols[${itemIndex}].schedules.protocolCompoundId`,
@@ -1459,13 +2686,15 @@ export function prepareAgentProtocolBatchWrite({
         payload: {
           id: scheduleRow.id,
           protocol_compound_id: scheduleRow.protocolCompoundId,
+          // Assigned by the store from stored versions (D1).
+          effective_from: null,
+          rule,
           dose_amount_value: scheduleRow.doseAmountValue,
           dose_amount_entered: scheduleRow.doseAmountEntered,
           dose_unit: scheduleRow.doseUnit,
-          frequency: scheduleRow.frequency,
           route: scheduleRow.route,
           updated_at: scheduleUpdatedAt,
-          deleted_at: scheduleRow.deletedAt ?? null
+          deleted_at: null
         }
       });
     }
@@ -1482,6 +2711,21 @@ export function prepareAgentProtocolBatchWrite({
         continue;
       }
       seenRow.add(outcome.id);
+      // Mirrors the app's validateProtocolTargetOutcomes: a structural
+      // refusal, not a validation tier.
+      if ((outcome.outcomeKind === "metric") !== (outcome.metricId !== null)) {
+        errors.push(
+          entityIssue(itemIndex, outcome.id, {
+            field: `protocols[${itemIndex}].targetOutcomes`,
+            rule: "target_outcome_metric_id",
+            message:
+              outcome.outcomeKind === "metric"
+                ? "A metric target outcome needs a metricId."
+                : "A performance target outcome has no metricId; send null."
+          })
+        );
+        continue;
+      }
       const outcomeUpdatedAt = outcome.updatedAt ?? nowIso;
       targetOutcomes.push({
         id: outcome.id,
@@ -1489,11 +2733,16 @@ export function prepareAgentProtocolBatchWrite({
         field: `protocols[${itemIndex}].targetOutcomes`,
         updatedAt: outcomeUpdatedAt,
         deletedAt: outcome.deletedAt ?? null,
+        // Exactly the app's image (_protocolTargetOutcomeImage): a pull hands
+        // this payload to the app's decoder unchanged. The app can't read
+        // another shape (docs/designs/protocol-target-outcome-sync-shape.md).
         payload: {
           id: outcome.id,
           protocol_id: protocol.id,
+          kind: outcome.outcomeKind,
           metric_id: outcome.metricId,
-          outcome_kind: outcome.outcomeKind,
+          // Assigned by the store from stored outcomes when left out (D3).
+          position: outcome.position ?? null,
           updated_at: outcomeUpdatedAt,
           deleted_at: outcome.deletedAt ?? null
         }
@@ -1504,16 +2753,279 @@ export function prepareAgentProtocolBatchWrite({
   }
 
   if (errors.length > 0) {
-    return { accepted: false, errors };
+    return { accepted: false, errors, warnings };
   }
   return {
     accepted: true,
+    today: request.today,
     protocols,
     members,
     schedules,
     targetOutcomes,
-    responseProtocols
+    responseProtocols,
+    warnings
   };
+}
+
+/**
+ * The pure half of a Skip write (D8): the shared Skip validator
+ * (`skip_time_format`, `skip_future`) and the `today` bound, each issue
+ * collected before refusing. The checks that read stored data
+ * (`protocol_not_found`, `skip_immutable`) run in the store, inside the
+ * write's transaction, as the Protocol batch write's do; the pure step
+ * refuses first, so a batch refused here never reaches them.
+ *
+ * A Skip id repeated in one batch is refused (`duplicate_skip_id`), as a
+ * repeated Dose id is: two rows for one id in one push would leave which one
+ * wins to the push order.
+ */
+export function prepareAgentProtocolSkipBatchWrite({
+  request,
+  now = new Date()
+}: {
+  request: AgentProtocolSkipBatchWriteRequest;
+  now?: Date;
+}):
+  | { accepted: true; skips: PreparedRow[] }
+  | { accepted: false; issues: AgentProtocolsBatchWriteIssue[] } {
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  const skips: PreparedRow[] = [];
+  const nowIso = now.toISOString();
+  const seen = new Set<string>();
+
+  const todayMessage = todayOutOfRangeMessage(request.today, now);
+  if (todayMessage !== null) {
+    issues.push(
+      entityIssue(0, null, {
+        field: "today",
+        rule: "today_out_of_range",
+        message: todayMessage
+      })
+    );
+  }
+
+  for (const [itemIndex, skip] of request.skips.entries()) {
+    if (seen.has(skip.id)) {
+      issues.push(
+        entityIssue(itemIndex, skip.id, {
+          field: `skips[${itemIndex}].id`,
+          rule: "duplicate_skip_id",
+          message: "A Skip id may appear only once per batch."
+        })
+      );
+      continue;
+    }
+    seen.add(skip.id);
+
+    const validation = validateAgentProtocolSkip({
+      localDate: skip.localDate,
+      plannedLocalTime: skip.plannedLocalTime,
+      today: request.today
+    });
+    for (const error of validation.errors) {
+      issues.push(
+        entityIssue(itemIndex, skip.id, {
+          field: `skips[${itemIndex}].${error.field}`,
+          rule: error.rule,
+          message: error.message
+        })
+      );
+    }
+
+    const deletedAt = skip.deletedAt ?? null;
+    skips.push({
+      id: skip.id,
+      itemIndex,
+      field: `skips[${itemIndex}].id`,
+      updatedAt: nowIso,
+      deletedAt,
+      payload: {
+        id: skip.id,
+        protocol_id: skip.protocolId,
+        compound_id: skip.compoundId,
+        local_date: skip.localDate,
+        planned_local_time: skip.plannedLocalTime,
+        updated_at: nowIso,
+        deleted_at: deletedAt
+      }
+    });
+  }
+
+  if (issues.length > 0) {
+    return { accepted: false, issues };
+  }
+  return { accepted: true, skips };
+}
+
+/** The 422 answer to a Skip write the pure step refused; nothing was written. */
+export function agentProtocolSkipBatchWriteRefusal(
+  issues: AgentProtocolsBatchWriteIssue[]
+): { status: 422; body: AgentProtocolSkipBatchWriteErrorResponse } {
+  return {
+    status: 422,
+    body: AgentProtocolSkipBatchWriteErrorResponseSchema.parse({
+      code: "agent_protocol_skip_batch_write_failed",
+      message: "One or more Skips can't be written; nothing was written.",
+      issues
+    })
+  };
+}
+
+/** How far the request's `today` may be from the server's UTC date (D6). */
+const AGENT_TODAY_MAX_SKEW_DAYS = 1;
+
+/**
+ * Why `today` is refused, or null when it is within
+ * {@link AGENT_TODAY_MAX_SKEW_DAYS} of the server's UTC date. The Protocol
+ * batch write and the Day Status read share it, so one `today` is accepted or
+ * refused, with one message, by both.
+ */
+function todayOutOfRangeMessage(today: string, now: Date): string | null {
+  const serverUtcDate = now.toISOString().slice(0, 10);
+  return Math.abs(epochDay(today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS
+    ? `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
+    : null;
+}
+
+/**
+ * The checks the planned-day and Day Status reads make before any storage
+ * read, shared by REST and MCP so both refuse the same queries with the same
+ * message (D6): `fromLocalDate` after `toLocalDate`, a range of more than
+ * {@link AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days (both ends included, as the
+ * app's Consistency view counts), and, for Day Statuses only, `toLocalDate`
+ * after `today`. Planned days may lie in the future; a Day Status may not,
+ * because a day still to come has no status.
+ *
+ * `today` is also held within one day of the server's UTC date, the bound the
+ * Protocol batch write puts on its own `today`, because every real UTC offset
+ * (-12:00 to +14:00, D2) puts the user's date there. Without it a `today` of
+ * a later year would read every planned day up to it as Not logged, a status
+ * no person using the app could see.
+ */
+export function checkAgentProtocolDaysQuery(
+  query: { fromLocalDate: string; toLocalDate: string; today?: string },
+  now: Date = new Date(),
+  // Why a range may not end after today, in the caller's domain's terms.
+  futureDayReason = "a day still to come has no Day Status"
+): { ok: true } | { ok: false; message: string } {
+  const from = epochDay(query.fromLocalDate);
+  const to = epochDay(query.toLocalDate);
+  if (from > to) {
+    return { ok: false, message: "fromLocalDate must not be after toLocalDate." };
+  }
+  const dayCount = to - from + 1;
+  if (dayCount > AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS) {
+    return {
+      ok: false,
+      message: `The range spans ${dayCount} days, more than the ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS}-day maximum.`
+    };
+  }
+  if (query.today !== undefined) {
+    const todayMessage = todayOutOfRangeMessage(query.today, now);
+    if (todayMessage !== null) {
+      return { ok: false, message: todayMessage };
+    }
+    if (to > epochDay(query.today)) {
+      return {
+        ok: false,
+        message: `toLocalDate must not be after today: ${futureDayReason}.`
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * The stored period, as JSON text in the codec's encoding (Data shapes), the
+ * form every writer stores: null when there is no cycle and no Pause, as the
+ * app writes it (readers accept both forms, and a decoded object too). The
+ * decoded period is already the encoding: decoding builds a fresh object of
+ * only the known keys, in stored order.
+ */
+function storedPeriodText(
+  period: z.infer<typeof AgentProtocolPeriodSchema> | null
+): string | null {
+  const decoded = decodeProtocolPeriod(period);
+  return decoded === null || (decoded.cycle === null && decoded.pauses.length === 0)
+    ? null
+    : JSON.stringify(decoded);
+}
+
+/**
+ * Runs a codec encode after the shared validators accepted the JSON. A value
+ * both accepted can't fail the codec today, but if the two ever drift the
+ * write is refused with an issue rather than a 500 or an unplannable row.
+ */
+function encodePlanJson<T>(
+  encode: () => T,
+  {
+    itemIndex,
+    entityId,
+    field,
+    rule,
+    errors
+  }: {
+    itemIndex: number;
+    entityId: string;
+    field: string;
+    rule: string;
+    errors: AgentProtocolsBatchWriteIssue[];
+  }
+): T | null {
+  try {
+    return encode();
+  } catch (error) {
+    if (!(error instanceof ProtocolPlanCodecError)) {
+      throw error;
+    }
+    errors.push(entityIssue(itemIndex, entityId, { field, rule, message: error.message }));
+    return null;
+  }
+}
+
+/** Shared-validator issues, re-addressed to their place in the batch. */
+function collectPlanIssues(
+  result: AgentDoseValidationResult,
+  {
+    itemIndex,
+    entityId,
+    fieldPrefix,
+    errors,
+    warnings
+  }: {
+    itemIndex: number;
+    entityId: string;
+    fieldPrefix: string;
+    errors: AgentProtocolsBatchWriteIssue[];
+    warnings: AgentProtocolsBatchWriteIssue[];
+  }
+) {
+  for (const [issues, target] of [
+    [result.errors, errors],
+    [result.warnings, warnings]
+  ] as const) {
+    for (const issue of issues) {
+      target.push(
+        entityIssue(itemIndex, entityId, {
+          field: `${fieldPrefix}.${issue.field}`,
+          rule: issue.rule,
+          message: issue.message
+        })
+      );
+    }
+  }
+}
+
+/**
+ * A Dose's frozen UTC offset (D2): the Agent's own value wins; otherwise it is
+ * derived from an IANA `timezone` at `tookAt`; an abbreviation such as "BRT"
+ * can't be converted, so it stays null.
+ */
+function doseTimezoneOffsetMinutes(dose: AgentDoseBatchWriteRequest["doses"][number]) {
+  if (dose.timezoneOffsetMinutes !== undefined) {
+    return dose.timezoneOffsetMinutes;
+  }
+  return offsetMinutesInTimezone(new Date(dose.tookAt), dose.timezone);
 }
 
 export function finalizeAgentDoseBatchWriteResults({
@@ -1570,8 +3082,16 @@ export function agentProtocolsBatchRequestFingerprint(request: unknown) {
   return agentBatchRequestFingerprint(request);
 }
 
+/**
+ * The response for a write the store refused, or `null` when it was accepted.
+ * A refusal still returns the soft warnings the pure step judged (spec D6:
+ * a refused write returns its `warnings` beside its `errors`), so pass them
+ * through. Compound and Dose writes pass `[]`: a Dose carries its warnings in
+ * its own result, in a shape this response doesn't hold.
+ */
 export function agentProtocolsWriteFailure(
-  result: AgentProtocolsStoreWriteResult
+  result: AgentProtocolsStoreWriteResult,
+  warnings: z.infer<typeof AgentProtocolsBatchWriteErrorResponseSchema>["warnings"]
 ):
   | {
       status: 422;
@@ -1611,7 +3131,88 @@ export function agentProtocolsWriteFailure(
       code: "agent_protocols_batch_write_failed",
       message: "Batch contains one or more hard validation failures.",
       errors,
-      warnings: []
+      warnings
+    })
+  };
+}
+
+/**
+ * The REST and MCP answer to a Protocol delete (D8): 200 with one outcome per
+ * distinct id, 422 for a refused id or a conflicting idempotency key (nothing
+ * written), and 503 while the idempotency receipt is unavailable.
+ */
+export function agentProtocolDeleteResponse(
+  request: AgentProtocolDeleteRequest,
+  result: AgentProtocolDeleteStoreResult
+):
+  | { status: 200; body: AgentProtocolDeleteResponse }
+  | { status: 422; body: AgentProtocolDeleteErrorResponse }
+  | { status: 503; body: z.infer<typeof AgentProtocolsUnavailableResponseSchema> } {
+  const failure = agentProtocolsWriteFailure(result, []);
+  if (failure?.status === 503) {
+    return failure;
+  }
+  if (failure !== null) {
+    return {
+      status: 422,
+      body: AgentProtocolDeleteErrorResponseSchema.parse({
+        code: "agent_protocol_delete_failed",
+        // A reused key refuses the request without judging any Protocol, so
+        // its message mustn't suggest the Protocols can't be deleted.
+        message: result.idempotencyConflict
+          ? "This idempotency key was already used with a different request; nothing was deleted."
+          : "One or more Protocols can't be deleted; nothing was deleted.",
+        issues: failure.body.errors
+      })
+    };
+  }
+  return {
+    status: 200,
+    body: AgentProtocolDeleteResponseSchema.parse({
+      accepted: true,
+      duplicate: result.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: result.serverClock,
+      protocols: result.protocols
+    })
+  };
+}
+
+/**
+ * The REST and MCP answer to a Skip write the store ran (D8): 200 with one
+ * outcome per Skip sent and per Skip swept, 422 for a refused item or a
+ * conflicting idempotency key (nothing written), and 503 while the
+ * idempotency receipt is unavailable.
+ */
+export function agentProtocolSkipBatchWriteResponse(
+  request: AgentProtocolSkipBatchWriteRequest,
+  result: AgentProtocolSkipStoreResult
+):
+  | { status: 200; body: AgentProtocolSkipBatchWriteResponse }
+  | { status: 422; body: AgentProtocolSkipBatchWriteErrorResponse }
+  | { status: 503; body: z.infer<typeof AgentProtocolsUnavailableResponseSchema> } {
+  const failure = agentProtocolsWriteFailure(result, []);
+  if (failure?.status === 503) {
+    return failure;
+  }
+  if (failure !== null) {
+    const refusal = agentProtocolSkipBatchWriteRefusal(failure.body.errors);
+    if (result.idempotencyConflict) {
+      refusal.body.message =
+        "This idempotency key was already used with a different request; nothing was written.";
+    }
+    return refusal;
+  }
+  return {
+    status: 200,
+    body: AgentProtocolSkipBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: result.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: result.serverClock,
+      skips: result.skips
     })
   };
 }
@@ -1621,7 +3222,31 @@ export function agentProtocolsWriteFailure(
 // ---------------------------------------------------------------------------
 
 export type EffectWindowSample = { at: Date; value: number };
-export type EffectWindowDose = { tookAt: Date };
+
+/**
+ * What an Effect window is anchored to. A Protocol is a time-bounded course, so
+ * its declared start/end are DURING whatever Doses were logged against it (the
+ * tagged Doses are markers on top, never the bounds). Its bounds are local
+ * dates; `effectBoundsFromLocalDates` turns them into these instants, and the
+ * window math stays on instants, pinned by m29-effect-window.json. An ad-hoc
+ * Compound has no declared course, so its logged Doses are.
+ */
+export type EffectWindowSource =
+  | { kind: "protocol"; startDate: Date; endDate: Date | null }
+  | { kind: "compound"; doseTimes: readonly Date[] };
+
+/**
+ * DURING plus the mirrored BEFORE/AFTER spans of the same length on either
+ * side. `duringEnd === null` is a course still running: `duringEndOrNow` (the
+ * clock at derivation) ends DURING and starts AFTER.
+ */
+export type EffectWindow = {
+  duringStart: Date;
+  duringEnd: Date | null;
+  duringEndOrNow: Date;
+  beforeStart: Date;
+  afterEnd: Date;
+};
 
 export type EffectAggregate = {
   count: number;
@@ -1631,64 +3256,136 @@ export type EffectAggregate = {
 };
 
 export type EffectWindowSegments = {
-  duringStart: Date | null;
-  duringEnd: Date | null;
   before: EffectAggregate;
   during: EffectAggregate;
   after: EffectAggregate;
 };
 
 /**
- * The descriptive Effect computation (PROTOCOLS.md §4): the window's DURING span
- * is the actual logged Dose timeline's bounds (earliest → latest Dose), with the
- * mirrored BEFORE/AFTER spans of equal length immediately surrounding it. Each
- * segment aggregates whatever outcome samples fall in it (count/min/max/mean).
- * Half-open segments `[start, end)`, so a boundary sample lands in exactly one.
- * Pure — no I/O, nothing stored — which is what makes it golden-vectorable.
+ * Derives the Effect window exactly as the app does (`effectWindowForProtocol`
+ * / `effectWindowForDoseTimes` in apps/mobile/lib/domain/effect/effect.dart);
+ * `packages/golden-vectors/vectors/m29-effect-window.json` pins both. A
+ * Protocol with no end date is ongoing until `now`. A Compound spans its
+ * earliest to latest Dose; exactly one Dose has no latest to end on, so it is
+ * ongoing until `now` too rather than a zero-length window that buckets
+ * nothing. No Dose, no window.
+ */
+export function deriveEffectWindow(
+  source: EffectWindowSource,
+  now: Date
+): EffectWindow | null {
+  let duringStart: Date;
+  let duringEnd: Date | null;
+  if (source.kind === "protocol") {
+    duringStart = source.startDate;
+    duringEnd = source.endDate;
+  } else {
+    const times = source.doseTimes
+      .map((tookAt) => tookAt.getTime())
+      .sort((left, right) => left - right);
+    if (times.length === 0) {
+      return null;
+    }
+    duringStart = new Date(times[0]!);
+    duringEnd = times.length === 1 ? null : new Date(times[times.length - 1]!);
+  }
+  const duringEndOrNow = duringEnd ?? now;
+  const duringLengthMs = duringEndOrNow.getTime() - duringStart.getTime();
+  return {
+    duringStart,
+    duringEnd,
+    duringEndOrNow,
+    beforeStart: new Date(duringStart.getTime() - duringLengthMs),
+    afterEnd: new Date(duringEndOrNow.getTime() + duringLengthMs)
+  };
+}
+
+/**
+ * Turns a Protocol's inclusive local-date bounds into the instants
+ * `deriveEffectWindow` takes (docs/designs/protocol-schedules-and-reminders.md,
+ * D2). Start is local midnight of the start date; end is local midnight of the
+ * day after the inclusive end date, because Effect's windows are half-open. A
+ * null end is an ongoing Protocol, which Effect runs until now. Local midnight
+ * is the UTC midnight of that date minus `timezoneOffsetMinutes` (UTC-3 is
+ * -180), the same conversion as the local-time anchors in
+ * metric-reading-normalization.ts. The offset is the caller's: the app passes
+ * the device's current one, and the Agent Effect read defaults to 0 (UTC).
+ * It must be a whole number of minutes from -720 to +840 (UTC-12:00 to
+ * UTC+14:00, the span of real zones); anything else throws a RangeError.
+ * `packages/golden-vectors/vectors/m36-protocol-plan.json` pins it against the
+ * app's twin in apps/mobile/lib/domain/effect/effect.dart.
+ */
+export function effectBoundsFromLocalDates(
+  startLocalDate: string,
+  endLocalDate: string | null | undefined,
+  timezoneOffsetMinutes: number
+): { startDate: Date; endDate: Date | null } {
+  // The Dart twin takes an int, so a fractional or non-finite offset is a
+  // caller bug here too.
+  if (!Number.isInteger(timezoneOffsetMinutes)) {
+    throw new RangeError(`Not a whole-minute UTC offset: ${timezoneOffsetMinutes}.`);
+  }
+  if (
+    timezoneOffsetMinutes < AGENT_PROTOCOLS_MIN_OFFSET_MINUTES ||
+    timezoneOffsetMinutes > AGENT_PROTOCOLS_MAX_OFFSET_MINUTES
+  ) {
+    throw new RangeError(
+      `UTC offset ${timezoneOffsetMinutes} is outside ${AGENT_PROTOCOLS_MIN_OFFSET_MINUTES} to ${AGENT_PROTOCOLS_MAX_OFFSET_MINUTES} minutes.`
+    );
+  }
+  const localMidnight = (localDate: string, addDays: number) =>
+    new Date((epochDay(localDate) + addDays) * MS_PER_DAY - timezoneOffsetMinutes * 60_000);
+  return {
+    startDate: localMidnight(startLocalDate, 0),
+    endDate:
+      endLocalDate === null || endLocalDate === undefined
+        ? null
+        : localMidnight(endLocalDate, 1)
+  };
+}
+
+/**
+ * The descriptive Effect computation (PROTOCOLS.md §4): each segment of
+ * `window` aggregates whatever outcome samples fall in it (count/min/max/mean).
+ * Half-open segments `[start, end)`, so a boundary sample lands in exactly one,
+ * and a sample outside all three is dropped, never moved to the nearest. No
+ * window means every segment is empty. Pure — no I/O, nothing stored — which
+ * is what makes it golden-vectorable.
  */
 export function computeEffectWindowSegments({
-  doses,
+  window,
   samples
 }: {
-  doses: readonly EffectWindowDose[];
+  window: EffectWindow | null;
   samples: readonly EffectWindowSample[];
 }): EffectWindowSegments {
-  if (doses.length === 0) {
+  if (window === null) {
     return {
-      duringStart: null,
-      duringEnd: null,
       before: emptyAggregate(),
       during: emptyAggregate(),
       after: emptyAggregate()
     };
   }
 
-  const times = doses
-    .map((dose) => dose.tookAt.getTime())
-    .sort((left, right) => left - right);
-  const duringStart = new Date(times[0]!);
-  const duringEnd = new Date(times[times.length - 1]!);
-  const duringLengthMs = duringEnd.getTime() - duringStart.getTime();
-  const beforeStart = new Date(duringStart.getTime() - duringLengthMs);
-  const afterEnd = new Date(duringEnd.getTime() + duringLengthMs);
-
+  const beforeStart = window.beforeStart.getTime();
+  const duringStart = window.duringStart.getTime();
+  const duringEnd = window.duringEndOrNow.getTime();
+  const afterEnd = window.afterEnd.getTime();
   const before: number[] = [];
   const during: number[] = [];
   const after: number[] = [];
   for (const sample of samples) {
     const at = sample.at.getTime();
-    if (at >= beforeStart.getTime() && at < duringStart.getTime()) {
+    if (at >= beforeStart && at < duringStart) {
       before.push(sample.value);
-    } else if (at >= duringStart.getTime() && at < duringEnd.getTime()) {
+    } else if (at >= duringStart && at < duringEnd) {
       during.push(sample.value);
-    } else if (at >= duringEnd.getTime() && at < afterEnd.getTime()) {
+    } else if (at >= duringEnd && at < afterEnd) {
       after.push(sample.value);
     }
   }
 
   return {
-    duringStart,
-    duringEnd,
     before: aggregate(before),
     during: aggregate(during),
     after: aggregate(after)
@@ -1760,6 +3457,12 @@ export function createDrizzleAgentProtocolsStore(
             return false;
           }
         }
+        if (
+          query.purpose !== undefined &&
+          !parseJsonStringArray(row.payload.purpose_ids).includes(query.purpose)
+        ) {
+          return false;
+        }
         return true;
       });
       const start = cursorOffset(filtered, query.cursor);
@@ -1777,6 +3480,15 @@ export function createDrizzleAgentProtocolsStore(
       });
     },
 
+    async listPurposes({ userId, query }) {
+      const includeArchived = query.includeArchived === "true";
+      return AgentPurposeListResponseSchema.parse({
+        purposes: (await selectMergedPurposes(db, userId)).filter(
+          (purpose) => includeArchived || purpose.deletedAt === null
+        )
+      });
+    },
+
     async listProtocols({ userId, query }) {
       const [protocolRows, memberRows, scheduleRows, outcomeRows] =
         await Promise.all([
@@ -1789,6 +3501,10 @@ export function createDrizzleAgentProtocolsStore(
       const search = query.search?.toLowerCase();
       const filteredProtocols = protocolRows
         .filter((row) => {
+          // A row tombstoned by undo never existed (D1), archived or not.
+          if (isUndoTombstone(row)) {
+            return false;
+          }
           if (!query.includeArchived && row.deletedAt !== null) {
             return false;
           }
@@ -1803,42 +3519,43 @@ export function createDrizzleAgentProtocolsStore(
         .sort((left, right) => left.id.localeCompare(right.id));
 
       // Group plan rows by their owning protocol/protocol_compound.
-      const membersByProtocol = groupBy(memberRows, (row) =>
-        String(row.payload.protocol_id ?? "")
+      const membersByProtocol = groupBy(
+        memberRows.filter((row) => !isUndoTombstone(row)),
+        (row) => String(row.payload.protocol_id ?? "")
       );
       const outcomesByProtocol = groupBy(outcomeRows, (row) =>
         String(row.payload.protocol_id ?? "")
       );
-      const memberIdsByProtocol = new Map<string, Set<string>>();
-      for (const [protocolId, rows] of membersByProtocol) {
-        memberIdsByProtocol.set(protocolId, new Set(rows.map((row) => row.id)));
-      }
       const schedulesByMember = groupBy(scheduleRows, (row) =>
         String(row.payload.protocol_compound_id ?? "")
       );
 
       const start = cursorOffset(filteredProtocols, query.cursor);
       const page = filteredProtocols.slice(start, start + query.limit);
+      const withHistory = await protocolsWithHistory(
+        db,
+        userId,
+        page.map((protocol) =>
+          protocolHistoryScope(protocol, membersByProtocol.get(protocol.id) ?? [])
+        )
+      );
       const protocols = page.map((protocol) => {
         const members = (membersByProtocol.get(protocol.id) ?? [])
           .slice()
           .sort((left, right) => memberPosition(left) - memberPosition(right));
-        const memberIds = memberIdsByProtocol.get(protocol.id) ?? new Set();
-        const schedules: OpaqueRow[] = [];
-        for (const memberId of memberIds) {
-          schedules.push(...(schedulesByMember.get(memberId) ?? []));
-        }
         const outcomes = outcomesByProtocol.get(protocol.id) ?? [];
         return AgentProtocolSchema.parse({
           ...serializeProtocol(protocol),
-          members: members.map((row) => serializeMember(row)),
-          schedules: schedules
-            .sort((left, right) => left.id.localeCompare(right.id))
-            .map((row) => serializeSchedule(row)),
+          hasHistory: withHistory.has(protocol.id),
+          members: members.map((row) =>
+            serializeMember(row, schedulesByMember.get(row.id) ?? [])
+          ),
           targetOutcomes: outcomes
-            .slice()
-            .sort((left, right) => left.id.localeCompare(right.id))
             .map((row) => serializeTargetOutcome(row))
+            .sort(
+              (left, right) =>
+                left.position - right.position || compareIds(left.id, right.id)
+            )
         });
       });
 
@@ -1941,26 +3658,83 @@ export function createDrizzleAgentProtocolsStore(
         return { ok: false, message: "The requested Metric was not found." };
       }
 
+      // The window comes from every logged Dose of the Compound (or tagged to
+      // the Protocol), whatever the range: the app derives its window from
+      // the same Doses, and a range that clipped them would move DURING. The
+      // range only scopes the Dose markers listed back.
       const doseRows = await selectOpaque(db, schema.doses, userId);
-      const doses = doseRows.filter((row) => {
+      const sourceDoses: { row: OpaqueRow; tookAt: Date }[] = [];
+      for (const row of doseRows) {
         if (row.deletedAt !== null) {
-          return false;
+          continue;
         }
         if (
           query.compoundId !== undefined &&
           row.payload.compound_id !== query.compoundId
         ) {
-          return false;
+          continue;
         }
         if (
           query.protocolId !== undefined &&
           row.payload.protocol_id !== query.protocolId
         ) {
-          return false;
+          continue;
         }
         const tookAt = parseOptionalDate(String(row.payload.took_at ?? ""));
-        return tookAt !== null && tookAt >= from && tookAt < to;
-      });
+        if (tookAt !== null) {
+          sourceDoses.push({ row, tookAt });
+        }
+      }
+
+      let windowSource: EffectWindowSource | null;
+      if (query.protocolId !== undefined) {
+        // An archived Protocol keeps its Effect (archive is not delete), so
+        // only a Protocol that was never written is an error, or one deleted
+        // or removed by undo, which never existed (D8).
+        const [protocolRow] = await db
+          .select({
+            id: schema.protocols.id,
+            payload: schema.protocols.payload,
+            deletedAt: schema.protocols.deletedAt
+          })
+          .from(schema.protocols)
+          .where(
+            and(
+              eq(schema.protocols.userId, userId),
+              eq(schema.protocols.id, query.protocolId)
+            )
+          );
+        if (protocolRow === undefined || isUndoTombstone(protocolRow)) {
+          return { ok: false, message: "The requested Protocol was not found." };
+        }
+        // The bounds are local dates (D2), read at the caller's offset
+        // (default UTC). Every Protocol has a start date; a row without a
+        // real one declares no course, so it derives no window.
+        const startLocalDate = protocolRow.payload.start_local_date;
+        const endLocalDate = protocolRow.payload.end_local_date;
+        windowSource =
+          typeof startLocalDate !== "string" || !isValidLocalDate(startLocalDate)
+            ? null
+            : {
+                kind: "protocol",
+                ...effectBoundsFromLocalDates(
+                  startLocalDate,
+                  typeof endLocalDate === "string" && isValidLocalDate(endLocalDate)
+                    ? endLocalDate
+                    : null,
+                  query.timezoneOffsetMinutes
+                )
+              };
+      } else {
+        windowSource = {
+          kind: "compound",
+          doseTimes: sourceDoses.map((dose) => dose.tookAt)
+        };
+      }
+      const window =
+        windowSource === null
+          ? null
+          : deriveEffectWindow(windowSource, new Date());
 
       const readingRows = await db
         .select({
@@ -1992,20 +3766,13 @@ export function createDrizzleAgentProtocolsStore(
         samples.push({ at, value: reading.scalarValue });
       }
 
-      const segments = computeEffectWindowSegments({
-        doses: doses.map((row) => ({
-          tookAt: parseOptionalDate(String(row.payload.took_at ?? "")) ?? new Date(0)
-        })),
-        samples
-      });
+      const segments = computeEffectWindowSegments({ window, samples });
 
-      const doseMarkers = doses
-        .slice()
-        .sort((left, right) =>
-          String(left.payload.took_at) < String(right.payload.took_at) ? -1 : 1
-        )
+      const doseMarkers = sourceDoses
+        .filter((dose) => dose.tookAt >= from && dose.tookAt < to)
+        .sort((left, right) => left.tookAt.getTime() - right.tookAt.getTime())
         .slice(0, AGENT_EFFECT_WINDOW_MAX_DOSES)
-        .map((row) => ({
+        .map(({ row }) => ({
           doseId: row.id,
           compoundName: String(row.payload.compound_name ?? ""),
           amountValue: Number(row.payload.amount_value ?? 0),
@@ -2028,8 +3795,8 @@ export function createDrizzleAgentProtocolsStore(
           },
           range: { from: from.toISOString(), to: to.toISOString() },
           window: {
-            duringStart: segments.duringStart?.toISOString() ?? null,
-            duringEnd: segments.duringEnd?.toISOString() ?? null
+            duringStart: window?.duringStart.toISOString() ?? null,
+            duringEnd: window?.duringEnd?.toISOString() ?? null
           },
           doses: doseMarkers,
           segments: {
@@ -2040,6 +3807,38 @@ export function createDrizzleAgentProtocolsStore(
           descriptiveOnly: true
         })
       };
+    },
+
+    async listProtocolPlannedDays({ userId, query }) {
+      const protocols = await readPlanProtocols(db, userId, query);
+      return AgentProtocolPlannedDaysResponseSchema.parse({
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        plannedDays: planDays(protocols, query.fromLocalDate, query.toLocalDate).map(
+          serializePlanDay
+        )
+      });
+    },
+
+    async listProtocolDayStatuses({ userId, query }) {
+      const [protocols, doses, skips] = await Promise.all([
+        readPlanProtocols(db, userId, query),
+        readPlanDoses(db, userId, query),
+        readPlanSkips(db, userId, query)
+      ]);
+      const statuses = dayStatuses(
+        planDays(protocols, query.fromLocalDate, query.toLocalDate),
+        doses,
+        skips,
+        query.today
+      );
+      return AgentProtocolDayStatusesResponseSchema.parse({
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        today: query.today,
+        detail: query.detail,
+        dayStatuses: statuses.map((status) => serializeDayStatus(status, query.detail))
+      });
     },
 
     async writeDoseBatch({
@@ -2080,13 +3879,44 @@ export function createDrizzleAgentProtocolsStore(
         requestFingerprint,
         deviceId,
         operationKind: "compounds",
+        finalize: (transaction) =>
+          finalizeCompoundPurposeIds(transaction, { userId, compounds }),
         groups: [
           {
             keyPrefix: "compound",
             rows: compounds,
             tableKey: "compounds",
             table: schema.compounds,
-            push: pushCompoundsInTransaction
+            push: pushCompoundsInTransaction,
+            laterAddedKeyDefaults: { purpose_ids: "[]" }
+          }
+        ]
+      });
+    },
+
+    async writePurposeBatch({
+      userId,
+      batchId,
+      requestFingerprint,
+      deviceId,
+      purposes
+    }) {
+      return writeOpaqueBatch(db, {
+        userId,
+        batchId,
+        requestFingerprint,
+        deviceId,
+        operationKind: "purposes",
+        finalize: (transaction) =>
+          finalizePurposeNames(transaction, { userId, purposes }),
+        groups: [
+          {
+            keyPrefix: "purpose",
+            rows: purposes,
+            tableKey: "purposes",
+            table: schema.purposes,
+            push: pushPurposesInTransaction,
+            impliedBeforeImage: starterPurposeBeforeImage
           }
         ]
       });
@@ -2097,17 +3927,35 @@ export function createDrizzleAgentProtocolsStore(
       batchId,
       requestFingerprint,
       deviceId,
+      today,
       protocols,
       members,
       schedules,
       targetOutcomes
     }) {
-      return writeOpaqueBatch(db, {
+      // Filled by the finalize step, so a replay (which skips it) returns no
+      // archive warning: the pure prepare step's warnings are all it has.
+      // Recomputing it on a replay would judge the history as it is now, not
+      // as the write saw it (a Dose logged since, or the Protocol deleted
+      // since), so the contract says a replay doesn't repeat it (D8).
+      const warnings: AgentProtocolsBatchWriteIssue[] = [];
+      const result = await writeOpaqueBatch(db, {
         userId,
         batchId,
         requestFingerprint,
         deviceId,
         operationKind: "protocols",
+        finalize: (transaction, serverClock) =>
+          finalizeProtocolPlanRows(transaction, {
+            userId,
+            today,
+            serverClock,
+            protocols,
+            members,
+            schedules,
+            targetOutcomes,
+            warnings
+          }),
         groups: [
           {
             keyPrefix: "protocol",
@@ -2139,6 +3987,169 @@ export function createDrizzleAgentProtocolsStore(
           }
         ]
       });
+      return { ...result, warnings };
+    },
+
+    async deleteProtocols({ userId, deviceId, idempotencyKey, protocolIds }) {
+      // A repeated id is treated once, at its first position (D8).
+      const firstIndex = new Map<string, number>();
+      protocolIds.forEach((id, index) => {
+        if (!firstIndex.has(id)) {
+          firstIndex.set(id, index);
+        }
+      });
+      const ids = [...firstIndex.keys()];
+      const rows: PreparedRow[] = [];
+      const outcomes = new Map<string, "deleted" | "already_deleted">();
+      const result = await writeOpaqueBatch(db, {
+        userId,
+        batchId: idempotencyKey,
+        requestFingerprint: agentProtocolsBatchRequestFingerprint({
+          idempotencyKey,
+          protocolIds
+        }),
+        deviceId,
+        operationKind: "protocol_deletes",
+        finalize: (transaction, serverClock) =>
+          finalizeProtocolDeletes(transaction, {
+            userId,
+            serverClock,
+            firstIndex,
+            rows,
+            outcomes
+          }),
+        groups: [
+          {
+            keyPrefix: "protocol",
+            rows,
+            tableKey: "protocols",
+            table: schema.protocols,
+            push: pushProtocolsInTransaction
+          }
+        ]
+      });
+      if (result.duplicate) {
+        // A replay skips finalize, so its outcomes are read back from the
+        // batch it replays: the ids that batch logged were deleted by it.
+        const logged = await db
+          .select({ entityId: schema.activityLog.entityId })
+          .from(schema.activityLog)
+          .where(
+            and(
+              eq(schema.activityLog.userId, userId),
+              eq(schema.activityLog.actor, "agent"),
+              eq(schema.activityLog.batchId, idempotencyKey),
+              eq(schema.activityLog.entityTable, PROTOCOLS_SYNC_ENTITY)
+            )
+          );
+        const deletedIds = new Set(logged.map((row) => row.entityId));
+        for (const id of ids) {
+          outcomes.set(id, deletedIds.has(id) ? "deleted" : "already_deleted");
+        }
+      }
+      const written =
+        result.validationErrors.length === 0 &&
+        !result.idempotencyConflict &&
+        !result.receiptUnavailable;
+      return {
+        ...result,
+        protocols: written ? ids.map((id) => ({ id, outcome: outcomes.get(id)! })) : []
+      };
+    },
+
+    async writeProtocolSkipBatch({
+      userId,
+      batchId,
+      requestFingerprint,
+      deviceId,
+      skips
+    }) {
+      // The group's rows: the items, then the siblings finalize sweeps.
+      const rows = [...skips];
+      // Each item's swept siblings, in the order they were swept.
+      const sweptBy = new Map<string, string[]>();
+      const result = await writeOpaqueBatch(db, {
+        userId,
+        batchId,
+        requestFingerprint,
+        deviceId,
+        operationKind: "protocol_skips",
+        finalize: (transaction, serverClock) =>
+          finalizeProtocolSkips(transaction, {
+            userId,
+            serverClock,
+            items: skips,
+            rows,
+            sweptBy
+          }),
+        groups: [
+          {
+            keyPrefix: "skip",
+            rows,
+            tableKey: "protocolSkips",
+            table: schema.protocolSkips,
+            push: pushProtocolSkipsInTransaction
+          }
+        ]
+      });
+      const written =
+        result.validationErrors.length === 0 &&
+        !result.idempotencyConflict &&
+        !result.receiptUnavailable;
+      if (!written) {
+        return { ...result, skips: [] };
+      }
+      if (result.duplicate) {
+        // A replay skips finalize, so the Skips the replayed batch swept are
+        // read back from its Activity Log, each placed after the first
+        // removal item sharing its timed key, as the first answer placed it.
+        const logged = await db
+          .select({
+            entityId: schema.activityLog.entityId,
+            afterImage: schema.activityLog.afterImage
+          })
+          .from(schema.activityLog)
+          .where(
+            and(
+              eq(schema.activityLog.userId, userId),
+              eq(schema.activityLog.actor, "agent"),
+              eq(schema.activityLog.batchId, batchId),
+              eq(schema.activityLog.entityTable, PROTOCOL_SKIPS_SYNC_ENTITY)
+            )
+          )
+          .orderBy(asc(schema.activityLog.entityId));
+        const itemIds = new Set(skips.map((item) => item.id));
+        for (const entry of logged) {
+          if (itemIds.has(entry.entityId)) {
+            continue;
+          }
+          const image = readJsonObject(entry.afterImage);
+          const key = image === null ? null : timedSkipKey(image);
+          const remover = skips.find(
+            (item) => item.deletedAt !== null && key !== null && timedSkipKey(item.payload) === key
+          );
+          if (remover !== undefined) {
+            sweptBy.set(remover.id, [...(sweptBy.get(remover.id) ?? []), entry.entityId]);
+          }
+        }
+      }
+      const appliedIds = new Set(result.applied.map((row) => row.id));
+      const acceptedIds = new Set(result.accepted);
+      const outcome = (id: string) =>
+        result.duplicate
+          ? ("duplicate" as const)
+          : appliedIds.has(id)
+            ? ("applied" as const)
+            : acceptedIds.has(id)
+              ? ("superseded" as const)
+              : ("refused" as const);
+      return {
+        ...result,
+        skips: skips.flatMap((item) => [
+          { id: item.id, outcome: outcome(item.id) },
+          ...(sweptBy.get(item.id) ?? []).map((id) => ({ id, outcome: outcome(id) }))
+        ])
+      };
     }
   };
 }
@@ -2159,7 +4170,9 @@ type PushInTransaction = (
 
 type OpaqueTable =
   | typeof schema.doses
+  | typeof schema.protocolSkips
   | typeof schema.compounds
+  | typeof schema.purposes
   | typeof schema.protocols
   | typeof schema.protocolCompounds
   | typeof schema.schedules
@@ -2167,7 +4180,9 @@ type OpaqueTable =
 
 type OpaqueTableKey =
   | "doses"
+  | "protocolSkips"
   | "compounds"
+  | "purposes"
   | "protocols"
   | "protocolCompounds"
   | "schedules"
@@ -2179,11 +4194,26 @@ type OpaqueBatchGroup = {
   tableKey: OpaqueTableKey;
   table: OpaqueTable;
   push: PushInTransaction;
+  /**
+   * What a row with no stored row already reads as, for a table whose rows
+   * exist before they are ever stored. Undo inverts a null before image to a
+   * tombstone, the right answer for a create and the wrong one for these.
+   */
+  impliedBeforeImage?: (row: PreparedRow) => Record<string, unknown> | null;
+  /**
+   * What a payload key added after a table's first release reads as on a stored
+   * row that lacks it. A write that sets such a key records this value in its
+   * before image: undo restores the before image, and with the key absent,
+   * carry-forward would keep what the write set and still report it reverted.
+   */
+  laterAddedKeyDefaults?: Readonly<Record<string, unknown>>;
 };
 
 const OPAQUE_TABLES: Record<OpaqueTableKey, OpaqueTable> = {
   doses: schema.doses,
+  protocolSkips: schema.protocolSkips,
   compounds: schema.compounds,
+  purposes: schema.purposes,
   protocols: schema.protocols,
   protocolCompounds: schema.protocolCompounds,
   schedules: schema.schedules,
@@ -2199,7 +4229,58 @@ const LEGACY_PROTOCOLS_ACTIVITY_ENTITIES = [
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY
 ] as const;
 
+type OpaqueBatchOptions = {
+  userId: string;
+  batchId: string;
+  requestFingerprint: string;
+  deviceId: string;
+  /** Keys the receipt, so one idempotency key can't serve two operations. */
+  operationKind:
+    | "doses"
+    | "compounds"
+    | "purposes"
+    | "protocols"
+    | "protocol_deletes"
+    | "protocol_skips";
+  groups: OpaqueBatchGroup[];
+  /**
+   * Work that needs stored data and must not run on a replay: it runs once
+   * the receipt is claimed, may rewrite and add rows in `groups`, and
+   * returns issues that refuse the whole batch, receipt included.
+   */
+  finalize?: (
+    transaction: OpaqueTransaction,
+    serverClock: Date
+  ) => Promise<AgentProtocolsBatchWriteIssue[]>;
+};
+
 async function writeOpaqueBatch(
+  db: ServerDatabase,
+  options: OpaqueBatchOptions
+): Promise<AgentProtocolsStoreWriteResult> {
+  const serverClock = new Date();
+  try {
+    return await writeOpaqueBatchInTransaction(db, { ...options, serverClock });
+  } catch (error) {
+    if (error instanceof OpaqueBatchRefused) {
+      return emptyAgentProtocolsWriteResult(serverClock.toISOString(), {
+        validationErrors: error.issues
+      });
+    }
+    throw error;
+  }
+}
+
+/** Thrown inside the transaction so a refused batch rolls back its receipt. */
+class OpaqueBatchRefused extends Error {
+  constructor(readonly issues: AgentProtocolsBatchWriteIssue[]) {
+    super("The Protocols batch was refused.");
+  }
+}
+
+type OpaqueTransaction = Parameters<Parameters<ServerDatabase["transaction"]>[0]>[0];
+
+async function writeOpaqueBatchInTransaction(
   db: ServerDatabase,
   {
     userId,
@@ -2207,17 +4288,11 @@ async function writeOpaqueBatch(
     requestFingerprint,
     deviceId,
     operationKind,
-    groups
-  }: {
-    userId: string;
-    batchId: string;
-    requestFingerprint: string;
-    deviceId: string;
-    operationKind: "doses" | "compounds" | "protocols";
-    groups: OpaqueBatchGroup[];
-  }
+    groups,
+    finalize,
+    serverClock
+  }: OpaqueBatchOptions & { serverClock: Date }
 ): Promise<AgentProtocolsStoreWriteResult> {
-  const serverClock = new Date();
   return db.transaction(async (transaction) => {
     const validationErrors = await validateOpaqueBatchRows(transaction, {
       userId,
@@ -2258,6 +4333,12 @@ async function writeOpaqueBatch(
         duplicate: true
       });
     }
+    if (finalize !== undefined) {
+      const refused = await finalize(transaction, serverClock);
+      if (refused.length > 0) {
+        throw new OpaqueBatchRefused(refused);
+      }
+    }
 
     const applied: { id: string; updatedAt: string; deviceId: string }[] = [];
     const accepted: string[] = [];
@@ -2267,12 +4348,11 @@ async function writeOpaqueBatch(
       }
       const changes: SyncPushChange[] = [];
       for (const row of group.rows) {
-        const beforeImage = await readBeforeImage(
-          transaction,
-          group.table,
-          userId,
-          row.id
-        );
+        const storedImage = await readBeforeImage(transaction, group.table, userId, row.id);
+        const beforeImage =
+          storedImage === null
+            ? (group.impliedBeforeImage?.(row) ?? null)
+            : withWrittenKeyDefaults(storedImage, row.payload, group.laterAddedKeyDefaults);
         changes.push({
           id: row.id,
           payload: row.payload,
@@ -2306,6 +4386,1166 @@ async function writeOpaqueBatch(
       validationErrors: []
     };
   });
+}
+
+function withWrittenKeyDefaults(
+  before: Record<string, unknown>,
+  written: Record<string, unknown>,
+  defaults: Readonly<Record<string, unknown>> | undefined
+): Record<string, unknown> {
+  if (defaults === undefined) {
+    return before;
+  }
+  const implied = Object.entries(defaults).filter(
+    ([key]) => Object.hasOwn(written, key) && !Object.hasOwn(before, key)
+  );
+  return implied.length === 0 ? before : { ...Object.fromEntries(implied), ...before };
+}
+
+// ---------------------------------------------------------------------------
+// Purposes (docs/designs/compound-purposes.md, D8 and D9). The checks that read
+// stored data run in `finalize`, after the idempotency receipt, so a replay
+// still returns its receipt once a Purpose it named is archived or renamed.
+// ---------------------------------------------------------------------------
+
+const STARTER_PURPOSES_BY_ID: ReadonlyMap<string, (typeof STARTER_PURPOSES)[number]> =
+  new Map(STARTER_PURPOSES.map((starter) => [starter.id, starter]));
+
+/**
+ * Merges the starter Purposes with a user's own rows as the app's seeded table
+ * behaves: a row with a starter id is that starter after the user's edits, so
+ * it overrides name and order and a tombstone archives it, and any other row is
+ * a user-created Purpose. Archived Purposes are kept; callers filter them.
+ */
+export function mergeAgentPurposes(
+  userRows: readonly {
+    id: string;
+    payload: Record<string, unknown> | null;
+    deletedAt: Date | null;
+  }[]
+): AgentPurpose[] {
+  const merged = new Map<string, AgentPurpose>();
+  for (const starter of STARTER_PURPOSES) {
+    merged.set(starter.id, {
+      id: starter.id,
+      name: starter.name,
+      sortOrder: starter.sortOrder,
+      starter: true,
+      deletedAt: null
+    });
+  }
+  for (const row of userRows) {
+    const starter = STARTER_PURPOSES_BY_ID.get(row.id);
+    const name = row.payload?.name;
+    const sortOrder = row.payload?.sort_order;
+    merged.set(row.id, {
+      id: row.id,
+      name:
+        typeof name === "string" && name.trim().length > 0
+          ? name
+          : (starter?.name ?? row.id),
+      sortOrder:
+        typeof sortOrder === "number" && Number.isInteger(sortOrder)
+          ? sortOrder
+          : (starter?.sortOrder ?? 0),
+      starter: starter !== undefined,
+      deletedAt: row.deletedAt?.toISOString() ?? null
+    });
+  }
+  return [...merged.values()].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.name.localeCompare(right.name) ||
+      left.id.localeCompare(right.id)
+  );
+}
+
+async function selectMergedPurposes(
+  db: Pick<ServerDatabase, "select">,
+  userId: string
+): Promise<AgentPurpose[]> {
+  return mergeAgentPurposes(
+    await db
+      .select({
+        id: schema.purposes.id,
+        payload: schema.purposes.payload,
+        deletedAt: schema.purposes.deletedAt
+      })
+      .from(schema.purposes)
+      .where(eq(schema.purposes.userId, userId))
+  );
+}
+
+/**
+ * The reference check behind `purpose_not_found`: the id must be one of the
+ * caller's active Purposes. A starter id resolves without any synced row; a
+ * Purpose the caller archived does not. The Purposes are loaded at most once
+ * per check (so per request), and only when a write names a Purpose.
+ */
+export function createActivePurposeCheck({
+  db,
+  userId
+}: {
+  db: Pick<ServerDatabase, "select">;
+  userId: string;
+}): (purposeId: string) => Promise<boolean> {
+  let activeIds: Promise<ReadonlySet<string>> | undefined;
+  return async (purposeId) => {
+    activeIds ??= selectMergedPurposes(db, userId).then(
+      (purposes) =>
+        new Set(
+          purposes
+            .filter((purpose) => purpose.deletedAt === null)
+            .map((purpose) => purpose.id)
+        )
+    );
+    return (await activeIds).has(purposeId);
+  };
+}
+
+async function finalizeCompoundPurposeIds(
+  transaction: OpaqueTransaction,
+  { userId, compounds }: { userId: string; compounds: readonly PreparedRow[] }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const isActivePurpose = createActivePurposeCheck({ db: transaction, userId });
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const row of compounds) {
+    for (const purposeId of parseJsonStringArray(row.payload.purpose_ids)) {
+      if (!(await isActivePurpose(purposeId))) {
+        issues.push(
+          entityIssue(row.itemIndex, row.id, {
+            field: `compounds[${row.itemIndex}].purposeIds`,
+            rule: "purpose_not_found",
+            message:
+              "purposeIds must reference active Purposes of the authenticated account (see GET /agent/protocols/purposes). Drop an archived id, or omit purposeIds to keep the stored list."
+          })
+        );
+        break;
+      }
+    }
+  }
+  return issues;
+}
+
+const PURPOSE_NAME_MESSAGES: Record<PurposeNameError["code"], string> = {
+  purpose_name_required: "A Purpose name must not be empty after trimming.",
+  duplicate_purpose_name:
+    "Another active Purpose has this name, trimmed and case-insensitive."
+};
+
+/**
+ * The D8 name rules, judged on the state the whole batch leaves, so a batch can
+ * swap two names or archive one Purpose and give its name to another.
+ */
+async function finalizePurposeNames(
+  transaction: OpaqueTransaction,
+  { userId, purposes }: { userId: string; purposes: readonly PreparedRow[] }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const activeNames = new Map(
+    (await selectMergedPurposes(transaction, userId))
+      .filter((purpose) => purpose.deletedAt === null)
+      .map((purpose) => [purpose.id, purpose.name])
+  );
+  for (const row of purposes) {
+    if (row.deletedAt === null) {
+      activeNames.set(row.id, String(row.payload.name));
+    } else {
+      activeNames.delete(row.id);
+    }
+  }
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const row of purposes) {
+    // An archived row's name can't collide, but it is still stored.
+    const others =
+      row.deletedAt === null
+        ? [...activeNames].filter(([id]) => id !== row.id).map(([, name]) => name)
+        : [];
+    try {
+      validatePurposeName(String(row.payload.name), others);
+    } catch (error) {
+      if (!(error instanceof PurposeNameError)) {
+        throw error;
+      }
+      issues.push(
+        entityIssue(row.itemIndex, row.id, {
+          field: `purposes[${row.itemIndex}].name`,
+          rule: error.code,
+          message: PURPOSE_NAME_MESSAGES[error.code]
+        })
+      );
+    }
+  }
+  return issues;
+}
+
+/**
+ * A starter Purpose exists for every account before any row is stored, so a
+ * first write to one is an edit: undoing it restores the starter rather than
+ * tombstoning it.
+ */
+function starterPurposeBeforeImage(row: PreparedRow): Record<string, unknown> | null {
+  const starter = STARTER_PURPOSES_BY_ID.get(row.id);
+  return starter === undefined
+    ? null
+    : {
+        id: starter.id,
+        name: starter.name,
+        sort_order: starter.sortOrder,
+        updated_at: row.updatedAt,
+        deleted_at: null
+      };
+}
+
+// ---------------------------------------------------------------------------
+// Protocol plan finalization: the half of an Agent Protocol write that needs
+// stored data (docs/designs/protocol-schedules-and-reminders.md, D1 and D6).
+// It runs inside the write's transaction, after the idempotency receipt, so a
+// replay never re-dates anything and a refusal rolls the receipt back.
+// ---------------------------------------------------------------------------
+
+type StoredPlanRow = {
+  id: string;
+  payload: Record<string, unknown>;
+  deletedAt: Date | null;
+};
+
+/** A Schedule Version as D1 dates and copies it. */
+type PlanVersionRow = {
+  id: string;
+  effectiveFrom: string;
+  payload: Record<string, unknown>;
+};
+
+async function finalizeProtocolPlanRows(
+  transaction: OpaqueTransaction,
+  {
+    userId,
+    today,
+    serverClock,
+    protocols,
+    members,
+    schedules,
+    targetOutcomes,
+    warnings
+  }: {
+    userId: string;
+    today: string;
+    serverClock: Date;
+    protocols: PreparedRow[];
+    members: PreparedRow[];
+    schedules: PreparedRow[];
+    targetOutcomes: PreparedRow[];
+    /** Receives D8's archive warning; the refusals are returned. */
+    warnings: AgentProtocolsBatchWriteIssue[];
+  }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  const nowIso = serverClock.toISOString();
+  const protocolIds = protocols.map((row) => row.id);
+  const referencedMemberIds = [
+    ...new Set([
+      ...members.map((row) => row.id),
+      ...schedules.map((row) => String(row.payload.protocol_compound_id))
+    ])
+  ];
+
+  const storedProtocols = byId(
+    await selectStoredPlanRows(transaction, schema.protocols, userId, [
+      inArray(schema.protocols.id, protocolIds)
+    ])
+  );
+  const storedMembers = byId(
+    await selectStoredPlanRows(transaction, schema.protocolCompounds, userId, [
+      inArray(schema.protocolCompounds.id, referencedMemberIds),
+      inArray(sql`${schema.protocolCompounds.payload}->>'protocol_id'`, protocolIds)
+    ])
+  );
+  const memberIds = [...new Set([...storedMembers.keys(), ...members.map((row) => row.id)])];
+  const storedVersionRows = await selectStoredPlanRows(transaction, schema.schedules, userId, [
+    inArray(
+      schema.schedules.id,
+      schedules.map((row) => row.id)
+    ),
+    inArray(sql`${schema.schedules.payload}->>'protocol_compound_id'`, memberIds)
+  ]);
+
+  // Versions are insert-only: an id that exists already (for this account; the
+  // ownership check refused anyone else's) can't be rewritten.
+  const storedVersionIds = new Set(storedVersionRows.map((row) => row.id));
+  for (const row of schedules) {
+    if (storedVersionIds.has(row.id)) {
+      issues.push(
+        entityIssue(row.itemIndex, row.id, {
+          field: row.field,
+          rule: "schedule_version_exists",
+          message:
+            "Schedule Versions are insert-only: send a new id for every edit. This id already exists."
+        })
+      );
+    }
+  }
+
+  // Undo tombstones a version, and a tombstoned version never existed (D1).
+  // Each member's list is kept in D1's version order, so the version that
+  // applies on a date, the earliest and the latest are read off it.
+  const versionsByMember = new Map<string, PlanVersionRow[]>();
+  for (const row of storedVersionRows) {
+    const effectiveFrom = row.payload.effective_from;
+    if (
+      row.deletedAt !== null ||
+      typeof effectiveFrom !== "string" ||
+      !isValidLocalDate(effectiveFrom)
+    ) {
+      continue;
+    }
+    pushToGroup(versionsByMember, String(row.payload.protocol_compound_id), {
+      id: row.id,
+      effectiveFrom,
+      payload: row.payload
+    });
+  }
+  for (const versions of versionsByMember.values()) {
+    versions.sort(compareScheduleVersions);
+  }
+
+  // An archived Protocol is read-only, as it is in the app's editor (D1,
+  // D6): a write that names one is refused whatever it sends, a re-sent
+  // `archived: true` included. A row tombstoned by undo never existed, so it
+  // isn't "archived" here, but the app can't edit it either: a write that
+  // names one is refused with the restore refusal, also whatever it sends,
+  // so a re-sent `archived: true` can't edit it or move its start.
+  const refusedProtocolIds = new Set<string>();
+  for (const row of protocols) {
+    const stored = storedProtocols.get(row.id);
+    if (stored === undefined || stored.deletedAt === null) {
+      continue;
+    }
+    refusedProtocolIds.add(row.id);
+    issues.push(
+      isUndoTombstone(stored)
+        ? entityIssue(row.itemIndex, row.id, {
+            field: row.field,
+            rule: "archived_row_not_restorable",
+            message:
+              "This Protocol was deleted or removed by undo, and can't be restored or edited. Create a new Protocol instead."
+          })
+        : entityIssue(row.itemIndex, row.id, {
+            field: row.field,
+            rule: "protocol_archived",
+            message:
+              "This Protocol is archived, and an archived Protocol is read-only. Create a new Protocol instead."
+          })
+    );
+  }
+
+  for (const [rows, stored] of [
+    [protocols.filter((row) => !refusedProtocolIds.has(row.id)), storedProtocols],
+    [members, storedMembers]
+  ] as const) {
+    for (const row of rows) {
+      const refused = stampArchive(row, stored.get(row.id), { today, nowIso });
+      if (refused !== null) {
+        issues.push(refused);
+      }
+    }
+  }
+
+  // D8: archiving a Protocol with no history is accepted, with a warning
+  // that delete could remove it instead. Every Protocol archived here is a
+  // new archive (an archived one was refused above), stored or created in
+  // this request, so its history is read with this request's dates (the
+  // archive date is today) and members, stored and sent. A member archive
+  // never gets the warning. A request already refused gets none either: it
+  // writes nothing, so the history read would be a wasted round trip.
+  const archived = protocols.filter(
+    (row) => row.archive === true && !refusedProtocolIds.has(row.id)
+  );
+  if (issues.length === 0 && archived.length > 0) {
+    const archivedIds = new Set(archived.map((row) => row.id));
+    const protocolMembers = [
+      ...[...storedMembers.values()].filter(
+        (row) => archivedIds.has(String(row.payload.protocol_id)) && !isUndoTombstone(row)
+      ),
+      ...members.filter((row) => archivedIds.has(String(row.payload.protocol_id)))
+    ];
+    const membersOf = groupBy(protocolMembers, (row) => String(row.payload.protocol_id));
+    const withHistory = await protocolsWithHistory(
+      transaction,
+      userId,
+      archived.map((row) => protocolHistoryScope(row, membersOf.get(row.id) ?? []))
+    );
+    for (const row of archived) {
+      if (!withHistory.has(row.id)) {
+        warnings.push(
+          entityIssue(row.itemIndex, row.id, {
+            field: `protocols[${row.itemIndex}].archived`,
+            rule: "protocol_has_no_history",
+            message:
+              "Nothing has been logged for this Protocol. Consider deleting it with delete-protocols instead."
+          })
+        );
+      }
+    }
+  }
+
+  // D1: moving the start earlier inserts re-dated copies (never an edit);
+  // moving it later inserts nothing, because the version that applies on the
+  // new start is already the latest one dated on or before it. On an earlier
+  // move, every member row of the Protocol whose earliest version is dated on
+  // or before the old start and after the new one gets a copy of that version
+  // (the one in effect on its first date), dated from the new start: archived
+  // members too, which still cover those days up to their archived_on, and so
+  // a member this request archives. Rows tombstoned by undo never existed,
+  // members with no versions already cover every date, and a member added
+  // after the old start keeps its own first date. A member removed before it
+  // planned anything (its stored archived_on is before its earliest version)
+  // gets no copy either: it was never planned from the old start, and a copy
+  // would turn days that were never in its plan into "Not logged". Its
+  // archived_on is read as stored before this request, so a member this
+  // request archives still gets its copy. The app's
+  // _redateVersionsForStartMove skips exactly the same members. As in the
+  // app, the copies come only from what was stored before this request, and
+  // this request's edits are dated after them: a copy is dated before every
+  // version its member has and an edit on or after the latest, so the two
+  // never share a date ("No ties"). Default anchors are read as the start
+  // (D4), so they need no rewriting; a copy and the period still store the
+  // new start there, as the app's writes do.
+  const startMoveCopies: PreparedRow[] = [];
+  for (const protocol of protocols) {
+    const stored = storedProtocols.get(protocol.id);
+    const oldStart = stored?.payload.start_local_date;
+    const newStart = String(protocol.payload.start_local_date);
+    if (
+      refusedProtocolIds.has(protocol.id) ||
+      typeof oldStart !== "string" ||
+      !isValidLocalDate(oldStart) ||
+      oldStart === newStart
+    ) {
+      continue;
+    }
+    protocol.payload.period = withPeriodDefaultAnchorMoved(protocol.payload.period, newStart);
+    if (newStart > oldStart) {
+      continue;
+    }
+
+    const protocolMembers = [...storedMembers.values()]
+      .filter((member) => member.payload.protocol_id === protocol.id && !isUndoTombstone(member))
+      .sort((a, b) => compareIds(a.id, b.id));
+    for (const member of protocolMembers) {
+      const versions = versionsByMember.get(member.id) ?? [];
+      const earliest = versions[0];
+      if (
+        earliest === undefined ||
+        earliest.effectiveFrom > oldStart ||
+        earliest.effectiveFrom <= newStart ||
+        removedBeforePlanning(member, earliest.effectiveFrom)
+      ) {
+        continue;
+      }
+      const source = applyingScheduleVersion(versions, earliest.effectiveFrom)!;
+      const id = createUuidV7(serverClock);
+      const payload = {
+        ...source.payload,
+        id,
+        effective_from: newStart,
+        rule: withRuleDefaultAnchorMoved(source.payload.rule, newStart),
+        updated_at: nowIso,
+        deleted_at: null
+      };
+      startMoveCopies.push({
+        id,
+        itemIndex: protocol.itemIndex,
+        field: `protocols[${protocol.itemIndex}].schedules`,
+        updatedAt: nowIso,
+        deletedAt: null,
+        payload
+      });
+      insertVersion(versions, { id, effectiveFrom: newStart, payload });
+      versionsByMember.set(member.id, versions);
+    }
+  }
+
+  const protocolByItemIndex = new Map(protocols.map((row) => [row.itemIndex, row]));
+  const batchMembers = byId(members);
+  for (const row of schedules) {
+    const protocol = protocolByItemIndex.get(row.itemIndex)!;
+    const memberId = String(row.payload.protocol_compound_id);
+    const batchMember = batchMembers.get(memberId);
+    const storedMember = storedMembers.get(memberId);
+    const member =
+      batchMember ??
+      (storedMember === undefined || isUndoTombstone(storedMember) ? undefined : storedMember);
+    if (member === undefined || member.payload.protocol_id !== protocol.id) {
+      issues.push(
+        entityIssue(row.itemIndex, row.id, {
+          field: `${row.field}.protocolCompoundId`,
+          rule: "schedule_member_not_found",
+          message:
+            "A Schedule Version belongs to a Protocol Member of the Protocol it is listed under, in this request or already stored."
+        })
+      );
+      continue;
+    }
+
+    // D1: a member's first version applies from the Protocol's start when the
+    // member is created with its Protocol, or while the start is still ahead,
+    // and from today otherwise; a later one from max(today, the latest
+    // effectiveFrom), so it can never land behind, and be hidden by, another.
+    const start = String(protocol.payload.start_local_date);
+    const versions = versionsByMember.get(memberId) ?? [];
+    const latest = versions.at(-1);
+    let effectiveFrom: string;
+    if (latest === undefined) {
+      const createdWithProtocol =
+        storedMember === undefined && !storedProtocols.has(protocol.id);
+      effectiveFrom = createdWithProtocol || start > today ? start : today;
+    } else {
+      effectiveFrom = latest.effectiveFrom > today ? latest.effectiveFrom : today;
+    }
+    row.payload.effective_from = effectiveFrom;
+    insertVersion(versions, { id: row.id, effectiveFrom, payload: row.payload });
+    versionsByMember.set(memberId, versions);
+  }
+  schedules.push(...startMoveCopies);
+
+  await assignTargetOutcomePositions(transaction, { userId, targetOutcomes });
+
+  return issues;
+}
+
+/**
+ * The half of a Protocol delete that needs stored data (D8). It runs inside
+ * the write's transaction, after the idempotency receipt, so a Dose committed
+ * first refuses the delete. Each id is read: an unknown one (or another
+ * account's) is `protocol_not_found`, a tombstoned one answers
+ * `already_deleted`, and one with history is `protocol_has_history`. Every
+ * other one gets D8's one row in `rows`: the stored payload with `deleted_at`
+ * and `updated_at` now and `archived_on` null, the state undoing its creation
+ * leaves. Its members, Schedule Versions and target outcomes are not written;
+ * every reader hides them through this row.
+ */
+async function finalizeProtocolDeletes(
+  transaction: OpaqueTransaction,
+  {
+    userId,
+    serverClock,
+    firstIndex,
+    rows,
+    outcomes
+  }: {
+    userId: string;
+    serverClock: Date;
+    /** Each distinct id, at its first position in the request. */
+    firstIndex: ReadonlyMap<string, number>;
+    rows: PreparedRow[];
+    outcomes: Map<string, "deleted" | "already_deleted">;
+  }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const ids = [...firstIndex.keys()];
+  const stored = byId(
+    await transaction
+      .select({
+        id: schema.protocols.id,
+        payload: schema.protocols.payload,
+        deletedAt: schema.protocols.deletedAt,
+        updatedAt: schema.protocols.updatedAt
+      })
+      .from(schema.protocols)
+      .where(and(eq(schema.protocols.userId, userId), inArray(schema.protocols.id, ids)))
+  );
+  const live = ids.flatMap((id) => {
+    const row = stored.get(id);
+    return row === undefined || isUndoTombstone(row) ? [] : [row];
+  });
+  const members =
+    live.length === 0
+      ? []
+      : await selectStoredPlanRows(transaction, schema.protocolCompounds, userId, [
+          inArray(
+            sql`${schema.protocolCompounds.payload}->>'protocol_id'`,
+            live.map((row) => row.id)
+          )
+        ]);
+  const membersOf = groupBy(
+    members.filter((row) => !isUndoTombstone(row)),
+    (row) => String(row.payload.protocol_id)
+  );
+  const withHistory = await protocolsWithHistory(
+    transaction,
+    userId,
+    live.map((row) => protocolHistoryScope(row, membersOf.get(row.id) ?? []))
+  );
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const [id, itemIndex] of firstIndex) {
+    const row = stored.get(id);
+    const field = `protocolIds[${itemIndex}]`;
+    if (row === undefined) {
+      issues.push(
+        entityIssue(itemIndex, id, {
+          field,
+          rule: "protocol_not_found",
+          message: "No Protocol with this id exists for this account."
+        })
+      );
+    } else if (isUndoTombstone(row)) {
+      outcomes.set(id, "already_deleted");
+    } else if (withHistory.has(id)) {
+      issues.push(
+        entityIssue(itemIndex, id, {
+          field,
+          rule: "protocol_has_history",
+          message:
+            "Doses were logged for this Protocol, so it can't be deleted. Archive it with manage-protocols instead."
+        })
+      );
+    } else {
+      // The delete is stamped now, as D8 says, unless the stored row is
+      // stamped at or after now (a write in the same millisecond, or a
+      // device clock ahead within the accepted skew): then one millisecond
+      // after it, so last-writer-wins applies the delete it reports.
+      const stamp = new Date(
+        Math.max(serverClock.getTime(), row.updatedAt.getTime() + 1)
+      ).toISOString();
+      outcomes.set(id, "deleted");
+      rows.push({
+        id,
+        itemIndex,
+        field,
+        updatedAt: stamp,
+        deletedAt: stamp,
+        payload: { ...row.payload, archived_on: null, updated_at: stamp, deleted_at: stamp }
+      });
+    }
+  }
+  return issues;
+}
+
+/** The fields that name a Skip's planned dose; a Skip never changes them. */
+const SKIP_KEY_FIELDS = [
+  ["protocol_id", "protocolId"],
+  ["compound_id", "compoundId"],
+  ["local_date", "localDate"],
+  ["planned_local_time", "plannedLocalTime"]
+] as const;
+
+/**
+ * A timed Skip's Protocol, Compound, date and time as one key, or null for
+ * an untimed Skip (or a payload missing one of them).
+ */
+function timedSkipKey(payload: Record<string, unknown>): string | null {
+  const parts = SKIP_KEY_FIELDS.map(([column]) => nullableString(payload[column]));
+  return parts.some((part) => part === null) ? null : parts.join("\u0000");
+}
+
+/**
+ * The half of a Skip write that reads stored data (D8), inside the write's
+ * transaction after the idempotency receipt, so a refusal rolls the receipt
+ * back and a replay never sweeps again:
+ *
+ * - `protocol_not_found` for an item without `deletedAt` whose Protocol is
+ *   not this account's, or was deleted (an undo tombstone). An archived
+ *   Protocol is accepted, and removing a Skip always is;
+ * - `skip_immutable` for an item whose id names a stored Skip and that
+ *   changes any field but `deletedAt`, or clears a `deletedAt` that is set.
+ *
+ * With no issue, every item that removes a timed Skip also tombstones each
+ * stored, non-tombstoned Skip with the same Protocol, Compound, date and
+ * time, which the app's Undo skip removes too. Those rows join `rows` (the
+ * write's group) and `sweptBy`; a sibling that is itself an item, or was
+ * already swept, is left to that. The siblings are read in one query (the
+ * items' dates), then grouped by their timed key in memory.
+ *
+ * Every removal is stamped by one rule (D8, settled during Phase 8's build):
+ * the server clock, unless the stored Skip is stamped at or after it (a
+ * device clock ahead within the sync push's accepted skew), then one
+ * millisecond after the stored stamp, so last-writer-wins applies it, as a
+ * Protocol delete does. That holds for a swept sibling and for an item that
+ * removes a stored, non-tombstoned Skip alike: stamping the item with the
+ * request time would leave it `superseded`, and its Skip live, while its
+ * siblings were swept.
+ */
+async function finalizeProtocolSkips(
+  transaction: OpaqueTransaction,
+  {
+    userId,
+    serverClock,
+    items,
+    rows,
+    sweptBy
+  }: {
+    userId: string;
+    serverClock: Date;
+    items: readonly PreparedRow[];
+    rows: PreparedRow[];
+    sweptBy: Map<string, string[]>;
+  }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const stored = byId(
+    await transaction
+      .select({
+        id: schema.protocolSkips.id,
+        payload: schema.protocolSkips.payload,
+        updatedAt: schema.protocolSkips.updatedAt,
+        deletedAt: schema.protocolSkips.deletedAt
+      })
+      .from(schema.protocolSkips)
+      .where(
+        and(
+          eq(schema.protocolSkips.userId, userId),
+          inArray(
+            schema.protocolSkips.id,
+            items.map((item) => item.id)
+          )
+        )
+      )
+  );
+  const namedProtocolIds = [
+    ...new Set(
+      items
+        .filter((item) => item.deletedAt === null)
+        .map((item) => String(item.payload.protocol_id))
+    )
+  ];
+  const protocols = byId(
+    namedProtocolIds.length === 0
+      ? []
+      : await selectStoredPlanRows(transaction, schema.protocols, userId, [
+          inArray(schema.protocols.id, namedProtocolIds)
+        ])
+  );
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const item of items) {
+    const prefix = `skips[${item.itemIndex}]`;
+    if (item.deletedAt === null) {
+      const protocol = protocols.get(String(item.payload.protocol_id));
+      if (protocol === undefined || isUndoTombstone(protocol)) {
+        issues.push(
+          entityIssue(item.itemIndex, item.id, {
+            field: `${prefix}.protocolId`,
+            rule: "protocol_not_found",
+            message: "No Protocol with this id exists for this account."
+          })
+        );
+      }
+    }
+    const storedSkip = stored.get(item.id);
+    if (storedSkip === undefined) {
+      continue;
+    }
+    for (const [column, field] of SKIP_KEY_FIELDS) {
+      if ((storedSkip.payload[column] ?? null) !== (item.payload[column] ?? null)) {
+        issues.push(
+          entityIssue(item.itemIndex, item.id, {
+            field: `${prefix}.${field}`,
+            rule: "skip_immutable",
+            message:
+              "A Skip is never edited. Remove it with deletedAt and skip again with a new id."
+          })
+        );
+      }
+    }
+    if (storedSkip.deletedAt !== null && item.deletedAt === null) {
+      issues.push(
+        entityIssue(item.itemIndex, item.id, {
+          field: `${prefix}.deletedAt`,
+          rule: "skip_immutable",
+          message:
+            "A removed Skip is never brought back. Skip again with a new id."
+        })
+      );
+    }
+  }
+  if (issues.length > 0) {
+    return issues;
+  }
+
+  // One stamp rule for every removal: see the docstring.
+  const removalStamp = (storedUpdatedAt: Date) =>
+    new Date(Math.max(serverClock.getTime(), storedUpdatedAt.getTime() + 1)).toISOString();
+  for (const item of items) {
+    const storedSkip = stored.get(item.id);
+    if (item.deletedAt === null || storedSkip === undefined || storedSkip.deletedAt !== null) {
+      continue;
+    }
+    const stamp = removalStamp(storedSkip.updatedAt);
+    item.updatedAt = stamp;
+    item.payload.updated_at = stamp;
+  }
+
+  const removals = items.filter(
+    (item) => item.deletedAt !== null && timedSkipKey(item.payload) !== null
+  );
+  if (removals.length === 0) {
+    return [];
+  }
+  const candidates = await transaction
+    .select({
+      id: schema.protocolSkips.id,
+      payload: schema.protocolSkips.payload,
+      updatedAt: schema.protocolSkips.updatedAt
+    })
+    .from(schema.protocolSkips)
+    .where(
+      and(
+        eq(schema.protocolSkips.userId, userId),
+        isNull(schema.protocolSkips.deletedAt),
+        inArray(sql`${schema.protocolSkips.payload}->>'local_date'`, [
+          ...new Set(removals.map((item) => String(item.payload.local_date)))
+        ])
+      )
+    )
+    .orderBy(asc(schema.protocolSkips.id));
+  const siblingsByKey = new Map<string, typeof candidates>();
+  for (const candidate of candidates) {
+    const key = timedSkipKey(candidate.payload);
+    if (key !== null) {
+      siblingsByKey.set(key, [...(siblingsByKey.get(key) ?? []), candidate]);
+    }
+  }
+
+  const itemIds = new Set(items.map((item) => item.id));
+  const swept = new Set<string>();
+  for (const item of removals) {
+    for (const sibling of siblingsByKey.get(timedSkipKey(item.payload)!) ?? []) {
+      if (itemIds.has(sibling.id) || swept.has(sibling.id)) {
+        continue;
+      }
+      swept.add(sibling.id);
+      const stamp = removalStamp(sibling.updatedAt);
+      rows.push({
+        id: sibling.id,
+        itemIndex: item.itemIndex,
+        field: `skips[${item.itemIndex}].deletedAt`,
+        updatedAt: stamp,
+        deletedAt: stamp,
+        payload: { ...sibling.payload, updated_at: stamp, deleted_at: stamp }
+      });
+      sweptBy.set(item.id, [...(sweptBy.get(item.id) ?? []), sibling.id]);
+    }
+  }
+  return [];
+}
+
+/** What D8's history check reads of one Protocol: its id, dates and members. */
+type ProtocolHistoryScope = {
+  id: string;
+  /** Null (no real start date) reads as no lower bound. */
+  startLocalDate: string | null;
+  /** The earliest of its end date and archive date; null when neither is set. */
+  upperLocalDate: string | null;
+  compoundIds: string[];
+};
+
+/**
+ * A Protocol's history scope from its row and its member rows. The caller
+ * passes every member row it counts: archived ones included, rows tombstoned
+ * by undo left out (D8).
+ */
+function protocolHistoryScope(
+  protocol: { id: string; payload: Record<string, unknown> },
+  members: readonly { payload: Record<string, unknown> }[]
+): ProtocolHistoryScope {
+  const bounds = [
+    localDateOrNull(protocol.payload.end_local_date),
+    localDateOrNull(protocol.payload.archived_on)
+  ].filter((date): date is string => date !== null);
+  return {
+    id: protocol.id,
+    startLocalDate: localDateOrNull(protocol.payload.start_local_date),
+    upperLocalDate: bounds.length === 0 ? null : bounds.sort()[0]!,
+    compoundIds: [
+      ...new Set(
+        members.flatMap((member) => {
+          const compoundId = nullableString(member.payload.compound_id);
+          return compoundId === null ? [] : [compoundId];
+        })
+      )
+    ]
+  };
+}
+
+/**
+ * The ids of the scoped Protocols that have history (D8): at least one Dose
+ * of this user that isn't tombstoned is tagged to the Protocol, or is of one
+ * of its member Compounds with a `local_date` within its dates. One `EXISTS`
+ * per scope in a single query; dates compare in byte order ("C") as
+ * `readPlanDoses` compares them. Delete, the archive warning and
+ * `listProtocols`' `hasHistory` all read it, so they can't disagree. It
+ * over-counts on purpose (D8): a false "history" only means Archive is
+ * offered instead of Delete, which loses nothing.
+ */
+async function protocolsWithHistory(
+  executor: Pick<ServerDatabase, "execute">,
+  userId: string,
+  scopes: readonly ProtocolHistoryScope[]
+): Promise<Set<string>> {
+  if (scopes.length === 0) {
+    return new Set();
+  }
+  const doses = schema.doses;
+  const localDate = sql`(${doses.payload}->>'local_date') collate "C"`;
+  const json = JSON.stringify(
+    scopes.map((scope) => ({
+      id: scope.id,
+      start_date: scope.startLocalDate,
+      upper_date: scope.upperLocalDate,
+      compound_ids: scope.compoundIds
+    }))
+  );
+  const rows = await executor.execute<{ id: string }>(sql`
+    select scope.id
+    from jsonb_to_recordset(${json}::jsonb)
+      as scope(id text, start_date text, upper_date text, compound_ids jsonb)
+    where exists (
+      select 1 from ${doses}
+      where ${doses.userId} = ${userId}
+        and ${doses.deletedAt} is null
+        and (
+          ${doses.payload}->>'protocol_id' = scope.id
+          or (
+            ${doses.payload}->>'compound_id' in (
+              select jsonb_array_elements_text(scope.compound_ids)
+            )
+            and (scope.start_date is null or ${localDate} >= scope.start_date collate "C")
+            and (scope.upper_date is null or ${localDate} <= scope.upper_date collate "C")
+          )
+        )
+    )
+  `);
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Fills each target outcome's `position` left null by
+ * prepareAgentProtocolBatchWrite, in batch order, so an Agent outcome sorts
+ * where the app would put it rather than first
+ * (docs/designs/protocol-target-outcome-sync-shape.md, D3). An outcome stored
+ * already under the same Protocol keeps its position, so archiving one by
+ * sending deletedAt doesn't move it. A new one goes one past the largest
+ * position among the Protocol's live stored outcomes (other than this batch's)
+ * and this batch's earlier live outcomes. Later batch rows don't count, so the
+ * result depends on batch order; positions needn't be unique.
+ */
+async function assignTargetOutcomePositions(
+  transaction: OpaqueTransaction,
+  { userId, targetOutcomes }: { userId: string; targetOutcomes: PreparedRow[] }
+) {
+  if (targetOutcomes.every((row) => row.payload.position !== null)) {
+    return;
+  }
+  const protocolIds = [
+    ...new Set(targetOutcomes.map((row) => String(row.payload.protocol_id)))
+  ];
+  const stored = await selectStoredPlanRows(
+    transaction,
+    schema.protocolTargetOutcomes,
+    userId,
+    [
+      inArray(
+        schema.protocolTargetOutcomes.id,
+        targetOutcomes.map((row) => row.id)
+      ),
+      inArray(sql`${schema.protocolTargetOutcomes.payload}->>'protocol_id'`, protocolIds)
+    ]
+  );
+  const storedById = byId(stored);
+  const batchIds = new Set(targetOutcomes.map((row) => row.id));
+  const largestByProtocol = new Map<string, number>();
+  const noteLargest = (protocolId: string, position: number) => {
+    largestByProtocol.set(
+      protocolId,
+      Math.max(largestByProtocol.get(protocolId) ?? -1, position)
+    );
+  };
+  for (const row of stored) {
+    if (row.deletedAt === null && !batchIds.has(row.id)) {
+      noteLargest(String(row.payload.protocol_id), payloadPosition(row.payload) ?? 0);
+    }
+  }
+  for (const row of targetOutcomes) {
+    const protocolId = String(row.payload.protocol_id);
+    if (row.payload.position === null) {
+      const existing = storedById.get(row.id);
+      const kept =
+        existing !== undefined && existing.payload.protocol_id === protocolId
+          ? payloadPosition(existing.payload)
+          : null;
+      row.payload.position = kept ?? (largestByProtocol.get(protocolId) ?? -1) + 1;
+    }
+    if (row.deletedAt === null) {
+      noteLargest(protocolId, row.payload.position as number);
+    }
+  }
+}
+
+/** A plan row payload's `position` when it is a non-negative integer. */
+function payloadPosition(payload: Record<string, unknown>): number | null {
+  const position = payload.position;
+  return typeof position === "number" && Number.isInteger(position) && position >= 0
+    ? position
+    : null;
+}
+
+/**
+ * Turns the request's `archived` into the row's archive stamp. A new archive
+ * is stamped with the current time and freezes `archived_on` as the request's
+ * `today`, so an Agent can't backdate a removal; a row archived already keeps
+ * its stamp. An archived row is never restored: a removed member comes back as
+ * a new member row (D1), so restoring one would erase its removed days.
+ */
+function stampArchive(
+  row: PreparedRow,
+  stored: StoredPlanRow | undefined,
+  { today, nowIso }: { today: string; nowIso: string }
+): AgentProtocolsBatchWriteIssue | null {
+  const storedArchived = stored !== undefined && stored.deletedAt !== null;
+  if (row.archive === true) {
+    const deletedAt = storedArchived
+      ? typeof stored.payload.deleted_at === "string"
+        ? stored.payload.deleted_at
+        : stored.deletedAt!.toISOString()
+      : nowIso;
+    row.deletedAt = deletedAt;
+    row.payload.deleted_at = deletedAt;
+    row.payload.archived_on = storedArchived ? nullableString(stored.payload.archived_on) : today;
+    return null;
+  }
+  if (storedArchived) {
+    return entityIssue(row.itemIndex, row.id, {
+      field: row.field,
+      rule: "archived_row_not_restorable",
+      message:
+        "An archived Protocol or Protocol Member can't be restored. Send archived: true to edit it, or add the Compound again as a new member."
+    });
+  }
+  return null;
+}
+
+/**
+ * A member removed before it planned anything (D1): its stored `archived_on`
+ * is before `earliestEffectiveFrom`, its earliest version's date. Such a
+ * member planned no day, so a start move gives it no copy.
+ */
+function removedBeforePlanning(member: StoredPlanRow, earliestEffectiveFrom: string) {
+  const archivedOn = nullableString(member.payload.archived_on);
+  return archivedOn !== null && isValidLocalDate(archivedOn) && archivedOn < earliestEffectiveFrom;
+}
+
+/**
+ * A Protocol or member row tombstoned by undo: `deleted_at` with no frozen
+ * `archived_on`.
+ */
+function isUndoTombstone(row: StoredPlanRow) {
+  return row.deletedAt !== null && nullableString(row.payload.archived_on) === null;
+}
+
+/** Inserts `version` into a list kept in D1's version order. */
+function insertVersion(versions: PlanVersionRow[], version: PlanVersionRow) {
+  versions.push(version);
+  versions.sort(compareScheduleVersions);
+}
+
+/**
+ * Writers store `times` and `weekdays` sorted (D7); the codecs accept any
+ * order. Runs on the request's rule object, before it is encoded.
+ */
+function sortedRule(rule: unknown): unknown {
+  if (!isJsonObject(rule)) {
+    return rule;
+  }
+  const sorted: Record<string, unknown> = { ...rule };
+  if (Array.isArray(rule.times)) {
+    sorted.times = [...(rule.times as string[])].sort(compareIds);
+  }
+  if (isJsonObject(rule.days) && Array.isArray(rule.days.weekdays)) {
+    sorted.days = {
+      ...rule.days,
+      weekdays: [...(rule.days.weekdays as number[])].sort((left, right) => left - right)
+    };
+  }
+  return sorted;
+}
+
+/** A copied rule whose every-N anchor was left at its default moves with the start. */
+function withRuleDefaultAnchorMoved(stored: unknown, newStart: string): unknown {
+  return mapStoredJson(stored, (rule) => {
+    const days = rule.days;
+    if (
+      !isJsonObject(days) ||
+      days.kind !== "every_n_days" ||
+      days.anchor_is_default !== true
+    ) {
+      return rule;
+    }
+    return { ...rule, days: { ...days, anchor: newStart } };
+  });
+}
+
+/** A cycle anchor left at its default moves with the start. */
+function withPeriodDefaultAnchorMoved(stored: unknown, newStart: string): unknown {
+  return mapStoredJson(stored, (period) => {
+    const cycle = period.cycle;
+    if (!isJsonObject(cycle) || cycle.anchor_is_default !== true) {
+      return period;
+    }
+    return { ...period, cycle: { ...cycle, anchor: newStart } };
+  });
+}
+
+/**
+ * Applies `map` to a stored JSON object and returns it as JSON text, the form
+ * every writer stores (Data shapes). Agent writes made before that rule
+ * stored the object itself; a copy of such a row is written as text too. A
+ * value that holds no JSON object is returned as stored.
+ */
+function mapStoredJson(
+  stored: unknown,
+  map: (object: Record<string, unknown>) => Record<string, unknown>
+): unknown {
+  const object = readJsonObject(stored);
+  if (object === null) {
+    return stored;
+  }
+  return JSON.stringify(map(object));
+}
+
+/** A stored JSON object, whether synced as an object or as JSON text; else null. */
+function readJsonObject(value: unknown): Record<string, unknown> | null {
+  if (isJsonObject(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isJsonObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function byId<T extends { id: string }>(rows: readonly T[]) {
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+async function selectStoredPlanRows(
+  transaction: Pick<ServerDatabase, "select">,
+  table:
+    | typeof schema.protocols
+    | typeof schema.protocolCompounds
+    | typeof schema.schedules
+    | typeof schema.protocolTargetOutcomes,
+  userId: string,
+  anyOf: ReturnType<typeof inArray>[]
+): Promise<StoredPlanRow[]> {
+  return transaction
+    .select({ id: table.id, payload: table.payload, deletedAt: table.deletedAt })
+    .from(table)
+    .where(and(eq(table.userId, userId), or(...anyOf)));
 }
 
 export function agentProtocolsBatchMarkerId(userId: string, batchId: string) {
@@ -2369,6 +5609,7 @@ async function validateOpaqueBatchRows(
       await readOpaqueOwners(
         transaction,
         group.table,
+        userId,
         group.rows.map((row) => row.id)
       )
     );
@@ -2417,6 +5658,7 @@ async function validateOpaqueBatchRows(
     const referencedOwners = await readOpaqueOwners(
       transaction,
       OPAQUE_TABLES[tableKey],
+      userId,
       ids
     );
     for (const [id, owner] of referencedOwners) {
@@ -2453,9 +5695,19 @@ async function validateOpaqueBatchRows(
   return errors;
 }
 
+// `compounds` is keyed (user_id, id) because OTC seed Compound ids are shared
+// by every account: another account's row under the same id is that account's
+// own Compound, not an owner of this one, so only the caller's rows count.
+// `purposes` is keyed the same way, for its six starter ids.
+const ACCOUNT_KEYED_OPAQUE_TABLES: ReadonlySet<OpaqueTable> = new Set([
+  schema.compounds,
+  schema.purposes
+]);
+
 async function readOpaqueOwners(
   transaction: Pick<ServerDatabase, "select">,
   table: OpaqueTable,
+  userId: string,
   ids: string[]
 ) {
   if (ids.length === 0) {
@@ -2464,7 +5716,11 @@ async function readOpaqueOwners(
   const rows = await transaction
     .select({ id: table.id, userId: table.userId })
     .from(table)
-    .where(inArray(table.id, ids));
+    .where(
+      ACCOUNT_KEYED_OPAQUE_TABLES.has(table)
+        ? and(eq(table.userId, userId), inArray(table.id, ids))
+        : inArray(table.id, ids)
+    );
   return new Map(rows.map((row) => [row.id, row.userId]));
 }
 
@@ -2477,7 +5733,9 @@ async function readBeforeImage(
   const existingRows = await transaction
     .select({ userId: table.userId, payload: table.payload })
     .from(table)
-    .where(eq(table.id, id))
+    // Scoped by owner as well as id: `compounds` is keyed (user_id, id)
+    // because OTC seed Compound ids are shared by every account.
+    .where(and(eq(table.userId, userId), eq(table.id, id)))
     .limit(1);
   const existing = existingRows[0];
   if (existing === undefined || existing.userId !== userId) {
@@ -2489,7 +5747,8 @@ async function readBeforeImage(
 async function selectOpaque(
   db: ServerDatabase,
   table: OpaqueTable,
-  userId: string
+  userId: string,
+  condition?: SQL
 ): Promise<OpaqueRow[]> {
   return db
     .select({
@@ -2499,8 +5758,270 @@ async function selectOpaque(
       deletedAt: table.deletedAt
     })
     .from(table)
-    .where(eq(table.userId, userId))
+    .where(and(eq(table.userId, userId), condition))
     .orderBy(asc(table.id));
+}
+
+/**
+ * The plan rows `planDays` reads, as the app's plan query reads them
+ * (`ProtocolPlanRepository._planQuery`): every Protocol and Protocol Member
+ * except rows tombstoned by undo (archived ones are kept with their frozen
+ * dates, so past days still count them, D1), and every Schedule Version not
+ * tombstoned. As there, a member counts only while the user holds a row for
+ * its Compound (archived or not): the app's query inner-joins `compounds`, so
+ * a member synced before its Compound plans nothing in either. Each query is
+ * scoped to the user; with a `protocolId` only that Protocol, its members and
+ * their versions are read. A `compoundId` keeps only that Compound's member
+ * rows (and their versions), which leaves its PlanDays exactly as a read of
+ * the whole plan gives them, because `planDays` decides each Protocol,
+ * Compound and date on its own.
+ *
+ * A row the codecs can't read is left out rather than failing the read, as
+ * the Protocol list read leaves it out: a Protocol with no real start date
+ * (synced before local dates, D3) plans nothing, a version whose
+ * `effectiveFrom` or rule the codec can't read is skipped, and a period it
+ * can't read reads as none.
+ */
+async function readPlanProtocols(
+  db: ServerDatabase,
+  userId: string,
+  query: { protocolId?: string; compoundId?: string }
+): Promise<PlanProtocol[]> {
+  const { protocolId, compoundId } = query;
+  const memberPayload = schema.protocolCompounds.payload;
+  const memberFilter = and(
+    protocolId === undefined ? undefined : sql`${memberPayload}->>'protocol_id' = ${protocolId}`,
+    compoundId === undefined ? undefined : sql`${memberPayload}->>'compound_id' = ${compoundId}`
+  );
+  const [protocolRows, memberRows, scheduleRows] = await Promise.all([
+    selectOpaque(
+      db,
+      schema.protocols,
+      userId,
+      protocolId === undefined ? undefined : eq(schema.protocols.id, protocolId)
+    ),
+    selectOpaque(
+      db,
+      schema.protocolCompounds,
+      userId,
+      and(
+        memberFilter,
+        inArray(
+          sql`${memberPayload}->>'compound_id'`,
+          db
+            .select({ id: schema.compounds.id })
+            .from(schema.compounds)
+            .where(eq(schema.compounds.userId, userId))
+        )
+      )
+    ),
+    // A Schedule Version names its member, not its Protocol or Compound, so
+    // a filtered read's versions are the ones naming its filtered members.
+    selectOpaque(
+      db,
+      schema.schedules,
+      userId,
+      memberFilter === undefined
+        ? undefined
+        : inArray(
+            sql`${schema.schedules.payload}->>'protocol_compound_id'`,
+            db
+              .select({ id: schema.protocolCompounds.id })
+              .from(schema.protocolCompounds)
+              .where(and(eq(schema.protocolCompounds.userId, userId), memberFilter))
+          )
+    )
+  ]);
+  const members = memberRows.filter(
+    (row) => !isUndoTombstone(row) && typeof row.payload.compound_id === "string"
+  );
+
+  const membersByProtocol = groupBy(members, (row) => String(row.payload.protocol_id ?? ""));
+  const versionsByMember = groupBy(
+    scheduleRows.filter((row) => row.deletedAt === null),
+    (row) => String(row.payload.protocol_compound_id ?? "")
+  );
+  const protocols: PlanProtocol[] = [];
+  for (const row of protocolRows) {
+    const startLocalDate = localDateOrNull(row.payload.start_local_date);
+    const protocolMembers = membersByProtocol.get(row.id) ?? [];
+    if (isUndoTombstone(row) || startLocalDate === null || protocolMembers.length === 0) {
+      continue;
+    }
+    protocols.push({
+      protocolId: row.id,
+      startLocalDate,
+      endLocalDate: localDateOrNull(row.payload.end_local_date),
+      period: readStoredPeriod(row.payload.period),
+      archivedOn: localDateOrNull(row.payload.archived_on),
+      remindersEnabled: row.payload.reminders_enabled === true,
+      members: protocolMembers.map((member) => ({
+        memberId: member.id,
+        compoundId: String(member.payload.compound_id),
+        archivedOn: localDateOrNull(member.payload.archived_on),
+        versions: (versionsByMember.get(member.id) ?? []).flatMap((version) => {
+          const serialized = serializeScheduleVersion(version);
+          return serialized === null
+            ? []
+            : [
+                {
+                  id: serialized.id,
+                  effectiveFrom: serialized.effectiveFrom,
+                  rule: serialized.rule,
+                  amountValue: serialized.doseAmountValue,
+                  amountEntered: serialized.doseAmountEntered,
+                  unit: serialized.doseUnit,
+                  route: serialized.route
+                }
+              ];
+        })
+      }))
+    });
+  }
+  return protocols;
+}
+
+/**
+ * The range's logged Doses as matching reads them (D6 step 2), the same set
+ * the app numbers (`ProtocolPlanRepository._planDoses`): every Dose not
+ * archived, tagged or not, of a Compound, on its frozen local date. Its local
+ * time is its instant at its frozen UTC offset; a Dose logged before offsets
+ * were frozen has none and is read in UTC (D2). `sequence` numbers a
+ * Compound's Doses on a date by local time, then id. The Protocol filter does
+ * not apply: a Dose's tag never decides what it fills, and Doses of a
+ * Compound the plan read doesn't plan are ignored by `dayStatuses`.
+ */
+async function readPlanDoses(
+  db: ServerDatabase,
+  userId: string,
+  query: { fromLocalDate: string; toLocalDate: string; compoundId?: string }
+): Promise<PlanDose[]> {
+  // Byte order ("C"), so the range compares YYYY-MM-DD dates whatever the
+  // database's default collation.
+  const localDate = sql`(${schema.doses.payload}->>'local_date') collate "C"`;
+  const rows = await selectOpaque(
+    db,
+    schema.doses,
+    userId,
+    and(
+      isNull(schema.doses.deletedAt),
+      sql`${localDate} between ${query.fromLocalDate} and ${query.toLocalDate}`,
+      query.compoundId === undefined
+        ? undefined
+        : sql`${schema.doses.payload}->>'compound_id' = ${query.compoundId}`
+    )
+  );
+
+  const doses: Omit<PlanDose, "sequence">[] = [];
+  for (const row of rows) {
+    const compoundId = nullableString(row.payload.compound_id);
+    const doseLocalDate = localDateOrNull(row.payload.local_date);
+    const localTime = doseLocalTime(row.payload);
+    if (compoundId === null || doseLocalDate === null || localTime === null) {
+      continue;
+    }
+    doses.push({ doseId: row.id, compoundId, localDate: doseLocalDate, localTime });
+  }
+  doses.sort(
+    (left, right) =>
+      compareIds(left.localTime, right.localTime) || compareIds(left.doseId, right.doseId)
+  );
+  const sequenceByGroup = new Map<string, number>();
+  return doses.map((dose) => {
+    const key = `${dose.compoundId}\u0000${dose.localDate}`;
+    const sequence = sequenceByGroup.get(key) ?? 0;
+    sequenceByGroup.set(key, sequence + 1);
+    return { ...dose, sequence };
+  });
+}
+
+/**
+ * The range's Skips as matching reads them (D8, step 3): every Skip not
+ * removed, of this account, on its written local date. A `compoundId` keeps
+ * only that Compound's Skips and a `protocolId` only that Protocol's; a Skip
+ * can only mark its own Protocol's planned dose anyway. A row with no
+ * readable `protocol_id`, `compound_id` or `local_date` is left out, as
+ * `readPlanDoses` leaves out an unreadable Dose. So is one whose
+ * `planned_local_time` is neither null nor `HH:MM`: reading it as untimed
+ * would let it mark an untimed planned dose it never named, and no writer
+ * stores one (both validate it).
+ */
+async function readPlanSkips(
+  db: ServerDatabase,
+  userId: string,
+  query: {
+    fromLocalDate: string;
+    toLocalDate: string;
+    compoundId?: string;
+    protocolId?: string;
+  }
+): Promise<PlanSkip[]> {
+  // Byte order ("C"), as readPlanDoses, so the range compares dates whatever
+  // the database's default collation.
+  const localDate = sql`(${schema.protocolSkips.payload}->>'local_date') collate "C"`;
+  const rows = await selectOpaque(
+    db,
+    schema.protocolSkips,
+    userId,
+    and(
+      isNull(schema.protocolSkips.deletedAt),
+      sql`${localDate} between ${query.fromLocalDate} and ${query.toLocalDate}`,
+      query.compoundId === undefined
+        ? undefined
+        : sql`${schema.protocolSkips.payload}->>'compound_id' = ${query.compoundId}`,
+      query.protocolId === undefined
+        ? undefined
+        : sql`${schema.protocolSkips.payload}->>'protocol_id' = ${query.protocolId}`
+    )
+  );
+
+  const skips: PlanSkip[] = [];
+  for (const row of rows) {
+    const protocolId = nullableString(row.payload.protocol_id);
+    const compoundId = nullableString(row.payload.compound_id);
+    const skipLocalDate = localDateOrNull(row.payload.local_date);
+    const time = row.payload.planned_local_time ?? null;
+    const plannedLocalTime =
+      time === null ? null : typeof time === "string" && isPlanLocalTime(time) ? time : undefined;
+    if (
+      protocolId === null ||
+      compoundId === null ||
+      skipLocalDate === null ||
+      plannedLocalTime === undefined
+    ) {
+      continue;
+    }
+    skips.push({
+      skipId: row.id,
+      protocolId,
+      compoundId,
+      localDate: skipLocalDate,
+      plannedLocalTime
+    });
+  }
+  return skips;
+}
+
+/**
+ * A Dose's local clock time, `HH:MM`: its `took_at` at its frozen
+ * `timezone_offset_minutes`, or in UTC when it has none (D2). Null when
+ * `took_at` is not a timestamp.
+ */
+function doseLocalTime(payload: Record<string, unknown>): string | null {
+  const tookAt = parseOptionalDate(
+    typeof payload.took_at === "string" ? payload.took_at : undefined
+  );
+  if (tookAt === null) {
+    return null;
+  }
+  const offset = payload.timezone_offset_minutes;
+  const offsetMinutes = typeof offset === "number" && Number.isInteger(offset) ? offset : 0;
+  const clock = new Date(tookAt.getTime() + offsetMinutes * 60_000);
+  return `${String(clock.getUTCHours()).padStart(2, "0")}:${String(clock.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function localDateOrNull(value: unknown): string | null {
+  return typeof value === "string" && isValidLocalDate(value) ? value : null;
 }
 
 async function resolveMetric(
@@ -2534,6 +6055,8 @@ function serializeCompound(row: OpaqueRow) {
     defaultUnit: String(row.payload.default_unit ?? ""),
     defaultRoute: String(row.payload.default_route ?? ""),
     strength: readStrength(row.payload.strength),
+    // A Compound written before Purposes, or by an Agent that omitted the list.
+    purposeIds: parseJsonStringArray(row.payload.purpose_ids),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };
@@ -2551,6 +6074,11 @@ function serializeDose(row: OpaqueRow) {
     route: String(row.payload.route ?? ""),
     tookAt: String(row.payload.took_at ?? row.updatedAt.toISOString()),
     timezone: String(row.payload.timezone ?? "UTC"),
+    // A Dose logged before offsets were frozen has none, and reads null.
+    timezoneOffsetMinutes:
+      typeof row.payload.timezone_offset_minutes === "number"
+        ? row.payload.timezone_offset_minutes
+        : null,
     localDate: String(row.payload.local_date ?? ""),
     provenance: String(row.payload.provenance ?? "manual"),
     protocolId: nullableString(row.payload.protocol_id),
@@ -2564,27 +6092,59 @@ function serializeProtocol(row: OpaqueRow) {
   return {
     id: row.id,
     name: String(row.payload.name ?? ""),
-    startDate: nullableString(row.payload.start_date),
-    endDate: nullableString(row.payload.end_date),
+    startLocalDate: nullableString(row.payload.start_local_date),
+    endLocalDate: nullableString(row.payload.end_local_date),
+    period: readStoredPeriod(row.payload.period),
+    remindersEnabled: row.payload.reminders_enabled === true,
+    archivedOn: nullableString(row.payload.archived_on),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };
 }
 
-function serializeMember(row: OpaqueRow) {
+function serializeMember(row: OpaqueRow, versionRows: readonly OpaqueRow[]) {
+  // Versions tombstoned by undo never existed (D1), so they are left out.
+  // A version whose stored JSON the codec can't read can't be planned on
+  // either, and is left out rather than failing the whole read.
+  const versions = versionRows
+    .filter((version) => version.deletedAt === null)
+    .flatMap((version) => {
+      const serialized = serializeScheduleVersion(version);
+      return serialized === null ? [] : [serialized];
+    })
+    .sort(compareScheduleVersions);
   return {
     id: row.id,
     compoundId: String(row.payload.compound_id ?? ""),
     position: Number(row.payload.position ?? 0),
+    archivedOn: nullableString(row.payload.archived_on),
+    versions,
+    // The latest effectiveFrom, the larger id on a tie: the last in this order.
+    currentVersion: versions.at(-1) ?? null,
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };
 }
 
-function serializeSchedule(row: OpaqueRow) {
+function serializeScheduleVersion(row: OpaqueRow) {
+  const effectiveFrom = row.payload.effective_from;
+  if (typeof effectiveFrom !== "string" || !isValidLocalDate(effectiveFrom)) {
+    return null;
+  }
+  let rule: ScheduleRule;
+  try {
+    rule = decodeScheduleRule(readJsonObject(row.payload.rule));
+  } catch (error) {
+    if (error instanceof ProtocolPlanCodecError) {
+      return null;
+    }
+    throw error;
+  }
   return {
     id: row.id,
     protocolCompoundId: String(row.payload.protocol_compound_id ?? ""),
+    effectiveFrom,
+    rule,
     doseAmountValue:
       row.payload.dose_amount_value === null ||
       row.payload.dose_amount_value === undefined
@@ -2592,48 +6152,189 @@ function serializeSchedule(row: OpaqueRow) {
         : Number(row.payload.dose_amount_value),
     doseAmountEntered: nullableString(row.payload.dose_amount_entered),
     doseUnit: nullableString(row.payload.dose_unit),
-    frequency: String(row.payload.frequency ?? ""),
     route: nullableString(row.payload.route),
-    updatedAt: row.updatedAt.toISOString(),
-    deletedAt: row.deletedAt?.toISOString() ?? null
+    updatedAt: row.updatedAt.toISOString()
   };
 }
 
+/** A stored period through the codec; one it can't read reads as no period. */
+function readStoredPeriod(value: unknown): ProtocolPeriod | null {
+  try {
+    return decodeProtocolPeriod(value === null || value === undefined ? null : readJsonObject(value));
+  } catch (error) {
+    if (error instanceof ProtocolPlanCodecError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function serializePlanDay(day: PlanDay) {
+  return {
+    protocolId: day.protocolId,
+    compoundId: day.compoundId,
+    localDate: day.localDate,
+    state: day.state,
+    planned: day.planned.map((planned) => ({
+      localTime: planned.localTime,
+      ...readPlanAmount(planned)
+    })),
+    archiveDay: day.archiveDay
+  };
+}
+
+function serializeDayStatus(status: DayStatus, detail: "summary" | "doses") {
+  return {
+    compoundId: status.compoundId,
+    localDate: status.localDate,
+    status: status.status,
+    ...(status.notPlannedReason === undefined
+      ? {}
+      : { notPlannedReason: status.notPlannedReason }),
+    plannedCount: status.plannedCount,
+    loggedCount: status.loggedCount,
+    skippedCount: status.skippedCount,
+    extraCount: status.extraCount,
+    ...(detail === "doses"
+      ? {
+          fills: status.fills.map((fill) => ({
+            slot: fill.slot,
+            protocolId: fill.protocolId,
+            plannedLocalTime: fill.plannedLocalTime,
+            ...readPlanAmount(fill),
+            doseId: fill.doseId,
+            skipId: fill.skipId
+          }))
+        }
+      : {})
+  };
+}
+
+function readPlanAmount(amount: PlanAmount) {
+  return {
+    amountValue: amount.amountValue ?? null,
+    amountEntered: amount.amountEntered ?? null,
+    unit: amount.unit ?? null,
+    route: amount.route ?? null
+  };
+}
+
+/**
+ * Reads `kind`, the key the app writes. An Agent write stored `outcome_kind`
+ * and no `position` before docs/designs/protocol-target-outcome-sync-shape.md
+ * (D4, D5), and an Agent undo can restore such a payload, so both fall back.
+ */
 function serializeTargetOutcome(row: OpaqueRow) {
+  const kind = row.payload.kind;
+  const legacyKind = row.payload.outcome_kind;
   return {
     id: row.id,
     metricId: nullableString(row.payload.metric_id),
-    outcomeKind: String(row.payload.outcome_kind ?? "metric"),
+    outcomeKind:
+      typeof kind === "string" && kind.length > 0
+        ? kind
+        : typeof legacyKind === "string" && legacyKind.length > 0
+          ? legacyKind
+          : "metric",
+    position: payloadPosition(row.payload) ?? 0,
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };
 }
 
-function readStrength(value: unknown) {
-  if (value === null || value === undefined || typeof value !== "object") {
+/// The short label of each Dose unit, as the app's `doseUnitLabel` writes it
+/// into a strength label. Twins that Dart switch member for member.
+const DOSE_UNIT_LABELS: Record<DoseUnit, string> = {
+  milligram: "mg",
+  microgram: "mcg",
+  gram: "g",
+  internationalUnit: "IU",
+  milliliter: "mL",
+  tablet: "tablet",
+  capsule: "capsule",
+  drop: "drop",
+  spray: "spray",
+  puff: "puff",
+  patch: "patch",
+  unit: "unit"
+};
+
+/// The Dart `CompoundStrength.parse` pattern: `<amount> <unit>/<unit>`.
+const STRENGTH_LABEL_PATTERN = /^(\S+)\s+([A-Za-z]+)\s*\/\s*([A-Za-z]+)$/;
+
+const STRENGTH_REFUSAL_MESSAGE =
+  "A strength needs a positive value and two units from the Dose unit registry.";
+
+type AgentStrength = { value: number; massUnit: DoseUnit; perUnit: DoseUnit };
+
+/**
+ * A stored strength (a Compound's `strength`, a Dose's `compound_strength`) as
+ * the Agent reads it. The stored shape is the app's: a label such as
+ * `"5 mg/capsule"`, which the app's `CompoundStrength.parse` reads. Before the
+ * Agent write stored that label it stored this object itself, and an Agent
+ * undo can restore such a payload, so an object with registry unit names is
+ * read too. Anything else reads as null: the read never fails on one row.
+ */
+function readStrength(value: unknown): AgentStrength | null {
+  if (typeof value === "string") {
+    const match = STRENGTH_LABEL_PATTERN.exec(value.trim());
+    if (match === null) {
+      return null;
+    }
+    return validStrength(
+      Number(match[1]),
+      doseUnitForLabel(match[2]!),
+      doseUnitForLabel(match[3]!)
+    );
+  }
+  if (value === null || typeof value !== "object") {
     return null;
   }
   const record = value as Record<string, unknown>;
+  return validStrength(record.value, record.massUnit, record.perUnit);
+}
+
+/**
+ * The label the payload stores for an Agent-sent strength, null for none, or
+ * undefined when the label can't hold it (a unit outside the registry or an
+ * amount that isn't positive), which the batch write refuses with
+ * `compound_strength`. The amount is written with `String`, so `5` stays `5`.
+ */
+function strengthPayload(
+  strength: { value: number; massUnit: string; perUnit: string } | null | undefined
+): string | null | undefined {
+  if (strength === null || strength === undefined) {
+    return null;
+  }
+  const valid = validStrength(strength.value, strength.massUnit, strength.perUnit);
+  return valid === null
+    ? undefined
+    : `${String(valid.value)} ${DOSE_UNIT_LABELS[valid.massUnit]}/${DOSE_UNIT_LABELS[valid.perUnit]}`;
+}
+
+function validStrength(
+  value: unknown,
+  massUnit: unknown,
+  perUnit: unknown
+): AgentStrength | null {
   if (
-    typeof record.value !== "number" ||
-    typeof record.massUnit !== "string" ||
-    typeof record.perUnit !== "string"
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    !isDoseUnit(massUnit) ||
+    !isDoseUnit(perUnit)
   ) {
     return null;
   }
-  return {
-    value: record.value,
-    massUnit: record.massUnit,
-    perUnit: record.perUnit
-  };
+  return { value, massUnit, perUnit };
 }
 
-function strengthPayload(
-  strength: { value: number; massUnit: string; perUnit: string } | null | undefined
-) {
-  return strength === null || strength === undefined
-    ? null
-    : { value: strength.value, massUnit: strength.massUnit, perUnit: strength.perUnit };
+function isDoseUnit(unit: unknown): unit is DoseUnit {
+  return typeof unit === "string" && (DOSE_UNITS as readonly string[]).includes(unit);
+}
+
+function doseUnitForLabel(label: string): DoseUnit | null {
+  return DOSE_UNITS.find((unit) => DOSE_UNIT_LABELS[unit] === label) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -2711,13 +6412,7 @@ function nextCursorFor<T extends { id: string }>(
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
   const map = new Map<string, T[]>();
   for (const row of rows) {
-    const groupKey = key(row);
-    const existing = map.get(groupKey);
-    if (existing === undefined) {
-      map.set(groupKey, [row]);
-    } else {
-      existing.push(row);
-    }
+    pushToGroup(map, key(row), row);
   }
   return map;
 }

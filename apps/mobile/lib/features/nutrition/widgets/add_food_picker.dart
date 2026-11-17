@@ -3,51 +3,88 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../theme/theme.dart';
 import '../controllers/add_food_controller.dart';
 import '../repositories/add_food_repository.dart';
 import 'barcode_scanner.dart';
 import 'nutrition_attribution.dart';
+import 'portion_text.dart';
 import 'quick_entry_dialog.dart';
 
+// The causes a barcode miss and the online slot share.
+const _offlineLine = "You're offline. Showing foods on this device.";
+const _unavailableLine =
+    'Open Food Facts is unavailable. Try again in a minute.';
+const _lookupsOffLine =
+    'Online lookups are off. Turn them on in Settings > Food data.';
+
 const _visibleFoodPickerFilters = <AddFoodPickerFilter>[
-  AddFoodPickerFilter.recent,
-  AddFoodPickerFilter.user,
+  AddFoodPickerFilter.all,
+  AddFoodPickerFilter.yours,
   AddFoodPickerFilter.usda,
   AddFoodPickerFilter.openFoodFacts,
 ];
 
+const _noMatchLine = 'No foods match.';
+
+/// The add-food picker, embedded in the Meal screen
+/// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md).
+///
+/// The picker never writes on its own: the caller owns every write, through
+/// [onFoodSelected] and [onQuickEntry], so the Meal screen's in-flight guard
+/// and its switch to the saved Meal cover them. Its results area is an
+/// [Expanded], so the caller must give it a bounded height.
 class AddFoodPicker extends ConsumerWidget {
   const AddFoodPicker({
     super.key,
-    required this.meal,
     this.onFoodSelected,
-    this.onQuickEntry,
+    required this.onQuickEntry,
   });
 
   static const searchFieldKey = Key('nutrition.addFood.search');
   static const quickAddButtonKey = Key('nutrition.addFood.quickAdd');
   static const scanBarcodeButtonKey = Key('nutrition.addFood.scanBarcode');
   static const barcodeStatusKey = Key('nutrition.addFood.barcodeStatus');
-  static const brandedSearchStatusKey =
-      Key('nutrition.addFood.brandedSearchStatus');
+
+  /// The one line under a barcode miss (offline, unavailable or lookups off).
+  static const barcodeStatusLineKey =
+      Key('nutrition.addFood.barcodeStatusLine');
+  static const onlineSearchRowKey = Key('nutrition.addFood.onlineSearch');
+  static const onlineGroupKey = Key('nutrition.addFood.onlineGroup');
+  static const onlineStatusLineKey = Key('nutrition.addFood.onlineStatusLine');
+  static const bundleStatusLineKey = Key('nutrition.addFood.bundleStatusLine');
+
+  /// The Open Food Facts filter's blank-query line.
+  static const emptyQueryLineKey = Key('nutrition.addFood.emptyQueryLine');
+  static const yourFoodsLabelKey = Key('nutrition.addFood.yourFoodsLabel');
+
+  /// The blank-query line when there is nothing to list: All with no Your
+  /// foods, or the Your foods filter with none.
+  static const emptyStateKey = Key('nutrition.addFood.emptyState');
+  static const noMatchLineKey = Key('nutrition.addFood.noMatch');
+  static const attributionFooterKey =
+      Key('nutrition.addFood.attributionFooter');
   static const barcodeQuickAddButtonKey =
       Key('nutrition.addFood.barcodeQuickAdd');
   static const lookupUsdaButtonKey = Key('nutrition.addFood.lookupUsda');
   static const searchDebounceDuration =
       AddFoodPickerController.searchDebounceDuration;
 
-  final MealRecord meal;
+  /// Opens a picked Food. Null makes the picker browse-only: its results
+  /// don't open.
   final ValueChanged<FoodPickerItem>? onFoodSelected;
-  final Future<void> Function(QuickFoodEntryDraft draft)? onQuickEntry;
+
+  /// Makes the Quick add write for the draft the Quick Entry dialog returns.
+  final Future<void> Function(QuickFoodEntryDraft draft) onQuickEntry;
 
   static Key filterChipKey(AddFoodPickerFilter filter) {
     return Key('nutrition.addFood.filter-${filter.name}');
   }
 
-  static Key resultKey(AddFoodPickerFilter filter, String id) {
-    return Key('nutrition.addFood.result-${filter.name}-$id');
+  static Key resultKey(FoodPickerItem item) {
+    return Key('nutrition.addFood.result-${item.foodSource.name}-${item.id}');
   }
 
   @override
@@ -59,14 +96,10 @@ class AddFoodPicker extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Embedded under the Meal screen's header, so no title of its own.
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: Text(
-                  'Add Food',
-                  style: context.textStyles.h1,
-                ),
-              ),
               IconButton.outlined(
                 key: scanBarcodeButtonKey,
                 tooltip: 'Scan barcode',
@@ -79,7 +112,7 @@ class AddFoodPicker extends ConsumerWidget {
               FilledButton.icon(
                 key: quickAddButtonKey,
                 onPressed: () {
-                  unawaited(_quickAdd(context, ref));
+                  unawaited(_quickAdd(context));
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Quick add'),
@@ -102,38 +135,25 @@ class AddFoodPicker extends ConsumerWidget {
               );
             },
             onSubmitted: (value) {
-              unawaited(
-                ref
-                    .read(addFoodPickerControllerProvider.notifier)
-                    .submitQuery(value),
-              );
+              unawaited(_submit(context, ref, value));
             },
           ),
           const SizedBox(height: AppDimens.base),
           state.when(
             data: (value) => _FoodSourceChips(selected: value.filter),
             loading: () => const _FoodSourceChips(
-              selected: AddFoodPickerFilter.recent,
+              selected: AddFoodPickerFilter.all,
             ),
             error: (_, __) => const _FoodSourceChips(
-              selected: AddFoodPickerFilter.recent,
+              selected: AddFoodPickerFilter.all,
             ),
-          ),
-          state.maybeWhen(
-            data: (value) => value.filter == AddFoodPickerFilter.openFoodFacts
-                ? const Padding(
-                    padding: EdgeInsets.only(top: AppDimens.base),
-                    child: OpenFoodFactsAttributionNotice(compact: true),
-                  )
-                : const SizedBox.shrink(),
-            orElse: () => const SizedBox.shrink(),
           ),
           const SizedBox(height: AppDimens.base),
           state.when(
             data: (value) => _LookupBoundaryBanner(
               state: value,
               onQuickAdd: () {
-                unawaited(_quickAdd(context, ref));
+                unawaited(_quickAdd(context));
               },
               onUseUsda: () {
                 unawaited(
@@ -148,8 +168,7 @@ class AddFoodPicker extends ConsumerWidget {
           ),
           state.maybeWhen(
             data: (value) =>
-                value.barcodeLookupStatus == BarcodeLookupStatus.idle &&
-                        !value.brandedSearchNeedsNetwork
+                value.barcodeLookupStatus == BarcodeLookupStatus.idle
                     ? const SizedBox.shrink()
                     : const SizedBox(height: AppDimens.base),
             orElse: () => const SizedBox.shrink(),
@@ -158,7 +177,11 @@ class AddFoodPicker extends ConsumerWidget {
             child: state.when(
               data: (value) => _FoodResults(
                 state: value,
-                onFoodSelected: onFoodSelected,
+                onOpen:
+                    onFoodSelected == null ? null : (item) => _open(ref, item),
+                onSearchOnline: () {
+                  unawaited(_submit(context, ref, value.query));
+                },
               ),
               loading: () => const SizedBox.expand(),
               error: (_, __) => Center(
@@ -176,24 +199,15 @@ class AddFoodPicker extends ConsumerWidget {
     );
   }
 
-  Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
+  Future<void> _quickAdd(BuildContext context) async {
     final draft = await showDialog<QuickFoodEntryDraft>(
       context: context,
-      builder: (context) => QuickEntryDialog(mealType: meal.mealType),
+      builder: (context) => const QuickEntryDialog(),
     );
     if (draft == null) {
       return;
     }
-    if (onQuickEntry != null) {
-      await onQuickEntry!(draft);
-      return;
-    }
-    await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .logQuickEntryForMeal(
-          mealId: meal.id,
-          entry: draft,
-        );
+    await onQuickEntry(draft);
   }
 
   Future<void> _scanBarcode(BuildContext context, WidgetRef ref) async {
@@ -201,13 +215,45 @@ class AddFoodPicker extends ConsumerWidget {
     if (!context.mounted || barcode == null || barcode.trim().isEmpty) {
       return;
     }
-    final food = await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .lookupBarcode(barcode);
-    if (!context.mounted || food == null || onFoodSelected == null) {
+    await _openFound(
+      context,
+      ref,
+      ref.read(addFoodPickerControllerProvider.notifier).lookupBarcode(barcode),
+    );
+  }
+
+  /// The keyboard's search action and the online search row. A typed barcode
+  /// that is found opens the log-portion screen through the scan's path.
+  Future<void> _submit(BuildContext context, WidgetRef ref, String query) {
+    return _openFound(
+      context,
+      ref,
+      ref.read(addFoodPickerControllerProvider.notifier).submitQuery(query),
+    );
+  }
+
+  /// Opens the item a scan or a submit found, if the picker is still shown.
+  Future<void> _openFound(
+    BuildContext context,
+    WidgetRef ref,
+    Future<FoodPickerItem?> lookup,
+  ) async {
+    final food = await lookup;
+    if (!context.mounted || food == null) {
       return;
     }
-    onFoodSelected!(food);
+    _open(ref, food);
+  }
+
+  /// Every opened item goes through the controller first, which stores a live
+  /// copy in the background.
+  void _open(WidgetRef ref, FoodPickerItem item) {
+    final onSelected = onFoodSelected;
+    if (onSelected == null) {
+      return;
+    }
+    ref.read(addFoodPickerControllerProvider.notifier).openItem(item);
+    onSelected(item);
   }
 }
 
@@ -242,42 +288,228 @@ class _FoodSourceChips extends ConsumerWidget {
   }
 }
 
+/// The list under the chips, per filter and query
+/// (docs/designs/unified-food-search.md § The picker, top to bottom).
 class _FoodResults extends StatelessWidget {
   const _FoodResults({
     required this.state,
-    required this.onFoodSelected,
+    required this.onOpen,
+    required this.onSearchOnline,
   });
 
   final AddFoodPickerState state;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
+  final ValueChanged<FoodPickerItem>? onOpen;
+  final VoidCallback onSearchOnline;
 
   @override
   Widget build(BuildContext context) {
-    if (state.results.isEmpty) {
-      return Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          'No foods found',
-          style: context.textStyles.body.copyWith(
-            color: context.colors.textSecondary,
-          ),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      itemCount: state.results.length,
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        color: context.colors.divider,
-      ),
-      itemBuilder: (context, index) {
-        final item = state.results[index];
-        return _FoodResultRow(
-          item: item,
-          onFoodSelected: onFoodSelected,
-        );
+    final blank = isBlankFoodQuery(state.query);
+    final entries = <_Entry>[
+      ...switch (state.filter) {
+        AddFoodPickerFilter.all when blank => [
+            if (state.results.isEmpty)
+              (_) => const _StatusLine(
+                    key: AddFoodPicker.emptyStateKey,
+                    text: 'Search by name or brand, or scan a barcode.',
+                  )
+            else ...[
+              (context) => Semantics(
+                    header: true,
+                    child: Padding(
+                      key: AddFoodPicker.yourFoodsLabelKey,
+                      padding: const EdgeInsets.only(bottom: AppDimens.dense),
+                      child: Text(
+                        'Your foods',
+                        style: context.textStyles.label.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ..._rows(state.results),
+            ],
+          ],
+        AddFoodPickerFilter.all => [
+            ..._rowsOrNoMatch(),
+            ..._bundleLine(),
+            ..._online(),
+          ],
+        AddFoodPickerFilter.yours when blank && state.results.isEmpty => [
+            (_) => const _StatusLine(
+                  key: AddFoodPicker.emptyStateKey,
+                  text: 'Foods you log or create appear here.',
+                ),
+          ],
+        AddFoodPickerFilter.yours ||
+        AddFoodPickerFilter.usda =>
+          _rowsOrNoMatch(),
+        AddFoodPickerFilter.openFoodFacts => [
+            ..._bundleLine(),
+            if (blank)
+              (_) => const _StatusLine(
+                    key: AddFoodPicker.emptyQueryLineKey,
+                    text: 'Search Open Food Facts by product name, brand or '
+                        'barcode.',
+                  )
+            else ...[
+              ..._rows(state.results),
+              ..._online(),
+            ],
+          ],
       },
+      // One rule: any Open Food Facts row in the list, from the device or a
+      // live search, puts the compact notice after the last list item.
+      if (state.results.any(_isOpenFoodFacts) ||
+          state.onlineResults.any(_isOpenFoodFacts))
+        (_) => const Padding(
+              key: AddFoodPicker.attributionFooterKey,
+              padding: EdgeInsets.only(top: AppDimens.base),
+              child: OpenFoodFactsAttributionNotice(compact: true),
+            ),
+    ];
+
+    // Built on demand: Your foods alone can hold 200 rows.
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (context, index) => entries[index](context),
+    );
+  }
+
+  static bool _isOpenFoodFacts(FoodPickerItem item) {
+    return item.foodSource == FoodSource.openFoodFacts;
+  }
+
+  List<_Entry> _rows(List<FoodPickerItem> items) {
+    return [
+      for (final item in items) ...[
+        (_) => _FoodResultRow(item: item, onOpen: onOpen),
+        (context) => Divider(height: 1, color: context.colors.divider),
+      ],
+    ];
+  }
+
+  List<_Entry> _rowsOrNoMatch() {
+    return [
+      ..._rows(state.results),
+      if (state.results.isEmpty)
+        (_) => const _StatusLine(
+              key: AddFoodPicker.noMatchLineKey,
+              text: _noMatchLine,
+            ),
+    ];
+  }
+
+  List<_Entry> _bundleLine() {
+    final line = switch (state.bundleStatus) {
+      BundleStatus.installing => 'Preparing the offline food list.',
+      BundleStatus.failed => 'The offline food list could not be prepared. '
+          'It will try again next time the app opens.',
+      BundleStatus.unknown || BundleStatus.ready => null,
+    };
+    return [
+      if (line != null)
+        (_) => _StatusLine(key: AddFoodPicker.bundleStatusLineKey, text: line),
+    ];
+  }
+
+  /// The online slot, then the live-only results as one group: a live search
+  /// returns one page, so the group is built whole.
+  List<_Entry> _online() {
+    return [
+      (_) => _OnlineSlot(state: state, onSearchOnline: onSearchOnline),
+      if (state.onlineResults.isNotEmpty)
+        (context) => Column(
+              key: AddFoodPicker.onlineGroupKey,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: AppDimens.base,
+                    bottom: AppDimens.dense,
+                  ),
+                  child: Text(
+                    'From Open Food Facts',
+                    style: context.textStyles.label.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                for (final entry in _rows(state.onlineResults)) entry(context),
+              ],
+            ),
+    ];
+  }
+}
+
+/// One list item of [_FoodResults], built when it scrolls into view.
+typedef _Entry = Widget Function(BuildContext context);
+
+/// Exactly one of: the lookups-off line, the online search row (with a
+/// progress indicator while a live request runs), the last live request's
+/// offline, unavailable or no-results line, or the online search row.
+class _OnlineSlot extends StatelessWidget {
+  const _OnlineSlot({required this.state, required this.onSearchOnline});
+
+  final AddFoodPickerState state;
+  final VoidCallback onSearchOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = !state.onlineLookupsEnabled
+        ? _lookupsOffLine
+        : switch (state.onlineStatus) {
+            OnlinePickerStatus.offline => _offlineLine,
+            OnlinePickerStatus.unavailable => _unavailableLine,
+            OnlinePickerStatus.noResults => 'No matches on Open Food Facts.',
+            OnlinePickerStatus.idle ||
+            OnlinePickerStatus.loading ||
+            OnlinePickerStatus.ok =>
+              null,
+          };
+    if (line != null) {
+      return _StatusLine(key: AddFoodPicker.onlineStatusLineKey, text: line);
+    }
+    final loading = state.onlineStatus == OnlinePickerStatus.loading;
+    return ListTile(
+      key: AddFoodPicker.onlineSearchRowKey,
+      minTileHeight: AppDimens.touchTarget,
+      contentPadding: EdgeInsets.zero,
+      leading: loading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: Padding(
+                padding: EdgeInsets.all(AppDimens.dense / 4),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Icon(Icons.search, color: context.colors.textPrimary),
+      title: Text(
+        'Search Open Food Facts online for "${state.query.trim()}"',
+        style: context.textStyles.body.copyWith(
+          color: context.colors.textPrimary,
+        ),
+      ),
+      onTap: loading ? null : onSearchOnline,
+    );
+  }
+}
+
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense),
+      child: Text(
+        text,
+        style: context.textStyles.body.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
     );
   }
 }
@@ -332,6 +564,16 @@ class _LookupBoundaryBanner extends StatelessWidget {
                     message,
                     style: context.textStyles.body,
                   ),
+                  if (status.line case final line?) ...[
+                    const SizedBox(height: AppDimens.dense),
+                    Text(
+                      line,
+                      key: AddFoodPicker.barcodeStatusLineKey,
+                      style: context.textStyles.body.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
                   if (!status.isLoading) ...[
                     const SizedBox(height: AppDimens.dense),
                     Wrap(
@@ -375,35 +617,29 @@ class _LookupBoundaryBanner extends StatelessWidget {
   }
 
   _LookupStatus? _lookupStatus() {
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.loading) {
+    final status = state.barcodeLookupStatus;
+    if (status == BarcodeLookupStatus.idle) {
+      return null;
+    }
+    if (status == BarcodeLookupStatus.loading) {
       return const _LookupStatus(
         key: AddFoodPicker.barcodeStatusKey,
         isLoading: true,
         message: 'Looking up barcode in Open Food Facts',
       );
     }
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.notFound) {
-      return const _LookupStatus(
-        key: AddFoodPicker.barcodeStatusKey,
-        message:
-            'Barcode not found. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.needsNetwork) {
-      return const _LookupStatus(
-        key: AddFoodPicker.barcodeStatusKey,
-        message:
-            'Open Food Facts barcode lookup needs network the first time. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    if (state.brandedSearchNeedsNetwork) {
-      return const _LookupStatus(
-        key: AddFoodPicker.brandedSearchStatusKey,
-        message:
-            'Open Food Facts branded search needs network the first time. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    return null;
+    // Every miss shows the not-found state, with one line for its cause.
+    return _LookupStatus(
+      key: AddFoodPicker.barcodeStatusKey,
+      message: 'Barcode not found. USDA foods stay fully offline, or use '
+          'Quick add.',
+      line: switch (status) {
+        BarcodeLookupStatus.needsNetwork => _offlineLine,
+        BarcodeLookupStatus.unavailable => _unavailableLine,
+        BarcodeLookupStatus.disabled => _lookupsOffLine,
+        _ => null,
+      },
+    );
   }
 }
 
@@ -411,74 +647,110 @@ class _LookupStatus {
   const _LookupStatus({
     required this.key,
     required this.message,
+    this.line,
     this.isLoading = false,
   });
 
   final Key key;
   final String message;
+
+  /// The one line under the not-found state, when the miss has a cause.
+  final String? line;
   final bool isLoading;
 }
 
 class _FoodResultRow extends StatelessWidget {
   const _FoodResultRow({
     required this.item,
-    required this.onFoodSelected,
+    required this.onOpen,
   });
 
   final FoodPickerItem item;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
+  final ValueChanged<FoodPickerItem>? onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      key: AddFoodPicker.resultKey(item.filter, item.id),
-      minVerticalPadding: AppDimens.dense,
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        _sourceIcon(item),
-        color: context.colors.textSecondary,
-      ),
-      title: Text(
+    final onTap = onOpen == null ? null : () => onOpen!(item);
+    final secondary = context.textStyles.label.copyWith(
+      color: context.colors.textSecondary,
+    );
+    final energy = _energyLabel(item);
+    final lastPortion = switch (item.lastPortion) {
+      final portion? => formatPortionAmount(portion),
+      null => null,
+    };
+    // One label, read once: the child texts are not separate nodes.
+    return Semantics(
+      button: true,
+      label: [
         item.name,
-        style: context.textStyles.body,
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            FoodSourceBadge(
-              source: item.foodSource,
-              showLicense: item.foodSource == FoodSource.openFoodFacts,
-            ),
-            Text(
-              _energyLabel(item),
-              style: context.textStyles.label.copyWith(
+        if (item.brand case final brand?) brand,
+        item.foodSourceLabel,
+        energy,
+        if (lastPortion != null) 'Last $lastPortion',
+      ].join(', '),
+      excludeSemantics: true,
+      onTap: onTap,
+      child: ListTile(
+        key: AddFoodPicker.resultKey(item),
+        minTileHeight: AppDimens.touchTarget,
+        minVerticalPadding: AppDimens.dense,
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(
+          _sourceIcon(item),
+          color: context.colors.textSecondary,
+        ),
+        title: Text(
+          item.name,
+          style: context.textStyles.body,
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: AppDimens.dense / 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (item.brand case final brand?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppDimens.dense / 2),
+                  child: Text(brand, style: secondary),
+                ),
+              Wrap(
+                spacing: AppDimens.dense,
+                runSpacing: AppDimens.dense / 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FoodSourceBadge(
+                    source: item.foodSource,
+                    showLicense: item.foodSource == FoodSource.openFoodFacts,
+                  ),
+                  Text(energy, style: secondary),
+                  if (lastPortion != null)
+                    Text('Last: $lastPortion', style: secondary),
+                ],
+              ),
+            ],
+          ),
+        ),
+        trailing: onOpen == null
+            ? null
+            : Icon(
+                Icons.chevron_right,
                 color: context.colors.textSecondary,
               ),
-            ),
-          ],
-        ),
+        onTap: onTap,
       ),
-      trailing: onFoodSelected == null
-          ? null
-          : Icon(
-              Icons.chevron_right,
-              color: context.colors.textSecondary,
-            ),
-      onTap: onFoodSelected == null ? null : () => onFoodSelected!(item),
     );
   }
 }
 
+/// Decorative: names why the row is listed; the source is always named by
+/// the text badge.
 IconData _sourceIcon(FoodPickerItem item) {
-  return switch (item.filter) {
-    AddFoodPickerFilter.recent => Icons.history,
-    AddFoodPickerFilter.user => Icons.person_outline,
-    AddFoodPickerFilter.usda => Icons.public,
-    AddFoodPickerFilter.openFoodFacts => Icons.qr_code_scanner,
+  return switch (item.origin) {
+    FoodPickerOrigin.history => Icons.history,
+    FoodPickerOrigin.userFood => Icons.person_outline,
+    FoodPickerOrigin.usda => Icons.public,
+    FoodPickerOrigin.openFoodFacts => Icons.qr_code_scanner,
   };
 }
 

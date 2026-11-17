@@ -148,7 +148,7 @@ DoseRecord _doseFromJson(Map<String, Object?> json) {
 
 /// Walks up from the current working directory to find the fixture,
 /// tolerant of tests being invoked from either the repo root or
-/// `apps/mobile` (mirrors `effect_window_golden_test.dart`).
+/// `apps/mobile`.
 File _vectorFile(String name) {
   var directory = Directory.current;
   for (var depth = 0; depth < 6; depth += 1) {

@@ -1,11 +1,11 @@
-/// The Protocols domain (CONTEXT.md, PROTOCOLS.md) — the fourth authored domain.
+/// The Protocols domain (CONTEXT.md) — the fourth authored domain.
 ///
 /// A `Compound` is the catalogue/template (the analog of an `Exercise`/`Food`);
 /// a `Dose` is the self-describing, standalone, timestamped logged event (the
 /// analog of a `Set`/`Food Entry`). A `Dose` is authored intake, **never a
-/// `Metric`**, and the model **never categorizes a `Compound` by
-/// substance type or legality** (a neutral logbook, not a
-/// facilitator). Doses are grouped into a derived `Protocol Day` day-view
+/// `Metric`**, and the model **never classifies a `Compound` by what it is or
+/// whether it is legal** (a neutral logbook, not a facilitator); only the OTC
+/// built-ins come tagged with `Purpose`s (`compound_purposes.dart`). Doses are grouped into a derived `Protocol Day` day-view
 /// (nothing stored), with each Dose's local date frozen at log time
 /// via its captured timezone.
 ///
@@ -14,6 +14,9 @@
 /// derived resolved active mass (this slice). The shared dose validator
 /// and sync land in later slices.
 library;
+
+import '../common/local_clock.dart';
+import 'protocol_plan.dart';
 
 /// A frozen `Protocol Day` local date (YYYY-MM-DD). Mirrors `TrainingDayDate` /
 /// `NutritionDayDate`: a `Dose` freezes this at log time from its captured
@@ -59,6 +62,10 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   static final _storagePattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
+  /// The last date a `YYYY-MM-DD` value holds.
+  static const ProtocolDayDate max =
+      ProtocolDayDate(year: 9999, month: 12, day: 31);
+
   final int year;
   final int month;
   final int day;
@@ -72,14 +79,43 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   DateTime toLocalDateTime() => DateTime(year, month, day);
 
+  /// This date as UTC midnight: the calendar arithmetic below runs here, never
+  /// on a local [DateTime]. A local day is 23 or 25 hours long on a
+  /// daylight-saving change, so adding 24-hour [Duration]s to local midnight
+  /// repeats a date in autumn and skips one in spring (and in a zone whose
+  /// change falls at midnight, local midnight itself may not exist). UTC has
+  /// no such days, so every date is exactly one day apart from the next.
+  DateTime utcMidnight() => DateTime.utc(year, month, day);
+
+  /// The date [days] calendar days after this one (before it, when negative).
+  /// Computed in UTC, so it never depends on the device's timezone.
   ProtocolDayDate addDays(int days) {
-    final next = toLocalDateTime().add(Duration(days: days));
-    return ProtocolDayDate.fromDateTime(next);
+    final next = DateTime.utc(year, month, day + days);
+    return ProtocolDayDate(year: next.year, month: next.month, day: next.day);
   }
 
+  /// The number of calendar days from [other] to this date: positive when
+  /// this date is later, zero on the same date. The same UTC arithmetic as
+  /// [addDays], so `other.addDays(daysBetween(other)) == this`.
+  int daysBetween(ProtocolDayDate other) {
+    return utcMidnight().difference(other.utcMidnight()).inDays;
+  }
+
+  /// The ISO 8601 weekday of this date: 1 is Monday and 7 is Sunday, as a
+  /// Schedule Rule's chosen weekdays store it.
+  int get isoWeekday => utcMidnight().weekday;
+
+  /// Calendar order, compared field by field: the plan core compares dates
+  /// on every planned day, so this never builds a string.
   @override
   int compareTo(ProtocolDayDate other) {
-    return storageValue.compareTo(other.storageValue);
+    if (year != other.year) {
+      return year.compareTo(other.year);
+    }
+    if (month != other.month) {
+      return month.compareTo(other.month);
+    }
+    return day.compareTo(other.day);
   }
 
   @override
@@ -99,7 +135,7 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
   String toString() => storageValue;
 }
 
-/// The curated `Dose` amount units (PROTOCOLS.md §1.3). A sealed registry, never
+/// The curated `Dose` amount units. A sealed registry, never
 /// free-text — the same discipline as `Dimension`/`Nutrient`. The
 /// exhaustive [doseUnitLabel] switch makes the analyzer force a label per
 /// member; [doseUnitFromName] rejects any value outside the registry.
@@ -118,7 +154,7 @@ enum DoseUnit {
   unit;
 }
 
-/// The curated `Dose` administration routes (PROTOCOLS.md §1.3). Sealed
+/// The curated `Dose` administration routes. Sealed
 /// registry, never free-text. [doseRouteLabel] is exhaustive.
 ///
 /// Deliberately a route registry only — the model NEVER names or categorizes a
@@ -136,56 +172,11 @@ enum DoseRoute {
 }
 
 /// Who performed the log action (CONTEXT.md `Provenance`): the same stamp used
-/// across the app (PROTOCOLS.md §7).
+/// across the app.
 enum DoseProvenance {
   manual,
   integration,
   agent;
-}
-
-/// The curated `Schedule` frequency registry (PROTOCOLS.md §1.4, CONTEXT.md
-/// `Schedule`): how often a Compound's planned dose is intended. A sealed
-/// registry, never free-text — the same discipline as [DoseUnit]/[DoseRoute].
-/// Deliberately lean: formal phases/titration steps are deferred
-/// (PROTOCOLS.md §12) — a `Schedule` is a flat, purely prescriptive template,
-/// never the source of dose-response analysis (that is always the actual
-/// logged `Dose`s).
-enum ScheduleFrequency {
-  onceDaily,
-  twiceDaily,
-  threeTimesDaily,
-  everyOtherDay,
-  weekly,
-  asNeeded;
-}
-
-/// The human-facing label for a [ScheduleFrequency]. Exhaustive — no
-/// `default`, so adding a member is a compile error until it is labelled.
-String scheduleFrequencyLabel(ScheduleFrequency frequency) {
-  return switch (frequency) {
-    ScheduleFrequency.onceDaily => 'Once daily',
-    ScheduleFrequency.twiceDaily => 'Twice daily',
-    ScheduleFrequency.threeTimesDaily => 'Three times daily',
-    ScheduleFrequency.everyOtherDay => 'Every other day',
-    ScheduleFrequency.weekly => 'Weekly',
-    ScheduleFrequency.asNeeded => 'As needed',
-  };
-}
-
-/// Resolves a stored/entered frequency name to a sealed [ScheduleFrequency]
-/// member, REJECTING anything outside the curated registry (never
-/// free-text).
-ScheduleFrequency scheduleFrequencyFromName(String name) {
-  for (final frequency in ScheduleFrequency.values) {
-    if (frequency.name == name) {
-      return frequency;
-    }
-  }
-  throw ArgumentError.value(
-    name,
-    'name',
-    'Schedule frequency is not in the curated registry.',
-  );
 }
 
 /// The short human-facing label for a [DoseUnit]. Exhaustive — no `default`, so
@@ -254,7 +245,7 @@ DoseRoute doseRouteFromName(String name) {
   );
 }
 
-/// A `Compound`'s optional strength/concentration (PROTOCOLS.md §1.3): a mass (or
+/// A `Compound`'s optional strength/concentration: a mass (or
 /// activity) amount per a countable/volumetric unit — e.g. "5 mg/capsule",
 /// "250 mg/mL", "1000 IU/tablet". Both units come from the curated [DoseUnit]
 /// registry, never free-text. This is an INPUT the user records on
@@ -322,8 +313,8 @@ class CompoundStrength {
   }
 
   /// Like [CompoundStrength.parse] but tolerant of a null/blank snapshot: an
-  /// ad-hoc Dose / strengthless Compound simply has no strength (PROTOCOLS.md
-  /// §1.3 — active mass stays unresolved, never blocking).
+  /// ad-hoc Dose / strengthless Compound simply has no strength (its active
+  /// mass stays unresolved, never blocking).
   static CompoundStrength? tryParse(String? value) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) {
@@ -378,15 +369,14 @@ class CompoundStrength {
   String toString() => storageValue;
 }
 
-/// The kind of ONE target outcome a `Protocol` declares (PROTOCOLS.md §1.4,
-/// §4): WHAT to correlate, seeding the later `Effect` view (M29) — no
+/// The kind of ONE target outcome a `Protocol` declares: WHAT to correlate, seeding the later `Effect` view (M29) — no
 /// analysis happens in this slice. A sealed registry, never
 /// free-text. [protocolOutcomeKindLabel] is exhaustive;
 /// [protocolOutcomeKindFromName] rejects any value outside the registry.
 ///
 /// - `metric`: correlates one specific catalogue `Metric` (its soft
 ///   [ProtocolTargetOutcomeDraft.metricId] reference).
-/// - `performance`: correlates Workout analytics broadly (PROTOCOLS.md §4) —
+/// - `performance`: correlates Workout analytics broadly —
 ///   no `Metric` row backs it.
 enum ProtocolOutcomeKind {
   metric,
@@ -418,8 +408,7 @@ ProtocolOutcomeKind protocolOutcomeKindFromName(String name) {
   );
 }
 
-/// The input for declaring ONE target outcome on a `Protocol` (PROTOCOLS.md
-/// §1.4, §4): WHICH `Metric`/performance to correlate — seeds the later
+/// The input for declaring ONE target outcome on a `Protocol`: WHICH `Metric`/performance to correlate — seeds the later
 /// `Effect` view (M29). Declaring ZERO target outcomes is fully valid; a
 /// Protocol simply MAY declare them. Stored as plan data only — this never
 /// computes an `Effect` (that analysis is a later M29 slice).
@@ -434,7 +423,7 @@ class ProtocolTargetOutcomeDraft {
     );
   }
 
-  /// The `performance` outcome (Workout analytics broadly, PROTOCOLS.md §4) —
+  /// The `performance` outcome (Workout analytics broadly) —
   /// no `Metric` row backs it.
   static const ProtocolTargetOutcomeDraft performance =
       ProtocolTargetOutcomeDraft(kind: ProtocolOutcomeKind.performance);
@@ -446,7 +435,7 @@ class ProtocolTargetOutcomeDraft {
   final String? metricId;
 }
 
-/// A persisted target outcome (plan-only read model, PROTOCOLS.md §1.4).
+/// A persisted target outcome (plan-only read model).
 /// Archives via the Protocol's own reconciliation (mirrors `Schedule`) —
 /// never touches a logged `Dose`, and never computes an `Effect` itself
 /// (M29).
@@ -464,7 +453,7 @@ class ProtocolTargetOutcomeRecord {
   final int position;
 }
 
-/// A `Dose`'s **resolved active mass** (PROTOCOLS.md §1.3): the active quantity
+/// A `Dose`'s **resolved active mass**: the active quantity
 /// of a `Dose`, derived on read from amount × unit × the Compound's strength
 /// (computed, never stored). Mirrors `Portion`→grams. Exists only
 /// when the strength resolves; a Dose without a resolvable strength logs fine
@@ -505,8 +494,8 @@ class ResolvedActiveMass {
 }
 
 /// Derives the resolved active mass of a `Dose` from its entered [amount] +
-/// [unit] and the snapshotted Compound [strength] (PROTOCOLS.md §1.3 —
-/// computed on read, NEVER persisted). The same "store inputs, derive the rest"
+/// [unit] and the snapshotted Compound [strength] (computed on read, NEVER
+/// persisted). The same "store inputs, derive the rest"
 /// split as `Portion`→grams.
 ///
 /// - "1 capsule" × "5 mg/capsule" → 5 mg (the dose unit IS the strength's
@@ -514,7 +503,7 @@ class ResolvedActiveMass {
 /// - A dose already entered in the strength's mass unit (e.g. 250 mg of a
 ///   5 mg/capsule compound) resolves to itself.
 /// - No strength, or a unit matching neither side, leaves it UNRESOLVED (null) —
-///   never blocking the log (PROTOCOLS.md §1.3).
+///   never blocking the log.
 ResolvedActiveMass? resolveDoseActiveMass({
   required double amount,
   required DoseUnit unit,
@@ -545,6 +534,7 @@ class CompoundDraft {
     required this.defaultUnit,
     required this.defaultRoute,
     this.strength,
+    this.purposeIds,
   });
 
   final String name;
@@ -554,21 +544,25 @@ class CompoundDraft {
   /// The optional structured strength/concentration (curated units, never
   /// free-text). Null for a Compound with no recorded strength.
   final CompoundStrength? strength;
+
+  /// The Purposes to tag the Compound with. Null leaves the stored list as it
+  /// is, so an editor that doesn't show Purposes cannot clear them; a list is
+  /// stored as given after `normalizePurposeIds`.
+  final List<String>? purposeIds;
 }
 
 /// The input for logging a `Dose` — a self-describing snapshot of the
-/// `Compound` at log time (PROTOCOLS.md §1.1). Carries the soft
+/// `Compound` at log time. Carries the soft
 /// [compoundId] reference plus the denormalized [compoundName] AND
 /// [compoundStrength] so the Dose carries its own meaning and renders without
 /// its Compound — and survives the Compound being renamed, restrengthened,
 /// archived, or deleted. The amount is stored as entered ([amountEntered] is the
 /// source of truth; [amountValue] is its numeric projection). [tookAt] is the
 /// real dose instant; [timezone]/[localDate] are frozen from it at log time
-/// when omitted.
+/// when omitted, and its UTC offset always is.
 ///
-/// [protocolId] is the OPTIONAL, soft tag to a `Protocol` (PROTOCOLS.md §1.2,
-/// §1.4): a Dose logged during a course can be attributed to it, but
-/// an untagged ad-hoc Dose remains fully first-class — omitting it (or
+/// [protocolId] is the OPTIONAL, soft tag to a `Protocol`: a Dose logged
+/// during a course can be attributed to it, but an untagged ad-hoc Dose remains fully first-class — omitting it (or
 /// passing null) is always valid. Like the Compound snapshot, [protocolName]
 /// is denormalized alongside it so the Dose keeps rendering its own
 /// attribution without a live join even if the Protocol is later renamed or
@@ -595,8 +589,7 @@ class DoseSnapshotDraft {
   String get amountLabel => '$amountEntered ${doseUnitLabel(unit)}';
 
   /// The resolved active mass derived from the entered amount + unit and the
-  /// snapshotted Compound strength (PROTOCOLS.md §1.3 — derived on
-  /// read, never stored). Null when there is no resolvable strength.
+  /// snapshotted Compound strength (derived on read, never stored). Null when there is no resolvable strength.
   ResolvedActiveMass? get resolvedActiveMass => resolveDoseActiveMass(
         amount: amountValue,
         unit: unit,
@@ -643,7 +636,7 @@ class DoseSnapshotDraft {
   /// The `Compound`'s structured strength/concentration as it read at log time
   /// (e.g. "1000 IU/capsule"), or null when the Compound had none / the Dose is
   /// ad-hoc. Frozen into the Dose so later edits to the Compound never rewrite
-  /// it (PROTOCOLS.md §1.1).
+  /// it.
   final CompoundStrength? compoundStrength;
   final double amountValue;
   final String amountEntered;
@@ -654,8 +647,7 @@ class DoseSnapshotDraft {
   final ProtocolDayDate? localDate;
   final DoseProvenance provenance;
 
-  /// The OPTIONAL soft tag to a `Protocol` (PROTOCOLS.md §1.4), or
-  /// null for an untagged ad-hoc Dose (fully first-class).
+  /// The OPTIONAL soft tag to a `Protocol`, or null for an untagged ad-hoc Dose (fully first-class).
   final String? protocolId;
 
   /// The tagged Protocol's name as it read at tag time, or null when
@@ -674,6 +666,7 @@ class CompoundRecord {
     required this.updatedAt,
     this.strength,
     this.isFavorite = false,
+    this.purposeIds = const <String>[],
     this.deletedAt,
   });
 
@@ -688,12 +681,37 @@ class CompoundRecord {
 
   /// A UI-affordance flag only, mirroring `ExerciseRecord.isFavorite`:
   /// hoists this Compound into the Compound list's virtual "Favorites" section.
-  /// Never categorizes the Compound.
+  /// Never classifies the Compound.
   final bool isFavorite;
+
+  /// The Purposes this Compound is tagged with: the stored list, in the order
+  /// the user tagged them. It can name an archived Purpose, which the UI
+  /// doesn't show but keeps attached.
+  final List<String> purposeIds;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
   bool get isArchived => deletedAt != null;
+}
+
+/// A `Purpose`: a label for why the user takes a `Compound`. Never a claim that
+/// a Compound works, never a classification of what it is, and never read by
+/// analysis (CONTEXT.md). Renaming or archiving one changes no Compound, because
+/// a Compound's tags hold ids.
+class PurposeRecord {
+  const PurposeRecord({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  final String id;
+  final String name;
+  final int sortOrder;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
 }
 
 /// A lightweight active `Compound` picker/read option. This intentionally
@@ -720,12 +738,23 @@ class CompoundScheduleOptionRecord {
     required this.name,
     required this.defaultUnit,
     required this.defaultRoute,
+    this.isArchived = false,
+    this.purposeIds = const <String>[],
   });
 
   final String id;
   final String name;
   final DoseUnit defaultUnit;
   final DoseRoute defaultRoute;
+
+  /// Whether the Compound is archived. Only a read by id
+  /// (`watchCompoundsByIds`) can return an archived Compound: a Protocol keeps
+  /// a member whose Compound was archived, and its editor still names it.
+  final bool isArchived;
+
+  /// The stored Purpose tags, so the picker can file a Compound it just created
+  /// under the filter without reading the whole library again.
+  final List<String> purposeIds;
 }
 
 /// A persisted `Dose` (self-describing logged event read model). Renders from
@@ -750,6 +779,7 @@ class DoseRecord {
     this.deletedAt,
     this.protocolId,
     this.protocolName,
+    this.timezoneOffsetMinutes,
   });
 
   final String id;
@@ -765,14 +795,37 @@ class DoseRecord {
   final DoseUnit unit;
   final DoseRoute route;
   final DateTime tookAt;
+
+  /// A display label only (an abbreviation such as "BRT"), never converted
+  /// back to an offset; [timezoneOffsetMinutes] is what fixes the local time.
   final String timezone;
   final ProtocolDayDate localDate;
   final DoseProvenance provenance;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
-  /// The OPTIONAL soft tag to a `Protocol` (PROTOCOLS.md §1.4), or
-  /// null for an untagged ad-hoc Dose — fully first-class either way.
+  /// The UTC offset, in minutes, frozen when the Dose was logged (−180 for
+  /// UTC−3). With [tookAt] it gives the Dose's local clock time for good, so
+  /// travel never moves it. Null on a Dose logged before the offset was
+  /// recorded.
+  final int? timezoneOffsetMinutes;
+
+  /// The Dose's date and clock time where it was taken, derived on read,
+  /// never stored: [tookAt] at its frozen [timezoneOffsetMinutes]
+  /// ([clockAtOffset]). A Dose with no frozen offset reads in the device's
+  /// current zone instead, so the app and the server (which reads it in UTC)
+  /// can disagree on those older Doses.
+  DateTime get clock => clockAtOffset(tookAt, timezoneOffsetMinutes);
+
+  /// The Dose's local clock time, `HH:MM`: [clock] formatted. Matching reads
+  /// it (D6 step 2), and the day's Dose rows are listed by it.
+  String get localTime {
+    final local = clock;
+    return planLocalTime(local.hour, local.minute);
+  }
+
+  /// The OPTIONAL soft tag to a `Protocol`, or null for an untagged ad-hoc
+  /// Dose — fully first-class either way.
   final String? protocolId;
 
   /// The tagged Protocol's name as it read at tag time, frozen alongside
@@ -787,8 +840,7 @@ class DoseRecord {
   /// The amount + unit as the user would read it back (e.g. "5 mg").
   String get amountLabel => '$amountEntered ${doseUnitLabel(unit)}';
 
-  /// The resolved active mass of this Dose (PROTOCOLS.md §1.3):
-  /// derived on read from the entered amount + unit and the frozen Compound
+  /// The resolved active mass of this Dose: derived on read from the entered amount + unit and the frozen Compound
   /// strength snapshot — never stored, and null when there is no resolvable
   /// strength (non-blocking).
   ResolvedActiveMass? get resolvedActiveMass => resolveDoseActiveMass(
@@ -798,30 +850,32 @@ class DoseRecord {
       );
 }
 
-/// The input for creating/editing a `Protocol` (PROTOCOLS.md §1.4): the
-/// Routine analog — a named, time-bounded course associating **one or more**
-/// `Compound`s (a multi-Compound Protocol is a "stack"). A `Protocol` is a
-/// **mutable plan**: creating or editing it never reads or writes a logged
-/// `Dose` (§1.4). [compoundIds] is the ordered membership list; [endDate]
-/// null means an open-ended (ongoing) course.
+/// The input for creating/editing a `Protocol`: a named course associating
+/// **one or more** `Compound`s (a multi-Compound Protocol is a "stack"). A
+/// `Protocol` is a **mutable plan**: creating or editing it never reads or
+/// writes a logged `Dose`. [compoundIds] is the ordered membership list.
 ///
-/// [schedulesByCompoundId] carries each member Compound's OPTIONAL `Schedule`
-/// (planned dose · frequency · route), keyed by compound id. A
-/// compound absent from the map — or mapped to null — simply carries no
-/// Schedule; a `Protocol` with no Schedules at all is still fully valid
-/// (PROTOCOLS.md §1.4). Editing a Schedule through this draft is plan-only:
-/// it never reads or writes a logged `Dose`.
+/// The bounds are local dates: [startLocalDate], and [endLocalDate], which
+/// is inclusive, or null for an ongoing course. [period] carries the
+/// Protocol Period's on/off cycle and its Pauses, or null for neither.
+/// [remindersEnabled] is synced plan data: "remind me about this Protocol".
 ///
-/// [targetOutcomes] declares WHICH `Metric`s/performance to correlate
-/// (PROTOCOLS.md §1.4, §4) — seeding the later `Effect` view (M29);
-/// NO analysis happens here. Empty is fully valid: a Protocol MAY declare
-/// target outcomes.
+/// [schedulesByCompoundId] carries each member Compound's OPTIONAL
+/// `Schedule`, keyed by compound id. A compound absent from the map, or
+/// mapped to null, carries no Schedule; a `Protocol` with no Schedules at all
+/// is still valid. Saving it inserts a new Schedule Version only for a
+/// member whose Schedule changed; it never reads or writes a logged `Dose`.
+///
+/// [targetOutcomes] declares WHICH `Metric`s/performance the `Effect` view
+/// correlates; no analysis happens here. Empty is valid.
 class ProtocolDraft {
   ProtocolDraft({
     required this.name,
-    required this.startDate,
+    required this.startLocalDate,
     required List<String> compoundIds,
-    this.endDate,
+    this.endLocalDate,
+    this.period,
+    this.remindersEnabled = false,
     Map<String, ScheduleDraft?>? schedulesByCompoundId,
     List<ProtocolTargetOutcomeDraft>? targetOutcomes,
   })  : compoundIds = List<String>.unmodifiable(compoundIds),
@@ -833,92 +887,121 @@ class ProtocolDraft {
         );
 
   final String name;
-  final DateTime startDate;
-  final DateTime? endDate;
+  final ProtocolDayDate startLocalDate;
+  final ProtocolDayDate? endLocalDate;
+  final ProtocolPeriod? period;
+  final bool remindersEnabled;
   final List<String> compoundIds;
   final Map<String, ScheduleDraft?> schedulesByCompoundId;
   final List<ProtocolTargetOutcomeDraft> targetOutcomes;
 }
 
-/// One member `Compound` of a `Protocol`: the soft link to the catalogue
-/// `Compound` (never a snapshot — a `Protocol` is a live plan, not a logged
-/// event, §1.1 vs §1.4) plus its ordering [position] within the stack and its
-/// OPTIONAL [schedule]. A null [schedule] simply means this member
-/// has no planned dose/frequency/route recorded — always valid.
+/// One member `Compound` of a `Protocol` (CONTEXT.md `Protocol Member`): the
+/// soft link to the catalogue `Compound` (never a snapshot — a `Protocol` is a
+/// live plan, not a logged event) plus its ordering [position] within the
+/// stack and its Schedule Versions.
+///
+/// [currentVersion] is the version with the latest `effectiveFrom` (then the
+/// larger id): the one the editor shows, even when it applies only from a
+/// future start. [versionInEffectToday] is the version that applies today,
+/// or null when none does yet. Both are null for a member with no Schedule
+/// Version at all; a version whose rule is [UnscheduledScheduleRule] also
+/// means "no Schedule".
 class ProtocolMemberRecord {
   const ProtocolMemberRecord({
     required this.id,
     required this.compoundId,
     required this.position,
-    this.schedule,
+    this.currentVersion,
+    this.versionInEffectToday,
   });
 
   final String id;
   final String compoundId;
   final int position;
-  final ScheduleRecord? schedule;
+  final ScheduleRecord? currentVersion;
+  final ScheduleRecord? versionInEffectToday;
 }
 
-/// The input for creating/editing a `Schedule` (PROTOCOLS.md §1.4): the
-/// `Prescription` analog — an OPTIONAL planned dose · frequency · route for
-/// one member `Compound` of a `Protocol`. Purely prescriptive: dose-response
-/// analysis is ALWAYS derived from the actual logged `Dose`s, never a
-/// `Schedule` (so formal phases/titration are out of scope, deferred §12).
-/// The dose amount/unit/route run through the SAME shared two-tier validator
-/// as a logged `Dose` (PROTOCOLS.md §6) — there is no parallel validator.
+/// The input for one member's `Schedule`: its Schedule Rule (which days and
+/// times a dose is due, or "as needed") and the planned amount, unit and
+/// route. Purely prescriptive: dose-response analysis is ALWAYS derived from
+/// the actual logged `Dose`s, never a `Schedule`.
+///
+/// A `timed` or `untimed` [rule] needs all four amount fields, judged by the
+/// same shared two-tier validator as a logged `Dose`. An
+/// [AsNeededScheduleRule] or [UnscheduledScheduleRule] plans nothing, so its
+/// amount fields are stored null whatever the draft carries.
 class ScheduleDraft {
   const ScheduleDraft({
-    required this.doseAmountValue,
-    required this.doseAmountEntered,
-    required this.doseUnit,
-    required this.frequency,
-    required this.route,
+    required this.rule,
+    this.doseAmountValue,
+    this.doseAmountEntered,
+    this.doseUnit,
+    this.route,
   });
 
+  final ScheduleRule rule;
+
   /// The planned dose amount as entered (source of truth for re-display).
-  final String doseAmountEntered;
+  final String? doseAmountEntered;
 
   /// The planned dose amount's numeric projection.
-  final double doseAmountValue;
-  final DoseUnit doseUnit;
-  final ScheduleFrequency frequency;
-  final DoseRoute route;
+  final double? doseAmountValue;
+  final DoseUnit? doseUnit;
+  final DoseRoute? route;
 }
 
-/// A persisted `Schedule` (plan-only read model, PROTOCOLS.md §1.4). Archives
-/// via [deletedAt] — mirrors `Prescription`/`Compound`/`Protocol`: editing or
-/// removing a Schedule NEVER touches a logged `Dose` (§7).
+/// A persisted Schedule Version (CONTEXT.md `Schedule Version`, plan-only
+/// read model): one stored state of a member's `Schedule`, applying from
+/// [effectiveFrom]. Versions are insert-only, and editing a Schedule NEVER
+/// touches a logged `Dose`. The amount fields are null for an `as_needed` or
+/// `unscheduled` [rule].
 class ScheduleRecord {
   const ScheduleRecord({
     required this.id,
     required this.protocolCompoundId,
-    required this.doseAmountValue,
-    required this.doseAmountEntered,
-    required this.doseUnit,
-    required this.frequency,
-    required this.route,
+    required this.effectiveFrom,
+    required this.rule,
     required this.updatedAt,
-    this.deletedAt,
+    this.doseAmountValue,
+    this.doseAmountEntered,
+    this.doseUnit,
+    this.route,
   });
 
   final String id;
 
-  /// The `Protocol`'s member row (`ProtocolCompound`) this Schedule attaches
-  /// to — a Schedule always belongs to exactly one member Compound of exactly
+  /// The `Protocol`'s member row (`ProtocolCompound`) this version belongs to
+  /// — a Schedule always belongs to exactly one member Compound of exactly
   /// one Protocol.
   final String protocolCompoundId;
-  final double doseAmountValue;
-  final String doseAmountEntered;
-  final DoseUnit doseUnit;
-  final ScheduleFrequency frequency;
-  final DoseRoute route;
+  final ProtocolDayDate effectiveFrom;
+  final ScheduleRule rule;
+  final double? doseAmountValue;
+  final String? doseAmountEntered;
+  final DoseUnit? doseUnit;
+  final DoseRoute? route;
   final DateTime updatedAt;
-  final DateTime? deletedAt;
 
-  bool get isArchived => deletedAt != null;
+  /// The planned amount in the shared plan core's shape.
+  PlanAmount get amount => PlanAmount(
+        amountValue: doseAmountValue,
+        amountEntered: doseAmountEntered,
+        unit: doseUnit,
+        route: route,
+      );
 
-  /// The planned dose + unit as the user would read it back (e.g. "5 g").
-  String get doseLabel => '$doseAmountEntered ${doseUnitLabel(doseUnit)}';
+  /// The planned dose + unit as the user would read it back (e.g. "5 g"), or
+  /// null when the rule plans no amount.
+  String? get doseLabel {
+    final entered = doseAmountEntered;
+    final unit = doseUnit;
+    if (entered == null || unit == null) {
+      return null;
+    }
+    return '$entered ${doseUnitLabel(unit)}';
+  }
 }
 
 /// A lightweight active `Protocol` picker/read option. This intentionally
@@ -960,31 +1043,39 @@ class ProtocolSummaryRecord {
   ProtocolSummaryRecord({
     required this.id,
     required this.name,
-    required this.startDate,
+    required this.startLocalDate,
     required List<String> compoundIds,
-    this.endDate,
+    this.endLocalDate,
+    this.period,
+    this.remindersEnabled = false,
   }) : compoundIds = List<String>.unmodifiable(compoundIds);
 
   final String id;
   final String name;
-  final DateTime startDate;
-  final DateTime? endDate;
+  final ProtocolDayDate startLocalDate;
+
+  /// Inclusive; null for an ongoing course.
+  final ProtocolDayDate? endLocalDate;
+  final ProtocolPeriod? period;
+  final bool remindersEnabled;
   final List<String> compoundIds;
 
   bool get isStack => compoundIds.length > 1;
 }
 
 /// A persisted `Protocol` (plan read model). Archives via [deletedAt] —
-/// history survives, and archiving/editing NEVER cascades to a logged `Dose`
-/// (PROTOCOLS.md §7). [members] is ordered by [ProtocolMemberRecord.position].
+/// history survives, and archiving/editing NEVER cascades to a logged `Dose`.
+/// [members] is ordered by [ProtocolMemberRecord.position].
 class ProtocolRecord {
   ProtocolRecord({
     required this.id,
     required this.name,
-    required this.startDate,
+    required this.startLocalDate,
     required Iterable<ProtocolMemberRecord> members,
     required this.updatedAt,
-    this.endDate,
+    this.endLocalDate,
+    this.period,
+    this.remindersEnabled = false,
     this.deletedAt,
     Iterable<ProtocolTargetOutcomeRecord> targetOutcomes =
         const <ProtocolTargetOutcomeRecord>[],
@@ -994,20 +1085,26 @@ class ProtocolRecord {
 
   final String id;
   final String name;
-  final DateTime startDate;
-  final DateTime? endDate;
+  final ProtocolDayDate startLocalDate;
+
+  /// Inclusive; null for an ongoing course.
+  final ProtocolDayDate? endLocalDate;
+
+  /// The on/off cycle and Pauses, or null for neither.
+  final ProtocolPeriod? period;
+  final bool remindersEnabled;
   final List<ProtocolMemberRecord> members;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
-  /// The declared target outcomes (PROTOCOLS.md §1.4, §4) — WHICH
+  /// The declared target outcomes — WHICH
   /// Metrics/performance to correlate, seeding the later `Effect` view (M29).
   /// Ordered by [ProtocolTargetOutcomeRecord.position]; empty is fully valid.
   final List<ProtocolTargetOutcomeRecord> targetOutcomes;
 
   bool get isArchived => deletedAt != null;
 
-  /// A multi-Compound Protocol is a "stack" (PROTOCOLS.md §1.4).
+  /// A multi-Compound Protocol is a "stack".
   bool get isStack => members.length > 1;
 }
 
@@ -1019,12 +1116,72 @@ class ProtocolDayRecord {
   ProtocolDayRecord({
     required this.localDate,
     required Iterable<DoseRecord> doses,
-  }) : doses = List<DoseRecord>.unmodifiable(doses);
+    Iterable<ProtocolSkipRecord> skips = const <ProtocolSkipRecord>[],
+  })  : doses = List<DoseRecord>.unmodifiable(doses),
+        skips = List<ProtocolSkipRecord>.unmodifiable(skips);
 
   final ProtocolDayDate localDate;
   final List<DoseRecord> doses;
 
+  /// The day's Skips that aren't tombstoned, ordered by id: matching's
+  /// order (D8, step 3). Read beside [doses] so the Planned list matches
+  /// both from one emission. A Skip records no intake, so [isEmpty] and
+  /// [doseCount] ignore it.
+  final List<ProtocolSkipRecord> skips;
+
   bool get isEmpty => doses.isEmpty;
 
   int get doseCount => doses.length;
+}
+
+/// A stored `Skip` (CONTEXT.md; D8): "not taken, on purpose" for one
+/// planned dose of [protocolId]'s [compoundId] on [localDate], at
+/// [plannedLocalTime] (`HH:MM`, or null for an untimed planned dose). It
+/// carries no amount, note or reason, and is never edited: removing it
+/// tombstones the row, and skipping again writes a new one.
+class ProtocolSkipRecord {
+  const ProtocolSkipRecord({
+    required this.id,
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+  });
+
+  final String id;
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+  final String? plannedLocalTime;
+}
+
+/// What `ProtocolsRepository.skipPlannedDose` writes: a [ProtocolSkipRecord]
+/// without its id, which the repository assigns (UUIDv7).
+class ProtocolSkipDraft {
+  const ProtocolSkipDraft({
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+  });
+
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+  final String? plannedLocalTime;
+}
+
+/// Thrown by `ProtocolsRepository.deleteProtocol` when the Protocol has
+/// history (D8): a Dose that isn't tombstoned is tagged to it, or is of one
+/// of its member Compounds within its dates. Such a Protocol can only be
+/// archived. The check runs inside the delete's transaction, so a Dose
+/// synced in after the editor read "no history" still refuses the delete.
+final class ProtocolHasHistoryException implements Exception {
+  const ProtocolHasHistoryException(this.protocolId);
+
+  final String protocolId;
+
+  @override
+  String toString() =>
+      'Protocol has history and can only be archived: $protocolId.';
 }

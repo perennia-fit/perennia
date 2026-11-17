@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/effect_controller.dart';
 import '../controllers/protocol_controller.dart';
@@ -41,6 +42,7 @@ class EffectScreen extends ConsumerWidget {
   static const noOutcomesKey = Key('effect.noOutcomes');
   static const disclaimerKey = Key('effect.disclaimer');
   static const confounderNoteKey = Key('effect.confounderNote');
+  static const planBreaksNoticeKey = Key('effect.planBreaksNotice');
 
   /// A one-time neutral disclaimer (PROTOCOLS.md §3): present,
   /// factual, and never moralizing — no "warning", no "consult a doctor"
@@ -79,6 +81,8 @@ class EffectScreen extends ConsumerWidget {
         const <MetricOptionRecord>[];
     final selection = ref.watch(effectSelectionControllerProvider);
     final computationAsync = ref.watch(effectComputationProvider);
+    final countsPlanBreaksAsDuring =
+        _countsPlanBreaksAsDuring(ref, selection.source);
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -95,6 +99,13 @@ class EffectScreen extends ConsumerWidget {
             style: context.textStyles.caption
                 .copyWith(color: colors.textSecondary),
           ),
+          if (countsPlanBreaksAsDuring)
+            Text(
+              key: EffectScreen.planBreaksNoticeKey,
+              context.l10n.effectPlanBreaksCountedAsDuring,
+              style: context.textStyles.caption
+                  .copyWith(color: colors.textSecondary),
+            ),
           const SizedBox(height: AppDimens.base),
           Text(
             'Window',
@@ -161,6 +172,21 @@ class EffectScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Whether [source] is a Protocol with a cycle or Pauses. The Effect window
+/// runs from the Protocol's start to its end, so it counts the off-cycle and
+/// paused days inside it as "during"; the screen says so rather than leaving
+/// the user to assume a cycle-aware window (a cycle-aware Effect view is a
+/// follow-up, D6). Reads the same scoped Protocol detail the window comes
+/// from.
+bool _countsPlanBreaksAsDuring(WidgetRef ref, EffectWindowSource? source) {
+  final protocolId = source?.protocolId;
+  if (source == null || !source.isProtocol || protocolId == null) {
+    return false;
+  }
+  final period = ref.watch(protocolDetailProvider(protocolId)).value?.period;
+  return period != null && (period.cycle != null || period.pauses.isNotEmpty);
 }
 
 class _SourcePicker extends ConsumerWidget {
@@ -293,8 +319,7 @@ class _EffectResultsBody extends StatelessWidget {
     final confounderNote = Text(
       key: EffectScreen.confounderNoteKey,
       EffectScreen.confounderNoteText,
-      style:
-          context.textStyles.caption.copyWith(color: colors.textSecondary),
+      style: context.textStyles.caption.copyWith(color: colors.textSecondary),
     );
 
     if (outcomes.isEmpty) {
@@ -382,10 +407,9 @@ class _OutcomeResultCard extends StatelessWidget {
   final EffectWindow window;
   final String label;
 
-  String get _outcomeKey =>
-      outcome.kind == ProtocolOutcomeKind.performance
-          ? 'performance'
-          : 'metric-${outcome.metricId}';
+  String get _outcomeKey => outcome.kind == ProtocolOutcomeKind.performance
+      ? 'performance'
+      : 'metric-${outcome.metricId}';
 
   @override
   Widget build(BuildContext context) {
@@ -435,8 +459,10 @@ class _OutcomeResultCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppDimens.dense),
-              _DeltaRow(label: 'During Δ', delta: result.duringDelta, colors: colors),
-              _DeltaRow(label: 'After Δ', delta: result.afterDelta, colors: colors),
+              _DeltaRow(
+                  label: 'During Δ', delta: result.duringDelta, colors: colors),
+              _DeltaRow(
+                  label: 'After Δ', delta: result.afterDelta, colors: colors),
               const SizedBox(height: AppDimens.base),
               EffectTimelineChart(
                 window: window,

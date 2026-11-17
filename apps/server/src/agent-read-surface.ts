@@ -10,9 +10,11 @@ import {
   AgentCatalogUnavailableResponseSchema,
   AgentExerciseSchema,
   createDrizzleAgentCatalogStore,
+  payloadFocusId,
   resolvePlatformExerciseId,
   type AgentExercise
 } from "./agent-catalog.js";
+import { LocalDateSchema, unionValues } from "./agent-protocols.js";
 import { AgentSetValidationValuesSchema } from "./agent-validation.js";
 import {
   ExerciseAnalyticsEngine,
@@ -21,10 +23,12 @@ import {
   type AnalyticsRecord,
   type AnalyticsSet,
   type DimensionId,
+  type ExerciseAnalyticsProfile,
   type ExerciseAnalyticsResult,
   type LoggedSetValues,
   type TrainingUnit
 } from "./analytics/exercise-analytics.js";
+import type { ProgressMeasureKind, ProgressSeries } from "./analytics/progress-measure.js";
 import type { CanonicalSeries } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
@@ -42,7 +46,7 @@ const DimensionIdSchema = z
   .enum(["load", "reps", "duration", "distance"])
   .openapi("AgentReadDimensionId");
 
-const TrainingUnitSchema = z
+export const TrainingUnitSchema = z
   .enum(["kilogram", "pound", "repetition", "second", "kilometer", "mile"])
   .openapi("AgentReadTrainingUnit");
 
@@ -127,6 +131,59 @@ export const AgentPeriodStatsSchema = z
   })
   .openapi("AgentPeriodStats");
 
+const PROGRESS_MEASURES = unionValues<ProgressMeasureKind>()([
+  "estimatedOneRepMax",
+  "maxLoad",
+  "maxReps",
+  "maxDuration",
+  "minDuration",
+  "maxDistance",
+  "fastestPace"
+]);
+
+export const AgentProgressMeasureSchema = z
+  .enum(PROGRESS_MEASURES)
+  .openapi("AgentProgressMeasure", {
+    description:
+      "The one number per Logged Workout an exercise's Record Profile charts: the best estimated one-rep max (repMax), or the Workout's headline record. Values are in the engine's normalized units: kilograms, repetitions, kilometres, seconds, and seconds per kilometre for fastestPace."
+  });
+
+const AgentProgressPointSchema = z
+  .object({
+    workoutId: z.string().min(1),
+    localDate: LocalDateSchema,
+    startedAt: z.string().min(1),
+    setId: z.string().min(1).openapi({
+      description: "The completed Set the value came from."
+    }),
+    value: z.number(),
+    unit: TrainingUnitSchema,
+    isNewBest: z.boolean().openapi({
+      description:
+        "True when the value is strictly better than every earlier point's. The first point never is, and an equal value is not."
+    })
+  })
+  .openapi("AgentProgressPoint");
+
+export const AgentProgressSeriesSchema = z
+  .object({
+    exerciseId: z.string().min(1),
+    measure: AgentProgressMeasureSchema,
+    betterIs: z.enum(["higher", "lower"]),
+    points: z.array(AgentProgressPointSchema).openapi({
+      description:
+        "One per Logged Workout with a value for the measure, over the exercise's whole history, ordered by localDate, startedAt and workoutId."
+    })
+  })
+  .openapi("AgentProgressSeries");
+
+const NullableAgentProgressSeriesSchema = z
+  .union([AgentProgressSeriesSchema, z.null()])
+  .openapi("NullableAgentProgressSeries", {
+    description:
+      "The Progress Measure per Logged Workout over the exercise's whole history, not limited by from, to or the Set page, with each New Best marked: the same points the app's Key exercises card plots. Null for an archived exercise, a Record Profile with no single best number (minAssistancePerRepCount, completionStreak), or when progress read storage is not configured."
+  });
+
 export const AgentExerciseAnalyticsResponseSchema = z
   .object({
     exercise: AgentExerciseSchema,
@@ -140,7 +197,8 @@ export const AgentExerciseAnalyticsResponseSchema = z
     volume: AgentDerivedSeriesSchema,
     maxLoadSeries: AgentDerivedSeriesSchema,
     repMaxSeries: z.array(AgentAnalyticsRecordSchema),
-    periodStats: AgentPeriodStatsSchema
+    periodStats: AgentPeriodStatsSchema,
+    progressSeries: NullableAgentProgressSeriesSchema
   })
   .openapi("AgentExerciseAnalyticsResponse");
 
@@ -189,6 +247,7 @@ export const AGENT_WORKOUT_LIST_FIELDS = [
   "endedAt",
   "timezone",
   "comment",
+  "focusId",
   "setCount",
   "exerciseNames"
 ] as const;
@@ -204,6 +263,10 @@ export const AgentWorkoutListItemSchema = z
     endedAt: z.string().min(1).nullable().optional(),
     timezone: z.string().min(1).nullable().optional(),
     comment: z.string().nullable().optional(),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set or the Workout is inferred from legacy Sets."
+    }),
     setCount: z.number().int().min(0).optional(),
     exerciseNames: z.array(z.string().min(1)).optional()
   })
@@ -280,6 +343,11 @@ export const AgentWorkoutDetailWorkoutSchema = z
     localDate: z.string().min(1).nullable(),
     endedAt: z.string().min(1).nullable(),
     comment: z.string().nullable(),
+    // Defaulted so a read store that predates Focus still parses as "none".
+    focusId: z.string().min(1).nullable().default(null).openapi({
+      description:
+        "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set. May name a since-archived Focus."
+    }),
     updatedAt: z.string().min(1),
     active: z.boolean()
   })
@@ -1115,23 +1183,34 @@ export function createDrizzleAgentReadStore(db: ServerDatabase): AgentReadStore 
   };
 }
 
+/**
+ * The engine profile of a catalog exercise. Shared by the analytics read and
+ * the Progress reads, so a Progress Measure is taken under the same profile
+ * the exercise's records are.
+ */
+export function agentAnalyticsProfile(exercise: AgentExercise): ExerciseAnalyticsProfile {
+  return {
+    type: exercise.dimensions as DimensionId[],
+    loadMode: exercise.loadMode,
+    recordProfile: exercise.recordProfile
+  };
+}
+
 export function buildAgentExerciseAnalyticsResponse({
   exercise,
   maxPoints,
-  sets
+  sets,
+  progressSeries = null
 }: {
   exercise: AgentExercise;
   maxPoints: number;
   sets: readonly AgentReadableLoggedSet[];
+  progressSeries?: ProgressSeries | null;
 }) {
   const analyticsSets = sets.map(toAnalyticsSet);
   const engine = new ExerciseAnalyticsEngine();
   const analytics = engine.compute({
-    profile: {
-      type: exercise.dimensions as DimensionId[],
-      loadMode: exercise.loadMode,
-      recordProfile: exercise.recordProfile
-    },
+    profile: agentAnalyticsProfile(exercise),
     sets: analyticsSets
   });
 
@@ -1147,7 +1226,8 @@ export function buildAgentExerciseAnalyticsResponse({
     volume: serializeSeries(analytics.volume, maxPoints),
     maxLoadSeries: serializeMaxLoadSeries(analyticsSets, maxPoints),
     repMaxSeries: analytics.recordCatalog.repMaxRecords.map(serializeRecord),
-    periodStats: periodStats(analyticsSets, analytics)
+    periodStats: periodStats(analyticsSets, analytics),
+    progressSeries
   });
 }
 
@@ -1527,8 +1607,12 @@ async function readLiveLoggedSets(
   );
 
   return mappedSets.map((set) => {
+    // The raw id first: a kept exercise is returned under its own id, and only
+    // an id the catalog redirected is found under its target.
     const exercise =
-      exercisesById.get(resolvePlatformExerciseId(set.exerciseId)) ?? null;
+      exercisesById.get(set.exerciseId) ??
+      exercisesById.get(resolvePlatformExerciseId(set.exerciseId)) ??
+      null;
     return {
       ...set,
       exerciseName: set.exerciseName ?? exercise?.name ?? null,
@@ -1582,7 +1666,8 @@ function mapLoggedSetRow(row: LoggedSetRow): AgentReadableLoggedSet | null {
   };
 }
 
-function loggedSetValues(payload: Record<string, unknown>): LoggedSetValues {
+/** A Set payload's values in the engine's logged-values shape. */
+export function loggedSetValues(payload: Record<string, unknown>): LoggedSetValues {
   const nested = payload.values;
   if (isRecord(nested)) {
     const parsed: LoggedSetValues = {};
@@ -1795,6 +1880,7 @@ async function buildAuthoritativeWorkoutDetail({
       endedAt:
         dateValue(workoutSession.payload.ended_at)?.toISOString() ?? null,
       comment: nullableString(workoutSession.payload.comment),
+      focusId: payloadFocusId(workoutSession.payload),
       updatedAt: workoutSession.updatedAt.toISOString(),
       active:
         workoutSession.deletedAt === null &&
@@ -2021,6 +2107,8 @@ async function buildLegacyWorkoutDetail({
         earliestSet.performedAtDate.toISOString().slice(0, 10),
       endedAt: earliestSet.workoutEndedAt,
       comment: earliestSet.workoutComment,
+      // A Workout inferred from legacy Sets has no synced row to carry one.
+      focusId: null,
       updatedAt: latestUpdatedAt,
       active: true
     },
@@ -2232,6 +2320,7 @@ type WorkoutEnvelope = {
   endedAt: string | null;
   timezone: string | null;
   comment: string | null;
+  focusId: string | null;
   setCount: number;
   exerciseNames: string[];
 };
@@ -2270,6 +2359,7 @@ async function readWorkoutEnvelopes(
       endedAt: dateValue(row.payload.ended_at)?.toISOString() ?? null,
       timezone: stringValue(row.payload.timezone),
       comment: nullableString(row.payload.comment),
+      focusId: payloadFocusId(row.payload),
       setCount: grouped?.setCount ?? 0,
       exerciseNames: grouped?.exerciseNames ?? []
     }];
@@ -2320,6 +2410,7 @@ function groupSetsByWorkout(
     endedAt: group.earliestSet.workoutEndedAt,
     timezone: group.earliestSet.workoutTimezone,
     comment: group.earliestSet.workoutComment,
+    focusId: null,
     setCount: group.setCount,
     exerciseNames: [...group.exerciseNames].sort()
   }));
@@ -2363,6 +2454,7 @@ function projectWorkout(
     endedAt: workout.endedAt,
     timezone: workout.timezone,
     comment: workout.comment,
+    focusId: workout.focusId,
     setCount: workout.setCount,
     exerciseNames: workout.exerciseNames
   };
@@ -2634,7 +2726,8 @@ function dateValue(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function integerValue(value: unknown): number | null {
+/** A non-negative integer payload value, or null. */
+export function integerValue(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : null;

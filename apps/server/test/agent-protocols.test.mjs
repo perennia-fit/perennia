@@ -2,18 +2,24 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
+import { eq } from "drizzle-orm";
+
 import {
   applyMigrations,
   createApp,
   createUuidV7,
   createDatabaseClient,
   computeEffectWindowSegments,
+  createDrizzleAgentActivityStore,
   createDrizzleAgentProtocolsStore,
+  deriveEffectWindow,
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   schema
 } from "../src/index.ts";
+import { dayStatuses, planDays } from "../src/protocol-plan.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -132,38 +138,299 @@ test("prepareAgentDoseBatchWrite surfaces a soft warning but still accepts", () 
   );
 });
 
-test("prepareAgentProtocolBatchWrite builds protocol + members + schedules + target outcomes without touching Doses", () => {
+test("prepareAgentProtocolBatchWrite builds protocol + members + Schedule Versions + target outcomes without touching Doses", () => {
   const prepared = prepareAgentProtocolBatchWrite({
     request: {
       idempotencyKey: "k",
+      today: "2026-10-27",
       protocols: [
         {
           id: "p1",
           name: "Lean bulk",
-          startDate: "2026-06-01T00:00:00.000Z",
-          endDate: null,
-          members: [{ id: "m1", compoundId: "c1", position: 0 }],
+          startLocalDate: "2026-06-01",
+          endLocalDate: null,
+          period: { v: 1, cycle: null, pauses: [] },
+          remindersEnabled: true,
+          archived: false,
+          members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
           schedules: [
             {
               id: "s1",
               protocolCompoundId: "m1",
+              rule: timedDailyRule(["09:00"]),
               doseAmountValue: 5,
               doseAmountEntered: "5",
               doseUnit: "gram",
-              frequency: "onceDaily",
               route: "oral"
             }
           ],
           targetOutcomes: [{ id: "t1", metricId: "metric-weight", outcomeKind: "metric" }]
         }
       ]
-    }
+    },
+    now: new Date("2026-10-27T09:00:00.000Z")
   });
   assert.equal(prepared.accepted, true);
+  assert.equal(prepared.today, "2026-10-27");
+  assert.deepEqual(prepared.warnings, []);
   assert.equal(prepared.protocols.length, 1);
+  const protocol = prepared.protocols[0].payload;
+  assert.equal(protocol.start_local_date, "2026-06-01");
+  assert.equal(protocol.end_local_date, null);
+  // No cycle and no Pause is stored as null, as the app writes it.
+  assert.equal(protocol.period, null);
+  assert.equal(protocol.reminders_enabled, true);
+  assert.equal("start_date" in protocol, false);
   assert.equal(prepared.members[0].payload.protocol_id, "p1");
-  assert.equal(prepared.schedules[0].payload.frequency, "onceDaily");
+  const schedule = prepared.schedules[0].payload;
+  // Stored as JSON text in the codec's encoding (Data shapes), as the app
+  // stores it.
+  assert.equal(schedule.rule, JSON.stringify(timedDailyRule(["09:00"])));
+  assert.equal("frequency" in schedule, false);
+  // The store dates the version from stored data (D1).
+  assert.equal(schedule.effective_from, null);
   assert.equal(prepared.targetOutcomes[0].payload.metric_id, "metric-weight");
+});
+
+test("prepareAgentProtocolBatchWrite stores a target outcome in the app's sync shape", () => {
+  const prepared = prepareAgentProtocolBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      today: "2026-10-27",
+      protocols: [
+        {
+          id: "p1",
+          name: "Recovery",
+          startLocalDate: "2026-06-01",
+          endLocalDate: null,
+          period: null,
+          remindersEnabled: false,
+          archived: false,
+          members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
+          schedules: [],
+          targetOutcomes: [
+            { id: "t1", metricId: "metric-weight", outcomeKind: "metric" },
+            { id: "t2", metricId: null, outcomeKind: "performance", position: 7 }
+          ]
+        }
+      ]
+    },
+    now: new Date("2026-10-27T09:00:00.000Z")
+  });
+  assert.equal(prepared.accepted, true);
+  const [metric, performance] = prepared.targetOutcomes.map((row) => row.payload);
+  // Exactly the app's image (_protocolTargetOutcomeImage): the pull hands
+  // this payload to the app's decoder unchanged.
+  assert.deepEqual(Object.keys(metric).sort(), [
+    "deleted_at",
+    "id",
+    "kind",
+    "metric_id",
+    "position",
+    "protocol_id",
+    "updated_at"
+  ]);
+  assert.equal(metric.kind, "metric");
+  assert.equal("outcome_kind" in metric, false);
+  // Left out, the store assigns it from stored rows (D3).
+  assert.equal(metric.position, null);
+  assert.equal(performance.kind, "performance");
+  assert.equal(performance.position, 7);
+});
+
+test("prepareAgentProtocolBatchWrite refuses a target outcome whose metricId doesn't match its kind", () => {
+  const request = (outcome) => ({
+    idempotencyKey: "k",
+    today: "2026-10-27",
+    protocols: [
+      {
+        id: "p1",
+        name: "Recovery",
+        startLocalDate: "2026-06-01",
+        endLocalDate: null,
+        period: null,
+        remindersEnabled: false,
+        archived: false,
+        members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
+        schedules: [],
+        targetOutcomes: [{ id: "t1", ...outcome }]
+      }
+    ]
+  });
+  const now = new Date("2026-10-27T09:00:00.000Z");
+  for (const outcome of [
+    { metricId: null, outcomeKind: "metric" },
+    { metricId: "metric-weight", outcomeKind: "performance" }
+  ]) {
+    const prepared = prepareAgentProtocolBatchWrite({ request: request(outcome), now });
+    assert.equal(prepared.accepted, false, outcome.outcomeKind);
+    assert.deepEqual(
+      prepared.errors.map((issue) => [issue.rule, issue.field, issue.entityId]),
+      [["target_outcome_metric_id", "protocols[0].targetOutcomes", "t1"]]
+    );
+  }
+});
+
+test("prepareAgentProtocolBatchWrite rejects and warns through the shared plan validators (D7)", () => {
+  const request = (schedule, protocol = {}) => ({
+    idempotencyKey: "k",
+    today: "2026-10-27",
+    protocols: [
+      {
+        id: "p1",
+        name: "Daily",
+        startLocalDate: "2026-10-01",
+        endLocalDate: null,
+        period: null,
+        remindersEnabled: false,
+        archived: false,
+        members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
+        schedules: [{ id: "s1", protocolCompoundId: "m1", ...schedule }],
+        targetOutcomes: [],
+        ...protocol
+      }
+    ]
+  });
+  const now = new Date("2026-10-27T09:00:00.000Z");
+
+  const badTimes = prepareAgentProtocolBatchWrite({
+    request: request({ rule: timedDailyRule(["9:00", "21:00"]), ...creatineAmount }),
+    now
+  });
+  assert.equal(badTimes.accepted, false);
+  assert.deepEqual(
+    badTimes.errors.map((issue) => [issue.rule, issue.field, issue.entityId]),
+    [["times_format", "protocols[0].schedules[0].rule.times", "s1"]]
+  );
+
+  const manyTimes = prepareAgentProtocolBatchWrite({
+    request: request({
+      rule: timedDailyRule(["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00"]),
+      ...creatineAmount
+    }),
+    now
+  });
+  assert.equal(manyTimes.accepted, true);
+  assert.deepEqual(
+    manyTimes.warnings.map((issue) => issue.rule),
+    ["times_many"]
+  );
+
+  const asNeededWithAmount = prepareAgentProtocolBatchWrite({
+    request: request({ rule: { v: 1, kind: "as_needed" }, ...creatineAmount }),
+    now
+  });
+  assert.deepEqual(
+    asNeededWithAmount.errors.map((issue) => issue.rule),
+    ["amount_absent"]
+  );
+
+  const timedWithoutAmount = prepareAgentProtocolBatchWrite({
+    request: request({ rule: timedDailyRule(["09:00"]) }),
+    now
+  });
+  assert.deepEqual(
+    timedWithoutAmount.errors.map((issue) => issue.rule),
+    ["amount_required"]
+  );
+
+  const badPeriod = prepareAgentProtocolBatchWrite({
+    request: request(
+      { rule: timedDailyRule(["09:00"]), ...creatineAmount },
+      {
+        endLocalDate: "2026-09-30",
+        period: {
+          v: 1,
+          cycle: { on_days: 60, off_days: 30, anchor: "2026-02-30", anchor_is_default: false },
+          pauses: []
+        }
+      }
+    ),
+    now
+  });
+  assert.deepEqual(
+    badPeriod.errors.map((issue) => [issue.rule, issue.field]),
+    [
+      ["anchor_date", "protocols[0].period.cycle.anchor"],
+      ["bounds_order", "protocols[0].endLocalDate"]
+    ]
+  );
+});
+
+test("prepareAgentProtocolBatchWrite rejects a today more than one day from the server's UTC date", () => {
+  const now = new Date("2026-10-27T23:30:00.000Z");
+  const write = (today) =>
+    prepareAgentProtocolBatchWrite({
+      request: {
+        idempotencyKey: "k",
+        today,
+        protocols: [
+          {
+            id: "p1",
+            name: "Daily",
+            startLocalDate: "2026-10-01",
+            endLocalDate: null,
+            period: null,
+            remindersEnabled: false,
+            archived: false,
+            members: [],
+            schedules: [],
+            targetOutcomes: []
+          }
+        ]
+      },
+      now
+    });
+  // UTC+14 is already the 28th, UTC-12 still the 27th: both are within a day.
+  for (const today of ["2026-10-26", "2026-10-27", "2026-10-28"]) {
+    assert.equal(write(today).accepted, true, today);
+  }
+  for (const today of ["2026-10-25", "2026-10-29"]) {
+    const rejected = write(today);
+    assert.equal(rejected.accepted, false, today);
+    assert.deepEqual(
+      rejected.errors.map((issue) => [issue.rule, issue.field]),
+      [["today_out_of_range", "today"]]
+    );
+  }
+});
+
+test("prepareAgentDoseBatchWrite freezes the offset: the Agent's own wins, else it is derived from an IANA timezone", () => {
+  const prepare = (dose) =>
+    prepareAgentDoseBatchWrite({
+      request: {
+        idempotencyKey: "k",
+        doses: [{ ...doseFixture("d1", "Creatine", dose.tookAt), ...dose }]
+      }
+    }).doses[0].payload.timezone_offset_minutes;
+
+  // Supplied: wins over the zone.
+  assert.equal(
+    prepare({
+      tookAt: "2026-06-30T08:00:00.000Z",
+      timezone: "America/Sao_Paulo",
+      timezoneOffsetMinutes: 60
+    }),
+    60
+  );
+  // Derived from an IANA zone at tookAt, daylight saving included.
+  assert.equal(
+    prepare({ tookAt: "2026-06-30T08:00:00.000Z", timezone: "America/Sao_Paulo" }),
+    -180
+  );
+  assert.equal(
+    prepare({ tookAt: "2026-06-30T08:00:00.000Z", timezone: "Europe/Lisbon" }),
+    60
+  );
+  assert.equal(
+    prepare({ tookAt: "2026-01-15T08:00:00.000Z", timezone: "Europe/Lisbon" }),
+    0
+  );
+  // An abbreviation can't be converted, so the offset stays null.
+  assert.equal(
+    prepare({ tookAt: "2026-06-30T08:00:00.000Z", timezone: "BRT" }),
+    null
+  );
 });
 
 test("prepareAgentCompoundBatchWrite rejects a duplicate id in one batch", () => {
@@ -180,16 +447,119 @@ test("prepareAgentCompoundBatchWrite rejects a duplicate id in one batch", () =>
   assert.ok(prepared.errors.some((e) => e.rule === "duplicate_compound_id"));
 });
 
+test("an Agent-written strength is stored as the app's label, on the Compound and on the Dose snapshot", () => {
+  const strength = { value: 5, massUnit: "milligram", perUnit: "capsule" };
+  const compounds = prepareAgentCompoundBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      compounds: [
+        { id: "c1", name: "Zinc", defaultUnit: "capsule", defaultRoute: "oral", strength },
+        {
+          id: "c2",
+          name: "Vitamin D3",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 0.5, massUnit: "internationalUnit", perUnit: "drop" }
+        },
+        { id: "c3", name: "Creatine", defaultUnit: "gram", defaultRoute: "oral", strength: null }
+      ]
+    }
+  });
+  assert.equal(compounds.accepted, true);
+  assert.deepEqual(
+    compounds.compounds.map((row) => row.payload.strength),
+    ["5 mg/capsule", "0.5 IU/drop", null]
+  );
+
+  const doses = prepareAgentDoseBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      doses: [
+        {
+          ...doseFixture("d1", "Zinc", "2026-06-30T08:00:00.000Z"),
+          compoundId: null,
+          protocolId: null,
+          deletedAt: null,
+          compoundStrength: strength
+        }
+      ]
+    },
+    now: new Date("2026-06-30T09:00:00.000Z")
+  });
+  assert.equal(doses.accepted, true);
+  assert.equal(doses.doses[0].payload.compound_strength, "5 mg/capsule");
+});
+
+test("a strength the app couldn't parse is refused with compound_strength", () => {
+  const compounds = prepareAgentCompoundBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      compounds: [
+        {
+          id: "c1",
+          name: "A",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 5, massUnit: "mg", perUnit: "capsule" }
+        },
+        {
+          id: "c2",
+          name: "B",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 0, massUnit: "milligram", perUnit: "capsule" }
+        }
+      ]
+    }
+  });
+  assert.equal(compounds.accepted, false);
+  assert.deepEqual(
+    compounds.errors.map((e) => [e.field, e.rule]),
+    [
+      ["compounds[0].strength", "compound_strength"],
+      ["compounds[1].strength", "compound_strength"]
+    ]
+  );
+
+  const doses = prepareAgentDoseBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      doses: [
+        {
+          ...doseFixture("d1", "A", "2026-06-30T08:00:00.000Z"),
+          compoundId: null,
+          protocolId: null,
+          deletedAt: null,
+          compoundStrength: { value: -1, massUnit: "milligram", perUnit: "capsule" }
+        }
+      ]
+    },
+    now: new Date("2026-06-30T09:00:00.000Z")
+  });
+  assert.equal(doses.accepted, false);
+  assert.ok(
+    doses.errors.some(
+      (e) => e.field === "doses[0].compoundStrength" && e.rule === "compound_strength"
+    )
+  );
+});
+
 // ---------------------------------------------------------------------------
-// Deterministic effect-window computation fixture
+// Deterministic effect-window computation fixture (the window derivation and
+// count/mean are pinned across languages by effect-window.golden.test.mjs;
+// these cover the agent-only min/max)
 // ---------------------------------------------------------------------------
 
 test("computeEffectWindowSegments buckets samples into before/during/after with count/min/max/mean", () => {
   // DURING = first dose (day 10) → last dose (day 20); length 10 days.
   // BEFORE = [day 0, day 10); AFTER = [day 20, day 30).
   const d = (day) => new Date(Date.UTC(2026, 0, day));
+  const window = deriveEffectWindow(
+    { kind: "compound", doseTimes: [d(10), d(15), d(20)] },
+    d(31)
+  );
   const segments = computeEffectWindowSegments({
-    doses: [{ tookAt: d(10) }, { tookAt: d(15) }, { tookAt: d(20) }],
+    window,
     samples: [
       { at: d(1), value: 100 }, // before
       { at: d(5), value: 102 }, // before
@@ -201,8 +571,8 @@ test("computeEffectWindowSegments buckets samples into before/during/after with 
     ]
   });
 
-  assert.equal(segments.duringStart.toISOString(), d(10).toISOString());
-  assert.equal(segments.duringEnd.toISOString(), d(20).toISOString());
+  assert.equal(window.duringStart.toISOString(), d(10).toISOString());
+  assert.equal(window.duringEnd.toISOString(), d(20).toISOString());
 
   assert.deepEqual(segments.before, { count: 2, min: 100, max: 102, mean: 101 });
   assert.deepEqual(segments.during, { count: 2, min: 90, max: 94, mean: 92 });
@@ -216,10 +586,18 @@ test("computeEffectWindowSegments buckets samples into before/during/after with 
 });
 
 test("computeEffectWindowSegments returns empty aggregates with a null window when there are no doses", () => {
-  const segments = computeEffectWindowSegments({ doses: [], samples: [] });
-  assert.equal(segments.duringStart, null);
-  assert.equal(segments.duringEnd, null);
+  const window = deriveEffectWindow(
+    { kind: "compound", doseTimes: [] },
+    new Date(Date.UTC(2026, 0, 1))
+  );
+  assert.equal(window, null);
+  const segments = computeEffectWindowSegments({
+    window,
+    samples: [{ at: new Date(Date.UTC(2026, 0, 1)), value: 1 }]
+  });
   assert.deepEqual(segments.before, { count: 0, min: null, max: null, mean: null });
+  assert.deepEqual(segments.during, { count: 0, min: null, max: null, mean: null });
+  assert.deepEqual(segments.after, { count: 0, min: null, max: null, mean: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -377,10 +755,12 @@ test("protocol write routes surface stored row-id validation through the shared 
       "/agent/protocols/batch-write",
       {
         idempotencyKey: "invalid-protocol-member-id",
+        today: utcToday(),
         protocols: [
           {
             id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d003",
             name: "Base",
+            startLocalDate: utcToday(),
             members: [{ id: uuidV4, compoundId: "compound-id", position: 0 }],
             schedules: [],
             targetOutcomes: []
@@ -420,11 +800,377 @@ test("unauthorized requests are rejected on every protocols path", async () => {
   for (const path of [
     "/agent/protocols/compounds",
     "/agent/protocols",
-    "/agent/protocols/doses"
+    "/agent/protocols/doses",
+    `/agent/protocols/planned-days?fromLocalDate=${utcToday()}&toLocalDate=${utcToday()}`,
+    `/agent/protocols/day-statuses?fromLocalDate=${utcToday()}&toLocalDate=${utcToday()}&today=${utcToday()}`
   ]) {
     const response = await app.request(path);
     assert.equal(response.status, 401);
   }
+});
+
+test("protocol batch-write is strict: frequency, deletedAt, effectiveFrom, a missing today and a non-date bound are 400s before the store", async () => {
+  const app = createProtocolsApp({
+    store: stubStore({
+      async writeProtocolBatch() {
+        throw new Error("writeProtocolBatch must not be called.");
+      }
+    })
+  });
+  const base = protocolWriteRequest();
+  const variants = {
+    "Schedule frequency": withSchedule(base, { frequency: "onceDaily" }),
+    "Schedule effectiveFrom": withSchedule(base, { effectiveFrom: "2026-01-01" }),
+    "Schedule deletedAt": withSchedule(base, { deletedAt: null }),
+    "Protocol deletedAt": withProtocol(base, { deletedAt: "2026-07-01T00:00:00.000Z" }),
+    "Protocol startDate": withProtocol(base, { startDate: "2026-06-01T00:00:00.000Z" }),
+    "Member deletedAt": withProtocol(base, {
+      members: [{ ...base.protocols[0].members[0], deletedAt: null }]
+    }),
+    "missing today": (({ today: _today, ...rest }) => rest)(base),
+    "impossible startLocalDate": withProtocol(base, { startLocalDate: "2026-02-30" }),
+    "non-date endLocalDate": withProtocol(base, { endLocalDate: "2026-10-01T00:00:00Z" }),
+    "non-date today": { ...base, today: "27/10/2026" },
+    "unknown rule version": withSchedule(base, {
+      rule: { ...timedDailyRule(["09:00"]), v: 2 }
+    }),
+    "unknown rule kind": withSchedule(base, { rule: { v: 1, kind: "daily" } }),
+    "unknown target outcome kind": withProtocol(base, {
+      targetOutcomes: [{ id: createUuidV7(), metricId: null, outcomeKind: "mood" }]
+    }),
+    "negative target outcome position": withProtocol(base, {
+      targetOutcomes: [
+        { id: createUuidV7(), metricId: null, outcomeKind: "performance", position: -1 }
+      ]
+    })
+  };
+  for (const [name, body] of Object.entries(variants)) {
+    const response = await post(app, "/agent/protocols/batch-write", body);
+    assert.equal(response.status, 400, name);
+  }
+});
+
+test("protocol batch-write passes today to the store and returns the plan validators' warnings", async () => {
+  const writes = [];
+  const app = createProtocolsApp({
+    store: stubStore({
+      async writeProtocolBatch(input) {
+        writes.push(input);
+        return {
+          duplicate: false,
+          idempotencyConflict: false,
+          receiptUnavailable: false,
+          serverClock: new Date().toISOString(),
+          accepted: input.protocols.map((row) => row.id),
+          applied: input.protocols.map((row) => ({
+            id: row.id,
+            updatedAt: row.updatedAt,
+            deviceId: input.deviceId
+          })),
+          validationErrors: []
+        };
+      }
+    })
+  });
+  const body = withSchedule(protocolWriteRequest(), {
+    rule: timedDailyRule(["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00"])
+  });
+  const response = await post(app, "/agent/protocols/batch-write", body);
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.protocols[0].outcome, "applied");
+  assert.deepEqual(
+    responseBody.warnings.map((issue) => [issue.rule, issue.field]),
+    [["times_many", "protocols[0].schedules[0].rule.times"]]
+  );
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].today, body.today);
+});
+
+test("a protocol batch-write the store refuses still returns the plan validators' warnings", async () => {
+  const app = createProtocolsApp({
+    store: stubStore({
+      async writeProtocolBatch() {
+        return {
+          duplicate: false,
+          idempotencyConflict: false,
+          receiptUnavailable: false,
+          serverClock: new Date().toISOString(),
+          accepted: [],
+          applied: [],
+          validationErrors: [
+            {
+              itemIndex: 0,
+              entityId: null,
+              field: "protocols[0]",
+              rule: "protocol_archived",
+              message: "Protocol is archived."
+            }
+          ]
+        };
+      }
+    })
+  });
+  const body = withSchedule(protocolWriteRequest(), {
+    rule: timedDailyRule(["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00"])
+  });
+  const response = await post(app, "/agent/protocols/batch-write", body);
+  assert.equal(response.status, 422);
+  const responseBody = await response.json();
+  assert.deepEqual(
+    responseBody.errors.map((issue) => issue.rule),
+    ["protocol_archived"]
+  );
+  assert.deepEqual(
+    responseBody.warnings.map((issue) => [issue.rule, issue.field]),
+    [["times_many", "protocols[0].schedules[0].rule.times"]]
+  );
+});
+
+test("effect-window route rejects an offset outside -720 to +840 with 400 before the store", async () => {
+  const reads = [];
+  const app = createProtocolsApp({
+    store: stubStore({
+      async readEffectWindow(input) {
+        reads.push(input.query.timezoneOffsetMinutes);
+        return { ok: false, message: "The requested Metric was not found." };
+      }
+    })
+  });
+  const path = (offset) =>
+    `/agent/protocols/effect-window?protocolId=p1&metricId=m1&from=2026-01-01T00:00:00.000Z&to=2026-02-01T00:00:00.000Z${
+      offset === undefined ? "" : `&timezoneOffsetMinutes=${offset}`
+    }`;
+  for (const offset of [-721, 841, 1.5]) {
+    const response = await app.request(path(offset), { headers: authHeaders() });
+    assert.equal(response.status, 400, String(offset));
+  }
+  assert.deepEqual(reads, []);
+  for (const offset of [undefined, -720, 840]) {
+    const response = await app.request(path(offset), { headers: authHeaders() });
+    assert.equal(response.status, 422, String(offset));
+  }
+  assert.deepEqual(reads, [0, -720, 840]);
+});
+
+// ---------------------------------------------------------------------------
+// Planned-day and Day Status reads (D6): the query checks, before the store
+// ---------------------------------------------------------------------------
+
+function protocolDaysApp() {
+  const calls = [];
+  const app = createProtocolsApp({
+    store: stubStore({
+      async listProtocolPlannedDays(input) {
+        calls.push({ read: "planned-days", ...input });
+        return {
+          fromLocalDate: input.query.fromLocalDate,
+          toLocalDate: input.query.toLocalDate,
+          plannedDays: []
+        };
+      },
+      async listProtocolDayStatuses(input) {
+        calls.push({ read: "day-statuses", ...input });
+        return {
+          fromLocalDate: input.query.fromLocalDate,
+          toLocalDate: input.query.toLocalDate,
+          today: input.query.today,
+          detail: input.query.detail,
+          dayStatuses: []
+        };
+      }
+    })
+  });
+  return { app, calls };
+}
+
+function protocolDaysPath(read, params) {
+  return `/agent/protocols/${read}?${new URLSearchParams(params).toString()}`;
+}
+
+test("planned-day and Day Status reads refuse a backwards range and one over 366 days with 400 before the store", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const refused = [
+    // fromLocalDate after toLocalDate.
+    { fromLocalDate: today, toLocalDate: addDays(today, -1) },
+    // 367 days, both ends included.
+    { fromLocalDate: addDays(today, -366), toLocalDate: today }
+  ];
+  for (const range of refused) {
+    for (const [read, params] of [
+      ["planned-days", range],
+      ["day-statuses", { ...range, today }]
+    ]) {
+      const response = await app.request(protocolDaysPath(read, params), {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 400, `${read} ${JSON.stringify(range)}`);
+      const body = await response.json();
+      assert.equal(body.code, "agent_protocol_days_invalid_request");
+      assert.ok(body.message.length > 0);
+    }
+  }
+  assert.deepEqual(calls, []);
+
+  // 366 days, both ends included, and a single day are accepted.
+  for (const range of [
+    { fromLocalDate: addDays(today, -365), toLocalDate: today },
+    { fromLocalDate: today, toLocalDate: today }
+  ]) {
+    const planned = await app.request(protocolDaysPath("planned-days", range), {
+      headers: authHeaders()
+    });
+    assert.equal(planned.status, 200);
+    const statuses = await app.request(
+      protocolDaysPath("day-statuses", { ...range, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(statuses.status, 200);
+  }
+  assert.equal(calls.length, 4);
+});
+
+test("planned-day and Day Status reads refuse a date that is not a real YYYY-MM-DD date with 400", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  for (const bad of ["2026-02-30", "2026-13-01", "26-10-01", "today", ""]) {
+    for (const [read, params] of [
+      ["planned-days", { fromLocalDate: bad, toLocalDate: today }],
+      ["planned-days", { fromLocalDate: today, toLocalDate: bad }],
+      ["day-statuses", { fromLocalDate: today, toLocalDate: today, today: bad }]
+    ]) {
+      const response = await app.request(protocolDaysPath(read, params), {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 400, `${read} ${JSON.stringify(params)}`);
+      // The request validator refuses it in its own body, as the route's 400
+      // description says, not with the range checks' code.
+      const body = await response.json();
+      assert.equal(body.success, false, `${read} ${JSON.stringify(params)}`);
+      assert.equal(body.code, undefined, `${read} ${JSON.stringify(params)}`);
+    }
+  }
+  // Both range bounds are required.
+  for (const read of ["planned-days", "day-statuses"]) {
+    const response = await app.request(
+      protocolDaysPath(read, { fromLocalDate: today, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 400, read);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("the Day Status read requires today, holds it within one day of the server's UTC date, and defaults detail to summary", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const range = { fromLocalDate: addDays(today, -7), toLocalDate: addDays(today, -1) };
+
+  const missing = await app.request(protocolDaysPath("day-statuses", range), {
+    headers: authHeaders()
+  });
+  assert.equal(missing.status, 400);
+
+  for (const skewed of [addDays(today, -2), addDays(today, 2)]) {
+    const response = await app.request(
+      protocolDaysPath("day-statuses", {
+        fromLocalDate: addDays(skewed, -3),
+        toLocalDate: skewed,
+        today: skewed
+      }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 400, skewed);
+    assert.equal((await response.json()).code, "agent_protocol_days_invalid_request");
+  }
+
+  const badDetail = await app.request(
+    protocolDaysPath("day-statuses", { ...range, today, detail: "everything" }),
+    { headers: authHeaders() }
+  );
+  assert.equal(badDetail.status, 400);
+  assert.deepEqual(calls, []);
+
+  // A today one day either side of the server's UTC date is a real timezone's.
+  for (const nearby of [addDays(today, -1), today, addDays(today, 1)]) {
+    const response = await app.request(
+      protocolDaysPath("day-statuses", {
+        fromLocalDate: addDays(nearby, -3),
+        toLocalDate: nearby,
+        today: nearby
+      }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 200, nearby);
+  }
+  assert.deepEqual(
+    calls.map((call) => call.query.detail),
+    ["summary", "summary", "summary"]
+  );
+  // The planned-day read takes no today at all.
+  const planned = await app.request(protocolDaysPath("planned-days", range), {
+    headers: authHeaders()
+  });
+  assert.equal(planned.status, 200);
+  assert.equal("today" in calls.at(-1).query, false);
+});
+
+test("planned days may lie in the future; a Day Status range may not end after today", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const future = { fromLocalDate: today, toLocalDate: addDays(today, 30) };
+
+  const planned = await app.request(protocolDaysPath("planned-days", future), {
+    headers: authHeaders()
+  });
+  assert.equal(planned.status, 200);
+  assert.deepEqual(await planned.json(), { ...future, plannedDays: [] });
+
+  for (const toLocalDate of [addDays(today, 1), addDays(today, 30)]) {
+    const statuses = await app.request(
+      protocolDaysPath("day-statuses", { fromLocalDate: today, toLocalDate, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(statuses.status, 400, toLocalDate);
+    assert.match((await statuses.json()).message, /today/);
+  }
+  assert.equal(calls.length, 1);
+
+  const throughToday = await app.request(
+    protocolDaysPath("day-statuses", { fromLocalDate: today, toLocalDate: today, today }),
+    { headers: authHeaders() }
+  );
+  assert.equal(throughToday.status, 200);
+});
+
+test("planned-day and Day Status reads pass the filters and detail to the store as sent", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const range = { fromLocalDate: addDays(today, -3), toLocalDate: today };
+  await app.request(
+    protocolDaysPath("planned-days", { ...range, compoundId: "c1", protocolId: "p1" }),
+    { headers: authHeaders() }
+  );
+  await app.request(
+    protocolDaysPath("day-statuses", { ...range, today, compoundId: "c1", detail: "doses" }),
+    { headers: authHeaders() }
+  );
+  assert.deepEqual(
+    calls.map(({ read, userId, query }) => ({ read, userId, query })),
+    [
+      {
+        read: "planned-days",
+        userId: "user-1",
+        query: { ...range, compoundId: "c1", protocolId: "p1" }
+      },
+      {
+        read: "day-statuses",
+        userId: "user-1",
+        query: { ...range, today, compoundId: "c1", detail: "doses" }
+      }
+    ]
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -474,10 +1220,12 @@ test(
         "/agent/protocols/batch-write",
         {
           idempotencyKey: `invalid-protocol-${randomUUID()}`,
+          today: utcToday(),
           protocols: [
             {
               id: uuidV4,
               name: "Base",
+              startLocalDate: utcToday(),
               members: [],
               schedules: [],
               targetOutcomes: []
@@ -489,10 +1237,12 @@ test(
         "/agent/protocols/batch-write",
         {
           idempotencyKey: `invalid-member-${randomUUID()}`,
+          today: utcToday(),
           protocols: [
             {
               id: protocolId,
               name: "Base",
+              startLocalDate: utcToday(),
               members: [
                 { id: uuidV4, compoundId: compoundReference, position: 0 }
               ],
@@ -506,10 +1256,12 @@ test(
         "/agent/protocols/batch-write",
         {
           idempotencyKey: `invalid-schedule-${randomUUID()}`,
+          today: utcToday(),
           protocols: [
             {
               id: protocolId,
               name: "Base",
+              startLocalDate: utcToday(),
               members: [
                 { id: memberId, compoundId: compoundReference, position: 0 }
               ],
@@ -517,7 +1269,7 @@ test(
                 {
                   id: uuidV4,
                   protocolCompoundId: memberId,
-                  frequency: "onceDaily"
+                  rule: { v: 1, kind: "as_needed" }
                 }
               ],
               targetOutcomes: []
@@ -529,10 +1281,12 @@ test(
         "/agent/protocols/batch-write",
         {
           idempotencyKey: `invalid-outcome-${randomUUID()}`,
+          today: utcToday(),
           protocols: [
             {
               id: protocolId,
               name: "Base",
+              startLocalDate: utcToday(),
               members: [],
               schedules: [],
               targetOutcomes: [
@@ -620,6 +1374,11 @@ test(
         payload: {
           id: "legacy-protocol-id",
           name: "Base",
+          start_local_date: "2026-06-01",
+          end_local_date: null,
+          period: null,
+          reminders_enabled: false,
+          archived_on: null,
           updated_at: updatedAt.toISOString(),
           deleted_at: null
         }
@@ -654,11 +1413,13 @@ test(
 
       const protocol = await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `legacy-protocol-archive-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: "legacy-protocol-id",
             name: "Base",
-            deletedAt: "2026-06-03T00:00:00.000Z",
+            startLocalDate: "2026-06-01",
+            archived: true,
             members: [],
             schedules: [],
             targetOutcomes: []
@@ -667,6 +1428,75 @@ test(
       });
       assert.equal(protocol.status, 200);
       assert.equal((await protocol.json()).protocols[0].outcome, "applied");
+      const [archivedLegacy] = await database.sql`
+        select deleted_at, payload from protocols where id = 'legacy-protocol-id'
+      `;
+      assert.notEqual(archivedLegacy.deleted_at, null);
+      assert.equal(archivedLegacy.payload.archived_on, utcToday());
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "an Agent Compound edit keeps the stored is_favorite in the row and its Activity Log after-image",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-compound-favorite-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    const idempotencyKey = `compound-favorite-edit-${randomUUID()}`;
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, {
+        id: compoundId,
+        userId,
+        updatedAt,
+        payload: {
+          id: compoundId,
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          strength: null,
+          is_favorite: true,
+          updated_at: updatedAt.toISOString(),
+          deleted_at: null
+        }
+      });
+
+      const response = await post(app, "/agent/protocols/compounds/batch-write", {
+        idempotencyKey,
+        compounds: [
+          {
+            id: compoundId,
+            name: "Creatine monohydrate",
+            defaultUnit: "gram",
+            defaultRoute: "oral"
+          }
+        ]
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).compounds[0].outcome, "applied");
+
+      const [stored] = await database.sql`
+        select payload from compounds where id = ${compoundId}
+      `;
+      assert.equal(stored.payload.name, "Creatine monohydrate");
+      assert.equal(stored.payload.is_favorite, true);
+      const [logged] = await database.sql`
+        select after_image from activity_log
+        where user_id = ${userId} and batch_id = ${idempotencyKey}
+          and entity_id = ${compoundId}
+      `;
+      assert.equal(logged.after_image.is_favorite, true);
     } finally {
       await database.close();
     }
@@ -712,16 +1542,18 @@ test(
 
       const missingMember = await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `missing-member-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: createUuidV7(),
             name: "Base",
+            startLocalDate: utcToday(),
             members: [],
             schedules: [
               {
                 id: createUuidV7(),
                 protocolCompoundId: "missing-legacy-member",
-                frequency: "onceDaily"
+                rule: { v: 1, kind: "as_needed" }
               }
             ],
             targetOutcomes: []
@@ -736,10 +1568,12 @@ test(
 
       const opaqueMetric = await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `opaque-metric-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: createUuidV7(),
             name: "Base",
+            startLocalDate: utcToday(),
             members: [],
             schedules: [],
             targetOutcomes: [
@@ -1084,12 +1918,13 @@ test(
       // Create the Protocol and a Dose tagged to it.
       await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `proto-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: protocolId,
             name: "Lean bulk",
-            startDate: "2026-06-01T00:00:00.000Z",
-            endDate: null,
+            startLocalDate: "2026-06-01",
+            endLocalDate: null,
             members: [],
             schedules: [],
             targetOutcomes: []
@@ -1110,13 +1945,14 @@ test(
       // Archive the Protocol.
       const archive = await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `archive-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: protocolId,
             name: "Lean bulk",
-            startDate: "2026-06-01T00:00:00.000Z",
-            endDate: null,
-            deletedAt: "2026-07-01T00:00:00.000Z",
+            startLocalDate: "2026-06-01",
+            endLocalDate: null,
+            archived: true,
             members: [],
             schedules: [],
             targetOutcomes: []
@@ -1173,12 +2009,13 @@ test(
       });
       await post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `p-${randomUUID()}`,
+        today: utcToday(),
         protocols: [
           {
             id: protocolId,
             name: "Lean bulk",
-            startDate: "2026-06-01T00:00:00.000Z",
-            endDate: null,
+            startLocalDate: "2026-06-01",
+            endLocalDate: null,
             members: [{ id: memberId, compoundId: compoundIds[0], position: 0 }],
             schedules: [
               {
@@ -1187,7 +2024,7 @@ test(
                 doseAmountValue: 5,
                 doseAmountEntered: "5",
                 doseUnit: "gram",
-                frequency: "onceDaily",
+                rule: timedDailyRule(["09:00"]),
                 route: "oral"
               }
             ],
@@ -1227,12 +2064,382 @@ test(
       const protocolBody = await protocols.json();
       const protocol = protocolBody.protocols.find((p) => p.id === protocolId);
       assert.ok(protocol);
+      assert.equal(protocol.startLocalDate, "2026-06-01");
       assert.equal(protocol.members.length, 1);
       assert.equal(protocol.members[0].compoundId, compoundIds[0]);
-      assert.equal(protocol.schedules.length, 1);
-      assert.equal(protocol.schedules[0].frequency, "onceDaily");
+      assert.equal(protocol.members[0].versions.length, 1);
+      assert.equal(protocol.members[0].versions[0].id, scheduleId);
+      assert.equal(protocol.members[0].versions[0].effectiveFrom, "2026-06-01");
+      assert.deepEqual(protocol.members[0].versions[0].rule, timedDailyRule(["09:00"]));
+      assert.equal(protocol.members[0].currentVersion.id, scheduleId);
+      assert.equal("schedules" in protocol, false);
       assert.equal(protocol.targetOutcomes.length, 1);
       assert.equal(protocol.targetOutcomes[0].metricId, "metric-weight");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "a strength stored by either writer reads as the Agent's object: the app's label, an Agent object stored before the label, and an unreadable value as null",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-strength-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    const run = randomUUID();
+    const compound = (id, strength) => ({
+      id,
+      userId,
+      updatedAt,
+      payload: {
+        id,
+        name: id,
+        default_unit: "capsule",
+        default_route: "oral",
+        strength,
+        updated_at: updatedAt.toISOString(),
+        deleted_at: null
+      }
+    });
+    const dose = (id, compoundStrength) => ({
+      id,
+      userId,
+      updatedAt,
+      payload: {
+        id,
+        compound_id: null,
+        compound_name: id,
+        compound_strength: compoundStrength,
+        amount_value: 1,
+        amount_entered: "1",
+        unit: "capsule",
+        route: "oral",
+        took_at: updatedAt.toISOString(),
+        timezone: "UTC",
+        local_date: "2026-06-01",
+        provenance: "manual",
+        updated_at: updatedAt.toISOString(),
+        deleted_at: null
+      }
+    });
+    const legacyObject = { value: 5, massUnit: "milligram", perUnit: "capsule" };
+    const expected = {
+      [`${run}-a-app`]: { value: 1000, massUnit: "internationalUnit", perUnit: "capsule" },
+      [`${run}-b-legacy`]: legacyObject,
+      [`${run}-c-unreadable`]: null,
+      [`${run}-d-none`]: null
+    };
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, [
+        compound(`${run}-a-app`, "1000 IU/capsule"),
+        compound(`${run}-b-legacy`, legacyObject),
+        compound(`${run}-c-unreadable`, "five milligrams"),
+        compound(`${run}-d-none`, null)
+      ]);
+      await insertOpaqueFixture(database, schema.doses, [
+        dose(`${run}-a-app`, "1000 IU/capsule"),
+        dose(`${run}-b-legacy`, legacyObject),
+        dose(`${run}-c-unreadable`, { value: 5, massUnit: "scoop", perUnit: "capsule" }),
+        dose(`${run}-d-none`, null)
+      ]);
+
+      const compounds = await app.request("/agent/protocols/compounds", {
+        headers: authHeaders()
+      });
+      assert.equal(compounds.status, 200);
+      assert.deepEqual(
+        Object.fromEntries(
+          (await compounds.json()).compounds.map((row) => [row.id, row.strength])
+        ),
+        expected
+      );
+
+      const doses = await app.request("/agent/protocols/doses", {
+        headers: authHeaders()
+      });
+      assert.equal(doses.status, 200);
+      assert.deepEqual(
+        Object.fromEntries(
+          (await doses.json()).doses.map((row) => [row.id, row.compoundStrength])
+        ),
+        expected
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "target outcomes store the app's shape: the store assigns the next position, and rows from either writer read with their kind in position order",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-outcomes-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const appOutcomeId = createUuidV7();
+    const legacyOutcomeId = createUuidV7();
+    const moodOutcomeId = createUuidV7();
+    const [firstId, secondId, sentId] = [createUuidV7(), createUuidV7(), createUuidV7()];
+    const protocolRow = {
+      id: protocolId,
+      name: "Recovery",
+      startLocalDate: "2026-06-01",
+      members: [{ id: memberId, compoundId, position: 0 }],
+      schedules: []
+    };
+    const writeOutcomes = async (targetOutcomes) => {
+      const response = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `o-${randomUUID()}`,
+        today: utcToday(),
+        protocols: [{ ...protocolRow, targetOutcomes }]
+      });
+      assert.equal(response.status, 200);
+    };
+    const storedPayload = async (id) => {
+      const [row] = await database.db
+        .select({ payload: schema.protocolTargetOutcomes.payload })
+        .from(schema.protocolTargetOutcomes)
+        .where(eq(schema.protocolTargetOutcomes.id, id));
+      return row.payload;
+    };
+    const readOutcomes = async () => {
+      const response = await app.request("/agent/protocols", { headers: authHeaders() });
+      const body = await response.json();
+      return body.protocols
+        .find((protocol) => protocol.id === protocolId)
+        .targetOutcomes.map((outcome) => [outcome.id, outcome.outcomeKind, outcome.position]);
+    };
+
+    try {
+      await insertUser(database, userId);
+      await post(app, "/agent/protocols/compounds/batch-write", {
+        idempotencyKey: `c-${randomUUID()}`,
+        compounds: [
+          { id: compoundId, name: "Magnesium", defaultUnit: "milligram", defaultRoute: "oral", strength: null }
+        ]
+      });
+      await writeOutcomes([]);
+
+      // One row as the app pushes it, and two as an Agent stored them before
+      // the app's shape was used (outcome_kind, no position or a free-text
+      // kind).
+      const updatedAt = new Date("2026-06-02T00:00:00.000Z");
+      await database.db.insert(schema.protocolTargetOutcomes).values([
+        {
+          id: appOutcomeId,
+          userId,
+          deviceId: "device-a",
+          payload: {
+            id: appOutcomeId,
+            protocol_id: protocolId,
+            kind: "performance",
+            metric_id: null,
+            position: 1,
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        },
+        {
+          id: legacyOutcomeId,
+          userId,
+          deviceId: "agent",
+          payload: {
+            id: legacyOutcomeId,
+            protocol_id: protocolId,
+            metric_id: "metric-legacy",
+            outcome_kind: "metric",
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        },
+        {
+          id: moodOutcomeId,
+          userId,
+          deviceId: "agent",
+          payload: {
+            id: moodOutcomeId,
+            protocol_id: protocolId,
+            metric_id: null,
+            outcome_kind: "mood",
+            position: 9,
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        }
+      ]);
+      // A kind outside the two still reads, as stored: the read doesn't fail
+      // the whole account over one old row.
+      assert.deepEqual(await readOutcomes(), [
+        [legacyOutcomeId, "metric", 0],
+        [appOutcomeId, "performance", 1],
+        [moodOutcomeId, "mood", 9]
+      ]);
+
+      // Left out, a new outcome goes after the Protocol's others, in batch
+      // order.
+      await writeOutcomes([
+        { id: firstId, metricId: "metric-a", outcomeKind: "metric" },
+        { id: secondId, metricId: "metric-b", outcomeKind: "metric" }
+      ]);
+      const first = await storedPayload(firstId);
+      assert.equal(first.kind, "metric");
+      assert.equal("outcome_kind" in first, false);
+      assert.equal(first.position, 10);
+      assert.equal((await storedPayload(secondId)).position, 11);
+
+      // Archiving one by re-sending it with deletedAt keeps its position, and
+      // a sent position is stored as sent. An old row with a kind the app
+      // can't read is archived by re-sending it with a kind it can.
+      await writeOutcomes([
+        {
+          id: moodOutcomeId,
+          metricId: null,
+          outcomeKind: "performance",
+          deletedAt: new Date().toISOString()
+        },
+        {
+          id: firstId,
+          metricId: "metric-a",
+          outcomeKind: "metric",
+          deletedAt: new Date().toISOString()
+        },
+        { id: sentId, metricId: null, outcomeKind: "performance", position: 7 }
+      ]);
+      assert.equal((await storedPayload(firstId)).position, 10);
+      assert.equal((await storedPayload(sentId)).position, 7);
+      assert.deepEqual(await readOutcomes(), [
+        [legacyOutcomeId, "metric", 0],
+        [appOutcomeId, "performance", 1],
+        [sentId, "performance", 7],
+        [moodOutcomeId, "performance", 9],
+        [firstId, "metric", 10],
+        [secondId, "metric", 11]
+      ]);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "the protocol read decodes a plan the app synced, whose rule and period ride as JSON text",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-app-shape-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const scheduleId = createUuidV7();
+    const updatedAt = new Date("2026-10-01T09:00:00.000Z");
+    const period = {
+      v: 1,
+      cycle: { on_days: 60, off_days: 30, anchor: "2026-10-01", anchor_is_default: true },
+      pauses: [{ from: "2026-10-10", to: "2026-10-12" }]
+    };
+    const rule = timedDailyRule(["21:00"]);
+    const stamps = { updated_at: updatedAt.toISOString(), deleted_at: null };
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, {
+        id: compoundId,
+        userId,
+        updatedAt,
+        payload: {
+          id: compoundId,
+          name: "GHK-Cu",
+          default_unit: "milligram",
+          default_route: "subcutaneous",
+          strength: null,
+          ...stamps
+        }
+      });
+      // The app's sync images carry `rule` and `period` as JSON text, the
+      // way its columns store them.
+      await insertOpaqueFixture(database, schema.protocols, {
+        id: protocolId,
+        userId,
+        updatedAt,
+        payload: {
+          id: protocolId,
+          name: "Skin",
+          start_local_date: "2026-10-01",
+          end_local_date: null,
+          period: JSON.stringify(period),
+          reminders_enabled: false,
+          archived_on: null,
+          ...stamps
+        }
+      });
+      await insertOpaqueFixture(database, schema.protocolCompounds, {
+        id: memberId,
+        userId,
+        updatedAt,
+        payload: {
+          id: memberId,
+          protocol_id: protocolId,
+          compound_id: compoundId,
+          position: 0,
+          archived_on: null,
+          ...stamps
+        }
+      });
+      await insertOpaqueFixture(database, schema.schedules, {
+        id: scheduleId,
+        userId,
+        updatedAt,
+        payload: {
+          id: scheduleId,
+          protocol_compound_id: memberId,
+          effective_from: "2026-10-01",
+          rule: JSON.stringify(rule),
+          dose_amount_value: 1,
+          dose_amount_entered: "1",
+          dose_unit: "milligram",
+          route: "subcutaneous",
+          ...stamps
+        }
+      });
+
+      const response = await app.request("/agent/protocols", {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 200);
+      const protocol = (await response.json()).protocols.find(
+        (p) => p.id === protocolId
+      );
+      assert.ok(protocol);
+      assert.deepEqual(protocol.period, period);
+      assert.equal(protocol.members.length, 1);
+      assert.equal(protocol.members[0].versions.length, 1);
+      assert.deepEqual(protocol.members[0].versions[0].rule, rule);
+      assert.equal(protocol.members[0].currentVersion.id, scheduleId);
     } finally {
       await database.close();
     }
@@ -1338,12 +2545,3485 @@ test(
   }
 );
 
+test(
+  "effect-window read for a Protocol spans its declared course, not its tagged Doses, and the range only scopes the markers",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-effect-protocol-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const protocolId = createUuidV7();
+    const compoundId = createUuidV7();
+    const metricId = randomUUID();
+    const updatedAt = new Date("2026-01-01T00:00:00.000Z");
+
+    try {
+      await insertUser(database, userId);
+      await database.db.insert(schema.metrics).values({
+        id: metricId,
+        userId,
+        deviceId: "device-1",
+        name: "Body Weight",
+        unit: "kilogram",
+        valueShape: "scalar",
+        metricGroup: "body",
+        sortOrder: 0,
+        updatedAt
+      });
+      for (const [day, value] of [
+        [1, 100],
+        [8, 96],
+        [12, 92],
+        [22, 90],
+        [30, 89]
+      ]) {
+        await database.db.insert(schema.metricReadings).values({
+          id: randomUUID(),
+          userId,
+          deviceId: "device-1",
+          metricId,
+          valueJson: { value },
+          scalarValue: value,
+          atTime: new Date(isoDay(day)),
+          provenance: "manual",
+          source: "manual",
+          updatedAt
+        });
+      }
+
+      // Declared course: day 5 → day 25. The tagged Doses (day 10, day 15)
+      // sit inside it and must not narrow it; the untagged Dose on day 2 is
+      // not this Protocol's at all.
+      await insertOpaqueFixture(database, schema.protocols, {
+        id: protocolId,
+        userId,
+        updatedAt,
+        payload: {
+          name: "Cut",
+          // Inclusive local dates: at offset 0, DURING is [day 5, day 25).
+          start_local_date: isoDay(5).slice(0, 10),
+          end_local_date: isoDay(24).slice(0, 10)
+        }
+      });
+      for (const [day, tagged] of [
+        [10, true],
+        [15, true],
+        [2, false]
+      ]) {
+        await insertOpaqueFixture(database, schema.doses, {
+          id: createUuidV7(),
+          userId,
+          updatedAt,
+          payload: {
+            compound_id: compoundId,
+            compound_name: "X",
+            amount_value: 5,
+            unit: "gram",
+            route: "oral",
+            took_at: isoDay(day),
+            protocol_id: tagged ? protocolId : null
+          }
+        });
+      }
+
+      const response = await app.request(
+        `/agent/protocols/effect-window?protocolId=${protocolId}&metricId=${metricId}&from=${isoDay(1)}&to=${isoDay(12)}`,
+        { headers: authHeaders() }
+      );
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.window.duringStart, isoDay(5));
+      assert.equal(body.window.duringEnd, isoDay(25));
+      // The range [day 1, day 12) lists only the day-10 marker.
+      assert.deepEqual(
+        body.doses.map((dose) => dose.tookAt),
+        [isoDay(10)]
+      );
+      // before [Dec 16, day 5): day 1. during [day 5, day 25): day 8, 12, 22.
+      // after [day 25, Feb 14): day 30.
+      assert.deepEqual(body.segments.before, {
+        count: 1,
+        min: 100,
+        max: 100,
+        mean: 100
+      });
+      assert.deepEqual(body.segments.during, {
+        count: 3,
+        min: 90,
+        max: 96,
+        mean: (96 + 92 + 90) / 3
+      });
+      assert.deepEqual(body.segments.after, {
+        count: 1,
+        min: 89,
+        max: 89,
+        mean: 89
+      });
+
+      // The same local dates read in UTC-3 start and end three hours later.
+      const saoPaulo = await app.request(
+        `/agent/protocols/effect-window?protocolId=${protocolId}&metricId=${metricId}&from=${isoDay(1)}&to=${isoDay(12)}&timezoneOffsetMinutes=-180`,
+        { headers: authHeaders() }
+      );
+      assert.equal(saoPaulo.status, 200);
+      const saoPauloBody = await saoPaulo.json();
+      assert.equal(saoPauloBody.window.duringStart, "2026-01-05T03:00:00.000Z");
+      assert.equal(saoPauloBody.window.duringEnd, "2026-01-25T03:00:00.000Z");
+
+      const missing = await app.request(
+        `/agent/protocols/effect-window?protocolId=${createUuidV7()}&metricId=${metricId}&from=${isoDay(1)}&to=${isoDay(12)}`,
+        { headers: authHeaders() }
+      );
+      assert.equal(missing.status, 422);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "Agent Schedule Versions are dated as the app dates them (D1), insert-only, stored sorted, and kept when their member is archived",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-versions-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const laterMemberId = createUuidV7();
+    const firstVersionId = createUuidV7();
+    const protocol = {
+      id: protocolId,
+      name: "Daily",
+      startLocalDate: start,
+      members: [{ id: memberId, compoundId: createUuidV7(), position: 0 }],
+      schedules: [],
+      targetOutcomes: []
+    };
+    const write = (protocolFields, idempotencyKey = `versions-${randomUUID()}`) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey,
+        today,
+        protocols: [{ ...protocol, ...protocolFields }]
+      });
+    const storedVersion = async (id) =>
+      (await database.sql`select payload, deleted_at from schedules where id = ${id}`)[0];
+
+    try {
+      await insertUser(database, userId);
+
+      // A member created with its Protocol: its first version applies from
+      // the Protocol's (past) start. Unsorted times and weekdays are stored
+      // sorted.
+      const created = await write({
+        schedules: [
+          {
+            id: firstVersionId,
+            protocolCompoundId: memberId,
+            rule: {
+              v: 1,
+              kind: "timed",
+              days: { kind: "weekdays", weekdays: [5, 1, 3] },
+              times: ["21:00", "09:00"]
+            },
+            ...creatineAmount
+          }
+        ]
+      });
+      assert.equal(created.status, 200);
+      const first = await storedVersion(firstVersionId);
+      assert.equal(first.payload.effective_from, start);
+      assert.deepEqual(storedJson(first.payload.rule).times, ["09:00", "21:00"]);
+      assert.deepEqual(storedJson(first.payload.rule).days.weekdays, [1, 3, 5]);
+      assert.equal("frequency" in first.payload, false);
+
+      // Two edits the same day insert two versions, both from today. A
+      // member added to the started Protocol starts today too, so its past
+      // days don't read "Not logged".
+      const [editA, editB, laterVersion] = [createUuidV7(), createUuidV7(), createUuidV7()];
+      const edited = await write({
+        members: [
+          ...protocol.members,
+          { id: laterMemberId, compoundId: createUuidV7(), position: 1 }
+        ],
+        schedules: [
+          {
+            id: editA,
+            protocolCompoundId: memberId,
+            rule: timedDailyRule(["07:00"]),
+            ...creatineAmount
+          },
+          {
+            id: editB,
+            protocolCompoundId: memberId,
+            rule: timedDailyRule(["08:00"]),
+            ...creatineAmount
+          },
+          {
+            id: laterVersion,
+            protocolCompoundId: laterMemberId,
+            rule: { v: 1, kind: "as_needed" }
+          }
+        ]
+      });
+      assert.equal(edited.status, 200);
+      for (const id of [editA, editB, laterVersion]) {
+        assert.equal((await storedVersion(id)).payload.effective_from, today, id);
+      }
+      assert.equal((await storedVersion(laterVersion)).payload.dose_unit, null);
+      assert.equal((await storedVersion(firstVersionId)).payload.effective_from, start);
+
+      // Versions are insert-only: a reused id refuses the whole batch, and
+      // the refusal rolls its idempotency receipt back.
+      const retryKey = `versions-retry-${randomUUID()}`;
+      const reused = await write(
+        {
+          schedules: [
+            {
+              id: firstVersionId,
+              protocolCompoundId: memberId,
+              rule: timedDailyRule(["10:00"]),
+              ...creatineAmount
+            }
+          ]
+        },
+        retryKey
+      );
+      assert.equal(reused.status, 422);
+      assert.deepEqual(
+        (await reused.json()).errors.map((issue) => issue.rule),
+        ["schedule_version_exists"]
+      );
+      assert.equal(
+        storedJson((await storedVersion(firstVersionId)).payload.rule).times.join(","),
+        "09:00,21:00"
+      );
+      const corrected = await write({ schedules: [] }, retryKey);
+      assert.equal(corrected.status, 200);
+      assert.equal((await corrected.json()).duplicate, false);
+
+      // A version for a member of another Protocol is refused.
+      const stray = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `versions-stray-${randomUUID()}`,
+        today,
+        protocols: [
+          {
+            id: createUuidV7(),
+            name: "Other",
+            startLocalDate: start,
+            schedules: [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: memberId,
+                rule: timedDailyRule(["10:00"]),
+                ...creatineAmount
+              }
+            ]
+          }
+        ]
+      });
+      assert.equal(stray.status, 422);
+      assert.deepEqual(
+        (await stray.json()).errors.map((issue) => issue.rule),
+        ["schedule_member_not_found"]
+      );
+
+      // Removing a member archives it: the server stamps the time and
+      // freezes archivedOn as today; its versions are untouched.
+      const beforeArchive = Date.now();
+      const removed = await write({
+        members: [
+          { ...protocol.members[0], archived: true },
+          { id: laterMemberId, compoundId: createUuidV7(), position: 1 }
+        ]
+      });
+      assert.equal(removed.status, 200);
+      const [member] = await database.sql`
+        select deleted_at, payload from protocol_compounds where id = ${memberId}
+      `;
+      assert.notEqual(member.deleted_at, null);
+      assert.ok(new Date(member.deleted_at).getTime() >= beforeArchive - 1000);
+      assert.equal(member.payload.archived_on, today);
+      for (const id of [firstVersionId, editA, editB]) {
+        assert.equal((await storedVersion(id)).deleted_at, null, id);
+      }
+
+      // An archived member is never restored: the Compound comes back as a
+      // new member row.
+      const restored = await write({});
+      assert.equal(restored.status, 422);
+      assert.deepEqual(
+        (await restored.json()).errors.map((issue) => issue.rule),
+        ["archived_row_not_restorable"]
+      );
+
+      // The read returns the whole history and the version an editor shows.
+      const read = await app.request("/agent/protocols", { headers: authHeaders() });
+      assert.equal(read.status, 200);
+      const readProtocol = (await read.json()).protocols.find(
+        (candidate) => candidate.id === protocolId
+      );
+      const readMember = readProtocol.members.find((candidate) => candidate.id === memberId);
+      assert.equal(readMember.archivedOn, today);
+      const sameDay = [editA, editB].sort();
+      assert.deepEqual(
+        readMember.versions.map((version) => version.id),
+        [firstVersionId, ...sameDay]
+      );
+      assert.equal(readMember.currentVersion.id, sameDay[1]);
+      assert.deepEqual(readMember.versions[0].rule.days, {
+        kind: "weekdays",
+        weekdays: [1, 3, 5]
+      });
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "moving a Protocol's start later inserts nothing, and moving it earlier copies each member's earliest version",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const defaultAnchorMember = createUuidV7();
+    const setAnchorMember = createUuidV7();
+    const setAnchor = addDays(today, -100);
+    const members = [
+      { id: defaultAnchorMember, compoundId: createUuidV7(), position: 0 },
+      { id: setAnchorMember, compoundId: createUuidV7(), position: 1 }
+    ];
+    const everyThreeDays = (anchor, anchorIsDefault) => ({
+      v: 1,
+      kind: "timed",
+      days: { kind: "every_n_days", n: 3, anchor, anchor_is_default: anchorIsDefault },
+      times: ["21:00"]
+    });
+    const write = (startLocalDate, extra = {}, cycleAnchor = startLocalDate) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-${randomUUID()}`,
+        today,
+        protocols: [
+          {
+            id: protocolId,
+            name: "Skin",
+            startLocalDate,
+            period: {
+              v: 1,
+              cycle: { on_days: 60, off_days: 30, anchor: cycleAnchor, anchor_is_default: true },
+              pauses: []
+            },
+            members,
+            ...extra
+          }
+        ]
+      });
+    const versionsOf = async (memberId) =>
+      (
+        await database.sql`
+          select id, payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberId}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload);
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(start, {
+            schedules: [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: defaultAnchorMember,
+                rule: everyThreeDays(start, true),
+                ...creatineAmount
+              },
+              {
+                id: createUuidV7(),
+                protocolCompoundId: setAnchorMember,
+                rule: everyThreeDays(setAnchor, false),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+
+      const anchors = async (memberId) =>
+        (await versionsOf(memberId)).map((version) => [
+          version.effective_from,
+          storedJson(version.rule).days.anchor
+        ]);
+
+      // Later: nothing is inserted. The version that applies on the new
+      // start is already the latest one dated on or before it, and a default
+      // anchor is read as the start, so it needs no rewriting (D1, D4).
+      const laterStart = addDays(today, -10);
+      assert.equal((await write(laterStart)).status, 200);
+      assert.deepEqual(await anchors(defaultAnchorMember), [[start, start]]);
+      assert.deepEqual(await anchors(setAnchorMember), [[start, setAnchor]]);
+
+      // Earlier: a copy of each member's earliest version, dated from the new
+      // start. The copy stores the new start in a default anchor, as the
+      // app's writes do; an anchor the Agent set stays. The write re-sends
+      // the period's default cycle anchor at the old start, as a read of the
+      // Protocol returns it, and the new start is stored there.
+      const earlierStart = addDays(today, -40);
+      assert.equal((await write(earlierStart, {}, laterStart)).status, 200);
+      assert.deepEqual(await anchors(defaultAnchorMember), [
+        [earlierStart, earlierStart],
+        [start, start]
+      ]);
+      assert.deepEqual(await anchors(setAnchorMember), [
+        [earlierStart, setAnchor],
+        [start, setAnchor]
+      ]);
+      for (const version of [
+        ...(await versionsOf(defaultAnchorMember)),
+        ...(await versionsOf(setAnchorMember))
+      ]) {
+        assert.equal(version.dose_amount_entered, "5");
+      }
+
+      const [stored] = await database.sql`select payload from protocols where id = ${protocolId}`;
+      assert.equal(stored.payload.start_local_date, earlierStart);
+      assert.equal(storedJson(stored.payload.period).cycle.anchor, earlierStart);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "a start move copies only stored versions, and an edit in the same request keeps winning",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-batch-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const versionsOf = async (memberId) =>
+      (
+        await database.sql`
+          select id, payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberId}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload);
+    const write = (protocol) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-batch-${randomUUID()}`,
+        today,
+        protocols: [protocol]
+      });
+
+    try {
+      await insertUser(database, userId);
+
+      // A started Protocol: moving its start earlier while adding a member.
+      const startedId = createUuidV7();
+      const start = addDays(today, -30);
+      const kept = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const added = { id: createUuidV7(), compoundId: createUuidV7(), position: 1 };
+      const started = (startLocalDate, members, schedules) => ({
+        id: startedId,
+        name: "Daily",
+        startLocalDate,
+        members,
+        schedules
+      });
+      assert.equal(
+        (
+          await write(
+            started(start, [kept], [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const earlierStart = addDays(today, -45);
+      assert.equal(
+        (
+          await write(
+            started(earlierStart, [kept, added], [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: added.id,
+                rule: timedDailyRule(["21:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      // D1: the kept member's earliest stored version is copied back to the
+      // new start; the added member plans from today only, as in the app.
+      assert.deepEqual(
+        (await versionsOf(kept.id)).map((version) => version.effective_from),
+        [earlierStart, start]
+      );
+      assert.deepEqual(
+        (await versionsOf(added.id)).map((version) => version.effective_from),
+        [today]
+      );
+
+      // A Protocol starting ahead: moving the start later while editing a
+      // member. Nothing is copied, so the edit is dated by D1 from the latest
+      // stored version (the old start, still ahead of today) and wins it by
+      // id, so it is what plans from the new start.
+      const aheadId = createUuidV7();
+      const member = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const aheadStart = addDays(today, 5);
+      const ahead = (startLocalDate, schedules) => ({
+        id: aheadId,
+        name: "Cycle",
+        startLocalDate,
+        members: [member],
+        schedules
+      });
+      assert.equal(
+        (
+          await write(
+            ahead(aheadStart, [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: member.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const laterStart = addDays(today, 10);
+      const editId = createUuidV7();
+      assert.equal(
+        (
+          await write(
+            ahead(laterStart, [
+              {
+                id: editId,
+                protocolCompoundId: member.id,
+                rule: timedDailyRule(["07:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const aheadVersions = await versionsOf(member.id);
+      assert.deepEqual(
+        aheadVersions.map((version) => [
+          version.effective_from,
+          storedJson(version.rule).times.join(",")
+        ]),
+        [
+          [aheadStart, "09:00"],
+          [aheadStart, "07:00"]
+        ]
+      );
+      assert.equal(aheadVersions[1].id, editId);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "moving the start earlier copies the members planned from the old start, archived ones and ones the same write archives, but not a member added mid-course or one with no versions",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-members-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const member = (position) => ({ id: createUuidV7(), compoundId: createUuidV7(), position });
+    const planned = member(0);
+    const archived = member(1);
+    const removedNow = member(2);
+    const unscheduled = member(3);
+    const midCourse = member(4);
+    const schedule = (memberRow, times) => ({
+      id: createUuidV7(),
+      protocolCompoundId: memberRow.id,
+      rule: timedDailyRule(times),
+      ...creatineAmount
+    });
+    const write = (startLocalDate, members, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-members-${randomUUID()}`,
+        today,
+        protocols: [{ id: protocolId, name: "Daily", startLocalDate, members, schedules }]
+      });
+    const datesOf = async (memberRow) =>
+      (
+        await database.sql`
+          select payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberRow.id}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload.effective_from);
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(start, [planned, archived, removedNow, unscheduled], [
+            schedule(planned, ["09:00"]),
+            schedule(archived, ["12:00"]),
+            schedule(removedNow, ["18:00"])
+          ])
+        ).status,
+        200
+      );
+      // Archive one member and add another mid-course, the start unchanged.
+      assert.equal(
+        (
+          await write(
+            start,
+            [planned, { ...archived, archived: true }, removedNow, unscheduled, midCourse],
+            [schedule(midCourse, ["21:00"])]
+          )
+        ).status,
+        200
+      );
+
+      // Move the start earlier, archiving another member in the same write.
+      // The member archived before is left out of the write: a stored member
+      // of the Protocol gets its copy whether or not the write lists it, as
+      // the app copies from every member row it stores.
+      const earlierStart = addDays(today, -45);
+      assert.equal(
+        (
+          await write(earlierStart, [
+            planned,
+            { ...removedNow, archived: true },
+            unscheduled,
+            midCourse
+          ])
+        ).status,
+        200
+      );
+
+      assert.deepEqual(await datesOf(planned), [earlierStart, start]);
+      assert.deepEqual(await datesOf(archived), [earlierStart, start]);
+      assert.deepEqual(await datesOf(removedNow), [earlierStart, start]);
+      // A member added mid-course keeps its own first date, and one with no
+      // versions already covers every date.
+      assert.deepEqual(await datesOf(midCourse), [today]);
+      assert.deepEqual(await datesOf(unscheduled), []);
+
+      // The copy is of the earliest version, and the member this write
+      // archived is archived after its copy.
+      const [removedCopy] = await database.sql`
+        select payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${removedNow.id}
+          and payload->>'effective_from' = ${earlierStart}
+      `;
+      assert.deepEqual(storedJson(removedCopy.payload.rule).times, ["18:00"]);
+      assert.equal(removedCopy.payload.dose_amount_entered, "5");
+      const [removedMember] = await database.sql`
+        select deleted_at, payload from protocol_compounds where id = ${removedNow.id}
+      `;
+      assert.notEqual(removedMember.deleted_at, null);
+      assert.equal(removedMember.payload.archived_on, today);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "moving the start earlier gives no copy to a member archived before its earliest version, and still gives one to a member the same write archives",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-removed-early-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    // The start is still ahead, so every member's first version is dated
+    // from it (D1).
+    const futureStart = addDays(today, 10);
+    const protocolId = createUuidV7();
+    const member = (position) => ({ id: createUuidV7(), compoundId: createUuidV7(), position });
+    const kept = member(0);
+    const removedEarly = member(1);
+    const removedNow = member(2);
+    const schedule = (memberRow, times) => ({
+      id: createUuidV7(),
+      protocolCompoundId: memberRow.id,
+      rule: timedDailyRule(times),
+      ...creatineAmount
+    });
+    const write = (startLocalDate, members, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-removed-early-${randomUUID()}`,
+        today,
+        protocols: [{ id: protocolId, name: "Daily", startLocalDate, members, schedules }]
+      });
+    const datesOf = async (memberRow) =>
+      (
+        await database.sql`
+          select payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberRow.id}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload.effective_from);
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(futureStart, [kept, removedEarly, removedNow], [
+            schedule(kept, ["09:00"]),
+            schedule(removedEarly, ["12:00"]),
+            schedule(removedNow, ["18:00"])
+          ])
+        ).status,
+        200
+      );
+      // Removed before the start came: its archived_on (today) is before its
+      // earliest version (the future start), so it planned no day.
+      assert.equal(
+        (
+          await write(futureStart, [kept, { ...removedEarly, archived: true }, removedNow])
+        ).status,
+        200
+      );
+
+      // Move the start earlier, archiving another member in the same write.
+      const earlierStart = addDays(today, -20);
+      assert.equal(
+        (await write(earlierStart, [kept, { ...removedNow, archived: true }])).status,
+        200
+      );
+
+      assert.deepEqual(await datesOf(kept), [earlierStart, futureStart]);
+      // Its archived_on is read as stored before the write, so the member
+      // this write archives still gets its copy, and is then archived.
+      assert.deepEqual(await datesOf(removedNow), [earlierStart, futureStart]);
+      const [removedNowRow] = await database.sql`
+        select payload from protocol_compounds where id = ${removedNow.id}
+      `;
+      assert.equal(removedNowRow.payload.archived_on, today);
+      // Removed before it planned anything: no copy.
+      assert.deepEqual(await datesOf(removedEarly), [futureStart]);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "an archived Protocol is read-only, an archived member is re-sent but never restored, and an equal Schedule is still inserted",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-archived-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const kept = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+    const removed = { id: createUuidV7(), compoundId: createUuidV7(), position: 1 };
+    const protocol = { id: protocolId, name: "Daily", startLocalDate: start };
+    const write = (fields, writeToday = today) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `archived-${randomUUID()}`,
+        today: writeToday,
+        protocols: [{ ...protocol, ...fields }]
+      });
+    const rulesOf = async (body) => (await body.json()).errors.map((issue) => issue.rule);
+    const versionsOf = async (memberId) =>
+      database.sql`
+        select id, payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${memberId}
+        order by payload->>'effective_from', id
+      `;
+    const memberStamp = async (memberId) =>
+      (
+        await database.sql`
+          select deleted_at, payload from protocol_compounds where id = ${memberId}
+        `
+      )[0];
+
+    try {
+      await insertUser(database, userId);
+      const firstVersionId = createUuidV7();
+      assert.equal(
+        (
+          await write({
+            members: [kept, removed],
+            schedules: [
+              {
+                id: firstVersionId,
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+
+      // D6: an Agent Schedule is an explicit edit, so one equal to the
+      // current version is inserted under the id the Agent chose.
+      const equalVersionId = createUuidV7();
+      assert.equal(
+        (
+          await write({
+            members: [kept, removed],
+            schedules: [
+              {
+                id: equalVersionId,
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+      const keptVersions = await versionsOf(kept.id);
+      assert.deepEqual(
+        keptVersions.map((row) => [row.id, row.payload.effective_from]),
+        [
+          [firstVersionId, start],
+          [equalVersionId, today]
+        ]
+      );
+      assert.equal(keptVersions[1].payload.rule, keptVersions[0].payload.rule);
+
+      // Archive a member, then re-send it archived: accepted, and its first
+      // stamp is kept, even under a later today.
+      assert.equal(
+        (await write({ members: [kept, { ...removed, archived: true }] })).status,
+        200
+      );
+      const firstStamp = await memberStamp(removed.id);
+      assert.equal(firstStamp.payload.archived_on, today);
+      const resent = await write(
+        { members: [kept, { ...removed, archived: true }] },
+        addDays(today, 1)
+      );
+      assert.equal(resent.status, 200);
+      const keptStamp = await memberStamp(removed.id);
+      assert.equal(
+        new Date(keptStamp.deleted_at).getTime(),
+        new Date(firstStamp.deleted_at).getTime()
+      );
+      assert.equal(keptStamp.payload.archived_on, today);
+      // archived: false on it is never a restore.
+      const restored = await write({ members: [kept, { ...removed, archived: false }] });
+      assert.equal(restored.status, 422);
+      assert.deepEqual(await rulesOf(restored), ["archived_row_not_restorable"]);
+
+      // Archive the Protocol: from then on any write naming it is refused,
+      // whatever it sends, and the stored row is unchanged.
+      assert.equal(
+        (await write({ archived: true, members: [kept, { ...removed, archived: true }] })).status,
+        200
+      );
+      const [archivedProtocol] = await database.sql`
+        select deleted_at, payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(archivedProtocol.payload.archived_on, today);
+      for (const fields of [
+        { archived: true },
+        { archived: true, members: [kept, { ...removed, archived: true }] },
+        { name: "Renamed" },
+        {
+          members: [kept],
+          schedules: [
+            {
+              id: createUuidV7(),
+              protocolCompoundId: kept.id,
+              rule: timedDailyRule(["10:00"]),
+              ...creatineAmount
+            }
+          ]
+        }
+      ]) {
+        const refused = await write(fields);
+        assert.equal(refused.status, 422, JSON.stringify(fields));
+        assert.deepEqual(await rulesOf(refused), ["protocol_archived"], JSON.stringify(fields));
+      }
+      const [unchanged] = await database.sql`
+        select deleted_at, payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(unchanged.payload.name, "Daily");
+      assert.equal(
+        new Date(unchanged.deleted_at).getTime(),
+        new Date(archivedProtocol.deleted_at).getTime()
+      );
+      assert.equal((await versionsOf(kept.id)).length, 2);
+
+      // A Protocol tombstoned by undo (deleted_at with no archived_on) never
+      // existed: a write naming it is refused whatever it sends, a re-sent
+      // archived: true included, so it can't be edited or have its start
+      // moved, and no version is inserted for its members.
+      const undoneId = createUuidV7();
+      const undoneMember = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const writeUndone = (fields) =>
+        post(app, "/agent/protocols/batch-write", {
+          idempotencyKey: `archived-undone-${randomUUID()}`,
+          today,
+          protocols: [{ id: undoneId, name: "Undone", startLocalDate: start, ...fields }]
+        });
+      assert.equal(
+        (
+          await writeUndone({
+            members: [undoneMember],
+            schedules: [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: undoneMember.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+      await database.sql`
+        update protocols
+        set deleted_at = now(),
+            payload = payload || jsonb_build_object('deleted_at', now(), 'archived_on', null)
+        where id = ${undoneId}
+      `;
+      for (const fields of [
+        { archived: true },
+        { archived: true, startLocalDate: addDays(start, -10), members: [undoneMember] },
+        { archived: true, name: "Renamed" },
+        { name: "Renamed" }
+      ]) {
+        const refused = await writeUndone(fields);
+        assert.equal(refused.status, 422, JSON.stringify(fields));
+        assert.deepEqual(
+          await rulesOf(refused),
+          ["archived_row_not_restorable"],
+          JSON.stringify(fields)
+        );
+      }
+      const [undone] = await database.sql`
+        select payload from protocols where id = ${undoneId}
+      `;
+      assert.equal(undone.payload.name, "Undone");
+      assert.equal(undone.payload.start_local_date, start);
+      assert.equal(undone.payload.archived_on, null);
+      assert.equal((await versionsOf(undoneMember.id)).length, 1);
+
+      // Reads ignore undo tombstones entirely, archived rows included: the
+      // undone Protocol is not listed, and a member undo tombstoned is not
+      // listed under its Protocol.
+      await database.sql`
+        update protocol_compounds
+        set payload = payload || jsonb_build_object('archived_on', null)
+        where id = ${removed.id}
+      `;
+      const read = await app.request("/agent/protocols?includeArchived=true", {
+        headers: authHeaders()
+      });
+      assert.equal(read.status, 200);
+      const listed = (await read.json()).protocols;
+      assert.deepEqual(
+        listed.map((candidate) => candidate.id),
+        [protocolId]
+      );
+      assert.deepEqual(
+        listed[0].members.map((member) => member.id),
+        [kept.id]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "rule and period are stored as JSON text, and a row stored as an object still reads and copies",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-json-text-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const versionId = createUuidV7();
+    const period = {
+      v: 1,
+      cycle: { on_days: 60, off_days: 30, anchor: start, anchor_is_default: true },
+      pauses: []
+    };
+    const rule = {
+      v: 1,
+      kind: "timed",
+      days: { kind: "weekdays", weekdays: [1, 3, 5] },
+      times: ["09:00", "21:00"]
+    };
+    const write = (startLocalDate, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `json-text-${randomUUID()}`,
+        today,
+        protocols: [
+          {
+            id: protocolId,
+            name: "Skin",
+            startLocalDate,
+            // Always the period as first written: its default cycle anchor
+            // stays at the first start, and a start move stores the new one.
+            period,
+            members: [{ id: memberId, compoundId: createUuidV7(), position: 0 }],
+            schedules
+          }
+        ]
+      });
+    const readMember = async () => {
+      const read = await app.request("/agent/protocols", { headers: authHeaders() });
+      assert.equal(read.status, 200);
+      const readProtocol = (await read.json()).protocols.find(
+        (candidate) => candidate.id === protocolId
+      );
+      return {
+        protocol: readProtocol,
+        member: readProtocol.members.find((candidate) => candidate.id === memberId)
+      };
+    };
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(start, [
+            { id: versionId, protocolCompoundId: memberId, rule, ...creatineAmount }
+          ])
+        ).status,
+        200
+      );
+
+      // Both are the codec's encoding, as JSON text, as the app stores them.
+      const [storedVersion] = await database.sql`
+        select payload from schedules where id = ${versionId}
+      `;
+      assert.equal(storedVersion.payload.rule, JSON.stringify(rule));
+      const [storedProtocol] = await database.sql`
+        select payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(storedProtocol.payload.period, JSON.stringify(period));
+
+      // A row an earlier Agent write stored as an object still reads.
+      await database.sql`
+        update schedules
+        set payload = jsonb_set(payload, '{rule}', (payload->>'rule')::jsonb)
+        where id = ${versionId}
+      `;
+      await database.sql`
+        update protocols
+        set payload = jsonb_set(payload, '{period}', (payload->>'period')::jsonb)
+        where id = ${protocolId}
+      `;
+      const [objectVersion] = await database.sql`
+        select payload from schedules where id = ${versionId}
+      `;
+      assert.equal(typeof objectVersion.payload.rule, "object");
+      const objectRead = await readMember();
+      assert.deepEqual(objectRead.protocol.period, period);
+      assert.deepEqual(objectRead.member.currentVersion.rule, rule);
+
+      // A start move copies from the object row and writes the copy as text.
+      const earlierStart = addDays(today, -40);
+      assert.equal((await write(earlierStart)).status, 200);
+      const [copy] = await database.sql`
+        select payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${memberId}
+          and id <> ${versionId}
+      `;
+      assert.equal(copy.payload.effective_from, earlierStart);
+      assert.deepEqual(storedJson(copy.payload.rule), rule);
+      const copiedRead = await readMember();
+      assert.deepEqual(
+        copiedRead.member.versions.map((version) => version.effectiveFrom),
+        [earlierStart, start]
+      );
+      assert.deepEqual(copiedRead.protocol.period.cycle.anchor, earlierStart);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Protocol delete, history and the archive warning (D8)
+// ---------------------------------------------------------------------------
+
+test("delete route answers a store refusal as agent_protocol_delete_failed and nudges only after a delete", async () => {
+  const nudges = [];
+  const calls = [];
+  const issue = {
+    field: "protocolIds[1]",
+    rule: "protocol_has_history",
+    message:
+      "Doses were logged for this Protocol, so it can't be deleted. Archive it with manage-protocols instead.",
+    itemIndex: 1,
+    entityId: "protocol-2"
+  };
+  let result = {
+    duplicate: false,
+    idempotencyConflict: false,
+    receiptUnavailable: false,
+    serverClock: "2026-11-02T00:00:00.000Z",
+    accepted: [],
+    applied: [],
+    validationErrors: [issue],
+    protocols: []
+  };
+  const app = createProtocolsApp({
+    store: stubStore({
+      async deleteProtocols(input) {
+        calls.push(input);
+        return result;
+      }
+    }),
+    syncNudgePublisher: {
+      async enqueueSyncNudge(input) {
+        nudges.push(input);
+        return { enqueued: true, jobId: "nudge" };
+      }
+    }
+  });
+  const body = { idempotencyKey: "delete-1", protocolIds: ["protocol-1", "protocol-2"] };
+
+  const refused = await post(app, "/agent/protocols/delete", body);
+  assert.equal(refused.status, 422);
+  assert.deepEqual(await refused.json(), {
+    code: "agent_protocol_delete_failed",
+    message: "One or more Protocols can't be deleted; nothing was deleted.",
+    issues: [issue]
+  });
+  assert.deepEqual(calls, [
+    {
+      userId: "user-1",
+      deviceId: "agent:agent-key-1",
+      idempotencyKey: "delete-1",
+      protocolIds: ["protocol-1", "protocol-2"]
+    }
+  ]);
+  assert.equal(nudges.length, 0);
+
+  result = {
+    ...result,
+    validationErrors: [],
+    applied: [{ id: "protocol-1", updatedAt: result.serverClock, deviceId: "agent:agent-key-1" }],
+    accepted: ["protocol-1"],
+    protocols: [
+      { id: "protocol-1", outcome: "deleted" },
+      { id: "protocol-2", outcome: "already_deleted" }
+    ]
+  };
+  const deleted = await post(app, "/agent/protocols/delete", body);
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(await deleted.json(), {
+    accepted: true,
+    duplicate: false,
+    idempotencyKey: "delete-1",
+    batchId: "delete-1",
+    serverClock: result.serverClock,
+    protocols: result.protocols
+  });
+  assert.equal(nudges.length, 1);
+
+  // Nothing deleted (every id already gone): no nudge.
+  result = { ...result, applied: [], accepted: [] };
+  assert.equal((await post(app, "/agent/protocols/delete", body)).status, 200);
+  assert.equal(nudges.length, 1);
+
+  // A reused key judges no Protocol, so it doesn't say they can't be deleted.
+  result = { ...result, idempotencyConflict: true };
+  const conflict = await post(app, "/agent/protocols/delete", body);
+  assert.equal(conflict.status, 422);
+  const conflictBody = await conflict.json();
+  assert.equal(conflictBody.code, "agent_protocol_delete_failed");
+  assert.equal(
+    conflictBody.message,
+    "This idempotency key was already used with a different request; nothing was deleted."
+  );
+  assert.deepEqual(
+    conflictBody.issues.map((entry) => entry.rule),
+    ["idempotency_key_conflict"]
+  );
+
+  result = { ...result, idempotencyConflict: false, receiptUnavailable: true };
+  assert.equal((await post(app, "/agent/protocols/delete", body)).status, 503);
+});
+
+test("delete route is strict: no ids, over 100 ids, a missing idempotencyKey and an unknown field are 400s before the store", async () => {
+  const app = createProtocolsApp({ store: stubStore({}) });
+  for (const body of [
+    { idempotencyKey: "delete-1", protocolIds: [] },
+    {
+      idempotencyKey: "delete-1",
+      protocolIds: Array.from({ length: 101 }, (_, index) => `protocol-${index}`)
+    },
+    { protocolIds: ["protocol-1"] },
+    { idempotencyKey: "delete-1", protocolIds: ["protocol-1"], archived: true }
+  ]) {
+    const response = await post(app, "/agent/protocols/delete", body);
+    assert.equal(response.status, 400, JSON.stringify(body).slice(0, 80));
+  }
+});
+
+/** An app with the Protocols store and the Activity Log undo, as served. */
+function createDeleteApp(database, userId) {
+  return createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: createAgentKeyStore(userId),
+    agentProtocolsStore: createDrizzleAgentProtocolsStore(database.db),
+    agentActivityStore: createDrizzleAgentActivityStore(database.db)
+  });
+}
+
+/** Stores a Protocol with one member and one version, through the Agent write. */
+async function writeProtocol(
+  app,
+  {
+    start,
+    end = null,
+    compoundId = createUuidV7(),
+    name = "Plan",
+    rule = timedDailyRule(["09:00"])
+  }
+) {
+  const protocolId = createUuidV7();
+  const memberId = createUuidV7();
+  const response = await post(app, "/agent/protocols/batch-write", {
+    idempotencyKey: `create-${randomUUID()}`,
+    today: utcToday(),
+    protocols: [
+      {
+        id: protocolId,
+        name,
+        startLocalDate: start,
+        endLocalDate: end,
+        members: [{ id: memberId, compoundId, position: 0 }],
+        schedules: [
+          {
+            id: createUuidV7(),
+            protocolCompoundId: memberId,
+            rule,
+            ...creatineAmount
+          }
+        ],
+        targetOutcomes: []
+      }
+    ]
+  });
+  assert.equal(response.status, 200);
+  return { protocolId, memberId, compoundId };
+}
+
+/** Stores a Dose row as a sync push would. */
+async function storeDose(database, userId, { compoundId, localDate, protocolId = null, deletedAt = null }) {
+  const id = createUuidV7();
+  await insertStoredRows(database, schema.doses, userId, [
+    {
+      id,
+      payload: {
+        id,
+        compound_id: compoundId,
+        compound_name: "Compound",
+        amount_value: 5,
+        amount_entered: "5",
+        unit: "gram",
+        route: "oral",
+        took_at: `${localDate}T09:00:00.000Z`,
+        timezone: "UTC",
+        timezone_offset_minutes: 0,
+        local_date: localDate,
+        provenance: "agent",
+        protocol_id: protocolId,
+        protocol_name: protocolId === null ? null : "Plan"
+      },
+      deletedAt
+    }
+  ]);
+  return id;
+}
+
+async function listedProtocols(app) {
+  const response = await app.request("/agent/protocols?includeArchived=true", {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).protocols;
+}
+
+test(
+  "deleteAgentProtocols deletes a Protocol with no history as one row, treats a repeated id once, replays a retried key, and Agent undo restores it",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-delete-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const rowOf = async (table, id) =>
+      (await database.sql`
+        select deleted_at, updated_at, payload from ${database.sql(table)} where id = ${id}
+      `)[0];
+    const logOf = async (batchId) =>
+      database.sql`
+        select entity_table, entity_id, before_image, after_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId}
+          and entity_table <> 'agent_protocol_batches'
+        order by entity_id
+      `;
+
+    try {
+      await insertUser(database, userId);
+      const first = await writeProtocol(app, { start: addDays(today, -5) });
+      const second = await writeProtocol(app, { start: addDays(today, -5) });
+      const before = await rowOf("protocols", first.protocolId);
+      const memberBefore = await rowOf("protocol_compounds", first.memberId);
+      const versionsBefore = await database.sql`
+        select id, deleted_at, payload from schedules
+        where payload->>'protocol_compound_id' = ${first.memberId}
+      `;
+
+      const body = {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds: [first.protocolId, second.protocolId, first.protocolId]
+      };
+      const deleted = await post(app, "/agent/protocols/delete", body);
+      assert.equal(deleted.status, 200);
+      const deletedBody = await deleted.json();
+      assert.equal(deletedBody.accepted, true);
+      assert.equal(deletedBody.duplicate, false);
+      assert.equal(deletedBody.batchId, body.idempotencyKey);
+      // A repeated id is treated once, at its first position.
+      assert.deepEqual(deletedBody.protocols, [
+        { id: first.protocolId, outcome: "deleted" },
+        { id: second.protocolId, outcome: "deleted" }
+      ]);
+
+      // D8's one row: deleted_at and updated_at now, archived_on cleared,
+      // every other field as stored; members and versions untouched.
+      const after = await rowOf("protocols", first.protocolId);
+      assert.notEqual(after.deleted_at, null);
+      assert.equal(after.payload.deleted_at, after.payload.updated_at);
+      assert.equal(new Date(after.deleted_at).toISOString(), after.payload.deleted_at);
+      assert.equal(after.payload.archived_on, null);
+      const { updated_at: _u1, deleted_at: _d1, ...keptAfter } = after.payload;
+      const { updated_at: _u2, deleted_at: _d2, ...keptBefore } = before.payload;
+      assert.deepEqual(keptAfter, { ...keptBefore, archived_on: null });
+      assert.deepEqual(await rowOf("protocol_compounds", first.memberId), memberBefore);
+      assert.deepEqual(
+        await database.sql`
+          select id, deleted_at, payload from schedules
+          where payload->>'protocol_compound_id' = ${first.memberId}
+        `,
+        versionsBefore
+      );
+      // One Activity Log entry per Protocol, before and after images both the row.
+      const log = await logOf(body.idempotencyKey);
+      assert.deepEqual(
+        log.map((entry) => [entry.entity_table, entry.entity_id]),
+        [first.protocolId, second.protocolId].sort().map((id) => ["protocols", id])
+      );
+      const firstEntry = log.find((entry) => entry.entity_id === first.protocolId);
+      assert.deepEqual(firstEntry.before_image, before.payload);
+      assert.deepEqual(firstEntry.after_image, after.payload);
+
+      // A retried key replays: the same outcomes, nothing written.
+      const retried = await post(app, "/agent/protocols/delete", body);
+      assert.equal(retried.status, 200);
+      const retriedBody = await retried.json();
+      assert.equal(retriedBody.duplicate, true);
+      assert.deepEqual(retriedBody.protocols, deletedBody.protocols);
+      assert.equal((await logOf(body.idempotencyKey)).length, 2);
+      // The same key for different work is a conflict.
+      const conflict = await post(app, "/agent/protocols/delete", {
+        ...body,
+        protocolIds: [first.protocolId]
+      });
+      assert.equal(conflict.status, 422);
+      const conflictBody = await conflict.json();
+      assert.equal(conflictBody.code, "agent_protocol_delete_failed");
+      assert.deepEqual(
+        conflictBody.issues.map((issue) => issue.rule),
+        ["idempotency_key_conflict"]
+      );
+
+      // A second delete answers already_deleted and writes nothing.
+      const againKey = `delete-again-${randomUUID()}`;
+      const again = await post(app, "/agent/protocols/delete", {
+        idempotencyKey: againKey,
+        protocolIds: [first.protocolId]
+      });
+      assert.equal(again.status, 200);
+      assert.deepEqual((await again.json()).protocols, [
+        { id: first.protocolId, outcome: "already_deleted" }
+      ]);
+      assert.equal((await logOf(againKey)).length, 0);
+      assert.deepEqual(await rowOf("protocols", first.protocolId), after);
+
+      // Undoing the batch restores both Protocols exactly, members and all.
+      const undo = await post(app, "/agent/activity/undo-batch", {
+        batchId: body.idempotencyKey,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(undo.status, 200);
+      const undoBody = await undo.json();
+      assert.equal(undoBody.applied, true);
+      assert.deepEqual(
+        undoBody.entries.map((entry) => entry.outcome),
+        ["reverted", "reverted"]
+      );
+      const restored = await rowOf("protocols", first.protocolId);
+      assert.equal(restored.deleted_at, null);
+      const { updated_at: _u3, ...restoredFields } = restored.payload;
+      const { updated_at: _u4, ...beforeFields } = before.payload;
+      assert.deepEqual(restoredFields, beforeFields);
+      const relisted = await listedProtocols(app);
+      assert.deepEqual(
+        relisted.map((protocol) => protocol.id).sort(),
+        [first.protocolId, second.protocolId].sort()
+      );
+      assert.deepEqual(
+        relisted.find((protocol) => protocol.id === first.protocolId).members.map((m) => m.id),
+        [first.memberId]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "deleteAgentProtocols refuses an unknown id and a Protocol with history as 422s, and the whole request with them",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-delete-refused-${randomUUID()}`;
+    const otherUserId = `agent-protocol-delete-other-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const otherApp = createDeleteApp(database, otherUserId);
+    const today = utcToday();
+    const start = addDays(today, -5);
+    const deleteIds = (protocolIds) =>
+      post(app, "/agent/protocols/delete", {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds
+      });
+    const issuesOf = async (response) => {
+      assert.equal(response.status, 422);
+      const body = await response.json();
+      assert.equal(body.code, "agent_protocol_delete_failed");
+      return body.issues;
+    };
+
+    try {
+      await insertUser(database, userId);
+      await insertUser(database, otherUserId);
+      const free = await writeProtocol(app, { start });
+      const tagged = await writeProtocol(app, { start });
+      const untagged = await writeProtocol(app, { start, end: addDays(today, -1) });
+      const others = await writeProtocol(otherApp, { start });
+
+      // History: a Dose tagged to the Protocol (any Compound, any date), and
+      // an untagged Dose of a member Compound within its dates.
+      await storeDose(database, userId, {
+        compoundId: createUuidV7(),
+        localDate: addDays(today, -30),
+        protocolId: tagged.protocolId
+      });
+      await storeDose(database, userId, {
+        compoundId: untagged.compoundId,
+        localDate: addDays(today, -1)
+      });
+      // Not history: an untagged Dose of the free Protocol's Compound before
+      // its start, a deleted Dose of it within its dates, and another
+      // account's Dose tagged to it.
+      await storeDose(database, userId, {
+        compoundId: free.compoundId,
+        localDate: addDays(start, -1)
+      });
+      await storeDose(database, userId, {
+        compoundId: free.compoundId,
+        localDate: today,
+        deletedAt: new Date()
+      });
+      await storeDose(database, otherUserId, {
+        compoundId: free.compoundId,
+        localDate: today,
+        protocolId: free.protocolId
+      });
+      // Nor is an untagged Dose after the untagged Protocol's end date.
+      const untaggedFree = await writeProtocol(app, { start, end: addDays(today, -2) });
+      await storeDose(database, userId, {
+        compoundId: untaggedFree.compoundId,
+        localDate: addDays(today, -1)
+      });
+
+      const listed = await listedProtocols(app);
+      const historyOf = (id) => listed.find((protocol) => protocol.id === id).hasHistory;
+      assert.equal(historyOf(free.protocolId), false);
+      assert.equal(historyOf(tagged.protocolId), true);
+      assert.equal(historyOf(untagged.protocolId), true);
+      assert.equal(historyOf(untaggedFree.protocolId), false);
+
+      const unknownId = createUuidV7();
+      assert.deepEqual(await issuesOf(await deleteIds([free.protocolId, unknownId])), [
+        {
+          field: "protocolIds[1]",
+          rule: "protocol_not_found",
+          message: "No Protocol with this id exists for this account.",
+          itemIndex: 1,
+          entityId: unknownId
+        }
+      ]);
+      // Another account's Protocol is not found either.
+      assert.deepEqual(
+        (await issuesOf(await deleteIds([others.protocolId]))).map((issue) => issue.rule),
+        ["protocol_not_found"]
+      );
+      assert.deepEqual(
+        await issuesOf(
+          await deleteIds([free.protocolId, tagged.protocolId, untagged.protocolId])
+        ),
+        [tagged.protocolId, untagged.protocolId].map((id, index) => ({
+          field: `protocolIds[${index + 1}]`,
+          rule: "protocol_has_history",
+          message:
+            "Doses were logged for this Protocol, so it can't be deleted. Archive it with manage-protocols instead.",
+          itemIndex: index + 1,
+          entityId: id
+        }))
+      );
+      // Nothing was deleted, the free Protocol included.
+      const [freeRow] = await database.sql`
+        select deleted_at from protocols where id = ${free.protocolId}
+      `;
+      assert.equal(freeRow.deleted_at, null);
+      const [otherRow] = await database.sql`
+        select deleted_at from protocols where id = ${others.protocolId}
+      `;
+      assert.equal(otherRow.deleted_at, null);
+
+      const accepted = await deleteIds([free.protocolId, untaggedFree.protocolId]);
+      assert.equal(accepted.status, 200);
+      assert.deepEqual(
+        (await accepted.json()).protocols.map((protocol) => protocol.outcome),
+        ["deleted", "deleted"]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Skips (docs/designs/protocol-schedules-and-reminders.md, D8)
+// ---------------------------------------------------------------------------
+
+test("prepareAgentProtocolSkipBatchWrite builds the Skip row and collects every validator and today issue before refusing", () => {
+  const now = new Date("2026-11-02T12:00:00.000Z");
+  const id = createUuidV7(now);
+  const accepted = prepareAgentProtocolSkipBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      today: "2026-11-02",
+      skips: [
+        {
+          id,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-02",
+          plannedLocalTime: null
+        }
+      ]
+    },
+    now
+  });
+  assert.equal(accepted.accepted, true);
+  assert.deepEqual(accepted.skips[0].payload, {
+    id,
+    protocol_id: "p1",
+    compound_id: "c1",
+    local_date: "2026-11-02",
+    planned_local_time: null,
+    updated_at: now.toISOString(),
+    deleted_at: null
+  });
+
+  const repeated = createUuidV7(now);
+  const refused = prepareAgentProtocolSkipBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      // Three days from the server's UTC date.
+      today: "2026-11-05",
+      skips: [
+        {
+          id: repeated,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-06",
+          plannedLocalTime: "9:00"
+        },
+        {
+          id: repeated,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-01",
+          plannedLocalTime: "09:00"
+        }
+      ]
+    },
+    now
+  });
+  assert.equal(refused.accepted, false);
+  assert.deepEqual(
+    refused.issues.map((issue) => [issue.field, issue.rule, issue.itemIndex]),
+    [
+      ["today", "today_out_of_range", 0],
+      ["skips[0].plannedLocalTime", "skip_time_format", 0],
+      ["skips[0].localDate", "skip_future", 0],
+      ["skips[1].id", "duplicate_skip_id", 1]
+    ]
+  );
+});
+
+test(
+  "batchWriteAgentProtocolSkips writes a Skip its Day Status reads, replays a retried key, applies a removal of a Skip stamped ahead, and Agent undo reverts it",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const skipRow = async (id) =>
+      (await database.sql`
+        select deleted_at, updated_at, payload from protocol_skips where id = ${id}
+      `)[0];
+    const logOf = async (batchId) =>
+      database.sql`
+        select entity_table, entity_id, before_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId}
+          and entity_table <> 'agent_protocol_batches'
+        order by entity_id
+      `;
+
+    try {
+      await insertUser(database, userId);
+      const plan = await writeProtocol(app, {
+        start: addDays(today, -5),
+        rule: timedDailyRule(["09:00", "21:00"])
+      });
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(plan.compoundId)
+      ]);
+      const item = (fields) => ({
+        id: createUuidV7(),
+        protocolId: plan.protocolId,
+        compoundId: plan.compoundId,
+        localDate: yesterday,
+        plannedLocalTime: "21:00",
+        ...fields
+      });
+
+      const skip = item();
+      const body = { idempotencyKey: `skip-${randomUUID()}`, today, skips: [skip] };
+      const written = await post(app, "/agent/protocols/skips/batch-write", body);
+      assert.equal(written.status, 200);
+      const writtenBody = await written.json();
+      assert.equal(writtenBody.accepted, true);
+      assert.equal(writtenBody.duplicate, false);
+      assert.equal(writtenBody.batchId, body.idempotencyKey);
+      assert.deepEqual(writtenBody.skips, [{ id: skip.id, outcome: "applied" }]);
+      const stored = await skipRow(skip.id);
+      assert.equal(stored.deleted_at, null);
+      const { updated_at: _updatedAt, ...storedFields } = stored.payload;
+      assert.deepEqual(storedFields, {
+        id: skip.id,
+        protocol_id: plan.protocolId,
+        compound_id: plan.compoundId,
+        local_date: yesterday,
+        planned_local_time: "21:00",
+        deleted_at: null
+      });
+      assert.deepEqual(
+        (await logOf(body.idempotencyKey)).map((entry) => [
+          entry.entity_table,
+          entry.entity_id,
+          entry.before_image
+        ]),
+        [["protocol_skips", skip.id, null]]
+      );
+
+      // The Day Status read passes the Skip to matching: one slot skipped,
+      // the other still open, so a past day reads not_logged (a Skip never
+      // raises it to partly_logged).
+      let [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday
+      });
+      assert.equal(status.status, "not_logged");
+      assert.deepEqual(
+        [status.plannedCount, status.loggedCount, status.skippedCount],
+        [2, 0, 1]
+      );
+      assert.deepEqual(
+        status.fills.map((fill) => [fill.plannedLocalTime, fill.doseId, fill.skipId]),
+        [
+          ["09:00", null, null],
+          ["21:00", null, skip.id]
+        ]
+      );
+      // A Dose fills the open slot, not the skipped one: logged, one skipped.
+      const doseId = await storeDose(database, userId, {
+        compoundId: plan.compoundId,
+        localDate: yesterday
+      });
+      [status] = await dayStatusesOf(app, { fromLocalDate: yesterday, toLocalDate: yesterday });
+      assert.equal(status.status, "logged");
+      assert.deepEqual(
+        status.fills.map((fill) => [fill.plannedLocalTime, fill.doseId, fill.skipId]),
+        [
+          ["09:00", doseId, null],
+          ["21:00", null, skip.id]
+        ]
+      );
+      // The summary carries the count without the fills.
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        detail: "summary"
+      });
+      assert.equal(status.skippedCount, 1);
+      assert.equal(status.fills, undefined);
+
+      // Every planned dose skipped today reads skipped.
+      const todaySkips = await post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [
+          item({ localDate: today, plannedLocalTime: "09:00" }),
+          item({ localDate: today })
+        ]
+      });
+      assert.equal(todaySkips.status, 200);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: today,
+        toLocalDate: today,
+        protocolId: plan.protocolId
+      });
+      assert.equal(status.status, "skipped");
+      assert.equal(status.skippedCount, 2);
+
+      // A retried key replays: the same Skips, outcome duplicate, nothing written.
+      const retried = await post(app, "/agent/protocols/skips/batch-write", body);
+      assert.equal(retried.status, 200);
+      const retriedBody = await retried.json();
+      assert.equal(retriedBody.duplicate, true);
+      assert.deepEqual(retriedBody.skips, [{ id: skip.id, outcome: "duplicate" }]);
+      assert.equal((await logOf(body.idempotencyKey)).length, 1);
+      // The same key for different work is a conflict.
+      const conflict = await post(app, "/agent/protocols/skips/batch-write", {
+        ...body,
+        skips: [{ ...skip, plannedLocalTime: "09:00" }]
+      });
+      assert.equal(conflict.status, 422);
+      const conflictBody = await conflict.json();
+      assert.equal(conflictBody.code, "agent_protocol_skip_batch_write_failed");
+      assert.deepEqual(
+        conflictBody.issues.map((issue) => issue.rule),
+        ["idempotency_key_conflict"]
+      );
+
+      // A stored Skip stamped ahead of the server clock (a device clock
+      // ahead within the accepted skew), with a sibling stamped ahead too:
+      // the removal is stamped one millisecond after the stored Skip, as its
+      // swept sibling is, so both are removed (D8, settled during Phase 8's
+      // build). Stamped with the request time, the item would be superseded
+      // and its Skip left live while the sibling was swept.
+      const aheadAt = new Date(Date.now() + 60_000);
+      const aheadFields = {
+        protocolId: plan.protocolId,
+        compoundId: plan.compoundId,
+        localDate: addDays(today, -2),
+        plannedLocalTime: "09:00",
+        updatedAt: aheadAt
+      };
+      const ahead = await storeSkip(database, userId, aheadFields);
+      const aheadSibling = await storeSkip(database, userId, aheadFields);
+      const aheadRemoval = await post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [{ ...ahead.item, deletedAt: new Date().toISOString() }]
+      });
+      assert.equal(aheadRemoval.status, 200);
+      assert.deepEqual((await aheadRemoval.json()).skips, [
+        { id: ahead.item.id, outcome: "applied" },
+        { id: aheadSibling.item.id, outcome: "applied" }
+      ]);
+      for (const id of [ahead.item.id, aheadSibling.item.id]) {
+        const row = await skipRow(id);
+        assert.notEqual(row.deleted_at, null);
+        assert.equal(new Date(row.updated_at).getTime(), aheadAt.getTime() + 1);
+      }
+
+      // Undoing the first batch removes its Skip, so the slot opens again.
+      const undo = await post(app, "/agent/activity/undo-batch", {
+        batchId: body.idempotencyKey,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(undo.status, 200);
+      const undoBody = await undo.json();
+      assert.equal(undoBody.applied, true);
+      assert.deepEqual(
+        undoBody.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+      assert.notEqual((await skipRow(skip.id)).deleted_at, null);
+      [status] = await dayStatusesOf(app, { fromLocalDate: yesterday, toLocalDate: yesterday });
+      assert.equal(status.status, "partly_logged");
+      assert.equal(status.skippedCount, 0);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "batchWriteAgentProtocolSkips refuses each rule as a whole-batch 422, accepts an archived Protocol and any removal, and answers a malformed body 400",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-refused-${randomUUID()}`;
+    const otherUserId = `agent-protocol-skips-other-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const otherApp = createDeleteApp(database, otherUserId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const start = addDays(today, -5);
+    const item = (plan, fields = {}) => ({
+      id: createUuidV7(),
+      protocolId: plan.protocolId,
+      compoundId: plan.compoundId,
+      localDate: yesterday,
+      plannedLocalTime: "09:00",
+      ...fields
+    });
+    const write = (skips, extra = {}) =>
+      post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips,
+        ...extra
+      });
+    const issuesOf = async (response) => {
+      assert.equal(response.status, 422);
+      const body = await response.json();
+      assert.equal(body.code, "agent_protocol_skip_batch_write_failed");
+      return body.issues;
+    };
+    const storedCount = async () =>
+      (await database.sql`
+        select count(*)::int as count from protocol_skips where user_id = ${userId}
+      `)[0].count;
+
+    try {
+      await insertUser(database, userId);
+      await insertUser(database, otherUserId);
+      const live = await writeProtocol(app, { start });
+      const archived = await writeProtocol(app, { start });
+      await database.sql`
+        update protocols
+        set deleted_at = now(),
+            payload = jsonb_set(payload, '{archived_on}', to_jsonb(${today}::text))
+        where id = ${archived.protocolId}
+      `;
+      const deleted = await writeProtocol(app, { start });
+      const deleteResponse = await post(app, "/agent/protocols/delete", {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds: [deleted.protocolId]
+      });
+      assert.equal(deleteResponse.status, 200);
+      const others = await writeProtocol(otherApp, { start });
+
+      // The shared validator's rules, every issue collected.
+      const badTime = item(live, { plannedLocalTime: "9:00" });
+      const future = item(live, { localDate: addDays(today, 1) });
+      assert.deepEqual(await issuesOf(await write([badTime, future])), [
+        {
+          field: "skips[0].plannedLocalTime",
+          rule: "skip_time_format",
+          message: "A planned time must be HH:MM, from 00:00 to 23:59.",
+          itemIndex: 0,
+          entityId: badTime.id
+        },
+        {
+          field: "skips[1].localDate",
+          rule: "skip_future",
+          message: "A Skip can't be for a day after today.",
+          itemIndex: 1,
+          entityId: future.id
+        }
+      ]);
+      // The Protocol batch write's one-day bound on today.
+      assert.deepEqual(
+        (await issuesOf(await write([item(live)], { today: addDays(today, 3) }))).map(
+          (issue) => [issue.field, issue.rule]
+        ),
+        [["today", "today_out_of_range"]]
+      );
+
+      // protocol_not_found: an unknown id, another account's Protocol, and a
+      // deleted one; the live item beside them is refused with them.
+      const unknown = item({ protocolId: createUuidV7(), compoundId: createUuidV7() });
+      const foreign = item(others);
+      const gone = item(deleted);
+      assert.deepEqual(
+        await issuesOf(await write([item(live), unknown, foreign, gone])),
+        [unknown, foreign, gone].map((skipItem, index) => ({
+          field: `skips[${index + 1}].protocolId`,
+          rule: "protocol_not_found",
+          message: "No Protocol with this id exists for this account.",
+          itemIndex: index + 1,
+          entityId: skipItem.id
+        }))
+      );
+      assert.equal(await storedCount(), 0);
+
+      // An archived Protocol's past day can be skipped, and removing a Skip
+      // is accepted whatever its Protocol names.
+      const archivedSkip = item(archived, { localDate: addDays(today, -2) });
+      const accepted = await write([
+        archivedSkip,
+        { ...unknown, deletedAt: new Date().toISOString() },
+        { ...gone, deletedAt: new Date().toISOString() }
+      ]);
+      assert.equal(accepted.status, 200);
+      assert.deepEqual(
+        (await accepted.json()).skips.map((result) => result.outcome),
+        ["applied", "applied", "applied"]
+      );
+
+      // skip_immutable: a stored Skip's fields never change, and a removed
+      // Skip is never brought back.
+      const kept = item(live);
+      assert.equal((await write([kept])).status, 200);
+      assert.deepEqual(
+        await issuesOf(
+          await write([{ ...kept, plannedLocalTime: "21:00", localDate: addDays(today, -2) }])
+        ),
+        ["localDate", "plannedLocalTime"].map((field) => ({
+          field: `skips[0].${field}`,
+          rule: "skip_immutable",
+          message:
+            "A Skip is never edited. Remove it with deletedAt and skip again with a new id.",
+          itemIndex: 0,
+          entityId: kept.id
+        }))
+      );
+      assert.equal((await write([{ ...kept, deletedAt: new Date().toISOString() }])).status, 200);
+      for (const revived of [kept, { ...kept, deletedAt: null }]) {
+        assert.deepEqual(await issuesOf(await write([item(live), revived])), [
+          {
+            field: "skips[1].deletedAt",
+            rule: "skip_immutable",
+            message: "A removed Skip is never brought back. Skip again with a new id.",
+            itemIndex: 1,
+            entityId: kept.id
+          }
+        ]);
+      }
+      // Nothing from a refused batch was written.
+      assert.equal(await storedCount(), 4);
+
+      // A malformed body is a 400 before any rule.
+      for (const body of [
+        { today, skips: [item(live)] },
+        { idempotencyKey: "k", skips: [item(live)] },
+        { idempotencyKey: "k", today, skips: [] },
+        { idempotencyKey: "k", today, skips: [item(live, { localDate: "2026-02-30" })] },
+        { idempotencyKey: "k", today, skips: [item(live, { id: "skip-1" })] },
+        { idempotencyKey: "k", today, skips: [item(live, { amount: 5 })] },
+        { idempotencyKey: "k", today, skips: [item(live, { deletedAt: "yesterday" })] },
+        { idempotencyKey: "k", today, skips: [item(live)], archived: true }
+      ]) {
+        const response = await post(app, "/agent/protocols/skips/batch-write", body);
+        assert.equal(response.status, 400, JSON.stringify(body).slice(0, 120));
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "batchWriteAgentProtocolSkips removing a timed Skip sweeps its stored siblings into the same batch, an untimed one never, and a replay lists them",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-sweep-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const start = addDays(today, -5);
+    const deletedAtOf = async (id) =>
+      (await database.sql`select deleted_at from protocol_skips where id = ${id}`)[0]
+        .deleted_at;
+    const remove = (skipItem, idempotencyKey = `skip-${randomUUID()}`) =>
+      post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey,
+        today,
+        skips: [{ ...skipItem, deletedAt: new Date().toISOString() }]
+      });
+
+    try {
+      await insertUser(database, userId);
+      const timed = await writeProtocol(app, { start });
+      const untimed = await writeProtocol(app, {
+        start,
+        rule: { v: 1, kind: "untimed", days: { kind: "daily" }, count: 2 }
+      });
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(timed.compoundId),
+        storedCompound(untimed.compoundId)
+      ]);
+      const timedSkip = (fields) =>
+        storeSkip(database, userId, {
+          protocolId: timed.protocolId,
+          compoundId: timed.compoundId,
+          localDate: yesterday,
+          plannedLocalTime: "09:00",
+          ...fields
+        });
+      // Two devices skipped yesterday's 09:00 offline. Beside them: a Skip
+      // at another time (it marks nothing), another day's 09:00, and one
+      // already removed.
+      const first = await timedSkip();
+      const second = await timedSkip();
+      const otherTime = await timedSkip({ plannedLocalTime: "21:00" });
+      const otherDay = await timedSkip({ localDate: addDays(today, -2) });
+      const removed = await timedSkip({ deletedAt: new Date(Date.now() - 60_000) });
+      const removedAt = await deletedAtOf(removed.item.id);
+
+      let [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+      // The Skip a fill names is the lower id; the other is inert.
+      const marking = status.fills[0].skipId;
+      const [lower, higher] = [first.item.id, second.item.id].sort();
+      assert.equal(marking, lower);
+
+      // Removing the Skip the Day Status names sweeps its sibling, which
+      // gets its own entry after it.
+      const sweepKey = `skip-${randomUUID()}`;
+      const swept = await remove(
+        lower === first.item.id ? first.item : second.item,
+        sweepKey
+      );
+      assert.equal(swept.status, 200);
+      const sweptBody = await swept.json();
+      assert.deepEqual(sweptBody.skips, [
+        { id: lower, outcome: "applied" },
+        { id: higher, outcome: "applied" }
+      ]);
+      assert.notEqual(await deletedAtOf(lower), null);
+      assert.notEqual(await deletedAtOf(higher), null);
+      assert.equal(await deletedAtOf(otherTime.item.id), null);
+      assert.equal(await deletedAtOf(otherDay.item.id), null);
+      assert.deepEqual(await deletedAtOf(removed.item.id), removedAt);
+      const log = await database.sql`
+        select entity_id, before_image, after_image from activity_log
+        where user_id = ${userId} and batch_id = ${sweepKey}
+          and entity_table = 'protocol_skips'
+        order by entity_id
+      `;
+      assert.deepEqual(
+        log.map((entry) => entry.entity_id),
+        [lower, higher]
+      );
+      const siblingEntry = log.find((entry) => entry.entity_id === higher);
+      assert.equal(siblingEntry.before_image.deleted_at, null);
+      assert.notEqual(siblingEntry.after_image.deleted_at, null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "not_logged");
+      assert.equal(status.skippedCount, 0);
+
+      // A replay of a sweeping request (the same body, so the same deletedAt)
+      // lists its swept Skip again, after its item, read back from the batch.
+      const sameBody = {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [{ ...otherDay.item, deletedAt: new Date().toISOString() }]
+      };
+      const sameDayTwin = await timedSkip({ localDate: addDays(today, -2) });
+      const firstAnswer = await post(app, "/agent/protocols/skips/batch-write", sameBody);
+      assert.deepEqual((await firstAnswer.json()).skips, [
+        { id: otherDay.item.id, outcome: "applied" },
+        { id: sameDayTwin.item.id, outcome: "applied" }
+      ]);
+      const replay = await post(app, "/agent/protocols/skips/batch-write", sameBody);
+      assert.equal(replay.status, 200);
+      const replayBody = await replay.json();
+      assert.equal(replayBody.duplicate, true);
+      assert.deepEqual(replayBody.skips, [
+        { id: otherDay.item.id, outcome: "duplicate" },
+        { id: sameDayTwin.item.id, outcome: "duplicate" }
+      ]);
+
+      // Untimed Skips are removed alone: each answers a different planned dose.
+      const untimedSkip = () =>
+        storeSkip(database, userId, {
+          protocolId: untimed.protocolId,
+          compoundId: untimed.compoundId,
+          localDate: yesterday,
+          plannedLocalTime: null
+        });
+      const untimedFirst = await untimedSkip();
+      const untimedSecond = await untimedSkip();
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: untimed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+      assert.equal(status.skippedCount, 2);
+      const untimedRemoval = await remove(untimedFirst.item);
+      assert.deepEqual((await untimedRemoval.json()).skips, [
+        { id: untimedFirst.item.id, outcome: "applied" }
+      ]);
+      assert.equal(await deletedAtOf(untimedSecond.item.id), null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: untimed.compoundId
+      });
+      assert.equal(status.status, "not_logged");
+      assert.equal(status.skippedCount, 1);
+
+      // Undoing the sweep restores both timed Skips.
+      const undo = await post(app, "/agent/activity/undo-batch", {
+        batchId: sweepKey,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(undo.status, 200);
+      assert.deepEqual(
+        (await undo.json()).entries.map((entry) => entry.outcome),
+        ["reverted", "reverted"]
+      );
+      assert.equal(await deletedAtOf(lower), null);
+      assert.equal(await deletedAtOf(higher), null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+/** Stores a Skip row as a sync push would, and the Agent item that names it. */
+async function storeSkip(
+  database,
+  userId,
+  { protocolId, compoundId, localDate, plannedLocalTime, updatedAt = new Date(), deletedAt = null }
+) {
+  const id = createUuidV7();
+  await insertOpaqueFixture(database, schema.protocolSkips, {
+    id,
+    userId,
+    updatedAt,
+    deletedAt,
+    payload: {
+      id,
+      protocol_id: protocolId,
+      compound_id: compoundId,
+      local_date: localDate,
+      planned_local_time: plannedLocalTime,
+      updated_at: updatedAt.toISOString(),
+      deleted_at: deletedAt?.toISOString() ?? null
+    }
+  });
+  return { item: { id, protocolId, compoundId, localDate, plannedLocalTime } };
+}
+
+/** The Day Status read, with fills unless `detail` says otherwise. */
+async function dayStatusesOf(app, params) {
+  const response = await app.request(
+    protocolDaysPath("day-statuses", { today: utcToday(), detail: "doses", ...params }),
+    { headers: authHeaders() }
+  );
+  assert.equal(response.status, 200);
+  return (await response.json()).dayStatuses;
+}
+
+test(
+  "history counts archived members but not ones removed by undo, and an archived Protocol with no history can be deleted",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-delete-archived-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const start = addDays(today, -5);
+
+    try {
+      await insertUser(database, userId);
+      // An archived member's Compound, logged within the Protocol's dates, is history.
+      const withArchivedMember = await writeProtocol(app, { start });
+      await database.sql`
+        update protocol_compounds
+        set deleted_at = now(),
+            payload = payload || jsonb_build_object('deleted_at', now(), 'archived_on', ${addDays(today, -3)}::text)
+        where id = ${withArchivedMember.memberId}
+      `;
+      await storeDose(database, userId, {
+        compoundId: withArchivedMember.compoundId,
+        localDate: addDays(today, -1)
+      });
+      // A member removed by undo never existed, so its Compound is not.
+      const withUndoneMember = await writeProtocol(app, { start });
+      await database.sql`
+        update protocol_compounds
+        set deleted_at = now(),
+            payload = payload || jsonb_build_object('deleted_at', now(), 'archived_on', null)
+        where id = ${withUndoneMember.memberId}
+      `;
+      await storeDose(database, userId, {
+        compoundId: withUndoneMember.compoundId,
+        localDate: addDays(today, -1)
+      });
+      // An archived Protocol's dates end on its archive date.
+      const archived = await writeProtocol(app, { start });
+      const archive = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `archive-${randomUUID()}`,
+        today: addDays(today, -1),
+        protocols: [
+          { id: archived.protocolId, name: "Plan", startLocalDate: start, archived: true }
+        ]
+      });
+      assert.equal(archive.status, 200);
+      await storeDose(database, userId, { compoundId: archived.compoundId, localDate: today });
+
+      const listed = await listedProtocols(app);
+      const historyOf = (id) => listed.find((protocol) => protocol.id === id).hasHistory;
+      assert.equal(historyOf(withArchivedMember.protocolId), true);
+      assert.equal(historyOf(withUndoneMember.protocolId), false);
+      assert.equal(historyOf(archived.protocolId), false);
+
+      const deleted = await post(app, "/agent/protocols/delete", {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds: [archived.protocolId, withUndoneMember.protocolId]
+      });
+      assert.equal(deleted.status, 200);
+      const [row] = await database.sql`
+        select deleted_at, payload from protocols where id = ${archived.protocolId}
+      `;
+      assert.notEqual(row.deleted_at, null);
+      // Deleting clears archived_on, so its past days stop counting.
+      assert.equal(row.payload.archived_on, null);
+      assert.deepEqual(
+        (await listedProtocols(app)).map((protocol) => protocol.id),
+        [withArchivedMember.protocolId]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "readers hide a deleted Protocol and its children: the list, both plan reads, the Effect window and the batch-write guard",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-delete-readers-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const start = addDays(today, -5);
+    const metricId = randomUUID();
+
+    try {
+      await insertUser(database, userId);
+      await database.db.insert(schema.metrics).values({
+        id: metricId,
+        userId,
+        deviceId: "device-1",
+        name: "Body Weight",
+        unit: "kilogram",
+        valueShape: "scalar",
+        metricGroup: "body",
+        sortOrder: 0,
+        updatedAt: new Date()
+      });
+      const kept = await writeProtocol(app, { start, name: "Kept" });
+      const gone = await writeProtocol(app, { start, name: "Gone" });
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(kept.compoundId),
+        storedCompound(gone.compoundId)
+      ]);
+      const effectPath = (protocolId) =>
+        `/agent/protocols/effect-window?protocolId=${protocolId}&metricId=${metricId}&from=${addDays(today, -10)}T00:00:00.000Z&to=${today}T00:00:00.000Z`;
+      assert.equal(
+        (await app.request(effectPath(gone.protocolId), { headers: authHeaders() })).status,
+        200
+      );
+
+      const deleted = await post(app, "/agent/protocols/delete", {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds: [gone.protocolId]
+      });
+      assert.equal(deleted.status, 200);
+
+      // listProtocols, archived included.
+      assert.deepEqual(
+        (await listedProtocols(app)).map((protocol) => protocol.id),
+        [kept.protocolId]
+      );
+      // Both plan reads: its member and version are still stored, but read
+      // through a tombstoned Protocol they plan nothing.
+      const range = { fromLocalDate: addDays(today, -2), toLocalDate: today };
+      for (const params of [range, { ...range, protocolId: gone.protocolId }]) {
+        const planned = await getJson(app, "planned-days", params);
+        assert.ok(
+          planned.plannedDays.every((day) => day.protocolId !== gone.protocolId),
+          JSON.stringify(params)
+        );
+        const statuses = await getJson(app, "day-statuses", {
+          ...params,
+          today,
+          detail: "doses"
+        });
+        assert.ok(
+          statuses.dayStatuses.every((status) => status.compoundId !== gone.compoundId),
+          JSON.stringify(params)
+        );
+      }
+      assert.ok(
+        (await getJson(app, "planned-days", range)).plannedDays.some(
+          (day) => day.protocolId === kept.protocolId
+        )
+      );
+      // The Effect window answers it as it answers an unknown Protocol.
+      const effect = await app.request(effectPath(gone.protocolId), { headers: authHeaders() });
+      const unknown = await app.request(effectPath(createUuidV7()), { headers: authHeaders() });
+      assert.equal(effect.status, unknown.status);
+      assert.notEqual(effect.status, 200);
+      assert.deepEqual(await effect.json(), await unknown.json());
+      // The batch write refuses any write naming it, with the reworded message.
+      const edit = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `edit-${randomUUID()}`,
+        today,
+        protocols: [{ id: gone.protocolId, name: "Back", startLocalDate: start }]
+      });
+      assert.equal(edit.status, 422);
+      assert.deepEqual(
+        (await edit.json()).errors.map((issue) => [issue.rule, issue.message]),
+        [
+          [
+            "archived_row_not_restorable",
+            "This Protocol was deleted or removed by undo, and can't be restored or edited. Create a new Protocol instead."
+          ]
+        ]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "archiving a Protocol with no history is accepted with a protocol_has_no_history warning; one with history, or a member, gets none",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-archive-warning-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const start = addDays(today, -5);
+    const warning = (itemIndex, entityId) => ({
+      field: `protocols[${itemIndex}].archived`,
+      rule: "protocol_has_no_history",
+      message:
+        "Nothing has been logged for this Protocol. Consider deleting it with delete-protocols instead.",
+      itemIndex,
+      entityId
+    });
+    const archive = async (protocols) => {
+      const response = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `archive-${randomUUID()}`,
+        today,
+        protocols
+      });
+      assert.equal(response.status, 200);
+      return (await response.json()).warnings;
+    };
+
+    try {
+      await insertUser(database, userId);
+      const stored = await writeProtocol(app, { start });
+      const logged = await writeProtocol(app, { start });
+      await storeDose(database, userId, { compoundId: logged.compoundId, localDate: today });
+      const withMember = await writeProtocol(app, { start });
+
+      // A stored Protocol with no history, one with history, and one created
+      // and archived in this request, whose new member's Compound was logged
+      // today (inside its dates): the request's own members count.
+      const createdId = createUuidV7();
+      const createdCompound = createUuidV7();
+      await storeDose(database, userId, { compoundId: createdCompound, localDate: today });
+      const freshId = createUuidV7();
+      assert.deepEqual(
+        await archive([
+          { id: stored.protocolId, name: "Plan", startLocalDate: start, archived: true },
+          { id: logged.protocolId, name: "Plan", startLocalDate: start, archived: true },
+          {
+            id: createdId,
+            name: "New",
+            startLocalDate: start,
+            archived: true,
+            members: [{ id: createUuidV7(), compoundId: createdCompound, position: 0 }]
+          },
+          { id: freshId, name: "Fresh", startLocalDate: start, archived: true }
+        ]),
+        [warning(0, stored.protocolId), warning(3, freshId)]
+      );
+      // Archiving a member never warns.
+      assert.deepEqual(
+        await archive([
+          {
+            id: withMember.protocolId,
+            name: "Plan",
+            startLocalDate: start,
+            members: [
+              {
+                id: withMember.memberId,
+                compoundId: withMember.compoundId,
+                position: 0,
+                archived: true
+              }
+            ]
+          }
+        ]),
+        []
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// DB-backed planned-day and Day Status reads (D6)
+// ---------------------------------------------------------------------------
+
+/**
+ * A plan stored as the app syncs it, relative to the server's UTC date T:
+ *
+ *   P1 (from T-10): Compound A timed 09:00 and 21:00 (a later version tombstoned
+ *       by undo), Compound B untimed once a day.
+ *   P2 (from T-5, paused T-3..T-2): Compound A timed 12:00.
+ *   P3: tombstoned by undo, so it never existed (D1).
+ *   P4 (archived on T-6): Compound C timed 07:00.
+ *
+ * `planProtocols` is what `planDays` must be given for it: what the app's plan
+ * query reads (D1), so a read that matches the core on it matches the app.
+ */
+function storedPlanFixture(today) {
+  const day = (offset) => addDays(today, offset);
+  const ids = {
+    compoundA: createUuidV7(),
+    compoundB: createUuidV7(),
+    compoundC: createUuidV7(),
+    p1: createUuidV7(),
+    p2: createUuidV7(),
+    p3: createUuidV7(),
+    p4: createUuidV7()
+  };
+  const timed = (times) => ({ v: 1, kind: "timed", days: { kind: "daily" }, times });
+  const amount = (value, unit = "gram") => ({
+    amountValue: value,
+    amountEntered: String(value),
+    unit,
+    route: "oral"
+  });
+  const protocol = (id, startLocalDate, fields = {}) => ({
+    id,
+    payload: {
+      id,
+      name: "Plan",
+      start_local_date: startLocalDate,
+      end_local_date: null,
+      period: null,
+      reminders_enabled: false,
+      archived_on: null,
+      ...fields.payload
+    },
+    deletedAt: fields.deletedAt ?? null
+  });
+  const member = (protocolId, compoundId, position, fields = {}) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        protocol_id: protocolId,
+        compound_id: compoundId,
+        position,
+        archived_on: null,
+        ...fields.payload
+      },
+      deletedAt: fields.deletedAt ?? null
+    };
+  };
+  const version = (memberRow, effectiveFrom, rule, planAmount, deletedAt = null) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        protocol_compound_id: memberRow.id,
+        effective_from: effectiveFrom,
+        rule: JSON.stringify(rule),
+        dose_amount_value: planAmount.amountValue,
+        dose_amount_entered: planAmount.amountEntered,
+        dose_unit: planAmount.unit,
+        route: planAmount.route
+      },
+      deletedAt
+    };
+  };
+
+  const archivedAt = new Date(`${day(-6)}T12:00:00.000Z`);
+  const protocols = [
+    protocol(ids.p1, day(-10)),
+    protocol(ids.p2, day(-5), {
+      payload: {
+        period: JSON.stringify({
+          v: 1,
+          cycle: null,
+          pauses: [{ from: day(-3), to: day(-2) }]
+        })
+      }
+    }),
+    protocol(ids.p3, day(-10), { deletedAt: archivedAt }),
+    protocol(ids.p4, day(-10), {
+      payload: { archived_on: day(-6) },
+      deletedAt: archivedAt
+    })
+  ];
+  const m1 = member(ids.p1, ids.compoundA, 0);
+  const m2 = member(ids.p1, ids.compoundB, 1);
+  const m3 = member(ids.p2, ids.compoundA, 0);
+  const m5 = member(ids.p3, ids.compoundA, 0);
+  const m6 = member(ids.p4, ids.compoundC, 0);
+  const members = [m1, m2, m3, m5, m6];
+  const v1 = version(m1, day(-10), timed(["09:00", "21:00"]), amount(5));
+  const v1Undone = version(m1, day(-2), timed(["10:00"]), amount(5), archivedAt);
+  const v2 = version(
+    m2,
+    day(-10),
+    { v: 1, kind: "untimed", days: { kind: "daily" }, count: 1 },
+    amount(1, "tablet")
+  );
+  const v3 = version(m3, day(-5), timed(["12:00"]), amount(2.5));
+  const v5 = version(m5, day(-10), timed(["15:00"]), amount(5));
+  const v6 = version(m6, day(-10), timed(["07:00"]), amount(3));
+  const schedules = [v1, v1Undone, v2, v3, v5, v6];
+
+  const planVersion = (row, rule, planAmount) => ({
+    id: row.id,
+    effectiveFrom: row.payload.effective_from,
+    rule,
+    ...planAmount
+  });
+  const planProtocols = [
+    {
+      protocolId: ids.p1,
+      startLocalDate: day(-10),
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m1.id,
+          compoundId: ids.compoundA,
+          versions: [planVersion(v1, timed(["09:00", "21:00"]), amount(5))]
+        },
+        {
+          memberId: m2.id,
+          compoundId: ids.compoundB,
+          versions: [
+            planVersion(
+              v2,
+              { v: 1, kind: "untimed", days: { kind: "daily" }, count: 1 },
+              amount(1, "tablet")
+            )
+          ]
+        }
+      ]
+    },
+    {
+      protocolId: ids.p2,
+      startLocalDate: day(-5),
+      period: { v: 1, cycle: null, pauses: [{ from: day(-3), to: day(-2) }] },
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m3.id,
+          compoundId: ids.compoundA,
+          versions: [planVersion(v3, timed(["12:00"]), amount(2.5))]
+        }
+      ]
+    },
+    {
+      protocolId: ids.p4,
+      startLocalDate: day(-10),
+      archivedOn: day(-6),
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m6.id,
+          compoundId: ids.compoundC,
+          versions: [planVersion(v6, timed(["07:00"]), amount(3))]
+        }
+      ]
+    }
+  ];
+
+  const dose = (compoundId, localDate, tookAt, fields = {}) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        compound_id: compoundId,
+        compound_name: "Compound",
+        amount_value: 5,
+        amount_entered: "5",
+        unit: "gram",
+        route: "oral",
+        took_at: tookAt,
+        timezone: "UTC",
+        timezone_offset_minutes: 0,
+        local_date: localDate,
+        provenance: "agent",
+        protocol_id: null,
+        protocol_name: null,
+        ...fields.payload
+      },
+      deletedAt: fields.deletedAt ?? null
+    };
+  };
+  const doses = {
+    // T-1: fills A's 09:00 and 21:00; the 12:00 stays unfilled.
+    a1: dose(ids.compoundA, day(-1), `${day(-1)}T08:50:00.000Z`),
+    a2: dose(ids.compoundA, day(-1), `${day(-1)}T21:05:00.000Z`),
+    // T-4 at UTC+10: 02:00Z is 12:00 where it was taken, so it fills P2's 12:00.
+    a3: dose(ids.compoundA, day(-4), `${day(-4)}T02:00:00.000Z`, {
+      payload: { timezone: "Australia/Brisbane", timezone_offset_minutes: 600 }
+    }),
+    // Archived: never counted.
+    a4: dose(ids.compoundA, day(-1), `${day(-1)}T12:00:00.000Z`, {
+      deletedAt: new Date(`${day(-1)}T13:00:00.000Z`)
+    }),
+    // T-2, tagged with P2 while P2 is paused: the tag never decides what it fills.
+    a5: dose(ids.compoundA, day(-2), `${day(-2)}T12:00:00.000Z`, {
+      payload: { protocol_id: ids.p2, protocol_name: "Plan" }
+    }),
+    // T-1: B's one untimed dose, then an extra.
+    b1: dose(ids.compoundB, day(-1), `${day(-1)}T13:00:00.000Z`),
+    b2: dose(ids.compoundB, day(-1), `${day(-1)}T14:00:00.000Z`),
+    // A Dose logged without a Compound fills nothing.
+    loose: dose(null, day(-1), `${day(-1)}T09:00:00.000Z`)
+  };
+  // The member rows' Compounds. The app's plan query inner-joins them, archived
+  // or not, so C, archived with its Protocol, still plans P4's past days.
+  const compounds = [ids.compoundA, ids.compoundB, ids.compoundC].map((id) =>
+    storedCompound(id, id === ids.compoundC ? archivedAt : null)
+  );
+  return { ids, compounds, protocols, members, schedules, planProtocols, doses };
+}
+
+function storedCompound(id, deletedAt = null) {
+  return { id, payload: { id, name: "Compound", default_unit: "gram" }, deletedAt };
+}
+
+/**
+ * Stores plan fixture rows as a sync push leaves them: the payload's
+ * `updated_at` and `deleted_at` match the row's columns.
+ */
+async function insertStoredRows(database, table, userId, rows) {
+  if (rows.length === 0) {
+    return;
+  }
+  const updatedAt = new Date();
+  await insertOpaqueFixture(
+    database,
+    table,
+    rows.map((row) => ({
+      id: row.id,
+      userId,
+      updatedAt,
+      deletedAt: row.deletedAt ?? null,
+      payload: {
+        ...row.payload,
+        updated_at: updatedAt.toISOString(),
+        deleted_at: row.deletedAt?.toISOString() ?? null
+      }
+    }))
+  );
+}
+
+async function insertStoredPlan(database, userId, fixture) {
+  await insertStoredRows(database, schema.compounds, userId, fixture.compounds);
+  await insertStoredRows(database, schema.protocols, userId, fixture.protocols);
+  await insertStoredRows(database, schema.protocolCompounds, userId, fixture.members);
+  await insertStoredRows(database, schema.schedules, userId, fixture.schedules);
+  await insertStoredRows(database, schema.doses, userId, Object.values(fixture.doses));
+}
+
+/** The core's PlanDoses for fixture Doses, numbered as matching numbers them (D6 step 2). */
+function expectedPlanDoses(doseRows) {
+  const doses = doseRows
+    .filter((row) => row.deletedAt === null && row.payload.compound_id !== null)
+    .map((row) => {
+      const at = new Date(
+        Date.parse(row.payload.took_at) + row.payload.timezone_offset_minutes * 60_000
+      );
+      return {
+        doseId: row.id,
+        compoundId: row.payload.compound_id,
+        localDate: row.payload.local_date,
+        localTime: at.toISOString().slice(11, 16)
+      };
+    })
+    .sort((left, right) =>
+      left.localTime === right.localTime
+        ? left.doseId < right.doseId ? -1 : 1
+        : left.localTime < right.localTime ? -1 : 1
+    );
+  const sequences = new Map();
+  return doses.map((dose) => {
+    const key = `${dose.compoundId}|${dose.localDate}`;
+    const sequence = sequences.get(key) ?? 0;
+    sequences.set(key, sequence + 1);
+    return { ...dose, sequence };
+  });
+}
+
+/** The read's JSON for core output: every amount present, null when absent. */
+function plannedDayJson(day) {
+  return {
+    ...day,
+    planned: day.planned.map((planned) => ({
+      localTime: planned.localTime,
+      amountValue: planned.amountValue ?? null,
+      amountEntered: planned.amountEntered ?? null,
+      unit: planned.unit ?? null,
+      route: planned.route ?? null
+    }))
+  };
+}
+
+function dayStatusJson(status, detail) {
+  const { fills, ...summary } = status;
+  if (detail === "summary") {
+    return summary;
+  }
+  return {
+    ...summary,
+    fills: fills.map((fill) => ({
+      slot: fill.slot,
+      protocolId: fill.protocolId,
+      plannedLocalTime: fill.plannedLocalTime,
+      amountValue: fill.amountValue ?? null,
+      amountEntered: fill.amountEntered ?? null,
+      unit: fill.unit ?? null,
+      route: fill.route ?? null,
+      doseId: fill.doseId,
+      skipId: fill.skipId
+    }))
+  };
+}
+
+async function getJson(app, read, params) {
+  const response = await app.request(protocolDaysPath(read, params), {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200, `${read} ${JSON.stringify(params)}`);
+  return response.json();
+}
+
+test(
+  "planned-day and Day Status reads give the shared core's answer for the stored plan, scoped to the user",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-${randomUUID()}`;
+    const otherUserId = `agent-protocol-days-other-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const day = (offset) => addDays(today, offset);
+    const fixture = storedPlanFixture(today);
+    const { ids, doses } = fixture;
+
+    try {
+      await insertUser(database, userId);
+      await insertUser(database, otherUserId);
+      await insertStoredPlan(database, userId, fixture);
+      // Another account's plan and Dose for the same Compound id never leak in.
+      const other = storedPlanFixture(today);
+      const otherDose = {
+        ...other.doses.a1,
+        payload: { ...other.doses.a1.payload, compound_id: ids.compoundA }
+      };
+      await insertStoredPlan(database, otherUserId, {
+        ...other,
+        doses: { otherDose }
+      });
+
+      const range = { fromLocalDate: day(-4), toLocalDate: today };
+      const expectedDays = planDays(fixture.planProtocols, range.fromLocalDate, range.toLocalDate);
+      const expectedStatuses = dayStatuses(
+        expectedDays,
+        expectedPlanDoses(Object.values(doses)),
+        [],
+        today
+      );
+
+      const planned = await getJson(app, "planned-days", range);
+      assert.deepEqual(planned, { ...range, plannedDays: expectedDays.map(plannedDayJson) });
+      // 5 dates of P1 (A, B), P2 (A) and P4 (C); the undone P3 never existed.
+      assert.equal(planned.plannedDays.length, 5 * 4);
+      assert.ok(planned.plannedDays.every((planDay) => planDay.protocolId !== ids.p3));
+
+      const summary = await getJson(app, "day-statuses", { ...range, today });
+      assert.deepEqual(summary, {
+        ...range,
+        today,
+        detail: "summary",
+        dayStatuses: expectedStatuses.map((status) => dayStatusJson(status, "summary"))
+      });
+      assert.ok(summary.dayStatuses.every((status) => !("fills" in status)));
+
+      const detailed = await getJson(app, "day-statuses", { ...range, today, detail: "doses" });
+      assert.deepEqual(
+        detailed.dayStatuses,
+        expectedStatuses.map((status) => dayStatusJson(status, "doses"))
+      );
+
+      // The days themselves, read as D6 decides them.
+      const statusOf = (compoundId, localDate) =>
+        detailed.dayStatuses.find(
+          (status) => status.compoundId === compoundId && status.localDate === localDate
+        );
+      const counts = (status) => [
+        status.status,
+        status.plannedCount,
+        status.loggedCount,
+        status.extraCount
+      ];
+      // P2 is paused, so only P1's two doses are planned.
+      assert.deepEqual(counts(statusOf(ids.compoundA, day(-3))), ["not_logged", 2, 0, 0]);
+      // The 12:00 Dose tagged with the paused P2 fills P1's nearer 09:00.
+      const pausedDay = statusOf(ids.compoundA, day(-2));
+      assert.deepEqual(counts(pausedDay), ["partly_logged", 2, 1, 0]);
+      assert.equal(pausedDay.fills[0].doseId, doses.a5.id);
+      // The archived 12:00 Dose is not counted, so P2's 12:00 stays unfilled.
+      const yesterday = statusOf(ids.compoundA, day(-1));
+      assert.deepEqual(counts(yesterday), ["partly_logged", 3, 2, 0]);
+      assert.deepEqual(
+        yesterday.fills.map((fill) => [fill.plannedLocalTime, fill.protocolId, fill.doseId]),
+        [
+          ["09:00", ids.p1, doses.a1.id],
+          ["12:00", ids.p2, null],
+          ["21:00", ids.p1, doses.a2.id]
+        ]
+      );
+      assert.deepEqual(
+        yesterday.fills.map((fill) => [fill.amountValue, fill.amountEntered, fill.unit, fill.route]),
+        [
+          [5, "5", "gram", "oral"],
+          [2.5, "2.5", "gram", "oral"],
+          [5, "5", "gram", "oral"]
+        ]
+      );
+      assert.deepEqual(counts(statusOf(ids.compoundA, today)), ["pending", 3, 0, 0]);
+      // A Dose's local time is read at its frozen offset: 02:00Z at UTC+10 is 12:00.
+      assert.equal(
+        statusOf(ids.compoundA, day(-4)).fills.find((fill) => fill.plannedLocalTime === "12:00")
+          .doseId,
+        doses.a3.id
+      );
+      assert.deepEqual(counts(statusOf(ids.compoundB, day(-1))), ["logged", 1, 1, 1]);
+      // An archived Protocol still plans the days before its archive, and reads
+      // removed after it.
+      const removed = statusOf(ids.compoundC, day(-1));
+      assert.deepEqual(counts(removed), ["not_planned", 0, 0, 0]);
+      assert.equal(removed.notPlannedReason, "removed");
+      for (const status of detailed.dayStatuses) {
+        assert.equal("notPlannedReason" in status, status.status === "not_planned");
+        // No Skips are stored until Phase 8 (D8).
+        assert.equal(status.skippedCount, 0);
+        assert.ok(status.fills.every((fill) => fill.skipId === null));
+      }
+
+      // D8: P4's archive date (T-6) is an archive day. Its planned 07:00 is
+      // read with archiveDay, and its Day Status drops it, unfilled, so the
+      // day reads not planned, removed; the day before still counts it.
+      const archiveRange = { fromLocalDate: day(-7), toLocalDate: day(-6) };
+      const archivePlanned = await getJson(app, "planned-days", {
+        ...archiveRange,
+        protocolId: ids.p4
+      });
+      assert.deepEqual(
+        archivePlanned.plannedDays.map((planDay) => [
+          planDay.localDate,
+          planDay.state,
+          planDay.archiveDay,
+          planDay.planned.map((planned) => planned.localTime)
+        ]),
+        [
+          [day(-7), "planned", false, ["07:00"]],
+          [day(-6), "planned", true, ["07:00"]]
+        ]
+      );
+      const archiveStatuses = await getJson(app, "day-statuses", {
+        ...archiveRange,
+        today,
+        compoundId: ids.compoundC,
+        detail: "doses"
+      });
+      assert.deepEqual(
+        archiveStatuses.dayStatuses.map((status) => [
+          status.localDate,
+          status.status,
+          status.notPlannedReason ?? null,
+          status.plannedCount,
+          status.fills.length
+        ]),
+        [
+          [day(-7), "not_logged", null, 1, 1],
+          [day(-6), "not_planned", "removed", 0, 0]
+        ]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "planned-day and Day Status reads filter by Protocol and Compound, and return an empty list for an unknown id",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-filters-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const day = (offset) => addDays(today, offset);
+    const fixture = storedPlanFixture(today);
+    const { ids, doses } = fixture;
+    const range = { fromLocalDate: day(-4), toLocalDate: today };
+    const planDoses = expectedPlanDoses(Object.values(doses));
+
+    try {
+      await insertUser(database, userId);
+      await insertStoredPlan(database, userId, fixture);
+
+      // A Protocol filter reads only that Protocol's plan: P2 alone plans A's
+      // 12:00, so on T-1 the 08:50 Dose fills it and the 21:05 is an extra.
+      const p2Only = fixture.planProtocols.filter((protocol) => protocol.protocolId === ids.p2);
+      const p2Days = planDays(p2Only, range.fromLocalDate, range.toLocalDate);
+      const p2Planned = await getJson(app, "planned-days", { ...range, protocolId: ids.p2 });
+      assert.deepEqual(p2Planned.plannedDays, p2Days.map(plannedDayJson));
+      const p2Statuses = await getJson(app, "day-statuses", {
+        ...range,
+        today,
+        protocolId: ids.p2
+      });
+      assert.deepEqual(
+        p2Statuses.dayStatuses,
+        dayStatuses(p2Days, planDoses, [], today).map((status) => dayStatusJson(status, "summary"))
+      );
+      const p2Yesterday = p2Statuses.dayStatuses.find((status) => status.localDate === day(-1));
+      assert.deepEqual(
+        [p2Yesterday.status, p2Yesterday.plannedCount, p2Yesterday.loggedCount, p2Yesterday.extraCount],
+        ["logged", 1, 1, 1]
+      );
+      assert.equal(
+        p2Statuses.dayStatuses.find((status) => status.localDate === day(-3)).status,
+        "paused"
+      );
+
+      // A Compound filter gives that Compound's days exactly as the whole plan does.
+      const allDays = planDays(fixture.planProtocols, range.fromLocalDate, range.toLocalDate);
+      const bPlanned = await getJson(app, "planned-days", { ...range, compoundId: ids.compoundB });
+      assert.deepEqual(
+        bPlanned.plannedDays,
+        allDays.filter((planDay) => planDay.compoundId === ids.compoundB).map(plannedDayJson)
+      );
+      const bStatuses = await getJson(app, "day-statuses", {
+        ...range,
+        today,
+        compoundId: ids.compoundB,
+        detail: "doses"
+      });
+      assert.deepEqual(
+        bStatuses.dayStatuses,
+        dayStatuses(allDays, planDoses, [], today)
+          .filter((status) => status.compoundId === ids.compoundB)
+          .map((status) => dayStatusJson(status, "doses"))
+      );
+      assert.equal(bStatuses.dayStatuses.length, 5);
+
+      // Both filters together, and the undone P3: nothing.
+      const both = await getJson(app, "planned-days", {
+        ...range,
+        protocolId: ids.p2,
+        compoundId: ids.compoundB
+      });
+      assert.deepEqual(both.plannedDays, []);
+      for (const params of [{ protocolId: ids.p3 }, { protocolId: createUuidV7() }, { compoundId: createUuidV7() }]) {
+        const plannedDays = await getJson(app, "planned-days", { ...range, ...params });
+        assert.deepEqual(plannedDays.plannedDays, [], JSON.stringify(params));
+        const statuses = await getJson(app, "day-statuses", { ...range, today, ...params });
+        assert.deepEqual(statuses.dayStatuses, [], JSON.stringify(params));
+      }
+
+      // Planned days run into the future, where Day Statuses never go.
+      const ahead = { fromLocalDate: day(1), toLocalDate: day(3) };
+      const future = await getJson(app, "planned-days", ahead);
+      assert.deepEqual(
+        future.plannedDays,
+        planDays(fixture.planProtocols, ahead.fromLocalDate, ahead.toLocalDate).map(plannedDayJson)
+      );
+      assert.deepEqual(
+        future.plannedDays
+          .filter((planDay) => planDay.protocolId === ids.p1 && planDay.compoundId === ids.compoundA)
+          .map((planDay) => planDay.planned.map((planned) => planned.localTime)),
+        [
+          ["09:00", "21:00"],
+          ["09:00", "21:00"],
+          ["09:00", "21:00"]
+        ]
+      );
+
+      // A member whose Compound row hasn't synced plans nothing, as in the
+      // app, whose plan query inner-joins compounds.
+      const unsyncedCompoundId = createUuidV7();
+      const unsyncedMemberId = createUuidV7();
+      const unsyncedVersionId = createUuidV7();
+      await insertStoredRows(database, schema.protocolCompounds, userId, [
+        {
+          id: unsyncedMemberId,
+          payload: {
+            id: unsyncedMemberId,
+            protocol_id: ids.p1,
+            compound_id: unsyncedCompoundId,
+            position: 2,
+            archived_on: null
+          },
+          deletedAt: null
+        }
+      ]);
+      await insertStoredRows(database, schema.schedules, userId, [
+        {
+          id: unsyncedVersionId,
+          payload: {
+            id: unsyncedVersionId,
+            protocol_compound_id: unsyncedMemberId,
+            effective_from: day(-10),
+            rule: JSON.stringify({ v: 1, kind: "timed", days: { kind: "daily" }, times: ["08:00"] }),
+            dose_amount_value: 1,
+            dose_amount_entered: "1",
+            dose_unit: "gram",
+            route: "oral"
+          },
+          deletedAt: null
+        }
+      ]);
+      const withUnsynced = await getJson(app, "planned-days", range);
+      assert.deepEqual(withUnsynced.plannedDays, allDays.map(plannedDayJson));
+      for (const params of [
+        { compoundId: unsyncedCompoundId },
+        { protocolId: ids.p1, compoundId: unsyncedCompoundId }
+      ]) {
+        const plannedDays = await getJson(app, "planned-days", { ...range, ...params });
+        assert.deepEqual(plannedDays.plannedDays, [], JSON.stringify(params));
+        const statuses = await getJson(app, "day-statuses", { ...range, today, ...params });
+        assert.deepEqual(statuses.dayStatuses, [], JSON.stringify(params));
+      }
+      // Once its Compound row arrives, it plans like any other member.
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(unsyncedCompoundId)
+      ]);
+      const synced = await getJson(app, "planned-days", {
+        ...range,
+        compoundId: unsyncedCompoundId
+      });
+      assert.deepEqual(
+        synced.plannedDays.map((planDay) => [
+          planDay.protocolId,
+          planDay.state,
+          planDay.planned.map((planned) => planned.localTime)
+        ]),
+        Array.from({ length: 5 }, () => [ids.p1, "planned", ["08:00"]])
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+/**
+ * The read-latency budget for one 366-day planned-day or Day Status request
+ * against a real Postgres, end to end through the route: the storage reads,
+ * the shared core and the response's schema check. No read-latency budget
+ * existed on the server before this read, so this one is set here
+ * (docs/designs/protocol-schedules-and-reminders.md, file 65).
+ */
+const AGENT_PROTOCOL_DAYS_READ_BUDGET_MS = 250;
+
+test(
+  "a 366-day planned-day and Day Status read for a user with 2,000 Doses answers within the read-latency budget",
+  { skip },
+  async (t) => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-budget-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const from = addDays(today, -365);
+
+    // 3 Protocols of 2 Compounds each, 5 Schedule Versions per member, one
+    // Protocol with a cycle and two Pauses: the Consistency budget's shape
+    // (file 46), for six Compounds at once.
+    const protocols = [];
+    const members = [];
+    const schedules = [];
+    const compoundIds = [];
+    for (let p = 0; p < 3; p += 1) {
+      const protocolId = createUuidV7();
+      protocols.push({
+        id: protocolId,
+        payload: {
+          id: protocolId,
+          name: `Plan ${p}`,
+          start_local_date: from,
+          end_local_date: null,
+          period:
+            p === 0
+              ? JSON.stringify({
+                  v: 1,
+                  cycle: { on_days: 20, off_days: 8, anchor: from, anchor_is_default: true },
+                  pauses: [
+                    { from: addDays(from, 40), to: addDays(from, 47) },
+                    { from: addDays(from, 200), to: addDays(from, 203) }
+                  ]
+                })
+              : null,
+          reminders_enabled: true,
+          archived_on: null
+        },
+        deletedAt: null
+      });
+      for (let m = 0; m < 2; m += 1) {
+        const compoundId = createUuidV7();
+        compoundIds.push(compoundId);
+        const memberId = createUuidV7();
+        members.push({
+          id: memberId,
+          payload: {
+            id: memberId,
+            protocol_id: protocolId,
+            compound_id: compoundId,
+            position: m,
+            archived_on: null
+          },
+          deletedAt: null
+        });
+        for (let v = 0; v < 5; v += 1) {
+          const versionId = createUuidV7();
+          schedules.push({
+            id: versionId,
+            payload: {
+              id: versionId,
+              protocol_compound_id: memberId,
+              effective_from: addDays(from, v * 70),
+              rule: JSON.stringify(
+                v % 2 === 0
+                  ? { v: 1, kind: "timed", days: { kind: "daily" }, times: ["08:00", "20:00"] }
+                  : {
+                      v: 1,
+                      kind: "timed",
+                      days: { kind: "weekdays", weekdays: [1, 3, 5] },
+                      times: ["07:30"]
+                    }
+              ),
+              dose_amount_value: 5,
+              dose_amount_entered: "5",
+              dose_unit: "milligram",
+              route: "oral"
+            },
+            deletedAt: null
+          });
+        }
+      }
+    }
+    const doseRows = [];
+    for (let index = 0; index < 2000; index += 1) {
+      const localDate = addDays(from, index % 366);
+      const id = createUuidV7();
+      const minutes = 7 * 60 + ((index * 37) % (14 * 60));
+      const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      doseRows.push({
+        id,
+        payload: {
+          id,
+          compound_id: compoundIds[index % compoundIds.length],
+          compound_name: "Compound",
+          amount_value: 5,
+          amount_entered: "5",
+          unit: "milligram",
+          route: "oral",
+          took_at: `${localDate}T${time}:00.000Z`,
+          timezone: "UTC",
+          timezone_offset_minutes: 0,
+          local_date: localDate,
+          provenance: "agent",
+          protocol_id: null,
+          protocol_name: null
+        },
+        deletedAt: null
+      });
+    }
+
+    try {
+      await insertUser(database, userId);
+      await insertStoredRows(
+        database,
+        schema.compounds,
+        userId,
+        compoundIds.map((id) => storedCompound(id))
+      );
+      await insertStoredRows(database, schema.protocols, userId, protocols);
+      await insertStoredRows(database, schema.protocolCompounds, userId, members);
+      await insertStoredRows(database, schema.schedules, userId, schedules);
+      for (let start = 0; start < doseRows.length; start += 500) {
+        await insertStoredRows(database, schema.doses, userId, doseRows.slice(start, start + 500));
+      }
+
+      const range = { fromLocalDate: from, toLocalDate: today };
+      const reads = [
+        ["planned-days", range],
+        ["day-statuses", { ...range, today, detail: "doses" }]
+      ];
+      for (const [read, params] of reads) {
+        // One untimed read first, so the measured ones aren't paying for the
+        // first connection and the route's first compile.
+        const warm = await getJson(app, read, params);
+        if (read === "planned-days") {
+          assert.equal(warm.plannedDays.length, 366 * compoundIds.length);
+        } else {
+          // Every Dose was read and matched: each fills a slot or is an extra.
+          assert.equal(warm.dayStatuses.length, 366 * compoundIds.length);
+          assert.equal(
+            warm.dayStatuses.reduce(
+              (sum, status) => sum + status.loggedCount + status.extraCount,
+              0
+            ),
+            doseRows.length
+          );
+        }
+        const elapsed = [];
+        for (let run = 0; run < 3; run += 1) {
+          const started = performance.now();
+          await getJson(app, read, params);
+          elapsed.push(performance.now() - started);
+        }
+        const median = elapsed.sort((left, right) => left - right)[1];
+        t.diagnostic(
+          `${read}: 366 days, ${doseRows.length} Doses, median ${median.toFixed(0)} ms of ${elapsed
+            .map((ms) => ms.toFixed(0))
+            .join(", ")} (budget ${AGENT_PROTOCOL_DAYS_READ_BUDGET_MS} ms).`
+        );
+        assert.ok(
+          median < AGENT_PROTOCOL_DAYS_READ_BUDGET_MS,
+          `${read} took ${median.toFixed(0)} ms, over the ${AGENT_PROTOCOL_DAYS_READ_BUDGET_MS} ms budget.`
+        );
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function isoDay(day) {
   return new Date(Date.UTC(2026, 0, day)).toISOString();
+}
+
+/** The server's UTC date: always within the one day `today` may differ by. */
+function utcToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(localDate, days) {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** A stored `rule` or `period`: JSON text, the form every writer stores. */
+function storedJson(value) {
+  assert.equal(typeof value, "string");
+  return JSON.parse(value);
+}
+
+function timedDailyRule(times) {
+  return { v: 1, kind: "timed", days: { kind: "daily" }, times };
+}
+
+const creatineAmount = {
+  doseAmountValue: 5,
+  doseAmountEntered: "5",
+  doseUnit: "gram",
+  route: "oral"
+};
+
+function protocolWriteRequest() {
+  const memberId = createUuidV7();
+  return {
+    idempotencyKey: `protocol-${randomUUID()}`,
+    today: utcToday(),
+    protocols: [
+      {
+        id: createUuidV7(),
+        name: "Daily",
+        startLocalDate: addDays(utcToday(), -30),
+        members: [{ id: memberId, compoundId: createUuidV7(), position: 0 }],
+        schedules: [
+          {
+            id: createUuidV7(),
+            protocolCompoundId: memberId,
+            rule: timedDailyRule(["09:00"]),
+            ...creatineAmount
+          }
+        ],
+        targetOutcomes: []
+      }
+    ]
+  };
+}
+
+function withProtocol(request, fields) {
+  return { ...request, protocols: [{ ...request.protocols[0], ...fields }] };
+}
+
+function withSchedule(request, fields) {
+  const protocol = request.protocols[0];
+  return withProtocol(request, {
+    schedules: [{ ...protocol.schedules[0], ...fields }]
+  });
 }
 
 function doseFixture(id, compoundName, tookAt) {
@@ -1365,12 +6045,18 @@ function stubStore(overrides) {
   };
   return {
     listCompounds: notImplemented("listCompounds"),
+    listPurposes: notImplemented("listPurposes"),
     listProtocols: notImplemented("listProtocols"),
     listDoses: notImplemented("listDoses"),
     readEffectWindow: notImplemented("readEffectWindow"),
+    listProtocolPlannedDays: notImplemented("listProtocolPlannedDays"),
+    listProtocolDayStatuses: notImplemented("listProtocolDayStatuses"),
     writeDoseBatch: notImplemented("writeDoseBatch"),
     writeCompoundBatch: notImplemented("writeCompoundBatch"),
+    writePurposeBatch: notImplemented("writePurposeBatch"),
     writeProtocolBatch: notImplemented("writeProtocolBatch"),
+    deleteProtocols: notImplemented("deleteProtocols"),
+    writeProtocolSkipBatch: notImplemented("writeProtocolSkipBatch"),
     ...overrides
   };
 }
@@ -1432,18 +6118,849 @@ async function insertUser(database, userId) {
   });
 }
 
-function insertOpaqueFixture(
-  database,
-  table,
-  { id, userId, updatedAt, payload }
-) {
-  return database.db.insert(table).values({
-    id,
-    userId,
-    deviceId: "legacy-agent-device",
-    payload,
-    updatedAt,
-    deletedAt: null,
-    receivedAt: updatedAt
+/** Inserts one opaque row, or several in one statement, with its payload as given. */
+function insertOpaqueFixture(database, table, rows) {
+  return database.db.insert(table).values(
+    (Array.isArray(rows) ? rows : [rows]).map(
+      ({ id, userId, updatedAt, payload, deletedAt = null }) => ({
+        id,
+        userId,
+        deviceId: "legacy-agent-device",
+        payload,
+        updatedAt,
+        deletedAt,
+        receivedAt: updatedAt
+      })
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Purposes (docs/designs/compound-purposes.md, D8, D9 and CUJ 9)
+// ---------------------------------------------------------------------------
+
+const SLEEP_PURPOSE_ID = "019200ff-0000-7000-8000-000000000101";
+const PERFORMANCE_PURPOSE_ID = "019200ff-0000-7000-8000-000000000103";
+const GENERAL_HEALTH_PURPOSE_ID = "019200ff-0000-7000-8000-000000000106";
+const STARTER_PURPOSE_NAMES = [
+  "Sleep",
+  "Body composition",
+  "Performance",
+  "Recovery",
+  "Cognition",
+  "General health"
+];
+
+async function listPurposes(app, query = "") {
+  const response = await app.request(`/agent/protocols/purposes${query}`, {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200, await response.clone().text());
+  return (await response.json()).purposes;
+}
+
+function writePurposes(app, purposes, idempotencyKey = `purposes-${randomUUID()}`) {
+  return post(app, "/agent/protocols/purposes/batch-write", { idempotencyKey, purposes });
+}
+
+async function refusedRules(response) {
+  assert.equal(response.status, 422, await response.clone().text());
+  return (await response.json()).errors.map((issue) => [issue.field, issue.rule]);
+}
+
+function compoundItem(id, name, extra = {}) {
+  return { id, name, defaultUnit: "milligram", defaultRoute: "oral", ...extra };
+}
+
+function writeCompounds(app, compounds, idempotencyKey = `compounds-${randomUUID()}`) {
+  return post(app, "/agent/protocols/compounds/batch-write", { idempotencyKey, compounds });
+}
+
+async function compoundPurposeIds(app, id) {
+  const response = await app.request("/agent/protocols/compounds?includeArchived=true", {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).compounds.find((compound) => compound.id === id).purposeIds;
+}
+
+/** Runs a test with a fresh account on the Protocols and Activity Log stores. */
+function withPurposesApp(name, body) {
+  test(name, { skip }, async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-purposes-${randomUUID()}`;
+    try {
+      await insertUser(database, userId);
+      await body({ app: createDeleteApp(database, userId), database, userId });
+    } finally {
+      await database.close();
+    }
   });
 }
+
+withPurposesApp(
+  "listAgentPurposes merges the starters with the account's rows and hides archived ones unless asked",
+  async ({ app, database, userId }) => {
+    // With no stored row, the six starters.
+    const starters = await listPurposes(app);
+    assert.deepEqual(
+      starters.map((purpose) => purpose.name),
+      STARTER_PURPOSE_NAMES
+    );
+    assert.ok(
+      starters.every((purpose) => purpose.starter === true && purpose.deletedAt === null)
+    );
+    assert.equal(starters[0].id, SLEEP_PURPOSE_ID);
+    assert.equal(starters[5].sortOrder, 5);
+
+    // Another account's rows under the starter ids are that account's own.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.purposes, {
+      id: SLEEP_PURPOSE_ID,
+      userId: otherUserId,
+      updatedAt,
+      payload: { id: SLEEP_PURPOSE_ID, name: "Their sleep", sort_order: 0 },
+      deletedAt: updatedAt
+    });
+
+    // A stored row wins by id; a row with any other id is a user Purpose.
+    const skinId = createUuidV7();
+    await insertOpaqueFixture(database, schema.purposes, [
+      {
+        id: SLEEP_PURPOSE_ID,
+        userId,
+        updatedAt,
+        payload: { id: SLEEP_PURPOSE_ID, name: "Rest", sort_order: 9 }
+      },
+      {
+        id: GENERAL_HEALTH_PURPOSE_ID,
+        userId,
+        updatedAt,
+        payload: { id: GENERAL_HEALTH_PURPOSE_ID, name: "General health", sort_order: 5 },
+        deletedAt: updatedAt
+      },
+      {
+        id: skinId,
+        userId,
+        updatedAt,
+        payload: { id: skinId, name: "Skin", sort_order: 0 }
+      }
+    ]);
+
+    const active = await listPurposes(app);
+    assert.deepEqual(
+      active.map((purpose) => purpose.name),
+      ["Skin", "Body composition", "Performance", "Recovery", "Cognition", "Rest"]
+    );
+    assert.deepEqual(active[0], {
+      id: skinId,
+      name: "Skin",
+      sortOrder: 0,
+      starter: false,
+      deletedAt: null
+    });
+    assert.deepEqual(active[5], {
+      id: SLEEP_PURPOSE_ID,
+      name: "Rest",
+      sortOrder: 9,
+      starter: true,
+      deletedAt: null
+    });
+    assert.deepEqual(await listPurposes(app, "?includeArchived=false"), active);
+
+    const all = await listPurposes(app, "?includeArchived=true");
+    assert.equal(all.length, 7);
+    const archived = all.find((purpose) => purpose.id === GENERAL_HEALTH_PURPOSE_ID);
+    assert.equal(archived.starter, true);
+    assert.equal(archived.deletedAt, updatedAt.toISOString());
+  }
+);
+
+withPurposesApp(
+  "batchWriteAgentPurposes creates, renames, reorders and archives, judging names on the state the batch leaves",
+  async ({ app, database, userId }) => {
+    const skinId = createUuidV7();
+    const created = await writePurposes(app, [
+      { id: skinId, name: "  Skin ", sortOrder: 0 },
+      { id: SLEEP_PURPOSE_ID, name: "sleep", sortOrder: 9 }
+    ]);
+    assert.equal(created.status, 200, await created.clone().text());
+    assert.deepEqual((await created.json()).purposes, [
+      { id: skinId, name: "Skin", outcome: "applied" },
+      { id: SLEEP_PURPOSE_ID, name: "sleep", outcome: "applied" }
+    ]);
+    const [stored] = await database.sql`
+      select payload from purposes where id = ${skinId} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.name, "Skin", "stored trimmed");
+    assert.equal(stored.payload.sort_order, 0);
+    assert.equal(stored.payload.deleted_at, null);
+    assert.deepEqual(
+      (await listPurposes(app)).map((purpose) => purpose.name),
+      ["Skin", "Body composition", "Performance", "Recovery", "Cognition", "General health", "sleep"]
+    );
+
+    // Empty after trimming, whichever way it is written.
+    for (const name of ["", "   "]) {
+      assert.deepEqual(
+        await refusedRules(
+          await writePurposes(app, [{ id: createUuidV7(), name, sortOrder: 7 }])
+        ),
+        [["purposes[0].name", "purpose_name_required"]]
+      );
+    }
+    // A duplicate of a starter's name, in another case and with padding.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: createUuidV7(), name: "  RECOVERY ", sortOrder: 7 }])
+      ),
+      [["purposes[0].name", "duplicate_purpose_name"]]
+    );
+    // A duplicate of a user Purpose, and a pair inside one batch.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: createUuidV7(), name: "skin", sortOrder: 7 }])
+      ),
+      [["purposes[0].name", "duplicate_purpose_name"]]
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: createUuidV7(), name: "Focus", sortOrder: 7 },
+          { id: createUuidV7(), name: "focus", sortOrder: 8 }
+        ])
+      ),
+      [
+        ["purposes[0].name", "duplicate_purpose_name"],
+        ["purposes[1].name", "duplicate_purpose_name"]
+      ]
+    );
+    assert.equal((await listPurposes(app)).length, 7, "a refused batch writes nothing");
+
+    // A repeated id, and a new row whose id isn't a UUIDv7.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: skinId, name: "Skin", sortOrder: 0 },
+          { id: skinId, name: "Skin", sortOrder: 1 }
+        ])
+      ),
+      [["purposes[1].id", "duplicate_purpose_id"]]
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: "not-a-uuid", name: "Mood", sortOrder: 7 }])
+      ),
+      [["purposes[0].id", "new_row_id_must_be_uuidv7"]]
+    );
+
+    // The bounds.
+    const tooMany = Array.from({ length: 101 }, (_, index) => ({
+      id: createUuidV7(),
+      name: `Purpose ${index}`,
+      sortOrder: index
+    }));
+    assert.equal((await writePurposes(app, tooMany)).status, 400);
+    assert.equal((await writePurposes(app, [])).status, 400);
+
+    // Renaming itself in another case is no duplicate.
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "SKIN", sortOrder: 0 }])).status,
+      200
+    );
+
+    // Two names swapped in one batch collide only if judged item by item.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: PERFORMANCE_PURPOSE_ID, name: "Cognition", sortOrder: 2 },
+          {
+            id: "019200ff-0000-7000-8000-000000000105",
+            name: "Performance",
+            sortOrder: 4
+          }
+        ])
+      ).status,
+      200
+    );
+
+    // An archived name is free to reuse, in a later batch or in the same one.
+    const archivedAt = "2026-06-01T00:00:00.000Z";
+    assert.equal(
+      (
+        await writePurposes(app, [
+          {
+            id: GENERAL_HEALTH_PURPOSE_ID,
+            name: "General health",
+            sortOrder: 5,
+            deletedAt: archivedAt
+          }
+        ])
+      ).status,
+      200
+    );
+    assert.ok(
+      !(await listPurposes(app)).some((purpose) => purpose.id === GENERAL_HEALTH_PURPOSE_ID)
+    );
+    const healthId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: healthId, name: "GENERAL HEALTH", sortOrder: 5 }]))
+        .status,
+      200
+    );
+    const moodId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: healthId, name: "GENERAL HEALTH", sortOrder: 5, deletedAt: archivedAt },
+          { id: moodId, name: "General health", sortOrder: 6 }
+        ])
+      ).status,
+      200
+    );
+    // But an archive item still needs a name.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: moodId, name: " ", sortOrder: 6, deletedAt: archivedAt }
+        ])
+      ),
+      [["purposes[0].name", "purpose_name_required"]]
+    );
+  }
+);
+
+withPurposesApp(
+  "a Purpose batch replays by key and conflicts with a different body, and a starter id is no other account's row",
+  async ({ app, database, userId }) => {
+    // Another account already holds a row under the same starter id.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const otherApp = createDeleteApp(database, otherUserId);
+    assert.equal(
+      (await writePurposes(otherApp, [{ id: SLEEP_PURPOSE_ID, name: "Theirs", sortOrder: 0 }]))
+        .status,
+      200
+    );
+
+    const key = `purposes-replay-${randomUUID()}`;
+    const items = [{ id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 0 }];
+    assert.equal((await writePurposes(app, items, key)).status, 200);
+
+    // Archive the renamed Purpose and reuse a name the replay would now fail on:
+    // the replay must not judge the names again.
+    const restId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 0, deletedAt: "2026-06-01T00:00:00.000Z" },
+          { id: restId, name: "Rest", sortOrder: 7 }
+        ])
+      ).status,
+      200
+    );
+    const replay = await writePurposes(app, items, key);
+    assert.equal(replay.status, 200, await replay.clone().text());
+    const replayBody = await replay.json();
+    assert.equal(replayBody.duplicate, true);
+    assert.deepEqual(replayBody.purposes, [
+      { id: SLEEP_PURPOSE_ID, name: "Rest", outcome: "duplicate" }
+    ]);
+
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: restId, name: "Rest again", sortOrder: 7 }], key)
+      ),
+      [["idempotencyKey", "idempotency_key_conflict"]]
+    );
+
+    // Each account's starter is its own.
+    const [theirs] = await database.sql`
+      select payload from purposes where id = ${SLEEP_PURPOSE_ID} and user_id = ${otherUserId}
+    `;
+    assert.equal(theirs.payload.name, "Theirs");
+  }
+);
+
+withPurposesApp(
+  "CUJ 9: an Agent lists the Purposes, creates a tagged Compound and filters Compounds by Purpose",
+  async ({ app, database, userId }) => {
+    const sleep = (await listPurposes(app)).find((purpose) => purpose.name === "Sleep");
+    const [magnesiumId, melatoninId, creatineId, glycineId] = [
+      createUuidV7(),
+      createUuidV7(),
+      createUuidV7(),
+      createUuidV7()
+    ];
+    // Stored by the app, tagged by the seed.
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.compounds, [
+      {
+        id: magnesiumId,
+        userId,
+        updatedAt,
+        payload: {
+          id: magnesiumId,
+          name: "Magnesium",
+          default_unit: "milligram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([sleep.id, "019200ff-0000-7000-8000-000000000104"])
+        }
+      },
+      {
+        id: melatoninId,
+        userId,
+        updatedAt,
+        payload: {
+          id: melatoninId,
+          name: "Melatonin",
+          default_unit: "milligram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([sleep.id])
+        }
+      },
+      {
+        id: creatineId,
+        userId,
+        updatedAt,
+        payload: {
+          id: creatineId,
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([PERFORMANCE_PURPOSE_ID])
+        }
+      }
+    ]);
+
+    const glycine = await writeCompounds(app, [
+      compoundItem(glycineId, "Glycine", { purposeIds: [sleep.id] })
+    ]);
+    assert.equal(glycine.status, 200, await glycine.clone().text());
+
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${sleep.id}&fields=purposeIds`,
+      { headers: authHeaders() }
+    );
+    assert.equal(filtered.status, 200);
+    const filteredBody = await filtered.json();
+    assert.deepEqual(
+      filteredBody.compounds.map((compound) => compound.name).sort(),
+      ["Glycine", "Magnesium", "Melatonin"]
+    );
+    assert.equal(filteredBody.totalMatched, 3);
+    assert.deepEqual(filteredBody.fields, ["id", "name", "purposeIds"]);
+    assert.deepEqual(Object.keys(filteredBody.compounds[0]).sort(), ["id", "name", "purposeIds"]);
+    assert.deepEqual(
+      filteredBody.compounds.find((compound) => compound.id === magnesiumId).purposeIds,
+      [sleep.id, "019200ff-0000-7000-8000-000000000104"],
+      "the stored list, in the order tagged"
+    );
+
+    // The filter runs before paging.
+    const page = await app.request(
+      `/agent/protocols/compounds?purpose=${sleep.id}&limit=2`,
+      { headers: authHeaders() }
+    );
+    const pageBody = await page.json();
+    assert.equal(pageBody.compounds.length, 2);
+    assert.equal(pageBody.totalMatched, 3);
+    assert.ok(pageBody.nextCursor);
+
+    const unknown = await app.request(
+      `/agent/protocols/compounds?purpose=${createUuidV7()}`,
+      { headers: authHeaders() }
+    );
+    assert.equal((await unknown.json()).totalMatched, 0);
+
+    // What the app pulls is the JSON-encoded list.
+    const [stored] = await database.sql`
+      select payload from compounds where id = ${glycineId} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.purpose_ids, JSON.stringify([sleep.id]));
+  }
+);
+
+withPurposesApp(
+  "purposeIds on a Compound write: repeats collapse, omitting keeps the list, [] clears it, and a row with no key reads []",
+  async ({ app, database, userId }) => {
+    const id = createUuidV7();
+    assert.equal(
+      (
+        await writeCompounds(app, [
+          compoundItem(id, "Magnesium", {
+            purposeIds: [PERFORMANCE_PURPOSE_ID, SLEEP_PURPOSE_ID, PERFORMANCE_PURPOSE_ID]
+          })
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [
+      PERFORMANCE_PURPOSE_ID,
+      SLEEP_PURPOSE_ID
+    ]);
+
+    // An Agent edit that omits the list keeps it, and logs the row as stored.
+    const omitKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Magnesium glycinate")], omitKey)).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [
+      PERFORMANCE_PURPOSE_ID,
+      SLEEP_PURPOSE_ID
+    ]);
+    const [logged] = await database.sql`
+      select after_image from activity_log
+      where user_id = ${userId} and batch_id = ${omitKey} and entity_table = 'compounds'
+    `;
+    assert.equal(
+      logged.after_image.purpose_ids,
+      JSON.stringify([PERFORMANCE_PURPOSE_ID, SLEEP_PURPOSE_ID])
+    );
+
+    // An explicit empty list clears it, and stays cleared.
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Magnesium", { purposeIds: [] })])).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+    const [stored] = await database.sql`
+      select payload from compounds where id = ${id} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.purpose_ids, "[]");
+    assert.equal((await writeCompounds(app, [compoundItem(id, "Magnesium")])).status, 200);
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+
+    // A Compound created without the list has no key, and reads as none.
+    const untagged = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(untagged, "Zinc")])).status, 200);
+    assert.deepEqual(await compoundPurposeIds(app, untagged), []);
+  }
+);
+
+withPurposesApp(
+  "a stored purpose_ids that can't be read as strings reads as no tags, and doesn't break the Compound list",
+  async ({ app, database, userId }) => {
+    const [badId, goodId] = [createUuidV7(), createUuidV7()];
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.compounds, [
+      {
+        id: badId,
+        userId,
+        updatedAt,
+        payload: {
+          id: badId,
+          name: "Bad",
+          default_unit: "gram",
+          default_route: "oral",
+          // Sync stores the payload unchecked, so a push can leave a raw array
+          // whose entry String() throws on.
+          purpose_ids: [{ toString: 1 }]
+        }
+      },
+      {
+        id: goodId,
+        userId,
+        updatedAt,
+        payload: {
+          id: goodId,
+          name: "Good",
+          default_unit: "gram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([SLEEP_PURPOSE_ID])
+        }
+      }
+    ]);
+
+    assert.deepEqual(await compoundPurposeIds(app, badId), []);
+    assert.deepEqual(await compoundPurposeIds(app, goodId), [SLEEP_PURPOSE_ID]);
+
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(
+      (await filtered.json()).compounds.map((compound) => compound.id),
+      [goodId]
+    );
+  }
+);
+
+withPurposesApp(
+  "purpose_not_found refuses an unknown or archived id, and a replay of a recorded batch still returns its receipt",
+  async ({ app, userId, database }) => {
+    const id = createUuidV7();
+    const skinId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "Skin", sortOrder: 6 }])).status,
+      200
+    );
+
+    const key = `compounds-${randomUUID()}`;
+    const items = [compoundItem(id, "Glycine", { purposeIds: [skinId, SLEEP_PURPOSE_ID] })];
+    assert.equal((await writeCompounds(app, items, key)).status, 200);
+
+    // An unknown id, reported per item at the list's field; nothing is written.
+    const otherId = createUuidV7();
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(otherId, "Fine", { purposeIds: [SLEEP_PURPOSE_ID] }),
+          compoundItem(createUuidV7(), "Bad", {
+            purposeIds: [createUuidV7(), createUuidV7()]
+          })
+        ])
+      ),
+      [["compounds[1].purposeIds", "purpose_not_found"]]
+    );
+    const [{ count }] = await database.sql`
+      select count(*)::int as count from compounds where id = ${otherId} and user_id = ${userId}
+    `;
+    assert.equal(count, 0);
+
+    // Another account's user Purpose is unknown here.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const theirsId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(createDeleteApp(database, otherUserId), [
+          { id: theirsId, name: "Theirs", sortOrder: 6 }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [theirsId] })])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+
+    // An archived Purpose stays on the Compound, and can't be written again.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: skinId, name: "Skin", sortOrder: 6, deletedAt: "2026-06-01T00:00:00.000Z" }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [skinId, SLEEP_PURPOSE_ID]);
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(id, "Glycine", { purposeIds: [skinId, SLEEP_PURPOSE_ID] })
+        ])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+    // An archived starter too.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          {
+            id: GENERAL_HEALTH_PURPOSE_ID,
+            name: "General health",
+            sortOrder: 5,
+            deletedAt: "2026-06-01T00:00:00.000Z"
+          }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(id, "Glycine", { purposeIds: [GENERAL_HEALTH_PURPOSE_ID] })
+        ])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+
+    // The recorded batch replays, though it names the archived Purpose now.
+    const replay = await writeCompounds(app, items, key);
+    assert.equal(replay.status, 200, await replay.clone().text());
+    const replayBody = await replay.json();
+    assert.equal(replayBody.duplicate, true);
+    assert.deepEqual(replayBody.compounds, [
+      { id, name: "Glycine", outcome: "duplicate" }
+    ]);
+
+    // Omitting the list still edits a Compound carrying the archived id.
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine powder")])).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [skinId, SLEEP_PURPOSE_ID]);
+  }
+);
+
+withPurposesApp(
+  "undoing an Agent's first tagging of a Compound clears the tags, and an edit that omits the list leaves them",
+  async ({ app, database, userId }) => {
+    const undo = async (batchId) => {
+      const response = await post(app, "/agent/activity/undo-batch", {
+        batchId,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      const body = await response.json();
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+    };
+    const beforeImage = async (batchId) => {
+      const [logged] = await database.sql`
+        select before_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId} and entity_table = 'compounds'
+      `;
+      return logged.before_image;
+    };
+
+    // The stored row has no `purpose_ids`: an Agent created it with no list, as
+    // a schema-65 app would have pushed it.
+    const id = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(id, "Glycine")])).status, 200);
+    const tagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], tagKey))
+        .status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [SLEEP_PURPOSE_ID]);
+    assert.equal((await beforeImage(tagKey)).purpose_ids, "[]");
+
+    await undo(tagKey);
+
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.deepEqual((await filtered.json()).compounds, []);
+
+    // A write that doesn't set the key records the row as stored, so its undo
+    // can't touch a list it never changed.
+    const untagged = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(untagged, "Zinc")])).status, 200);
+    const renameKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(untagged, "Zinc citrate")], renameKey)).status,
+      200
+    );
+    assert.equal(Object.hasOwn(await beforeImage(renameKey), "purpose_ids"), false);
+
+    // Undoing a later tagging restores the list the row held, not an empty one.
+    const retagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [PERFORMANCE_PURPOSE_ID] })]))
+        .status,
+      200
+    );
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], retagKey))
+        .status,
+      200
+    );
+    await undo(retagKey);
+    assert.deepEqual(await compoundPurposeIds(app, id), [PERFORMANCE_PURPOSE_ID]);
+  }
+);
+
+withPurposesApp(
+  "a Purpose write is undoable through the Activity Log, a starter with no stored row included",
+  async ({ app }) => {
+    const undo = async (batchId) => {
+      const response = await post(app, "/agent/activity/undo-batch", {
+        batchId,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      const body = await response.json();
+      assert.equal(body.applied, true);
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+    };
+    const byId = async (id) =>
+      (await listPurposes(app, "?includeArchived=true")).find((purpose) => purpose.id === id);
+
+    // Archiving a starter this account has never synced: undo brings it back.
+    const archiveKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (
+        await writePurposes(
+          app,
+          [
+            {
+              id: GENERAL_HEALTH_PURPOSE_ID,
+              name: "General health",
+              sortOrder: 5,
+              deletedAt: "2026-06-01T00:00:00.000Z"
+            }
+          ],
+          archiveKey
+        )
+      ).status,
+      200
+    );
+    assert.ok((await byId(GENERAL_HEALTH_PURPOSE_ID)).deletedAt !== null);
+    await undo(archiveKey);
+    assert.deepEqual(await byId(GENERAL_HEALTH_PURPOSE_ID), {
+      id: GENERAL_HEALTH_PURPOSE_ID,
+      name: "General health",
+      sortOrder: 5,
+      starter: true,
+      deletedAt: null
+    });
+
+    // Renaming a starter with no stored row: undo restores its own name.
+    const renameKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 9 }], renameKey))
+        .status,
+      200
+    );
+    await undo(renameKey);
+    assert.deepEqual(await byId(SLEEP_PURPOSE_ID), {
+      id: SLEEP_PURPOSE_ID,
+      name: "Sleep",
+      sortOrder: 0,
+      starter: true,
+      deletedAt: null
+    });
+
+    // Creating one: undo archives it, as for any created row.
+    const skinId = createUuidV7();
+    const createKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "Skin", sortOrder: 6 }], createKey)).status,
+      200
+    );
+    await undo(createKey);
+    assert.ok((await byId(skinId)).deletedAt !== null);
+    assert.ok(!(await listPurposes(app)).some((purpose) => purpose.id === skinId));
+
+    // Renaming a stored one: undo restores the stored name.
+    const moodId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: moodId, name: "Mood", sortOrder: 7 }])).status,
+      200
+    );
+    const editKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: moodId, name: "Calm", sortOrder: 7 }], editKey)).status,
+      200
+    );
+    await undo(editKey);
+    assert.equal((await byId(moodId)).name, "Mood");
+  }
+);

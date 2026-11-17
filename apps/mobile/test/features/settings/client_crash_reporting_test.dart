@@ -240,6 +240,9 @@ void main() {
       final breadcrumb = Breadcrumb(
         message: 'Logged 250 mg of Redacted Compound Name',
         category: 'protocols.logDose',
+        // A fixed time, so the encoded timestamp can never contain the
+        // forbidden amount "250" (12:43:43.250Z once did).
+        timestamp: DateTime.utc(2026, 1, 1),
         data: const <String, dynamic>{
           'compoundName': 'Redacted Compound Name',
           'compoundId': 'compound-secret-123',

@@ -189,6 +189,7 @@ void main() {
 
       // Add a manual replacement to the same Meal.
       final logged = await repositories.nutrition.logFoodEntrySnapshot(
+        target: ExistingMealTarget(mealId),
         entry: FoodEntrySnapshotDraft(
           mealId: mealId,
           foodId: null,

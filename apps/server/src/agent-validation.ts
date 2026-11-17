@@ -4,6 +4,14 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
+import {
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
+  compareIds,
+  isJsonObject,
+  isPlanLocalTime,
+  isValidLocalDate,
+  isWholeNumber
+} from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import type {
   DimensionId,
@@ -881,6 +889,11 @@ function validateAtwater(
   }
 }
 
+/** Whether `id` is one of the fixed Nutrient ids (CONTEXT.md, Nutrient). */
+export function isNutrientId(id: string): boolean {
+  return NutrientIdSchema.safeParse(id).success;
+}
+
 function parseNutrientId(nutrient: string) {
   const parsed = NutrientIdSchema.safeParse(nutrient);
   return parsed.success ? parsed.data : null;
@@ -1459,7 +1472,12 @@ export const AgentDoseValidationRequestSchema = z
   })
   .openapi("AgentDoseValidationRequest");
 
-export const AgentDoseValidationIssueSchema = z
+/**
+ * The issue shape the Dose and Meal rules share: no nutrient, unlike
+ * AgentNutrientValidationIssue. Each domain registers it under its own
+ * component name, so the contract keeps both.
+ */
+const ValidationIssueBaseSchema = z
   .object({
     field: z.string().min(1).openapi({
       description: "Request field path that triggered the rule."
@@ -1473,8 +1491,11 @@ export const AgentDoseValidationIssueSchema = z
     limit: z.union([z.number(), z.string()]).nullable().openapi({
       description: "Rule limit or allowed value summary."
     })
-  })
-  .openapi("AgentDoseValidationIssue");
+  });
+
+export const AgentDoseValidationIssueSchema = ValidationIssueBaseSchema.openapi(
+  "AgentDoseValidationIssue"
+);
 
 const DoseUnitLimitSchema = z.object({
   warnAbove: z.number(),
@@ -1718,156 +1739,879 @@ function parseDoseRoute(route: string): DoseRoute | null {
 }
 
 // ---------------------------------------------------------------------------
-// Predefined Set tier (HIGH_LEVEL_DESIGN.md §5) — the SAME shared
-// two-tier validator, extended for the Routines domain. This twins the Dart
-// `validatePredefinedSet`
-// (apps/mobile/lib/domain/training/predefined_set_validation.dart) rule-for-rule
-// against the shared golden vector
-// (packages/golden-vectors/vectors/m34-predefined-set-validation.json). A
-// predefined set is prescription data: its dimension values (fixed mode only)
-// reuse the exact set-value rules of `validateAgentSet`, plus two
-// prescription-specific hard-reject rules for `repeat` and `restAfterSeconds`.
-// A copy-previous prescription carries no fixed values — the values are resolved
-// from history at materialize time — so its value fields are never validated.
+// Meal-time tier (docs/designs/meal-logging.md §8). The same shared two-tier
+// module, extended for Meals. Twins the Dart `validateMealTime`
+// (apps/mobile/lib/domain/nutrition/meal_validation.dart): the same stable rule
+// ids, the same order, fields and thresholds, agreeing on the shared golden
+// vector (packages/golden-vectors/vectors/m39-meal-validation.json). Runs
+// against the Meal as it will be stored. Results use the Dose validator's
+// issue shape.
 // ---------------------------------------------------------------------------
 
-export const PREDEFINED_SET_VALIDATION_LIMITS = {
-  repeatMin: 1,
-  restAfterSecondsMin: 0
+/// The Meal-time validator's limits, kept in lockstep with the Dart
+/// `MealValidationLimits` and the golden vector's `limits` block.
+/// `futureToleranceMinutes` is exclusive: a start exactly that far after `now`
+/// does not warn.
+export const MEAL_VALIDATION_LIMITS = {
+  futureToleranceMinutes: 5
 } as const;
 
-const PredefinedSetModeSchema = z
-  .enum(["fixed", "copyPrevious"])
-  .openapi("AgentPredefinedSetMode");
+export const AgentMealValidationIssueSchema = ValidationIssueBaseSchema.openapi(
+  "AgentMealValidationIssue"
+);
 
-export const AgentPredefinedSetValidationRequestSchema = z
-  .object({
-    mode: PredefinedSetModeSchema.openapi({
-      description:
-        "Prescription mode. `fixed` validates the supplied values as set values; `copyPrevious` resolves values from history at materialize time and ignores any supplied values."
-    }),
-    dimensions: z.array(DimensionIdSchema).max(4).openapi({
-      description:
-        "Exercise Type dimensions used for cross-field validation of fixed values. Completion-only exercises pass an empty array."
-    }),
-    loadMode: ExerciseLoadModeSchema.default("added").openapi({
-      description:
-        "Controls load warnings on fixed values: added load warns above 350 kg, assisted load warns above 150 kg."
-    }),
-    repeat: z.number().openapi({
-      description:
-        "How many identical logged sets this prescription expands to. Hard reject: below 1, or non-integer."
-    }),
-    restAfterSeconds: z.number().nullable().default(null).openapi({
-      description:
-        "Planned rest after the set, in seconds, or null. Hard reject: negative."
-    }),
-    values: AgentSetValidationValuesSchema
-  })
-  .openapi("AgentPredefinedSetValidationRequest");
-
-export const AgentPredefinedSetValidationLimitsSchema = z
-  .object({
-    repeatMin: z.literal(PREDEFINED_SET_VALIDATION_LIMITS.repeatMin),
-    restAfterSecondsMin: z.literal(
-      PREDEFINED_SET_VALIDATION_LIMITS.restAfterSecondsMin
-    )
-  })
-  .openapi("AgentPredefinedSetValidationLimits");
-
-export type AgentPredefinedSetValidationInput = z.infer<
-  typeof AgentPredefinedSetValidationRequestSchema
+export type AgentMealValidationIssue = z.infer<
+  typeof AgentMealValidationIssueSchema
 >;
-export type AgentPredefinedSetValidationResult = {
-  errors: AgentSetValidationIssue[];
-  warnings: AgentSetValidationIssue[];
+
+/// The Meal fields the time rules read, as the Meal will be stored. Instants
+/// are ISO-8601 strings; `mealType` is the Meal Type label.
+export type AgentMealTimeValidationInput = {
+  startedAt: string;
+  endedAt?: string | null;
+  mealType: string;
+};
+
+export type AgentMealTimeValidationResult = {
+  accepted: boolean;
+  errors: AgentMealValidationIssue[];
+  warnings: AgentMealValidationIssue[];
 };
 
 /**
- * Validates one candidate `Predefined Set` through the shared two-tier
- * validator. Prescription hard-reject rules (`predefined_set_repeat_min`,
- * `predefined_set_repeat_integer`, `predefined_set_rest_after_non_negative`)
- * come first, then — for `fixed` mode only — the exact set-value rules of
- * `validateAgentSet` (dimension ranges, decimals, cross-field). Mirrors the Dart
- * `validatePredefinedSet` (golden-vectored together, AGENTS.md invariant).
+ * Validates one candidate Meal's time fields against `now`. Rules, in this
+ * order (the order the golden vector pins):
+ * - `meal_ended_before_start` (hard, `endedAt`): `endedAt` is set and not
+ *   after `startedAt`; an end equal to the start is rejected.
+ * - `meal_type_required` (hard, `mealType`): the label is empty or whitespace.
+ * - `meal_time_in_future` (soft, `startedAt`): the start is more than
+ *   `MEAL_VALIDATION_LIMITS.futureToleranceMinutes` after `now`.
  */
-export function validateAgentPredefinedSet(
-  input: AgentPredefinedSetValidationInput
-): AgentPredefinedSetValidationResult {
-  const errors: AgentSetValidationIssue[] = [];
-  const warnings: AgentSetValidationIssue[] = [];
+export function validateAgentMealTime(
+  input: AgentMealTimeValidationInput,
+  { now }: { now: Date }
+): AgentMealTimeValidationResult {
+  const errors: AgentMealValidationIssue[] = [];
+  const warnings: AgentMealValidationIssue[] = [];
+  const startedAtMs = new Date(input.startedAt).getTime();
 
-  if (!Number.isInteger(input.repeat)) {
-    if (input.repeat < PREDEFINED_SET_VALIDATION_LIMITS.repeatMin) {
+  if (input.endedAt !== undefined && input.endedAt !== null) {
+    const endedAtMs = new Date(input.endedAt).getTime();
+    if (!(endedAtMs > startedAtMs)) {
       errors.push(
-        issue({
-          field: "repeat",
-          dimension: null,
-          rule: "predefined_set_repeat_min",
-          message: "Repeat must be at least 1.",
-          limit: PREDEFINED_SET_VALIDATION_LIMITS.repeatMin
-        })
-      );
-    } else {
-      errors.push(
-        issue({
-          field: "repeat",
-          dimension: null,
-          rule: "predefined_set_repeat_integer",
-          message: "Repeat must be an integer.",
-          limit: "integer"
+        mealIssue({
+          field: "endedAt",
+          rule: "meal_ended_before_start",
+          message: "Meal end time must be after its start time.",
+          limit: null
         })
       );
     }
-  } else if (input.repeat < PREDEFINED_SET_VALIDATION_LIMITS.repeatMin) {
+  }
+
+  if (input.mealType.trim().length === 0) {
     errors.push(
-      issue({
-        field: "repeat",
-        dimension: null,
-        rule: "predefined_set_repeat_min",
-        message: "Repeat must be at least 1.",
-        limit: PREDEFINED_SET_VALIDATION_LIMITS.repeatMin
+      mealIssue({
+        field: "mealType",
+        rule: "meal_type_required",
+        message: "Meal Type is required.",
+        limit: null
       })
     );
   }
 
+  const toleranceMs = MEAL_VALIDATION_LIMITS.futureToleranceMinutes * 60_000;
+  if (startedAtMs - now.getTime() > toleranceMs) {
+    warnings.push(
+      mealIssue({
+        field: "startedAt",
+        rule: "meal_time_in_future",
+        message: "Meal start time is in the future.",
+        limit: MEAL_VALIDATION_LIMITS.futureToleranceMinutes
+      })
+    );
+  }
+
+  return { accepted: errors.length === 0, errors, warnings };
+}
+
+function mealIssue(input: AgentMealValidationIssue): AgentMealValidationIssue {
+  return AgentMealValidationIssueSchema.parse(input);
+}
+
+// ---------------------------------------------------------------------------
+// User Profile tier (docs/designs/user-profile.md, Validation). The same shared
+// two-tier module. Twins the Dart `validateUserProfileSection`
+// (apps/mobile/lib/domain/profile/user_profile_validation.dart): the same rule
+// ids, messages, order and thresholds, agreeing on the shared golden vector
+// (packages/golden-vectors/vectors/m41-user-profile-validation.json). Runs on
+// the merged values of a section, in the snake_case section shape, and never at
+// push: a change the server won't accept stays pending on the device and stalls
+// every later Sync Run.
+// ---------------------------------------------------------------------------
+
+/// Kept in lockstep with the Dart `UserProfileValidationLimits` and the golden
+/// vector's `limits` block.
+export const USER_PROFILE_VALIDATION_LIMITS = {
+  birthYearMaxAgeYears: 130,
+  birthYearWarnMinAgeYears: 13,
+  birthYearWarnMaxAgeYears: 100,
+  heightMaxCentimetres: 300,
+  heightWarnMinCentimetres: 120,
+  heightWarnMaxCentimetres: 220,
+  heightUnits: ["cm", "in"],
+  cmPerInch: 2.54,
+  daysPerWeekMin: 1,
+  daysPerWeekMax: 7,
+  sessionMinutesMin: 1,
+  sessionMinutesMax: 600,
+  sessionMinutesWarnMax: 240,
+  equipmentIdMaxLength: 64,
+  healthLimitationsTextMaxLength: 1000,
+  generalNotesTextMaxLength: 2000,
+  trainingGoalIds: [
+    "longevity",
+    "strength",
+    "muscle_gain",
+    "body_composition",
+    "endurance_performance",
+    "mobility",
+    "general_fitness"
+  ],
+  sexes: ["female", "male"],
+  experienceLevels: ["beginner", "intermediate", "advanced"]
+} as const;
+
+export const USER_PROFILE_SECTION_NAMES = [
+  "about_you",
+  "training_goals",
+  "experience",
+  "training_setup",
+  "health_limitations",
+  "general_notes"
+] as const;
+
+export type UserProfileSectionName = (typeof USER_PROFILE_SECTION_NAMES)[number];
+
+/// `field` is the sync-payload name, for example `birth_year`.
+export type UserProfileValidationIssue = {
+  field: string;
+  rule: string;
+  message: string;
+  limit: number | null;
+};
+
+export type UserProfileValidationResult = {
+  accepted: boolean;
+  errors: UserProfileValidationIssue[];
+  warnings: UserProfileValidationIssue[];
+};
+
+/**
+ * Validates one section's values. `referenceYear` is an input so a result never
+ * depends on the clock: the agent route passes the server's UTC year, the device
+ * its local calendar year.
+ *
+ * A field of the wrong JSON type is skipped as unset: the agent route's strict
+ * schema refuses one, and the device merges over tolerantly read values. Issues
+ * follow the section's field order and, within a field, the order of the
+ * Validation table, with each rule at most once per field.
+ */
+export function validateUserProfileSection(
+  section: UserProfileSectionName,
+  values: Record<string, unknown>,
+  { referenceYear }: { referenceYear: number }
+): UserProfileValidationResult {
+  const errors: UserProfileValidationIssue[] = [];
+  const warnings: UserProfileValidationIssue[] = [];
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+
+  switch (section) {
+    case "about_you":
+      validateProfileSex(values.sex, errors);
+      validateProfileBirthYear(values.birth_year, referenceYear, errors, warnings);
+      validateProfileHeight(values.height, errors, warnings);
+      break;
+    case "training_goals":
+      validateProfileGoals(values.goals, errors);
+      break;
+    case "experience":
+      validateProfileLevels(values.levels, errors);
+      break;
+    case "training_setup":
+      validateProfileEquipment(values.equipment, errors);
+      validateProfileDaysPerWeek(values.days_per_week, errors);
+      validateProfileSessionMinutes(values.session_minutes, errors, warnings);
+      break;
+    case "health_limitations":
+      validateProfileText(values.text, limits.healthLimitationsTextMaxLength, errors);
+      break;
+    case "general_notes":
+      validateProfileText(values.text, limits.generalNotesTextMaxLength, errors);
+      break;
+  }
+
+  return { accepted: errors.length === 0, errors, warnings };
+}
+
+function validateProfileSex(value: unknown, errors: UserProfileValidationIssue[]) {
   if (
-    input.restAfterSeconds !== null &&
-    input.restAfterSeconds < PREDEFINED_SET_VALIDATION_LIMITS.restAfterSecondsMin
+    typeof value !== "string" ||
+    isAllowedProfileValue(value, USER_PROFILE_VALIDATION_LIMITS.sexes)
   ) {
+    return;
+  }
+  errors.push({
+    field: "sex",
+    rule: "sex.unknown",
+    message: "Sex must be Female, Male or Not set.",
+    limit: null
+  });
+}
+
+function validateProfileBirthYear(
+  value: unknown,
+  referenceYear: number,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value > referenceYear) {
+    errors.push({
+      field: "birth_year",
+      rule: "birth_year.future",
+      message: "Birth year can't be in the future.",
+      limit: referenceYear
+    });
+    return;
+  }
+  const oldest = referenceYear - limits.birthYearMaxAgeYears;
+  if (value < oldest) {
+    errors.push({
+      field: "birth_year",
+      rule: "birth_year.too_old",
+      message: "Birth year can't be more than 130 years ago.",
+      limit: oldest
+    });
+    return;
+  }
+  const age = referenceYear - value;
+  if (age < limits.birthYearWarnMinAgeYears || age > limits.birthYearWarnMaxAgeYears) {
+    warnings.push({
+      field: "birth_year",
+      rule: "birth_year.improbable_age",
+      message: `That makes you ${age}. Check the birth year.`,
+      limit: null
+    });
+  }
+}
+
+function validateProfileHeight(
+  value: unknown,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isProfileRecord(value)) {
+    return;
+  }
+  const { unit, value: height } = value;
+  if (!isAllowedProfileValue(unit, limits.heightUnits)) {
+    errors.push({
+      field: "height",
+      rule: "height.unit",
+      message: "Height must be in cm or in.",
+      limit: null
+    });
+    return;
+  }
+  if (!isFiniteProfileNumber(height) || height <= 0) {
+    errors.push({
+      field: "height",
+      rule: "height.non_positive",
+      message: "Height must be more than zero.",
+      limit: null
+    });
+    return;
+  }
+  const centimetres = unit === "cm" ? height : height * limits.cmPerInch;
+  if (centimetres > limits.heightMaxCentimetres) {
+    errors.push({
+      field: "height",
+      rule: "height.too_tall",
+      message: "Height must be 300 cm (118.1 in) or less.",
+      limit: limits.heightMaxCentimetres
+    });
+    return;
+  }
+  if (
+    centimetres < limits.heightWarnMinCentimetres ||
+    centimetres > limits.heightWarnMaxCentimetres
+  ) {
+    warnings.push({
+      field: "height",
+      rule: "height.improbable",
+      message: `A height of ${height} ${unit} is unusual. Check it.`,
+      limit: null
+    });
+  }
+}
+
+function validateProfileGoals(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { trainingGoalIds } = USER_PROFILE_VALIDATION_LIMITS;
+  if (value.some((goal) => !isAllowedProfileValue(goal, trainingGoalIds))) {
+    errors.push({
+      field: "goals",
+      rule: "goals.unknown",
+      message: "Unknown Training Goal.",
+      limit: null
+    });
+  }
+  if (hasDuplicateProfileValue(value.filter((goal) => typeof goal === "string"))) {
+    errors.push({
+      field: "goals",
+      rule: "goals.duplicate",
+      message: "Each item can appear once.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileEquipment(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { equipmentIdMaxLength } = USER_PROFILE_VALIDATION_LIMITS;
+  if (
+    value.some(
+      (id) => typeof id !== "string" || id.length === 0 || id.length > equipmentIdMaxLength
+    )
+  ) {
+    errors.push({
+      field: "equipment",
+      rule: "equipment.invalid",
+      message: "Equipment ids must be 1 to 64 characters.",
+      limit: equipmentIdMaxLength
+    });
+  }
+  if (hasDuplicateProfileValue(value.filter(isNonEmptyProfileString))) {
+    errors.push({
+      field: "equipment",
+      rule: "equipment.duplicate",
+      message: "Each item can appear once.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileLevels(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { experienceLevels } = USER_PROFILE_VALIDATION_LIMITS;
+  const entries: Record<string, unknown>[] = value.map((entry) =>
+    isProfileRecord(entry) ? entry : {}
+  );
+  if (entries.some((entry) => !isAllowedProfileValue(entry.level, experienceLevels))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.unknown_level",
+      message: "Level must be Beginner, Intermediate or Advanced.",
+      limit: null
+    });
+  }
+  const focusIds = entries.map((entry) => entry.focus_id);
+  if (focusIds.some((id) => !isNonEmptyProfileString(id))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.invalid_focus",
+      message: "Each level needs a Focus.",
+      limit: null
+    });
+  }
+  if (hasDuplicateProfileValue(focusIds.filter(isNonEmptyProfileString))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.duplicate_focus",
+      message: "Each Focus can have one level.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileDaysPerWeek(value: unknown, errors: UserProfileValidationIssue[]) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value < limits.daysPerWeekMin || value > limits.daysPerWeekMax) {
+    errors.push({
+      field: "days_per_week",
+      rule: "days_per_week.range",
+      message: "Days per week must be 1 to 7.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileSessionMinutes(
+  value: unknown,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value < limits.sessionMinutesMin || value > limits.sessionMinutesMax) {
+    errors.push({
+      field: "session_minutes",
+      rule: "session_minutes.range",
+      message: "Session length must be 1 to 600 minutes.",
+      limit: null
+    });
+    return;
+  }
+  if (value > limits.sessionMinutesWarnMax) {
+    warnings.push({
+      field: "session_minutes",
+      rule: "session_minutes.improbable",
+      message: "Sessions over 4 hours are unusual. Check the length.",
+      limit: null
+    });
+  }
+}
+
+// `limit` counts UTF-16 code units, which is what String `.length` gives in both
+// languages, so an astral-plane character counts as 2 in each.
+function validateProfileText(
+  value: unknown,
+  limit: number,
+  errors: UserProfileValidationIssue[]
+) {
+  if (typeof value !== "string" || value.length <= limit) {
+    return;
+  }
+  errors.push({
+    field: "text",
+    rule: "text.too_long",
+    message: `Keep this under ${limit} characters.`,
+    limit
+  });
+}
+
+function isFiniteProfileNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyProfileString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+export function isProfileRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAllowedProfileValue(value: unknown, allowed: readonly string[]): boolean {
+  return typeof value === "string" && allowed.includes(value);
+}
+
+function hasDuplicateProfileValue(values: readonly string[]): boolean {
+  return new Set(values).size !== values.length;
+}
+
+// ---------------------------------------------------------------------------
+// Protocol Plan tier (docs/designs/protocol-schedules-and-reminders.md, D7).
+// The same shared two-tier module, extended for Schedule Rules, Protocol
+// Periods and Skips (D8). Twins the Dart `validateScheduleRule`,
+// `validateProtocolPeriod` and `validateProtocolSkip`
+// (apps/mobile/lib/domain/protocols/protocol_plan_validation.dart): the same
+// stable rule ids and limits, agreeing on
+// packages/golden-vectors/vectors/m36-protocol-plan-validation.json. Results
+// use the Dose validator's issue shape, the Protocols domain's own.
+// ---------------------------------------------------------------------------
+
+/// The limits are defined in protocol-plan.ts, whose decoders enforce their
+/// ceilings, and re-exported here beside the validators that judge them.
+export { PROTOCOL_PLAN_VALIDATION_LIMITS };
+
+/// The planned amount a Schedule Version carries next to its rule.
+export type AgentScheduleAmountForValidation = {
+  amountValue: number | null | undefined;
+  amountEntered: string | null | undefined;
+  unit: string | null | undefined;
+  route: string | null | undefined;
+};
+
+/// `startLocalDate` and `endLocalDate` must already be real `YYYY-MM-DD`
+/// dates (the Dart twin takes parsed dates); anything else throws a
+/// RangeError rather than being compared as text.
+export type AgentProtocolPeriodValidationInput = {
+  startLocalDate: string;
+  endLocalDate: string | null | undefined;
+  period: Readonly<Record<string, unknown>> | null | undefined;
+};
+
+/// Validates one Schedule Version: its stored `rule` JSON and the planned
+/// amount a `timed` or `untimed` rule requires and an `as_needed` or
+/// `unscheduled` rule must not carry. Like the Dart twin, it reads
+/// the stored JSON rather than a decoded rule, so it can judge values a
+/// decoder rejects (a time of "9:00", an anchor of "2026-02-30", a count of
+/// 2.5). The JSON's `v` and `kind`s are the codec's to reject; this assumes a
+/// known shape and judges its values.
+export function validateAgentScheduleRule(
+  rule: Readonly<Record<string, unknown>>,
+  amount: AgentScheduleAmountForValidation
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const warnings: AgentDoseValidationIssue[] = [];
+  const limits = PROTOCOL_PLAN_VALIDATION_LIMITS;
+  if (rule.kind !== "timed" && rule.kind !== "untimed") {
+    // `as_needed` and `unscheduled` plan nothing, so the stored shape keeps
+    // their amount fields null (`amount_absent`): an amount here is one
+    // nothing would ever read.
+    const carried = [amount.amountValue, amount.amountEntered, amount.unit, amount.route];
+    if (carried.some((value) => value !== null && value !== undefined)) {
+      errors.push(
+        doseIssue({
+          field: "amount",
+          rule: "amount_absent",
+          message: "An as-needed or unscheduled rule carries no amount, unit or route.",
+          limit: "absent"
+        })
+      );
+    }
+    return { errors, warnings };
+  }
+
+  if (rule.kind === "timed") {
+    const times = Array.isArray(rule.times) ? (rule.times as unknown[]) : [];
+    if (times.some((time) => typeof time !== "string" || !isPlanLocalTime(time))) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_format",
+          message: "Each time must be HH:MM, from 00:00 to 23:59.",
+          limit: "HH:MM"
+        })
+      );
+    }
+    if (times.length < 1 || times.length > limits.maxTimesPerDay) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_count",
+          message: `A timed rule plans 1 to ${limits.maxTimesPerDay} times a day.`,
+          limit: limits.maxTimesPerDay
+        })
+      );
+    }
+    if (new Set(times).size !== times.length) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_distinct",
+          message: "A timed rule cannot plan the same time twice.",
+          limit: "unique"
+        })
+      );
+    }
+    if (times.length > limits.warnTimesPerDay) {
+      warnings.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_many",
+          message: `More than ${limits.warnTimesPerDay} times a day is unusual.`,
+          limit: limits.warnTimesPerDay
+        })
+      );
+    }
+  } else if (!isIntegerInRange(rule.count, 1, limits.maxUntimedCount)) {
     errors.push(
-      issue({
-        field: "restAfterSeconds",
-        dimension: null,
-        rule: "predefined_set_rest_after_non_negative",
-        message: "Rest after must not be negative.",
-        limit: PREDEFINED_SET_VALIDATION_LIMITS.restAfterSecondsMin
+      doseIssue({
+        field: "rule.count",
+        rule: "untimed_count",
+        message: `An untimed rule plans 1 to ${limits.maxUntimedCount} doses a day.`,
+        limit: limits.maxUntimedCount
       })
     );
   }
 
-  if (input.mode === "fixed") {
-    const valueResult = validateAgentSet({
-      exercise: { dimensions: input.dimensions, loadMode: input.loadMode },
-      values: input.values
-    });
-    errors.push(...valueResult.errors);
-    warnings.push(...valueResult.warnings);
+  const days = isJsonObject(rule.days) ? rule.days : {};
+  if (days.kind === "weekdays") {
+    const weekdays = Array.isArray(days.weekdays) ? (days.weekdays as unknown[]) : [];
+    if (
+      weekdays.length === 0 ||
+      !weekdays.every((weekday) => isIntegerInRange(weekday, 1, 7)) ||
+      new Set(weekdays).size !== weekdays.length
+    ) {
+      errors.push(
+        doseIssue({
+          field: "rule.days.weekdays",
+          rule: "weekdays_valid",
+          message: "Choose at least one weekday, each from 1 (Monday) to 7 (Sunday), once.",
+          limit: "1-7"
+        })
+      );
+    }
+  }
+  if (days.kind === "every_n_days") {
+    if (!isIntegerInRange(days.n, limits.minEveryNDays, limits.maxEveryNDays)) {
+      errors.push(
+        doseIssue({
+          field: "rule.days.n",
+          rule: "every_n_range",
+          message: `Every N days takes N from ${limits.minEveryNDays} to ${limits.maxEveryNDays}.`,
+          limit: `${limits.minEveryNDays}-${limits.maxEveryNDays}`
+        })
+      );
+    }
+    if (!isLocalDateValue(days.anchor)) {
+      errors.push(anchorDateIssue("rule.days.anchor"));
+    }
+  }
+
+  if (!scheduleAmountIsValid(amount)) {
+    errors.push(
+      doseIssue({
+        field: "amount",
+        rule: "amount_required",
+        message: "A timed or untimed rule needs a valid amount, unit and route.",
+        limit: "amount|unit|route"
+      })
+    );
   }
 
   return { errors, warnings };
 }
 
-export function predefinedSetValidationLimitsResponse() {
-  return AgentPredefinedSetValidationLimitsSchema.parse(
-    PREDEFINED_SET_VALIDATION_LIMITS
-  );
+/// Validates a Protocol's bounds (`endLocalDate` inclusive, null for ongoing)
+/// and its stored `period` JSON, or null for no cycle and no Pause.
+export function validateAgentProtocolPeriod(
+  input: AgentProtocolPeriodValidationInput
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const startLocalDate = requireBoundDate(input.startLocalDate, "startLocalDate");
+  const endLocalDate =
+    input.endLocalDate === null || input.endLocalDate === undefined
+      ? null
+      : requireBoundDate(input.endLocalDate, "endLocalDate");
+  const period = input.period ?? null;
+  const cycle = period?.cycle;
+  const pauses = Array.isArray(period?.pauses) ? (period.pauses as unknown[]) : [];
+
+  if (isJsonObject(cycle)) {
+    if (!isLocalDateValue(cycle.anchor)) {
+      errors.push(anchorDateIssue("period.cycle.anchor"));
+    }
+    const maximum = PROTOCOL_PLAN_VALIDATION_LIMITS.maxCycleLengthDays;
+    if (
+      !isIntegerInRange(cycle.on_days, 1, maximum) ||
+      !isIntegerInRange(cycle.off_days, 1, maximum)
+    ) {
+      errors.push(
+        doseIssue({
+          field: "period.cycle",
+          rule: "cycle_lengths",
+          message: `A cycle is 1 to ${maximum} days on and 1 to ${maximum} days off.`,
+          limit: maximum
+        })
+      );
+    }
+  }
+
+  if (endLocalDate !== null && endLocalDate < startLocalDate) {
+    errors.push(
+      doseIssue({
+        field: "endLocalDate",
+        rule: "bounds_order",
+        message: "A Protocol cannot end before it starts.",
+        limit: "startLocalDate"
+      })
+    );
+  }
+
+  // pause_count bounds the list before anything walks or sorts it; an
+  // over-long list reports only that, and the other Pause checks don't run.
+  const maxPauses = PROTOCOL_PLAN_VALIDATION_LIMITS.maxPauses;
+  if (pauses.length > maxPauses) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_count",
+        message: `A Protocol holds at most ${maxPauses} Pauses.`,
+        limit: maxPauses
+      })
+    );
+    return { errors, warnings: [] };
+  }
+
+  // A Pause whose dates are not real dates cannot be ordered, so it fails
+  // pause_order, and the bounds and overlap checks skip it. Real local dates
+  // sort as strings.
+  const ranges: { from: string; to: string }[] = [];
+  let unordered = false;
+  for (const pause of pauses) {
+    const object = isJsonObject(pause) ? pause : {};
+    const from = isLocalDateValue(object.from) ? object.from : null;
+    const to = isLocalDateValue(object.to) ? object.to : null;
+    if (from === null || to === null || from > to) {
+      unordered = true;
+    }
+    if (from !== null && to !== null) {
+      ranges.push({ from, to });
+    }
+  }
+  if (unordered) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_order",
+        message: "A Pause cannot end before it starts.",
+        limit: "from<=to"
+      })
+    );
+  }
+
+  const outsideBounds = (localDate: string) =>
+    localDate < startLocalDate || (endLocalDate !== null && localDate > endLocalDate);
+  if (ranges.some((range) => outsideBounds(range.from) || outsideBounds(range.to))) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_bounds",
+        message: "A Pause must fall within the Protocol's dates.",
+        limit: "startLocalDate..endLocalDate"
+      })
+    );
+  }
+
+  // Pauses are inclusive at both ends, so two that share a day overlap.
+  const byStart = [...ranges].sort((left, right) => compareIds(left.from, right.from));
+  let latestEnd: string | null = null;
+  let overlaps = false;
+  for (const range of byStart) {
+    if (latestEnd !== null && range.from <= latestEnd) {
+      overlaps = true;
+    }
+    if (latestEnd === null || range.to > latestEnd) {
+      latestEnd = range.to;
+    }
+  }
+  if (overlaps) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_overlap",
+        message: "Two Pauses cannot overlap.",
+        limit: "disjoint"
+      })
+    );
+  }
+
+  return { errors, warnings: [] };
+}
+
+/// `localDate` and `today` must already be real `YYYY-MM-DD` dates (the Dart
+/// twin takes parsed dates); anything else throws a RangeError, which the
+/// Agent path answers 400 before calling the validator (D8).
+export type AgentProtocolSkipValidationInput = {
+  localDate: string;
+  plannedLocalTime: string | null;
+  today: string;
+};
+
+/// Validates one Skip (D8): its planned time is `HH:MM` or null (untimed),
+/// and its date is not after the writer's today. Both are hard rejects,
+/// reported in that order; there is no soft warning. It doesn't check that
+/// the Skip names a planned dose: the plan can change after a Skip is
+/// written, and a Skip that marks nothing is valid.
+export function validateAgentProtocolSkip(
+  input: AgentProtocolSkipValidationInput
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const localDate = requireBoundDate(input.localDate, "localDate");
+  const today = requireBoundDate(input.today, "today");
+  const { plannedLocalTime } = input;
+  if (
+    plannedLocalTime !== null &&
+    (typeof plannedLocalTime !== "string" || !isPlanLocalTime(plannedLocalTime))
+  ) {
+    errors.push(
+      doseIssue({
+        field: "plannedLocalTime",
+        rule: "skip_time_format",
+        message: "A planned time must be HH:MM, from 00:00 to 23:59.",
+        limit: "HH:MM"
+      })
+    );
+  }
+  // Real `YYYY-MM-DD` dates order as text.
+  if (localDate > today) {
+    errors.push(
+      doseIssue({
+        field: "localDate",
+        rule: "skip_future",
+        message: "A Skip can't be for a day after today.",
+        limit: "today"
+      })
+    );
+  }
+  return { errors, warnings: [] };
+}
+
+/// All four present (the entered amount non-blank) and accepted by the Dose
+/// validator, which judges the numeric amount. Its soft warnings are left to
+/// the Dose logged against the plan.
+function scheduleAmountIsValid(amount: AgentScheduleAmountForValidation): boolean {
+  const { amountValue, amountEntered, unit, route } = amount;
+  if (
+    amountValue === null ||
+    amountValue === undefined ||
+    typeof amountEntered !== "string" ||
+    amountEntered.trim().length === 0 ||
+    typeof unit !== "string" ||
+    typeof route !== "string"
+  ) {
+    return false;
+  }
+  return validateAgentDose({ amount: amountValue, unit, route }).errors.length === 0;
+}
+
+function anchorDateIssue(field: string): AgentDoseValidationIssue {
+  return doseIssue({
+    field,
+    rule: "anchor_date",
+    message: "An anchor must be a real YYYY-MM-DD date.",
+    limit: "YYYY-MM-DD"
+  });
+}
+
+function requireBoundDate(localDate: string, field: string): string {
+  if (!isValidLocalDate(localDate)) {
+    throw new RangeError(`${field} is not a YYYY-MM-DD date: ${localDate}.`);
+  }
+  return localDate;
+}
+
+/// A whole number in range, as the plan core's decoders read one.
+function isIntegerInRange(value: unknown, minimum: number, maximum: number): boolean {
+  return isWholeNumber(value) && value >= minimum && value <= maximum;
+}
+
+function isLocalDateValue(value: unknown): value is string {
+  return typeof value === "string" && isValidLocalDate(value);
 }
 
 // ---------------------------------------------------------------------------
 // Workout Template Prescription tier (ROUTINES.md §5).
-// This is the canonical replacement plan-layer validator; the legacy
-// predefined-set validator above remains intact until the old routines cutover.
+// This is the canonical plan-layer validator.
 // ---------------------------------------------------------------------------
 
 export const PRESCRIPTION_VALIDATION_LIMITS = {

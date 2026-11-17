@@ -13,7 +13,8 @@ import {
   DEVICE_PUSH_PLATFORM_IOS,
   schema,
   SYNC_NUDGE_JOB_NAME,
-  SYNC_NUDGE_MESSAGE_TYPE
+  SYNC_NUDGE_MESSAGE_TYPE,
+  SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -99,7 +100,7 @@ test("sync push enqueues a best-effort nudge after applying writes", async () =>
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      protocolVersion: 1,
+      protocolVersion: SYNC_PROTOCOL_VERSION,
       deviceId: "device-a",
       entity: "logged_sets",
       changes: [
@@ -167,7 +168,7 @@ test("sync push does not fail when nudge enqueue fails", async () => {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      protocolVersion: 1,
+      protocolVersion: SYNC_PROTOCOL_VERSION,
       deviceId: "device-a",
       entity: "logged_sets",
       changes: [

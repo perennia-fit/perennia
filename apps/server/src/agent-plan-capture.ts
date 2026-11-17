@@ -8,6 +8,7 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise,
 } from "./agent-catalog.js";
@@ -446,6 +447,8 @@ export type AgentWorkoutCaptureGroupSnapshot = {
 
 export type AgentWorkoutCaptureSnapshot = {
   workoutId: string;
+  // The source Workout's Focus, which the captured Template takes on.
+  focusId?: string | null;
   exercises: AgentWorkoutCaptureExerciseSnapshot[];
   groups: AgentWorkoutCaptureGroupSnapshot[];
   sourceWarnings?: AgentPlanCaptureIssue[];
@@ -1334,6 +1337,7 @@ export async function runAgentPlanCapture({
         id: workoutTemplateId,
         name: request.name ?? content.suggestedName,
         notes: null,
+        focus_id: workout.focusId ?? null,
       },
       nowIso,
     ),
@@ -2729,6 +2733,7 @@ async function loadDrizzleWorkoutCaptureSource(
       ];
   return {
     workoutId,
+    focusId: payloadFocusId(workoutSession?.payload),
     exercises,
     groups,
     sourceWarnings,

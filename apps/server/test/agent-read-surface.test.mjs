@@ -4,14 +4,19 @@ import test from "node:test";
 
 import {
   applyMigrations,
+  buildPlatformCatalogExercises,
   createApp,
   createDatabaseClient,
+  createDrizzleAgentCatalogStore,
+  createDrizzleAgentProgressReadStore,
   createDrizzleAgentReadStore,
+  createDrizzleAgentSettingsStore,
   createDrizzleRateLimitBackend,
   createInMemoryAgentCatalogStore,
   encodeCanonicalSeriesBlob,
   schema
 } from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -229,6 +234,111 @@ test(
         [setIds.squatTriple]
       );
       assert.equal(secondBody.nextCursor, null);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D9 (docs/designs/progress-overview.md): progressSeries is read through its
+// own store method over the whole history, not the request's from/to window or
+// the 200-Set page, and is null when the progress store is not configured.
+test(
+  "agent analytics progressSeries covers the whole history and is null without the progress store",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-read-progress-user-${randomUUID()}`;
+    const workoutCount = 210;
+    const workoutId = (index) => `${userId}-w-${index}`;
+    const localDate = (index) =>
+      new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString().slice(0, 10);
+
+    try {
+      await seedUser(database, userId);
+      const at = new Date("2026-08-01T00:00:00.000Z");
+      const row = (id, payload) => ({
+        id,
+        userId,
+        deviceId: "device-agent-read-test",
+        updatedAt: at,
+        deletedAt: null,
+        receivedAt: at,
+        payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+      });
+      const indexes = Array.from({ length: workoutCount }, (_, index) => index);
+      await database.db.insert(schema.workoutSessions).values(
+        indexes.map((index) =>
+          row(workoutId(index), {
+            local_date: localDate(index),
+            started_at: `${localDate(index)}T06:00:00.000Z`,
+            ended_at: `${localDate(index)}T07:00:00.000Z`
+          })
+        )
+      );
+      // One five-rep Set a day, a kilogram heavier each day but the last.
+      await database.db.insert(schema.loggedSets).values(
+        indexes.map((index) =>
+          row(`${workoutId(index)}-set`, {
+            workout_id: workoutId(index),
+            performed_at: `${localDate(index)}T06:00:00.000Z`,
+            exercise_id: "user-back-squat",
+            position: 0,
+            is_completed: true,
+            values: {
+              load: {
+                entered: String(index === workoutCount - 1 ? 50 : 60 + index),
+                unit: "kilogram"
+              },
+              reps: { entered: "5", unit: "repetition" }
+            }
+          })
+        )
+      );
+      const catalogStore = createInMemoryAgentCatalogStore(catalogFixtures(userId));
+      const path = `/agent/analytics/exercises/user-back-squat?from=${localDate(200)}T00:00:00.000Z`;
+
+      const withProgress = createApp({
+        logger: { info() {}, error() {} },
+        agentApiKeyStore: createAgentKeyStore(userId, {}, "agent-read-key-1"),
+        agentCatalogStore: catalogStore,
+        agentReadStore: createDrizzleAgentReadStore(database.db),
+        agentProgressReadStore: createDrizzleAgentProgressReadStore({
+          db: database.db,
+          settingsStore: createDrizzleAgentSettingsStore(database.db),
+          catalogStore
+        })
+      });
+      const response = await getAgent(withProgress, path);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      // The request's window holds the last ten Sets; the series holds all.
+      assert.equal(body.totalSetCount, 10);
+      const series = body.progressSeries;
+      assert.equal(series.exerciseId, "user-back-squat");
+      assert.equal(series.measure, "estimatedOneRepMax");
+      assert.equal(series.betterIs, "higher");
+      assert.equal(series.points.length, workoutCount);
+      assert.deepEqual(series.points[0], {
+        workoutId: workoutId(0),
+        localDate: localDate(0),
+        startedAt: `${localDate(0)}T06:00:00.000Z`,
+        setId: `${workoutId(0)}-set`,
+        value: 67.5,
+        unit: "kilogram",
+        isNewBest: false
+      });
+      assert.ok(series.points.slice(1, -1).every((point) => point.isNewBest));
+      assert.equal(series.points.at(-1).isNewBest, false);
+
+      const withoutProgress = createAgentReadApp({
+        agentReadStore: createDrizzleAgentReadStore(database.db),
+        userId
+      });
+      const without = await getAgent(withoutProgress, path);
+      assert.equal(without.status, 200);
+      assert.equal((await without.json()).progressSeries, null);
     } finally {
       await database.close();
     }
@@ -579,6 +689,235 @@ test(
   }
 );
 
+test(
+  "a Set on a kept id joins the user's own row, and without a kept row joins through the redirect",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const keeperId = `agent-read-kept-user-${randomUUID()}`;
+    const otherId = `agent-read-unkept-user-${randomUUID()}`;
+    const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+    const target = buildPlatformCatalogExercises().find(
+      (exercise) => exercise.id === redirect.toExerciseId
+    );
+    const categoryId = randomUUID();
+    const at = new Date("2026-11-05T00:00:00.000Z");
+    const row = (id, userId, payload) => ({
+      id,
+      userId,
+      deviceId: "device-agent-read-test",
+      updatedAt: at,
+      receivedAt: at,
+      deletedAt: null,
+      payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+    });
+
+    try {
+      await seedUser(database, keeperId);
+      await seedUser(database, otherId);
+      await database.db
+        .insert(schema.exerciseCategories)
+        .values(row(categoryId, keeperId, { name: "Kept Category" }));
+      await database.db.insert(schema.exercises).values(
+        row(redirect.fromExerciseId, keeperId, {
+          library_origin: "user",
+          name: "My Kept Exercise",
+          category_id: categoryId,
+          dimension_ids: JSON.stringify(["load", "reps"])
+        })
+      );
+      for (const userId of [keeperId, otherId]) {
+        await seedLoggedSet(database, {
+          userId,
+          id: randomUUID(),
+          exerciseId: redirect.fromExerciseId,
+          // Blank in the Set, so the name and category come from the join.
+          exerciseName: null,
+          exerciseCategoryId: null,
+          exerciseCategoryName: null,
+          performedAt: "2026-11-01T06:00:00.000Z",
+          position: 0,
+          values: {
+            load: { entered: "100", unit: "kilogram" },
+            reps: { entered: "5", unit: "repetition" }
+          }
+        });
+      }
+      const readSet = async (userId) => {
+        const response = await getAgent(
+          createAgentReadApp({
+            agentReadStore: createDrizzleAgentReadStore(database.db),
+            userId
+          }),
+          "/agent/history/sets?limit=1"
+        );
+        assert.equal(response.status, 200);
+        const [set] = (await response.json()).sets;
+        return set;
+      };
+
+      const keptSet = await readSet(keeperId);
+      assert.equal(keptSet.exerciseId, redirect.fromExerciseId);
+      assert.equal(keptSet.exerciseName, "My Kept Exercise");
+      assert.deepEqual(keptSet.category, {
+        id: categoryId,
+        name: "Kept Category"
+      });
+
+      const redirectedSet = await readSet(otherId);
+      assert.equal(redirectedSet.exerciseId, redirect.fromExerciseId);
+      assert.equal(redirectedSet.exerciseName, target.name);
+      assert.deepEqual(redirectedSet.category, target.category);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// Platform Library Updates: the analytics read resolves its id through the
+// caller's catalog and its progressSeries through the caller's kept rows, so
+// the same two ids read differently for an account that holds the source id.
+test(
+  "the analytics read of a kept id is the user's own exercise and Sets, and without a kept row follows the redirect",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const keeperId = `agent-read-kept-user-${randomUUID()}`;
+    const otherId = `agent-read-unkept-user-${randomUUID()}`;
+    // A load-and-reps target, so the Sets below reach its Progress Measure.
+    const catalog = buildPlatformCatalogExercises();
+    const targetOf = (candidate) =>
+      catalog.find((exercise) => exercise.id === candidate.toExerciseId);
+    const redirect = PLATFORM_EXERCISE_SEED_REDIRECTS.find(
+      (candidate) => targetOf(candidate).recordProfile === "repMax"
+    );
+    const target = targetOf(redirect);
+    const at = new Date("2026-11-05T00:00:00.000Z");
+    const row = (id, userId, payload) => ({
+      id,
+      userId,
+      deviceId: "device-agent-read-test",
+      updatedAt: at,
+      receivedAt: at,
+      deletedAt: null,
+      payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+    });
+    // One Workout on the redirect's source and one on its target; the Set ids
+    // carry the account, so another account's Set cannot pass for this one's.
+    const setId = (userId, exerciseId) => `${userId}-set-${exerciseId}`;
+    const seedHistory = async (userId) => {
+      const days = [
+        [redirect.fromExerciseId, "2026-10-01", "100"],
+        [redirect.toExerciseId, "2026-10-02", "110"]
+      ];
+      await database.db.insert(schema.workoutSessions).values(
+        days.map(([exerciseId, localDate]) =>
+          row(`${userId}-w-${exerciseId}`, userId, {
+            local_date: localDate,
+            started_at: `${localDate}T06:00:00.000Z`,
+            ended_at: `${localDate}T07:00:00.000Z`
+          })
+        )
+      );
+      await database.db.insert(schema.loggedSets).values(
+        days.map(([exerciseId, localDate, load]) =>
+          row(setId(userId, exerciseId), userId, {
+            workout_id: `${userId}-w-${exerciseId}`,
+            performed_at: `${localDate}T06:00:00.000Z`,
+            exercise_id: exerciseId,
+            position: 0,
+            is_completed: true,
+            values: {
+              load: { entered: load, unit: "kilogram" },
+              reps: { entered: "5", unit: "repetition" }
+            }
+          })
+        )
+      );
+    };
+
+    try {
+      await seedUser(database, keeperId);
+      await seedUser(database, otherId);
+      await seedHistory(keeperId);
+      await seedHistory(otherId);
+      const categoryId = randomUUID();
+      await database.db
+        .insert(schema.exerciseCategories)
+        .values(row(categoryId, keeperId, { name: "Kept Category" }));
+      await database.db.insert(schema.exercises).values(
+        row(redirect.fromExerciseId, keeperId, {
+          library_origin: "user",
+          name: "My Kept Exercise",
+          category_id: categoryId,
+          dimension_ids: JSON.stringify(["load", "reps"])
+        })
+      );
+
+      const catalogStore = createDrizzleAgentCatalogStore(database.db);
+      const readAnalytics = async (userId, exerciseId) => {
+        const response = await getAgent(
+          createApp({
+            logger: { info() {}, error() {} },
+            agentApiKeyStore: createAgentKeyStore(userId, {}, "agent-read-key-1"),
+            agentCatalogStore: catalogStore,
+            agentReadStore: createDrizzleAgentReadStore(database.db),
+            agentProgressReadStore: createDrizzleAgentProgressReadStore({
+              db: database.db,
+              settingsStore: createDrizzleAgentSettingsStore(database.db),
+              catalogStore
+            })
+          }),
+          `/agent/analytics/exercises/${exerciseId}`
+        );
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      const seriesSetIds = (body) =>
+        body.progressSeries.points.map((point) => point.setId);
+
+      // The keeper's source id is their own exercise, with only its own Set.
+      const kept = await readAnalytics(keeperId, redirect.fromExerciseId);
+      assert.equal(kept.exercise.id, redirect.fromExerciseId);
+      assert.equal(kept.exercise.name, "My Kept Exercise");
+      assert.equal(kept.exercise.library, "user");
+      assert.equal(kept.totalSetCount, 1);
+      assert.equal(kept.progressSeries.exerciseId, redirect.fromExerciseId);
+      assert.deepEqual(seriesSetIds(kept), [
+        setId(keeperId, redirect.fromExerciseId)
+      ]);
+
+      // Their merge target does not include the kept exercise's Set.
+      const keeperTarget = await readAnalytics(keeperId, redirect.toExerciseId);
+      assert.equal(keeperTarget.exercise.id, redirect.toExerciseId);
+      assert.equal(keeperTarget.totalSetCount, 1);
+      assert.deepEqual(seriesSetIds(keeperTarget), [
+        setId(keeperId, redirect.toExerciseId)
+      ]);
+
+      // With no kept row, the same source id is the merge target, and the
+      // target's series folds the account's own Sets from both ids.
+      const folded = [
+        setId(otherId, redirect.fromExerciseId),
+        setId(otherId, redirect.toExerciseId)
+      ];
+      const redirected = await readAnalytics(otherId, redirect.fromExerciseId);
+      assert.equal(redirected.exercise.id, redirect.toExerciseId);
+      assert.equal(redirected.exercise.name, target.name);
+      assert.equal(redirected.exercise.library, "platform");
+      assert.deepEqual(seriesSetIds(redirected), folded);
+      assert.deepEqual(
+        seriesSetIds(await readAnalytics(otherId, redirect.toExerciseId)),
+        folded
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 function createAgentReadApp({
   agentRateLimit,
   agentKeyId = "agent-read-key-1",
@@ -649,6 +988,8 @@ async function seedLoggedSet({
   id,
   exerciseId,
   exerciseName,
+  exerciseCategoryId = "cat-strength",
+  exerciseCategoryName = "Strength",
   performedAt,
   position,
   values
@@ -668,8 +1009,8 @@ async function seedLoggedSet({
       workout_timezone: "Australia/Brisbane",
       exercise_id: exerciseId,
       exercise_name: exerciseName,
-      exercise_category_id: "cat-strength",
-      exercise_category_name: "Strength",
+      exercise_category_id: exerciseCategoryId,
+      exercise_category_name: exerciseCategoryName,
       position,
       values,
       comment: null,

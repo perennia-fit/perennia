@@ -29,3 +29,40 @@ final class Cadence {
         CadenceKind.rotating => window!,
       };
 }
+
+/// Whether [left] and [right] describe the same rhythm. Two null Cadences
+/// are equal.
+bool cadencesEqual(Cadence? left, Cadence? right) {
+  return left?.kind == right?.kind && left?.window == right?.window;
+}
+
+/// The Cadence slot a Routine Entry at [position] gets by default: entries
+/// fill slots 1..slotCount in order and wrap around. Null when the Routine
+/// has no Cadence.
+int? defaultRoutineEntrySlot(int position, Cadence? cadence) {
+  if (cadence == null) {
+    return null;
+  }
+  final slotCount = cadence.slotCount;
+  if (slotCount < 1) {
+    throw StateError('Cadence must have at least one slot.');
+  }
+  return (position % slotCount) + 1;
+}
+
+/// Keeps an authored [slot] that still fits [cadence], and otherwise falls
+/// back to [defaultRoutineEntrySlot] for [position]. Null when the Routine
+/// has no Cadence.
+int? reconciledRoutineEntrySlot(
+  int? slot, {
+  required int position,
+  required Cadence? cadence,
+}) {
+  if (cadence == null) {
+    return null;
+  }
+  if (slot != null && slot >= 1 && slot <= cadence.slotCount) {
+    return slot;
+  }
+  return defaultRoutineEntrySlot(position, cadence);
+}

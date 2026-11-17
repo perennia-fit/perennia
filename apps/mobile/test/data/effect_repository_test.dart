@@ -38,31 +38,33 @@ void main() {
 
     test(
         'windowForProtocol derives DURING from the Protocol\'s own '
-        'start/end dates', () async {
+        'local-date bounds, as local midnights at the device offset', () async {
       final creatineId = await _createCompoundId(repositories, 'Creatine');
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          // Inclusive: DURING ends at the start of 2026-02-14.
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 13),
           compoundIds: <String>[creatineId],
         ),
       );
       final protocol = (await repositories.protocols.listProtocols())
           .firstWhere((p) => p.id == created.protocolId);
 
-      final window = repositories.effect.windowForProtocol(
-        protocol,
-        now: DateTime.utc(2026, 3, 16),
-      );
+      final now = DateTime.utc(2026, 3, 16);
+      final window = repositories.effect.windowForProtocol(protocol, now: now);
 
-      // Drift returns DateTimes in local time; compare the instant, not the
-      // tagged zone (the same UTC moment was stored).
-      expect(window.duringStart.toUtc(), DateTime.utc(2026, 1, 15));
-      expect(window.duringEnd!.toUtc(), DateTime.utc(2026, 2, 14));
+      // Each bound is that date's local midnight, at the device's offset
+      // when the window is computed.
+      final offset = now.toLocal().timeZoneOffset;
+      DateTime localMidnight(int year, int month, int day) =>
+          DateTime.utc(year, month, day).subtract(offset);
+      expect(window.duringStart.toUtc(), localMidnight(2026, 1, 15));
+      expect(window.duringEnd!.toUtc(), localMidnight(2026, 2, 14));
       expect(window.isOngoing, isFalse);
-      expect(window.beforeStart.toUtc(), DateTime.utc(2025, 12, 16));
-      expect(window.afterEnd.toUtc(), DateTime.utc(2026, 3, 16));
+      expect(window.beforeStart.toUtc(), localMidnight(2025, 12, 16));
+      expect(window.afterEnd.toUtc(), localMidnight(2026, 3, 16));
     });
 
     test(
@@ -72,7 +74,7 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Off-season stack',
-          startDate: DateTime.utc(2026, 6, 1),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
           compoundIds: <String>[creatineId],
         ),
       );
@@ -182,7 +184,8 @@ void main() {
         'samplesFor a performance outcome sums load x reps of completed '
         'sets per Workout session, excluding a session with no scoreable set',
         () async {
-      final exercises = await repositories.ensureStarterExercises();
+      await repositories.catalog.ensurePlatformLibrarySeeded();
+      final exercises = await repositories.exercises.listActive();
       final exerciseId = exercises.first.id;
 
       // In-window session with a completed, load+reps set: 100kg x 5 = 500.
@@ -273,9 +276,97 @@ void main() {
     });
 
     test(
+        'performance volume converts load to kilograms and excludes '
+        'assisted-load exercises, like the exercise volume series', () async {
+      await repositories.catalog.ensurePlatformLibrarySeeded();
+      final exercises = await repositories.exercises.listActive();
+      final barbellId = exercises.first.id;
+      final assistedId = await repositories.exercises.create(
+        ExerciseDraft(
+          name: 'Assisted Pull-up',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+          defaultLoadUnit: TrainingUnit.kilogram,
+          loadMode: ExerciseLoadMode.assisted,
+        ),
+      );
+
+      LoggedSet loadReps(String load, TrainingUnit unit, String reps) {
+        return LoggedSet.fromValues(<SetDimensionValue>[
+          SetDimensionValue(
+            dimension: DimensionId.load,
+            entered: load,
+            unit: unit,
+          ),
+          SetDimensionValue(
+            dimension: DimensionId.reps,
+            entered: reps,
+            unit: TrainingUnit.repetition,
+          ),
+        ]);
+      }
+
+      // 100 lb x 5 (226.796185 kg) and 50 kg x 2, plus assisted 30 kg x 8,
+      // which is assistance, not lifted load.
+      final mixed = await repositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 1, 20, 9),
+          timezone: 'UTC',
+        ),
+        LoggedSetDraft(
+          exerciseId: barbellId,
+          position: 0,
+          isCompleted: true,
+          values: loadReps('100', TrainingUnit.pound, '5'),
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: mixed.workoutSessionId,
+          exerciseId: barbellId,
+          position: 1,
+          isCompleted: true,
+          values: loadReps('50', TrainingUnit.kilogram, '2'),
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: mixed.workoutSessionId,
+          exerciseId: assistedId,
+          position: 2,
+          isCompleted: true,
+          values: loadReps('30', TrainingUnit.kilogram, '8'),
+        ),
+      );
+
+      // A session of only assisted sets has no volume: excluded, not zero.
+      await repositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 1, 22, 9),
+          timezone: 'UTC',
+        ),
+        LoggedSetDraft(
+          exerciseId: assistedId,
+          position: 0,
+          isCompleted: true,
+          values: loadReps('20', TrainingUnit.kilogram, '10'),
+        ),
+      );
+
+      final samples = await repositories.effect.performanceVolumeSamples(
+        from: DateTime.utc(2026, 1, 15),
+        to: DateTime.utc(2026, 2, 14),
+      );
+
+      expect(samples, hasLength(1));
+      expect(samples.single.at.toUtc(), DateTime.utc(2026, 1, 20, 9));
+      expect(samples.single.value, closeTo(100 * 0.45359237 * 5 + 100, 1e-9));
+    });
+
+    test(
         'computeOutcome never writes anything back — no new Metric Reading, '
-        'Dose, or Workout row is created by reading the Effect view',
-        () async {
+        'Dose, or Workout row is created by reading the Effect view', () async {
       final metricId = await repositories.metrics.createMetric(
         const MetricDraft(
           name: 'Body Weight',
@@ -394,8 +485,8 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 14),
           compoundIds: <String>[creatineId],
         ),
       );
@@ -452,8 +543,8 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 14),
           compoundIds: <String>[creatineId],
         ),
       );

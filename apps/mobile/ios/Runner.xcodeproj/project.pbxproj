@@ -18,6 +18,8 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A282CAF0000000000000FB01 /* PrepareBeep.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA01 /* PrepareBeep.caf */; };
 		A282CAF0000000000000FB02 /* TimerComplete.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA02 /* TimerComplete.caf */; };
+		A282CAF0000000000000FB03 /* GetReady.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA03 /* GetReady.caf */; };
+		A282CAF0000000000000FB04 /* TimerCueSounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA04 /* TimerCueSounds.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +65,8 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A282CAF0000000000000FA01 /* PrepareBeep.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PrepareBeep.caf; sourceTree = "<group>"; };
 		A282CAF0000000000000FA02 /* TimerComplete.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = TimerComplete.caf; sourceTree = "<group>"; };
+		A282CAF0000000000000FA03 /* GetReady.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = GetReady.caf; sourceTree = "<group>"; };
+		A282CAF0000000000000FA04 /* TimerCueSounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerCueSounds.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +131,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
+				A282CAF0000000000000FA04 /* TimerCueSounds.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				A282CAF0000000000000FC01 /* Sounds */,
 			);
@@ -138,6 +143,7 @@
 			children = (
 				A282CAF0000000000000FA01 /* PrepareBeep.caf */,
 				A282CAF0000000000000FA02 /* TimerComplete.caf */,
+				A282CAF0000000000000FA03 /* GetReady.caf */,
 			);
 			path = Sounds;
 			sourceTree = "<group>";
@@ -170,6 +176,7 @@
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
+				5D7C0A1E2F3B4C5D6E7F8091 /* Google Sign-In URL Scheme */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 			);
@@ -245,12 +252,29 @@
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				A282CAF0000000000000FB01 /* PrepareBeep.caf in Resources */,
 				A282CAF0000000000000FB02 /* TimerComplete.caf in Resources */,
+				A282CAF0000000000000FB03 /* GetReady.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		5D7C0A1E2F3B4C5D6E7F8091 /* Google Sign-In URL Scheme */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}",
+			);
+			name = "Google Sign-In URL Scheme";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"$SRCROOT/scripts/google_sign_in_url_scheme.sh\"\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -300,6 +324,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				A282CAF0000000000000FB04 /* TimerCueSounds.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -398,7 +423,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -414,7 +439,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -431,7 +456,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -446,7 +471,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -577,7 +602,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -599,7 +624,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.lspinheiro.openWorkoutLogger;
+				PRODUCT_BUNDLE_IDENTIFIER = fit.perennia.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

@@ -10,9 +10,10 @@ final templateDivergenceFeatureRepositoryProvider =
 );
 
 /// UI-shaped access to the plan-learns-from-fact loop (ROUTINES.md §2,
-/// §3.4): the Finish prompt reads [summaryForWorkout] to decide whether to
-/// ask, and the overflow's "Update template" verb calls
-/// [updateTemplateFromWorkout] directly, any time, on any linked Workout.
+/// §3.4): the Finish flow reads [summaryForWorkout] to decide whether the
+/// Finish summary shows its Update row, and that row calls
+/// [updateTemplateFromWorkout] directly on tap. The Workout menu's "Update
+/// template" calls it after its dialog, any time, on any linked Workout.
 abstract interface class TemplateDivergenceFeatureRepository {
   Future<TemplateDivergenceSummary?> summaryForWorkout(String workoutId);
 

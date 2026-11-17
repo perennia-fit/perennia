@@ -1,0 +1,93 @@
+{
+  "name": "m40-compound-purposes",
+  "domain": "compound-purposes",
+  "schemaVersion": 1,
+  "schema": "m40-compound-purposes.schema.json",
+  "cases": [
+    {
+      "name": "the-starter-set",
+      "function": "starterPurposes",
+      "note": "The D3 table. Dart seeds it; TypeScript merges it into Agent reads.",
+      "input": {},
+      "expected": [
+        {"id": "019200ff-0000-7000-8000-000000000101", "name": "Sleep", "sortOrder": 0},
+        {"id": "019200ff-0000-7000-8000-000000000102", "name": "Body composition", "sortOrder": 1},
+        {"id": "019200ff-0000-7000-8000-000000000103", "name": "Performance", "sortOrder": 2},
+        {"id": "019200ff-0000-7000-8000-000000000104", "name": "Recovery", "sortOrder": 3},
+        {"id": "019200ff-0000-7000-8000-000000000105", "name": "Cognition", "sortOrder": 4},
+        {"id": "019200ff-0000-7000-8000-000000000106", "name": "General health", "sortOrder": 5}
+      ]
+    },
+    {
+      "name": "a-plain-name",
+      "function": "validatePurposeName",
+      "input": {"name": "Focus", "activeNamesExcludingSelf": ["Sleep", "Recovery"]},
+      "expected": {"accepted": "Focus"}
+    },
+    {
+      "name": "stored-trimmed",
+      "function": "validatePurposeName",
+      "note": "Only the ends are trimmed; the case and inner spaces are kept as entered.",
+      "input": {"name": "  Joint  Health ", "activeNamesExcludingSelf": []},
+      "expected": {"accepted": "Joint  Health"}
+    },
+    {
+      "name": "empty",
+      "function": "validatePurposeName",
+      "input": {"name": "", "activeNamesExcludingSelf": []},
+      "expected": {"rejected": "purpose_name_required"}
+    },
+    {
+      "name": "whitespace-only",
+      "function": "validatePurposeName",
+      "input": {"name": " \t\n ", "activeNamesExcludingSelf": ["Sleep"]},
+      "expected": {"rejected": "purpose_name_required"}
+    },
+    {
+      "name": "a-duplicate-in-another-case",
+      "function": "validatePurposeName",
+      "input": {"name": "sLEEP", "activeNamesExcludingSelf": ["Sleep", "Recovery"]},
+      "expected": {"rejected": "duplicate_purpose_name"}
+    },
+    {
+      "name": "a-duplicate-after-trimming",
+      "function": "validatePurposeName",
+      "note": "Both sides are compared trimmed, so a stored name with stray spaces from a pull still counts.",
+      "input": {"name": " Sleep ", "activeNamesExcludingSelf": ["  sleep"]},
+      "expected": {"rejected": "duplicate_purpose_name"}
+    },
+    {
+      "name": "a-duplicate-of-an-archived-name-accepted",
+      "function": "validatePurposeName",
+      "note": "Sleep was archived, so callers leave it out of the active names, and the name is free.",
+      "input": {"name": "Sleep", "activeNamesExcludingSelf": ["Recovery"]},
+      "expected": {"accepted": "Sleep"}
+    },
+    {
+      "name": "renaming-in-place-is-not-a-duplicate",
+      "function": "validatePurposeName",
+      "note": "The Purpose being renamed is left out of the names, so changing only its case is allowed.",
+      "input": {"name": "SLEEP", "activeNamesExcludingSelf": ["Recovery"]},
+      "expected": {"accepted": "SLEEP"}
+    },
+    {
+      "name": "an-empty-list",
+      "function": "normalizePurposeIds",
+      "input": {"ids": []},
+      "expected": []
+    },
+    {
+      "name": "order-is-kept",
+      "function": "normalizePurposeIds",
+      "note": "Never sorted: the list keeps the order the user tagged in.",
+      "input": {"ids": ["c", "a", "b"]},
+      "expected": ["c", "a", "b"]
+    },
+    {
+      "name": "dedupes-keeping-the-first",
+      "function": "normalizePurposeIds",
+      "input": {"ids": ["b", "a", "b", "c", "a"]},
+      "expected": ["b", "a", "c"]
+    }
+  ]
+}

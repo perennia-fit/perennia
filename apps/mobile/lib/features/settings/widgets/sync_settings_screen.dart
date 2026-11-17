@@ -18,6 +18,8 @@ class SyncSettingsScreen extends ConsumerWidget {
   static const syncStatusRowKey = Key('settings.syncStatus.row');
   static const syncNowButtonKey = Key('settings.syncStatus.syncNow');
   static const syncFailureBannerKey = Key('settings.syncStatus.failureBanner');
+  static const quarantinedChangesRowKey =
+      Key('settings.syncStatus.quarantinedChanges');
   static const integrationStatusRowKey = Key('settings.integrationStatus.row');
   static const integrationFailureBannerKey =
       Key('settings.integrationStatus.failureBanner');
@@ -106,6 +108,21 @@ class _SyncStatusTile extends StatelessWidget {
               ],
             ),
           ),
+          if (status.quarantinedChangeCount > 0)
+            // Not a failure banner: sync keeps working around these changes,
+            // and there is nothing for the user to do but know they exist.
+            ListTile(
+              key: SyncSettingsScreen.quarantinedChangesRowKey,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.pending_outlined,
+                color: context.colors.textSecondary,
+              ),
+              title: const Text('Changes held back'),
+              subtitle: Text(
+                _quarantinedChangesMessage(status.quarantinedChangeCount),
+              ),
+            ),
           const SizedBox(height: AppDimens.dense),
           Align(
             alignment: Alignment.centerLeft,
@@ -290,6 +307,12 @@ String _syncFailureMessage(SyncStatusState status) {
   }
   return 'Sync has been failing for more than 24 hours. '
       'Local logging stays available.';
+}
+
+String _quarantinedChangesMessage(int count) {
+  final changes = count == 1 ? '1 change' : '$count changes';
+  return '$changes from the server could not be applied on this device. '
+      'They are kept and retried on every sync.';
 }
 
 String _integrationFailureMessage(IntegrationStatusState status) {

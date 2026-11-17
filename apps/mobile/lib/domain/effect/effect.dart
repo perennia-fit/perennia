@@ -6,15 +6,17 @@
 /// Readings, or a performance proxy from Workout analytics), computed on
 /// demand and NEVER stored, cached to disk, or synced ("join, never merge",
 /// §2). Nothing in this file touches persistence — it is a pure function of
-/// its inputs, which is what makes it golden-vectorable (a fixed sample
-/// dataset in `test/fixtures/effect_window_golden.json` pins its behavior so a
-/// later M30 agent surface can reuse the identical fixture).
+/// its inputs, which is what makes it golden-vectorable: the shared
+/// `packages/golden-vectors/vectors/m29-effect-window.json` pins both the
+/// window derivation and the segment math, and the agent API's
+/// `deriveEffectWindow`/`computeEffectWindowSegments` (apps/server) run the
+/// same cases.
 ///
-/// The window itself is always derived from the **actual logged `Dose`s**
-/// (or a `Protocol`'s declared start/end), never from a `Schedule`/plan — that
-/// distinction is load-bearing (§1.4) and is enforced by the repository layer
-/// that builds an [EffectWindow], not by this file, which only consumes
-/// whatever start/end it is given.
+/// The window is derived by [effectWindowForProtocol] (a `Protocol`'s
+/// declared start/end — a Protocol is a time-bounded course) or
+/// [effectWindowForDoseTimes] (an ad-hoc `Compound`'s **actual logged
+/// `Dose`s**), never from a `Schedule` — that distinction is load-bearing
+/// (§1.4).
 ///
 /// [computeDoseResponseTable] is the same discipline applied to a
 /// second derived view: it groups outcome behavior by the **actual logged
@@ -23,7 +25,7 @@
 /// dose-response work without formal phases/titration steps (§1.4, §12).
 library;
 
-import '../protocols/protocols.dart' show DoseRecord;
+import '../protocols/protocols.dart' show DoseRecord, ProtocolDayDate;
 
 /// Which of the three segments an `Effect` window splits into (PROTOCOLS.md
 /// §4): the period immediately BEFORE a course, the course itself (DURING),
@@ -111,6 +113,88 @@ class EffectWindow {
     }
     return null;
   }
+}
+
+/// The `Effect` window for a `Protocol`: DURING is the course's declared
+/// [startDate]/[endDate], whatever Doses were actually logged. A Protocol is a
+/// time-bounded course (CONTEXT.md), so its bounds are the course; the tagged
+/// Doses are drawn on top of it as markers but never move it. No [endDate]
+/// means the course is still running, so [now] ends DURING.
+EffectWindow effectWindowForProtocol({
+  required DateTime startDate,
+  required DateTime? endDate,
+  required DateTime now,
+}) {
+  return EffectWindow(duringStart: startDate, duringEnd: endDate, now: now);
+}
+
+/// A Protocol's local-date bounds as the instants [effectWindowForProtocol]
+/// takes (D2): [startDate] is local midnight at the start of the first day,
+/// and [endDate] is local midnight at the start of the day after the
+/// inclusive last day, or null for an ongoing Protocol. So DURING stays
+/// half-open and covers whole local days.
+class EffectBounds {
+  const EffectBounds({required this.startDate, required this.endDate});
+
+  final DateTime startDate;
+  final DateTime? endDate;
+}
+
+// The UTC offsets [effectBoundsFromLocalDates] accepts: UTC−12:00 to
+// UTC+14:00.
+const int _minEffectBoundsOffsetMinutes = -720;
+const int _maxEffectBoundsOffsetMinutes = 840;
+
+/// Converts a Protocol's inclusive local-date bounds into Effect's instants
+/// (D2), using [timezoneOffsetMinutes], the UTC offset of the local zone
+/// (−180 for UTC−3, 540 for UTC+9). Each bound is that date's midnight in
+/// UTC minus the offset, the same conversion as the local-time anchors in
+/// `apps/server/src/metric-reading-normalization.ts`. The app passes the
+/// device's current offset; the Effect math itself is unchanged. The
+/// returned instants are UTC. The offset must be from −720 to +840
+/// (UTC−12:00 to UTC+14:00, the span of real zones); anything outside throws
+/// a [RangeError]. Mirrored by `effectBoundsFromLocalDates` in
+/// `apps/server/src/agent-protocols.ts` and pinned by
+/// `packages/golden-vectors/vectors/m36-protocol-plan.json`.
+EffectBounds effectBoundsFromLocalDates({
+  required ProtocolDayDate startLocalDate,
+  required ProtocolDayDate? endLocalDate,
+  required int timezoneOffsetMinutes,
+}) {
+  RangeError.checkValueInInterval(
+    timezoneOffsetMinutes,
+    _minEffectBoundsOffsetMinutes,
+    _maxEffectBoundsOffsetMinutes,
+    'timezoneOffsetMinutes',
+  );
+  DateTime localMidnight(ProtocolDayDate date) =>
+      date.utcMidnight().subtract(Duration(minutes: timezoneOffsetMinutes));
+
+  return EffectBounds(
+    startDate: localMidnight(startLocalDate),
+    endDate:
+        endLocalDate == null ? null : localMidnight(endLocalDate.addDays(1)),
+  );
+}
+
+/// The `Effect` window for an ad-hoc `Compound` (no `Protocol`, so no declared
+/// course): DURING runs from the earliest to the latest of [tookAtTimes], in
+/// any order. Exactly one Dose has no "latest" to end on, so it is treated as
+/// a course still running until [now] rather than a zero-length window that
+/// would bucket nothing. Returns `null` when nothing was logged.
+EffectWindow? effectWindowForDoseTimes(
+  Iterable<DateTime> tookAtTimes, {
+  required DateTime now,
+}) {
+  final sorted = tookAtTimes.toList()..sort();
+  if (sorted.isEmpty) {
+    return null;
+  }
+  return EffectWindow(
+    duringStart: sorted.first,
+    duringEnd: sorted.length == 1 ? null : sorted.last,
+    now: now,
+  );
 }
 
 /// One segment's aggregate over whatever [EffectSample]s landed in it. A

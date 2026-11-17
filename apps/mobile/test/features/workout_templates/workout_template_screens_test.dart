@@ -133,8 +133,8 @@ void main() {
       find.byKey(WorkoutTemplateListScreen.archiveButtonKey(_templateId)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Archive Workout Template?'), findsOneWidget);
-    await tester.tap(find.text('Archive Workout Template').last);
+    expect(find.text('Archive saved workout?'), findsOneWidget);
+    await tester.tap(find.text('Archive saved workout').last);
     await tester.pumpAndSettle();
 
     expect(
@@ -701,6 +701,10 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    // The Focus field makes the details card taller; settle the button fully
+    // on screen before tapping it.
+    await tester.ensureVisible(notesButton);
+    await tester.pumpAndSettle();
     await tester.tap(notesButton);
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 240);
@@ -1069,6 +1073,17 @@ class _RecordingTemplateMaterializeFeatureRepository
     );
     return _completer.future;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({

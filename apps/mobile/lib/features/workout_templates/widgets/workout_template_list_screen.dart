@@ -7,6 +7,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../home/widgets/workout_screen.dart';
 import '../../template_materialize/controllers/template_materialize_controller.dart';
+import '../../template_materialize/widgets/empty_template_start_dialog.dart';
 import '../controllers/workout_template_controller.dart';
 import '../repositories/workout_template_feature_repository.dart';
 import 'workout_template_editor_screen.dart';
@@ -178,6 +179,14 @@ class _WorkoutTemplateListScreenState
   }
 
   Future<void> _startTemplate(WorkoutTemplateSummary template) async {
+    final proceed = await confirmTemplateStart(
+      context,
+      ref,
+      workoutTemplateId: template.id,
+    );
+    if (!proceed || !mounted) {
+      return;
+    }
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final failureMessage = context.l10n.workoutTemplatesStartFailed;

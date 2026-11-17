@@ -59,6 +59,122 @@ The artifact lands in `apps/mobile/build/app/outputs/flutter-apk/`. Debug builds
 are signed with your local debug keystore, which is all you need to install on
 your own device.
 
+## Test data
+
+The app ships with no sample data, so a fresh install is empty. To see real
+history (charts, records, the Today screen, prefill from last session), load
+generated data onto a device or emulator running a **debug** build:
+
+```bash
+pnpm test-data                      # 12 weeks ending today, onto the only connected device
+```
+
+That writes four days of strength training a week, plus a weekend run, with
+progression, deloads and the odd missed rep. It adds a body-weight trend and
+logged meals, all against the bundled exercise library. Useful options:
+
+| Option | Effect |
+|---|---|
+| `--weeks 26` | Length of history |
+| `--seed 7` | Different but reproducible data; the same seed always gives the same history |
+| `--end 2026-06-30` | Fix the window, for screenshots that don't change day to day |
+| `--no-nutrition` | Training and body weight only |
+| `--no-push` | Only write `apps/mobile/build/test-data/perennia.sqlite` |
+| `--device SERIAL` | Choose a device when several are connected |
+
+Loading **replaces the app's database on that device**. It works only on debug
+builds (it uses `adb run-as`), so it can't touch a store install. The generator
+lives in `apps/mobile/tool/test_data/` and writes through the app's own
+repositories, so the file always matches the schema of your checkout. Regenerate
+after a schema change rather than reusing an old file.
+
+## Refreshing the Open Food Facts bundle
+
+The app ships an offline bundle of Open Food Facts products,
+`apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`, built from Open Food
+Facts' JSONL dump. The design is in
+[open-food-facts.md](designs/open-food-facts.md). Refreshes are planned at most
+once a quarter, with an app release, each in its own pull request.
+
+1.  Download the dump. It is about 13 GB compressed and Open Food Facts replaces
+    it daily, keeping no history, so keep your copy if you may need to rebuild
+    the same bundle. Note its `Last-Modified` date; that is the dataset version.
+
+    ```bash
+    curl -sIL https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz | grep -i last-modified
+    curl -L -C - -o openfoodfacts-products.jsonl.gz https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+    ```
+
+2.  Run the builder from `apps/mobile` (about 30 minutes):
+
+    ```bash
+    dart run tool/open_food_facts_bundle/build_bundle.dart --input <path to openfoodfacts-products.jsonl.gz> --dataset-version <YYYY-MM-DD>
+    ```
+
+3.  Read the report it prints. Check that:
+    *   each country keeps a similar share of its eligible products. A
+        country far below the others usually means Open Food Facts moved a
+        field: the first build, reading only the legacy `nutriments`, kept 8
+        products for the United Kingdom;
+    *   the exclusions by reason, and the counts of products dropped for
+        missing core nutrients or zero scans, are close to the last refresh's;
+    *   "nutrients read from" shows how many products used `nutrition` and how
+        many the legacy `nutriments`;
+    *   the compressed bundle is under the 6 MB budget. The builder exits with
+        an error when it is not.
+
+4.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart` from
+    `apps/mobile`, then open the pull request. Record the dataset version and
+    paste the builder's report in its description.
+
+## Updating the Platform Library
+
+The Platform Library is the seed
+`apps/mobile/assets/seeds/platform_exercises.json`, generated from wger and
+Workout.cool and filtered by a reviewed manifest. The server's copy is generated
+from that seed. Never edit either by hand. The design is in
+[platform-library-updates.md](designs/platform-library-updates.md).
+
+1.  Edit the manifest, `tools/data/platform-exercise-review-decisions.json`.
+
+2.  When the change retires an exercise, raise the manifest's top-level
+    `retiredAt`. It must be later than `reviewedAt`, and it becomes the new
+    records' `retired_at`, so the generator fails otherwise. A rename-only run
+    leaves it alone.
+
+3.  Check out wger at the pinned commit:
+
+    ```bash
+    git clone https://github.com/wger-project/wger.git <path>
+    git -C <path> checkout ea78447
+    ```
+
+4.  Run the generators from the repository root:
+
+    ```bash
+    WGER_REPO=<path> node tools/generate-wger-platform-exercises.mjs
+    node tools/generate-server-platform-exercise-seed.mjs
+    ```
+
+    The generator fetches every page of Workout.cool itself. Workout.cool is not
+    pinned, so to rebuild the same seed later, set
+    `WORKOUT_COOL_EXERCISES_PATH=<file>`, where the file is a JSON array of the
+    records from every page of
+    `https://workout.cool/api/exercises/all?page=N&limit=100` up to
+    `pagination.totalPages`, kept outside the repository.
+
+5.  Read the diff. Everything outside what the manifest changed should be
+    unchanged except by key order, because Workout.cool can move between runs.
+
+Two rules keep existing logs and devices correct, and the generator enforces
+both against the previous seed:
+
+*   **Keep an Exercise Type fixed for a live id.** A live id's `dimension_ids`
+    must not change. For different dimensions, retire the id and add a new one.
+*   **Never reuse a retired id.** The retired list is append-only, and an id
+    cannot be both retired and live. A device that kept the retired exercise
+    still holds that id as the user's own.
+
 ## Running the server
 
 ```bash

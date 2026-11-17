@@ -4,7 +4,9 @@ Glossary of canonical terms. Definitions only — no implementation details.
 
 ## Local-only Mode
 Operating state in which the user has no account. All data lives exclusively on the
-device and nothing is transmitted anywhere.
+device and nothing is transmitted anywhere. The one exception is a reference lookup
+the user starts, such as an online food search, which sends only the search text or
+barcode and can be turned off.
 
 ## Synced Mode
 Operating state after sign-in. The user's training data is replicated between their
@@ -25,6 +27,18 @@ agent). The store-distributed app connects to it by default.
 A user-operated instance of the open-source server. Fully capable for core tracking
 and agent access; the app connects to it by explicit user choice, and no data flows
 from it to the maintainers.
+
+## User Profile
+The optional, synced record of who the user is and what they train for. It has six
+sections: About you, Training Goals, Experience, Training setup, Health & limitations,
+and General Notes. It is distinct from Record Profile (a per-exercise headline-record
+choice). Every field may be unset. The app itself reads only About you; the rest exists
+for agents.
+
+## Training Goal
+One outcome the user trains for, chosen from a fixed list (for example longevity or
+strength). Distinct from Nutrition Goal, from a Metric's goal direction, and from Focus,
+which is the discipline a Workout is performed under.
 
 ## Agent
 A third-party AI acting on behalf of a user with the user's authorization — e.g.
@@ -62,7 +76,7 @@ assisted load, less is progress.
 ## Record Profile
 Per-exercise choice of which metric is the headline record and which direction is
 better. Defaulted from the Exercise Type's dimensions; user-overridable. Selects the
-headline only — all applicable records are always tracked.
+headline only — all applicable records are always tracked. Not the User Profile.
 
 ## Annotation
 An optional per-set qualifier describing how the set was performed (comment, side,
@@ -82,23 +96,42 @@ A grouping label for exercises (typically a muscle group, or a modality family s
 Running or Cycling for cardio). Freely changeable; has no effect on recorded history.
 Distinct from Exercise Type.
 
+## Focus
+The training discipline a Workout is performed under, such as Weights, Endurance,
+Functional, Calisthenics, or Mobility. Perennia seeds a starter set; users rename,
+reorder, archive, and add their own. A Workout carries at most one Focus, and a
+Workout Template may carry one that materializing copies onto the new Workout. An
+Exercise may belong to any number of Focuses, which is what lets a picker open on
+the exercises that matter for today's session. Optional everywhere and freely
+changeable: changing or archiving a Focus never alters recorded Sets. A Focus has a
+color, used wherever training is colored by Focus. Until the user picks one, the
+color comes from a fixed default for the Focus. Distinct from
+Category (what an exercise works, usually a body part) and from Exercise Type (what
+it measures).
+
 ## Equipment
-A structured, optional descriptor of the tool or apparatus normally used for an
-Exercise, such as Barbell, Dumbbell, Bench, or Bodyweight. Equipment helps filtering
-and defaults, but never constrains logged history. Perennia ships a curated registry for
-common values and may preserve imported unknown ids as labels when needed; users can
-still log any Exercise without Equipment.
+The tool or setup normally used for an Exercise, or that the user has access to, as
+listed in the User Profile's Training setup. Both use the same registry ids, and both
+may hold unknown ids, shown as labels.
 
 ## Platform Library
 The curated catalog of exercises provided by the platform. Read-only to users.
 
 ## User Library
-A user's own created or customized exercises. Owned and editable by the user.
+A user's own exercises, whether created, customized or kept from the Platform Library.
+Owned and editable by the user.
 
 ## Shadowing
 When a User Library exercise bears the same name as a Platform Library exercise, the
 user's version takes precedence and the platform one is hidden for that user. Always
 visibly indicated and reversible.
+
+## Retired Exercise
+A Platform Library exercise the library no longer offers, because it was merged into
+another exercise or removed. Its id is never reused. If a live Set, Workout entry or
+Template entry names it, it is **kept**: it becomes a User Library exercise with the
+same id. Otherwise it is **hidden**: a Platform row with `deletedAt` set, shown nowhere.
+Hidden is not Archived, which is a state the user chooses and can reverse.
 
 ## Active / Archived
 Lifecycle states of exercises and categories. Archived items are hidden from pickers
@@ -132,6 +165,61 @@ Training Days; data always belongs to a Workout.
 The Workout of the current Training Day that has not been ended. New exercises and
 sets default into the Open Session.
 
+## Performed Set
+A Set that is not deleted, belongs to a Workout that is not deleted, and is marked
+complete. Logging a Set on the Training Screen marks it complete. A Set that a Workout
+Template or a quick log placed in a Workout stays incomplete until the user completes
+it. On the server, a Set payload without `is_completed` is not performed, matching how
+the app decodes it.
+
+## Planned Set
+A Set that is not deleted, belongs to a Workout that is not deleted, and is not
+complete: a target placed by a Workout Template, a quick log, an Agent, Add set, or
+Not done. It holds the values the plan expects and never counts as training. Logging
+it makes it a Performed Set.
+
+## Current Set
+For one Workout Exercise, the Planned Set the Track form fills on Log set: the first
+Planned Set in order, unless the user picked another. Derived, never stored.
+
+## Current Exercise
+The Workout Exercise, or the Exercise Group, the user is working through, marked
+**Now**. Derived from the Workout's Sets, never stored.
+
+## Remembered Rest
+For one Exercise, the planned rest of its most recently performed Set that has one.
+Used as the rest when a Set has no planned rest. Derived, never stored.
+
+UI copy uses "set", "planned", "done", "Now" and "Rest after"; "Current Set",
+"Current Exercise" and "Remembered Rest" are code and spec words.
+
+## Logged Workout
+A Workout that is not deleted and has at least one Performed Set. A Workout started
+from Up next and abandoned holds only incomplete Sets, so it is not a Logged Workout.
+Only Logged Workouts count toward Training Day Statuses, Trained Days and time by
+Focus.
+
+## Trained Day
+A Training Day with at least one Logged Workout.
+
+## Training Day Status
+The single label for one day of the current week against the user's weekly Routines,
+from a closed set: Done, Partly done, Done differently, Not done, Pending, Planned,
+Trained, Rest, or No plan. Derived, never stored; never a score, a streak or a
+percentage. Mirrors Day Status in the Protocols domain.
+
+## Progress Measure
+The single number per Workout that shows whether an exercise is improving, chosen by
+its Record Profile: estimated one-rep max for rep-max exercises, otherwise the value
+of that profile's record (heaviest load, most reps, longest or shortest duration,
+longest distance, fastest pace). It is the best value among the Workout's Performed
+Sets. Derived, never stored.
+
+## New Best
+A Workout whose Progress Measure for an exercise is strictly better than every
+earlier Workout's value for that exercise. The exercise's first Workout with a value
+is never a New Best. Derived, never stored.
+
 ## Workout Template
 A named, reusable plan for one Workout: the exercises, their order and groupings,
 and their prescribed sets for a single session, plus standing notes — on the
@@ -144,6 +232,9 @@ Referencing is never copying: an edit to a template is seen everywhere it is
 referenced; divergence is expressed by duplicating. A mutable plan; performing it
 produces an ordinary Workout, and editing or archiving a template never alters
 logged Workouts or Sets.
+Code and API say Workout Template; UI copy says "workout" inside a Routine and
+"saved workout" on its own, because athletes think of the plan for Monday as
+Monday's workout, not as a template. A performed session stays a Workout.
 
 ## Prescription
 One planned set-block within a Workout Template's exercise entry: the intended
@@ -205,6 +296,12 @@ Metric — it is authored data, like a Set; nutrition totals such as energy or
 protein consumed are derived analytics, never Metric Readings. A logged Dose (the
 Protocols domain) is likewise authored, not a Metric; a protocol's Effect is derived.
 
+## Trend
+The smoothed series over a Metric's scalar Readings: an exponentially weighted
+average whose weight grows with the time between Readings, so a single day's swing
+moves it little while a lasting change shows within about two weeks. Derived, never
+stored, and always drawn over the raw Readings.
+
 ## Monitoring Data
 The subset of Metrics captured automatically from an external tracker — heart rate,
 calories, GPS track, cadence, power, and the like, often as dense time series.
@@ -235,7 +332,14 @@ commercial provider, or an imported source such as another app's export); an
 unrecognized import records a generic *Imported* origin, preserving the specific
 provider. Externally-sourced Foods are read-only; a User Food is editable; customizing
 a read-only Food forks a copy into the user's own User Food. Distinct from Provenance,
-which records who performed a log action, not where the food data came from.
+which records who performed a log action, not where the food data came from. An Open
+Food Facts Food comes from the bundle shipped with the app or from a live lookup; the
+copy Open Food Facts changed most recently is the one used.
+
+## Platform Food
+A read-only Food whose facts come from an external Food Source (USDA or Open Food
+Facts), either shipped with the app or fetched from the source; the food-domain analog
+of the Platform Library. Customizing one forks a User Food.
 
 ## User Food
 A user's own created or customized Food, owned and editable by the user. The
@@ -254,14 +358,21 @@ Food's defined serving, not as separate units. Stored as entered; the equivalent
 mass and the resulting nutrients are derived, never stored.
 
 ## Meal
-A single eating occasion with a start instant and optional end — the
-nutrition-domain analog of a Workout. Several Meals, including more than one of the
-same Meal Type, may occur in one day.
+A single eating occasion with a start instant, a frozen UTC offset, a time
+precision, and an optional end — the nutrition-domain analog of a Workout. Its
+Nutrition Day is derived from its time and offset, so changing the time can move it
+to another day. A Meal with no Food Entries is valid. Several Meals, including more
+than one of the same Meal Type, may occur in one day.
 
 ## Meal Type
 A user-configurable label classifying a Meal (Breakfast, Lunch, Dinner, Snack, or
 the user's own such as Pre-workout), with a display order. A grouping and
-presentation concept; freely changeable, with no effect on logged history.
+presentation concept; freely changeable, with no effect on logged history. The
+seeded types have a usual time window used to propose a type for a new Meal.
+
+## Time Precision
+Whether a Meal's start is the time the user ate (instant) or only its date is known
+(date), as with date-only imports. A date-precision Meal never shows a clock time.
 
 ## Nutrition Day
 The grouping of all Meals sharing the same local date — a presentation concept,
@@ -278,12 +389,39 @@ existing Food Entry.
 A Food Entry that records a name and nutrient values directly, without referencing
 a Food or a Portion — the low-friction path for when only the totals are known.
 
+## Food History
+The distinct Foods a user has logged, derived from their active Food Entries (one per
+Food Source and Food), each with how many times it was logged in the last 90 days,
+when it was last logged, and its Last Portion. It is ordered by that count, then by
+recency. It is computed, never stored. It orders Foods; a Food's facts come from the
+Food itself. In the add-food picker it appears as "Your foods", together with the
+user's active User Foods that have never been logged.
+
+## Last Portion
+The Portion of the user's latest Food Entry for a Food that has a Portion, latest by
+the Meal's start, then the entry's last change.
+
+## Meal History
+The distinct meals a user repeats, derived from their active timed Meals in the last
+90 days that contain two or more distinct Foods. Two Meals are the same meal when they
+contain the same set of Foods, whatever the Portions; Quick Entries don't count.
+Ordered by count, then recency. Computed, never stored. Shown as 'Your meals'.
+
 ## Compound
 An item a user takes and tracks — a supplement, vitamin, hormone, peptide, medication,
 or the like. A user-owned catalogue entry carrying a name and a default unit and route,
 and an optional strength or concentration. The app ships only a few over-the-counter
-examples and never categorizes a Compound by what it is. The "what" of the Protocols
-domain — the analog of an Exercise or Food.
+examples, tagged with Purposes, and never classifies a Compound by what it is or whether
+it is legal. The "what" of the Protocols domain — the analog of an Exercise or Food.
+
+## Purpose
+A label for why the user takes a Compound, such as Sleep or Performance. Perennia seeds a
+starter set and tags its own built-in Compounds with them; users rename, reorder, archive
+and add their own, and tag any Compound with any number of them. Never a claim that a
+Compound works, never a classification of what a Compound is, and never read by analysis.
+Freely changeable: changing or archiving a Purpose never alters a Dose. Distinct from
+Focus, which is for exercises, and from a Protocol's target outcomes, which name what to
+correlate.
 
 ## Dose
 A single recorded administration of a Compound — an amount and unit, a route, and a
@@ -294,14 +432,70 @@ Metric. A standalone timestamped event, optionally tagged to a Protocol, grouped
 Protocol Days.
 
 ## Protocol
-A named, time-bounded course of one or more Compounds, each with an optional Schedule — a
-regimen the user follows (a supplement stack, a hormone course, a self-experiment). The
-plan of the Protocols domain — the analog of a Routine. A mutable template; editing it
-never alters logged Doses.
+A named, time-bounded course of one or more Protocol Members — a regimen the user follows
+(a supplement stack, a hormone course, a self-experiment) — with a Protocol Period saying
+when it is in effect. The plan of the Protocols domain — the analog of a Routine. A
+mutable template; editing it never alters logged Doses. A Protocol with no history (no
+Dose of it, tagged or within its dates) is deleted rather than archived. Deleting it
+removes its plan as if it never existed, and the Activity Log can recover it. On a
+Protocol's archive day, planned doses a Dose filled still count, and unfilled ones are no
+longer planned.
+
+## Protocol Member
+One Compound inside a Protocol, with its Schedule Versions. Removing it archives the
+member and freezes the local date of the removal; adding the Compound again is a new
+Protocol Member.
+
+## Protocol Period
+When a whole Protocol is in effect: its start and end dates (local dates, the end
+inclusive), an optional on/off cycle (N days on, M days off, repeating from an anchor
+date), and its Pauses.
+
+## Pause
+A date range, inclusive at both ends, when a Protocol plans nothing. A Pause never
+shifts a cycle.
+
+## In effect
+A Protocol is in effect on a date when the date is within its bounds, it isn't paused,
+and it isn't in a cycle's off-period. Distinct from Active, which means "not archived".
 
 ## Schedule
-The planned dose, frequency, and route for a Compound within a Protocol. A template for
-intended dosing only; the actual record is the logged Doses.
+When a Protocol Member's Compound is due on a day its Protocol is in effect: by days and
+times, with a planned amount, unit and route. Versioned: it is the Schedule Version that
+applies on a date. A plan for intended dosing only; the actual record is the logged Doses.
+
+## Schedule Rule
+The days-and-times part of a Schedule: every day, chosen weekdays or every N days; a list
+of clock times or a count of untimed doses; or "as needed".
+
+## Schedule Version
+One stored state of a Protocol Member's Schedule, with the local date it applies from.
+Every edit inserts a new Schedule Version, and on any date the one with the latest start
+on or before it applies. Authored plan history, never a result.
+
+## Planned dose
+One dose a Schedule plans on a date, with a clock time or untimed. Derived, never stored.
+A logged record is always a Dose; a computed one is always a planned dose.
+
+## Untimed
+A planned dose with no clock time. It counts like any other, but never gets a reminder.
+
+## Day Status
+The single label for one Compound on one date, from a closed set: Logged, Pending, Partly
+logged, Not logged, Skipped, Paused, Off cycle, or Not planned (with its reason). Derived,
+never stored; never a score, a streak or a percentage.
+
+## Skip
+The user's record that one planned dose of a Protocol, on one local date, was not taken
+on purpose. It names the planned dose by Protocol, Compound, local date and planned time
+(or untimed), never by slot number. Authored and synced like a Dose, but never a Dose and
+never a Metric: it records no intake. It answers its planned dose only while no Dose
+fills it.
+
+## Archive day
+The local date a Protocol or Protocol Member was archived. On it, a planned dose counts
+only if a Dose fills it, whenever that Dose is logged; unfilled ones are no longer
+planned.
 
 ## Protocol Day
 The grouping of all Doses sharing the same local date — a presentation concept, mirroring

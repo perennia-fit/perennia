@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m38-meal-history.schema.json",
+  "title": "M38 Meal History golden vector",
+  "description": "Language-neutral parity cases for Meal History (docs/designs/meal-logging.md §5): the distinct meals a user repeats. The rows considered are active `food` entries with a Food Source, a Food id and a liquid flag, leaving out entries of archived User Foods, in active Meals whose timePrecision is `instant` and whose start is at or after now minus 90 days. A Meal qualifies when its considered rows hold two or more distinct Foods; Quick Entries never count and never stop a Meal qualifying. A Meal's identity is its canonical string: the distinct `foodSource:foodId` keys, sorted in ordinal (byte) order and joined with `|`; Portions don't count. Each item lists its Foods in canonical order, each with the snapshot name of its first entry (lowest position, then entry id) in the most recent Meal with that identity; `count` is the number of qualifying Meals with that identity; `lastMealId` and `lastStartedAt` come from the most recent such Meal (latest start, then the greatest Meal id). Items are ordered by count descending, then lastStartedAt descending, then the canonical string ascending, and capped at `limit`. Times are ISO-8601 UTC strings in whole seconds, as the app stores them; Portions use the Portion JSON the app stores in portion_json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m38-meal-history"},
+    "domain": {"const": "meal-history"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m38-meal-history.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "instant": {"type": "string", "format": "date-time"},
+    "portion": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "entered", "unit"],
+      "properties": {
+        "value": {"type": "number"},
+        "entered": {"type": "string", "minLength": 1},
+        "unit": {"enum": ["gram", "milliliter", "ounce", "fluidOunce", "serving", "package"]}
+      }
+    },
+    "meal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "startedAt", "timePrecision", "deletedAt"],
+      "properties": {
+        "id": {"type": "string"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "timePrecision": {"enum": ["instant", "date"]},
+        "deletedAt": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mealId", "kind", "position", "foodSource", "foodId", "isLiquid", "name", "portion", "deletedAt"],
+      "properties": {
+        "id": {"type": "string"},
+        "mealId": {"type": "string"},
+        "kind": {"enum": ["food", "quickEntry"]},
+        "position": {"type": "integer", "minimum": 0},
+        "foodSource": {"type": ["string", "null"]},
+        "foodId": {"type": ["string", "null"]},
+        "isLiquid": {"type": ["boolean", "null"]},
+        "name": {"type": "string"},
+        "portion": {"$ref": "#/$defs/portion"},
+        "deletedAt": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+      }
+    },
+    "food": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foodSource", "foodId", "name"],
+      "properties": {
+        "foodSource": {"type": "string"},
+        "foodId": {"type": "string"},
+        "name": {"type": "string"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foods", "count", "lastMealId", "lastStartedAt"],
+      "properties": {
+        "foods": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/food"}},
+        "count": {"type": "integer", "minimum": 1},
+        "lastMealId": {"type": "string"},
+        "lastStartedAt": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["now", "limit", "meals", "entries", "archivedUserFoodIds"],
+          "properties": {
+            "now": {"$ref": "#/$defs/instant"},
+            "limit": {"type": "integer", "minimum": 1},
+            "meals": {"type": "array", "items": {"$ref": "#/$defs/meal"}},
+            "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+            "archivedUserFoodIds": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "expected": {"type": "array", "items": {"$ref": "#/$defs/item"}}
+      }
+    }
+  }
+}

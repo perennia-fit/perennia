@@ -1,15 +1,27 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
+import 'package:perennia/features/protocols/services/biometric_authenticator.dart';
+import 'package:perennia/features/protocols/services/protocol_reminder_scheduler.dart';
+import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
+import 'package:perennia/features/protocols/services/protocols_pin_hasher.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/protocols_lock_screen.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
+import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 void main() {
   testWidgets('Protocol Day view lists the day\'s doses', (tester) async {
@@ -73,6 +85,54 @@ void main() {
   );
 
   testWidgets(
+    'the Compound list the FAB opens is gated: re-locking while it is on '
+    'top covers it with the lock screen',
+    (tester) async {
+      final lockStore = _FakeLockStore()
+        ..enabled = true
+        ..pinHash = await const ProtocolsPinHasher(iterations: 10).hash('1234');
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        compounds: _seededCompounds(),
+        lockStore: lockStore,
+        home: const ProtocolsLockGate(child: ProtocolsDayView()),
+        overrides: [
+          biometricAuthenticatorProvider.overrideWith(
+            (ref) => _NoBiometrics(),
+          ),
+          protocolsLockControllerProvider.overrideWith(
+            () => ProtocolsLockController(
+              hasher: const ProtocolsPinHasher(iterations: 10),
+            ),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(ProtocolsUnlockForm.pinFieldKey),
+        '1234',
+      );
+      await tester.tap(find.byKey(ProtocolsUnlockForm.unlockPinButtonKey));
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.emptyStateKey));
+
+      await tester.tap(find.byKey(ProtocolsDayView.logDoseButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(CompoundListScreen), findsOneWidget);
+
+      // The app leaves the foreground: the lock controller re-locks.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+
+      expect(find.byKey(ProtocolsLockGate.lockScreenKey), findsOneWidget);
+      expect(find.byType(CompoundListScreen), findsNothing);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
     'date header arrows and swipe move the selected Protocol Day',
     (tester) async {
       final controller = _FakeProtocolDayController(_dayWithDoses());
@@ -105,7 +165,8 @@ void main() {
     'tapping a Dose row opens it for edit, prefilled from its own snapshot',
     (tester) async {
       await _pumpView(tester, _dayWithDoses());
-      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
+      await _pumpUntilFound(
+          tester, find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
 
       await tester.tap(find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
       await tester.pumpAndSettle();
@@ -151,7 +212,8 @@ void main() {
       expect(controller.editedDoseIds, <String>['dose-1']);
       final draft = controller.editedDrafts.single;
       expect(draft.amountEntered, '3');
-      expect(draft.localDate, const ProtocolDayDate(year: 2026, month: 6, day: 30));
+      expect(draft.localDate,
+          const ProtocolDayDate(year: 2026, month: 6, day: 30));
       expect(draft.provenance, DoseProvenance.manual);
     },
   );
@@ -218,6 +280,126 @@ void main() {
     },
   );
 
+  group('the reminder permission banner (CUJ 12)', () {
+    Future<(ProtocolReminderScheduler, _BannerPermissions)> pumpWithReminders(
+      WidgetTester tester, {
+      TimerBackgroundPermissionStatus permission =
+          TimerBackgroundPermissionStatus.notDetermined,
+      bool deviceSwitchOn = true,
+      bool remindersOn = true,
+      ThemeData? theme,
+    }) async {
+      final permissions = _BannerPermissions(permission);
+      final scheduler = ProtocolReminderScheduler(
+        platform: _BannerPlatform(),
+        permissions: permissions,
+        readInputs: (from, to) async => <ProtocolReminderInput>[
+          ProtocolReminderInput(
+            protocolId: 'protocol-daily',
+            compoundId: 'compound-trt',
+            localDate: from,
+            localTime: '23:59',
+            remindersEnabled: remindersOn,
+            filled: false,
+          ),
+        ],
+        anyProtocolRemindersOn: () async => remindersOn,
+        planChanges: () => const Stream<void>.empty(),
+        lastSuccessfulSyncAt: () => const Stream<DateTime?>.empty(),
+        deviceSwitchOn: () async => deviceSwitchOn,
+        clock: () => _now,
+      );
+      addTearDown(scheduler.dispose);
+      await tester.runAsync(scheduler.reconcile);
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        theme: theme,
+        overrides: <Override>[
+          protocolReminderSchedulerProvider.overrideWithValue(scheduler),
+        ],
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.dayHeaderKey));
+      return (scheduler, permissions);
+    }
+
+    testWidgets(
+      'shows "Reminders are off on this device" with Allow while this phone '
+      'was never asked, and Allow asks once through the one permission path',
+      (tester) async {
+        final (_, permissions) = await pumpWithReminders(tester);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+        );
+
+        expect(find.text('Reminders are off on this device'), findsOneWidget);
+        expect(permissions.requests, 0, reason: 'showing it asks nothing');
+
+        await tester
+            .tap(find.byKey(ProtocolsDayView.reminderPermissionAllowKey));
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await tester.pump();
+
+        expect(permissions.requests, 1);
+        expect(
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+        'stays hidden once asked, with the device switch off, or '
+        'with no Protocol asking for reminders', (tester) async {
+      for (final (permission, device, reminders) in <(
+        TimerBackgroundPermissionStatus,
+        bool,
+        bool,
+      )>[
+        (TimerBackgroundPermissionStatus.granted, true, true),
+        (TimerBackgroundPermissionStatus.denied, true, true),
+        (TimerBackgroundPermissionStatus.notDetermined, false, true),
+        (TimerBackgroundPermissionStatus.notDetermined, true, false),
+      ]) {
+        await pumpWithReminders(
+          tester,
+          permission: permission,
+          deviceSwitchOn: device,
+          remindersOn: reminders,
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+          findsNothing,
+          reason: '$permission, device $device, reminders $reminders',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('meets accessibility guidelines in both themes',
+        (tester) async {
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        final semantics = tester.ensureSemantics();
+        await pumpWithReminders(tester, theme: theme);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+        );
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+        semantics.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+  });
+
   testWidgets('Protocol Day view meets accessibility guidelines in both themes',
       (tester) async {
     for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
@@ -234,6 +416,1401 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+
+  testWidgets(
+    "the day's Doses show in clock order: a later instant at an earlier clock "
+    'time through its offset is listed first',
+    (tester) async {
+      final database = AppDatabase.inMemory();
+      final repositories = TrainingRepositories(database);
+      final day = ProtocolDayDate.fromDateTime(_cuj1Now);
+      Future<String> logAt(DateTime tookAtUtc, int offset) async {
+        final logged = await repositories.protocols.logDose(
+          DoseSnapshotDraft(
+            compoundName: 'Creatine',
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+            tookAt: tookAtUtc,
+          ),
+        );
+        await (database.update(database.doses)
+              ..where((row) => row.id.equals(logged.doseId)))
+            .write(
+          DosesCompanion(
+            timezoneOffsetMinutes: Value<int?>(offset),
+            localDate: Value<String>(day.storageValue),
+          ),
+        );
+        return logged.doseId;
+      }
+
+      // Seeded on fake time. First in Tokyo (UTC+09:00): 21:00 there,
+      // 12:00 UTC. Then in Honolulu (UTC−10:00): 08:30 there, 18:30 UTC, the
+      // later instant at the earlier clock time.
+      late final String tokyo;
+      late final String honolulu;
+      await _runOnFakeTime(tester, () async {
+        tokyo = await logAt(DateTime.utc(2026, 10, 27, 12), 540);
+        honolulu = await logAt(DateTime.utc(2026, 10, 27, 18, 30), -600);
+      });
+
+      await _pumpLiveView(tester, repositories, () => _cuj1Now);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsDayView.doseRowKey(honolulu)),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsDayView.doseRowKey(tokyo)),
+      );
+
+      // `DateFormat.jm` may put a narrow no-break space before "AM".
+      expect(
+        find.descendant(
+          of: find.byKey(ProtocolsDayView.doseRowKey(honolulu)),
+          matching: find.textContaining(RegExp(r'8:30\sAM')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ProtocolsDayView.doseRowKey(tokyo)),
+          matching: find.textContaining(RegExp(r'9:00\sPM')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(ProtocolsDayView.doseRowKey(honolulu))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(ProtocolsDayView.doseRowKey(tokyo))).dy,
+        ),
+      );
+
+      await _closeLive(tester, database);
+    },
+  );
+
+  group('the Planned list (D6)', () {
+    testWidgets(
+      'today\'s rows read Logged or Pending, with the planned time or Any '
+      'time and the amount, grouped under their Protocol',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '08:40')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(
+          find.byKey(ProtocolsDayView.plannedGroupKey('protocol-daily')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ProtocolsDayView.plannedGroupKey('protocol-night')),
+          findsOneWidget,
+        );
+        expect(find.text('Daily'), findsOneWidget);
+        expect(find.text('Night'), findsOneWidget);
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-agemate'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-creatine'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-night', 'c-magnesium'), 'Pending');
+        expect(_rowText(tester, 'protocol-daily', 'c-trt'),
+            contains('0.5 mL · 9:00 AM'));
+        expect(_rowText(tester, 'protocol-daily', 'c-creatine'),
+            contains('5 g · 5:00 PM'));
+        expect(_rowText(tester, 'protocol-night', 'c-magnesium'),
+            contains('Any time'));
+        expect(find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+            findsOneWidget);
+        expect(find.text('Log all planned'), findsOneWidget);
+        // The logged Doses still list below; none are logged in this fixture.
+        expect(find.byKey(ProtocolsDayView.emptyStateKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a past day\'s unfilled rows read Not logged, and it has no bulk action',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_yesterday),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_yesterday),
+            plannedDay: _plannedDay(
+              _yesterday,
+              doses: <PlanDose>[_planDose('c-trt', _yesterday, '09:05')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-agemate'), 'Not logged');
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Not logged');
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a future day shows its times and amounts with no label and no action',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_tomorrow),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_tomorrow),
+            plannedDay: _plannedDay(_tomorrow),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowText(tester, 'protocol-daily', 'c-trt'),
+            contains('0.5 mL · 9:00 AM'));
+        expect(_rowText(tester, 'protocol-night', 'c-magnesium'),
+            contains('Any time'));
+        for (final label in <String>['Logged', 'Pending', 'Not logged']) {
+          expect(find.text(label), findsNothing);
+        }
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LogDoseSheet), findsNothing);
+      },
+    );
+
+    testWidgets('the list is hidden when the day has nothing planned', (
+      tester,
+    ) async {
+      await _pumpView(
+        tester,
+        _emptyDay(_today),
+        controller: _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today, protocols: const <PlanProtocol>[]),
+        ),
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.emptyStateKey));
+
+      expect(find.byKey(ProtocolsDayView.plannedListKey), findsNothing);
+    });
+
+    testWidgets(
+      'a row logs in two taps: open it, then Save, at its planned amount and '
+      'tagged with its Protocol, timed now on today',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today),
+        );
+        await _pumpView(tester, _emptyDay(_today), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        // Tap 1: the row.
+        await tester.tap(_rowFinder('protocol-daily', 'c-agemate'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LogDoseSheet), findsOneWidget);
+        expect(find.text('Daily'), findsWidgets);
+
+        // Tap 2: Save.
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        final dose = controller.loggedDoses.single;
+        expect(dose.compoundId, 'c-agemate');
+        expect(dose.compoundName, 'AgeMate');
+        expect(dose.amountEntered, '1');
+        expect(dose.unit, DoseUnit.capsule);
+        expect(dose.route, DoseRoute.oral);
+        expect(dose.protocolId, 'protocol-daily');
+        expect(dose.protocolName, 'Daily');
+        expect(dose.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'a past day\'s row opens the sheet on that date at its planned time, '
+      'both editable (CUJ 7)',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_yesterday),
+          plannedDay: _plannedDay(_yesterday),
+        );
+        await _pumpView(tester, _emptyDay(_yesterday), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-night', 'c-ghk'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.dateFieldKey),
+            matching: find.text('Oct 26, 2026'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.timeFieldKey),
+            matching: find.text('9:00 PM'),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        final dose = controller.loggedDoses.single;
+        expect(dose.tookAt, DateTime(2026, 10, 26, 21));
+        expect(dose.protocolId, 'protocol-night');
+      },
+    );
+
+    testWidgets(
+      'an untimed row on a past day opens the sheet at 12:00 on that date',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_yesterday),
+          plannedDay: _plannedDay(_yesterday),
+        );
+        await _pumpView(tester, _emptyDay(_yesterday), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-night', 'c-magnesium'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        expect(
+            controller.loggedDoses.single.tookAt, DateTime(2026, 10, 26, 12));
+      },
+    );
+
+    testWidgets(
+      'tapping a Logged row opens the Dose that fills it for edit, and saving '
+      'it adds no Dose',
+      (tester) async {
+        final dose = _honoluluTrtDose();
+        // A second TRT Dose that day, at 20:00 there, listed first: the
+        // 08:40 Dose fills the one 09:00 slot and this one is an extra. The
+        // row must open the Dose its fill names, not the day's first Dose or
+        // the first of its Compound.
+        final extra = DoseRecord(
+          id: 'dose-trt-extra',
+          compoundId: 'c-trt',
+          compoundName: 'TRT',
+          amountValue: 0.3,
+          amountEntered: '0.3',
+          unit: DoseUnit.milliliter,
+          route: DoseRoute.intramuscular,
+          tookAt: DateTime.utc(2026, 10, 28, 6),
+          timezone: 'HST',
+          localDate: _today,
+          provenance: DoseProvenance.manual,
+          updatedAt: DateTime.utc(2026, 10, 28, 6),
+          timezoneOffsetMinutes: -600,
+        );
+        final day = ProtocolDayRecord(
+          localDate: _today,
+          doses: <DoseRecord>[extra, dose],
+        );
+        final controller = _FakeProtocolDayController(
+          day,
+          plannedDay: _plannedDay(
+            _today,
+            day: day,
+            doses: <PlanDose>[
+              PlanDose(
+                doseId: extra.id,
+                compoundId: 'c-trt',
+                localDate: _today,
+                localTime: extra.localTime,
+                sequence: 0,
+              ),
+              PlanDose(
+                doseId: dose.id,
+                compoundId: 'c-trt',
+                localDate: _today,
+                localTime: dose.localTime,
+                sequence: 1,
+              ),
+            ],
+          ),
+        );
+        await _pumpView(tester, day, controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+
+        // The edit sheet, on the Dose's own snapshot: Delete is offered only
+        // in edit mode.
+        expect(find.byType(LogDoseSheet), findsOneWidget);
+        expect(find.byKey(LogDoseSheet.deleteButtonKey), findsOneWidget);
+        expect(find.text('0.5'), findsOneWidget);
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        expect(controller.editedDoseIds, <String>[dose.id]);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a Dose logged at another offset shows its own clock time, in its row '
+      'and in its edit sheet',
+      (tester) async {
+        final dose = _honoluluTrtDose();
+        final day = ProtocolDayRecord(
+          localDate: _today,
+          doses: <DoseRecord>[dose],
+        );
+        await _pumpView(tester, day);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.doseRowKey(dose.id)),
+        );
+
+        // 08:40 where it was taken (UTC−10:00), whatever the device's zone.
+        // `DateFormat.jm` may put a narrow no-break space before "AM".
+        expect(
+          find.descendant(
+            of: find.byKey(ProtocolsDayView.doseRowKey(dose.id)),
+            matching: find.textContaining(RegExp(r'8:40\sAM')),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(ProtocolsDayView.doseRowKey(dose.id)));
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.timeFieldKey),
+            matching: find.text('8:40 AM'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.dateFieldKey),
+            matching: find.text('Oct 27, 2026'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'every row label is a word beside its icon: color is never the only '
+      'signal',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '09:00')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        for (final (compoundId, label) in <(String, String)>[
+          ('c-trt', 'Logged'),
+          ('c-agemate', 'Pending'),
+        ]) {
+          final row = _rowFinder('protocol-daily', compoundId);
+          final text = find.descendant(of: row, matching: find.text(label));
+          expect(text, findsOneWidget);
+          final labelRow =
+              find.ancestor(of: text, matching: find.byType(Row)).first;
+          expect(
+            find.descendant(of: labelRow, matching: find.byType(Icon)),
+            findsOneWidget,
+          );
+        }
+        // The two labels differ in word as well as in icon color.
+        expect(find.text('Logged'), findsOneWidget);
+        expect(find.text('Pending'), findsNWidgets(4));
+      },
+    );
+
+    testWidgets(
+        'the Planned list meets accessibility guidelines in both themes',
+        (tester) async {
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        final semantics = tester.ensureSemantics();
+        await _pumpView(
+          tester,
+          _dayWithDoses(),
+          theme: theme,
+          controller: _FakeProtocolDayController(
+            _dayWithDoses(),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '09:00')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+        semantics.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets(
+      '"Log all planned" logs the due rows in one Batch and leaves a later '
+      'row Pending (CUJ 1)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              trainingRepositoriesProvider.overrideWith((ref) => repositories),
+              protocolsClockProvider.overrideWithValue(() => _cuj1Now),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.light(),
+              home: const ProtocolsDayView(),
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+        expect(find.text('Pending'), findsNWidgets(3));
+
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await _pumpUntilFound(tester, find.text('Logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Logged'), findsNWidgets(2));
+        expect(find.text('Pending'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.ancestor(
+              of: find.text('Pending'),
+              matching: find.byType(InkWell),
+            ),
+            matching: find.text('Creatine'),
+          ),
+          findsOneWidget,
+        );
+        // The two Doses list below, timed now, in one Batch.
+        final doses = await database.select(database.doses).get();
+        expect(
+            doses.map((dose) => dose.compoundName).toSet(), {'TRT', 'AgeMate'});
+        expect(
+          doses.every((dose) => dose.tookAt.isAtSameMomentAs(_cuj1Now)),
+          isTrue,
+        );
+        expect(doses.every((dose) => dose.protocolName == 'Daily'), isTrue);
+        final entries = await repositories.activityLog.listEntries();
+        final doseBatches = entries
+            .where((entry) => entry.entityTable == AppDatabase.dosesTable)
+            .map((entry) => entry.batchId)
+            .toSet();
+        expect(doseBatches, hasLength(1));
+
+        // Unmount, then close the database on fake time: Drift's close waits
+        // for its stream-cache timers, which only frames can fire.
+        await tester.pumpWidget(const SizedBox.shrink());
+        var closed = false;
+        unawaited(database.close().then((_) => closed = true));
+        for (var frame = 0; frame < 100 && !closed; frame += 1) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(closed, isTrue);
+      },
+    );
+
+    testWidgets(
+      'a double tap on "Log all planned" logs the due rows once',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+
+        // Two taps before any frame: both reach the button's handler.
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await _pumpUntilFound(tester, find.text('Logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final doses = await database.select(database.doses).get();
+        expect(doses.map((dose) => dose.compoundName).toList()..sort(),
+            <String>['AgeMate', 'TRT']);
+        expect(find.text('Logged'), findsNWidgets(2));
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'when local midnight passes, the day the view opened on reads as past: '
+      'Not logged, with no bulk action',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        var now = _cuj1Now;
+        await _pumpLiveView(tester, repositories, () => now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+        expect(find.text('Pending'), findsNWidgets(3));
+
+        now = DateTime(2026, 10, 28, 8);
+        await tester.pump(const Duration(minutes: 1));
+        await _pumpUntilFound(tester, find.text('Not logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Not logged'), findsNWidgets(3));
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+
+        await _closeLive(tester, database);
+      },
+    );
+  });
+
+  group('the archive day and a deleted Protocol (D8)', () {
+    /// TRT at 09:00 and 21:00, in a Protocol archived on [archivedOn].
+    List<PlanProtocol> archivedTwiceDaily(ProtocolDayDate archivedOn) {
+      return <PlanProtocol>[
+        PlanProtocol(
+          protocolId: 'protocol-daily',
+          startLocalDate: _start,
+          archivedOn: archivedOn,
+          members: <PlanMember>[
+            _member(
+              'c-trt',
+              TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['09:00', '21:00'],
+              ),
+              const PlanAmount(
+                amountValue: 0.5,
+                amountEntered: '0.5',
+                unit: DoseUnit.milliliter,
+                route: DoseRoute.intramuscular,
+              ),
+            ),
+          ],
+        ),
+      ];
+    }
+
+    test(
+        'on an archive day with one of two slots logged, the Planned list '
+        'has one Logged row; with none, no group', () {
+      for (final date in <ProtocolDayDate>[_today, _yesterday]) {
+        final logged = _plannedDay(
+          date,
+          protocols: archivedTwiceDaily(date),
+          doses: <PlanDose>[_planDose('c-trt', date, '08:40')],
+        );
+        final rows = logged.groups.single.rows;
+        expect(rows, hasLength(1), reason: '$date');
+        expect(rows.single.plannedLocalTime, '09:00');
+        expect(rows.single.slot, 0);
+        expect(rows.single.status, PlannedRowStatus.logged);
+        expect(rows.single.skipId, isNull);
+
+        final unlogged = _plannedDay(
+          date,
+          protocols: archivedTwiceDaily(date),
+        );
+        expect(unlogged.groups, isEmpty, reason: '$date');
+        expect(unlogged.hasPlanned, isFalse);
+      }
+    });
+
+    testWidgets(
+      "today's archive day shows its one Logged row and no "
+      '"Log all planned"',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              protocols: archivedTwiceDaily(_today),
+              doses: <PlanDose>[_planDose('c-trt', _today, '08:40')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(
+          find.byKey(
+            ProtocolsDayView.plannedRowKey('protocol-daily', 'c-trt', 1),
+          ),
+          findsNothing,
+        );
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+      },
+    );
+
+    test(
+        'a deleted Protocol is hidden from the Planned list and the active '
+        'list, members and all', () async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      await _seedDailyStack(repositories);
+      final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+      final protocolId =
+          (await repositories.protocols.listProtocolSummaries()).single.id;
+      expect(
+        (await repositories.protocolPlan.plannedDay(today, today: today))
+            .groups
+            .single
+            .protocol
+            .id,
+        protocolId,
+      );
+
+      await repositories.protocols.deleteProtocol(protocolId);
+
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.groups, isEmpty);
+      expect(planned.planDays, isEmpty);
+      expect(planned.dayStatuses, isEmpty);
+      expect(await repositories.protocols.listProtocolSummaries(), isEmpty);
+      expect(await repositories.protocols.listProtocols(), isEmpty);
+      expect(
+        await repositories.protocols.watchProtocolOptions().first,
+        isEmpty,
+      );
+      expect(
+        await repositories.protocols.watchProtocol(protocolId).first,
+        isNull,
+      );
+    });
+  });
+
+  group('Skips in the Planned list read (D8)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      await _seedDailyStack(repositories);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<PlannedRow> rowOf(String compoundName) async {
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      return planned.groups.single.rows.singleWhere(
+        (row) => planned.compounds[row.compoundId]!.name == compoundName,
+      );
+    }
+
+    Future<String> skip(PlannedRow row) async {
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: row.protocolId,
+          compoundId: row.compoundId,
+          localDate: today,
+          plannedLocalTime: row.plannedLocalTime,
+        ),
+        today: today,
+      );
+      return (await database.select(database.protocolSkips).get()).last.id;
+    }
+
+    test(
+        'a skipped planned dose reads Skipped with its skipId, and "Log all '
+        'planned" leaves it out', () async {
+      final trt = await rowOf('TRT');
+      expect(trt.status, PlannedRowStatus.pending);
+      final skipId = await skip(trt);
+
+      final skipped = await rowOf('TRT');
+      expect(skipped.status, PlannedRowStatus.skipped);
+      expect(skipped.skipId, skipId);
+      expect((await rowOf('AgeMate')).status, PlannedRowStatus.pending);
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.day.skips.single.id, skipId);
+      final trtStatus = planned.dayStatuses
+          .singleWhere((status) => status.compoundId == trt.compoundId);
+      expect(trtStatus.status, DayStatusKind.skipped);
+      expect(trtStatus.skippedCount, 1);
+
+      final container = ProviderContainer(
+        overrides: [
+          trainingRepositoriesProvider.overrideWithValue(repositories),
+          protocolsClockProvider.overrideWithValue(() => _cuj1Now),
+        ],
+      );
+      addTearDown(container.dispose);
+      final results = await container
+          .read(protocolDayControllerProvider.notifier)
+          .logAllPlanned();
+
+      expect(results, hasLength(1));
+      final doses = await database.select(database.doses).get();
+      expect(doses.single.compoundName, 'AgeMate');
+      expect((await rowOf('TRT')).status, PlannedRowStatus.skipped);
+      expect((await rowOf('AgeMate')).status, PlannedRowStatus.logged);
+    });
+
+    test('watchPlannedDay re-emits when a Skip is written and removed',
+        () async {
+      final emissions = <PlannedRowStatus>[];
+      final subscription = repositories.protocolPlan
+          .watchPlannedDay(today, today: today)
+          .listen((planned) {
+        emissions.add(
+          planned.groups.single.rows
+              .singleWhere(
+                (row) => planned.compounds[row.compoundId]!.name == 'TRT',
+              )
+              .status,
+        );
+      });
+      addTearDown(subscription.cancel);
+      await _waitForCondition(() => emissions.isNotEmpty);
+      expect(emissions.last, PlannedRowStatus.pending);
+
+      final skipId = await skip(await rowOf('TRT'));
+      await _waitForCondition(
+        () => emissions.last == PlannedRowStatus.skipped,
+      );
+
+      await repositories.protocols.unskipPlannedDose(skipId);
+      await _waitForCondition(
+        () => emissions.last == PlannedRowStatus.pending,
+      );
+    });
+
+    test(
+        'Save from a Skipped row logs the Dose and removes the Skip, so the '
+        'row reads Logged', () async {
+      final trt = await rowOf('TRT');
+      final skipId = await skip(trt);
+
+      final logged = await repositories.protocols.logDose(
+        DoseSnapshotDraft(
+          compoundId: trt.compoundId,
+          compoundName: 'TRT',
+          amountValue: 0.5,
+          amountEntered: '0.5',
+          unit: DoseUnit.milliliter,
+          route: DoseRoute.intramuscular,
+          tookAt: _cuj1Now,
+          protocolId: trt.protocolId,
+          protocolName: 'Daily',
+        ),
+        unskipId: skipId,
+      );
+
+      final row = await rowOf('TRT');
+      expect(row.status, PlannedRowStatus.logged);
+      expect(row.skipId, isNull);
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.day.skips, isEmpty);
+      final entries = (await repositories.activityLog.listEntries())
+          .where((entry) => entry.batchId == logged.batchId)
+          .map((entry) => entry.entityTable)
+          .toList();
+      expect(
+        entries,
+        unorderedEquals(<String>[
+          AppDatabase.dosesTable,
+          AppDatabase.protocolSkipsTable,
+        ]),
+      );
+    });
+  });
+
+  group('Skipping in the Planned list (D8)', () {
+    /// The InkWell of the Planned list row titled [compoundName].
+    Finder rowNamed(String compoundName) => find
+        .ancestor(of: find.text(compoundName), matching: find.byType(InkWell))
+        .first;
+
+    /// The label of the row titled [compoundName]: its last Text.
+    String? labelOf(WidgetTester tester, String compoundName) => tester
+        .widgetList<Text>(
+          find.descendant(
+            of: rowNamed(compoundName),
+            matching: find.byType(Text),
+          ),
+        )
+        .last
+        .data;
+
+    /// Runs [read] against the database on fake time.
+    Future<T> readOnFakeTime<T>(
+      WidgetTester tester,
+      Future<T> Function() read,
+    ) async {
+      late T value;
+      await _runOnFakeTime(tester, () async => value = await read());
+      return value;
+    }
+
+    Future<List<ProtocolSkipRow>> readSkips(
+      WidgetTester tester,
+      AppDatabase database,
+    ) {
+      return readOnFakeTime(
+        tester,
+        () => database.select(database.protocolSkips).get(),
+      );
+    }
+
+    /// Pumps until the row titled [compoundName] reads [label].
+    Future<void> pumpUntilLabel(
+      WidgetTester tester,
+      String compoundName,
+      String label,
+    ) async {
+      for (var attempt = 0; attempt < 40; attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(LogDoseSheet).evaluate().isEmpty &&
+            labelOf(tester, compoundName) == label) {
+          return;
+        }
+      }
+      fail('$compoundName never read $label.');
+    }
+
+    /// Opens the row titled [compoundName] and taps [buttonKey] in its sheet.
+    Future<void> tapInSheet(
+      WidgetTester tester,
+      String compoundName,
+      Key buttonKey,
+    ) async {
+      await tester.tap(rowNamed(compoundName));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(buttonKey));
+      await tester.tap(find.byKey(buttonKey));
+    }
+
+    testWidgets(
+      'CUJ 15: two taps from a Pending row skip it, and the row reads Skipped',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        expect(labelOf(tester, 'TRT'), 'Pending');
+
+        // Tap 1 opens the row's sheet; tap 2 is Skip.
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        expect(labelOf(tester, 'AgeMate'), 'Pending');
+        expect(find.byType(LogDoseSheet), findsNothing);
+        final skip = (await readSkips(tester, database)).single;
+        expect(skip.plannedLocalTime, '09:00');
+        expect(skip.localDate, '2026-10-27');
+        expect(skip.deletedAt, isNull);
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'Undo skip on a Skipped row removes the Skip, and the row reads Pending '
+      'again with nothing logged (CUJ 16)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        await tapInSheet(tester, 'TRT', LogDoseSheet.unskipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Pending');
+
+        expect(find.text('Skipped'), findsNothing);
+        final skips = await readSkips(tester, database);
+        expect(skips.single.deletedAt, isNotNull);
+        final doses = await readOnFakeTime(
+          tester,
+          () => database.select(database.doses).get(),
+        );
+        expect(doses, isEmpty);
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'Save from a Skipped row logs the Dose and removes the Skip in one '
+      'Batch, and the row reads Logged (CUJ 16)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        await tapInSheet(tester, 'TRT', LogDoseSheet.saveButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Logged');
+
+        expect(find.text('Skipped'), findsNothing);
+        expect((await readSkips(tester, database)).single.deletedAt, isNotNull);
+        final entries = await readOnFakeTime(
+          tester,
+          repositories.activityLog.listEntries,
+        );
+        final dose = entries.singleWhere(
+          (entry) => entry.entityTable == AppDatabase.dosesTable,
+        );
+        final skipEntries = entries
+            .where(
+              (entry) => entry.entityTable == AppDatabase.protocolSkipsTable,
+            )
+            .toList();
+        // The Skip's own write, then its removal in the Dose's Batch.
+        expect(skipEntries, hasLength(2));
+        expect(
+          skipEntries.where((entry) => entry.batchId == dose.batchId),
+          hasLength(1),
+        );
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'CUJ 17: a past day\'s Not logged row is skipped from that day, and '
+      'reads Skipped',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        // The next morning: the stack's first day is now yesterday.
+        await _pumpLiveView(
+          tester,
+          repositories,
+          () => DateTime(2026, 10, 28, 8),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.previousDayButtonKey),
+        );
+        await tester.tap(find.byKey(ProtocolsDayView.previousDayButtonKey));
+        await _pumpUntilFound(tester, find.text('Not logged'));
+        await pumpUntilLabel(tester, 'Creatine', 'Not logged');
+
+        await tapInSheet(tester, 'Creatine', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'Creatine', 'Skipped');
+
+        expect(labelOf(tester, 'TRT'), 'Not logged');
+        final skip = (await readSkips(tester, database)).single;
+        expect(skip.localDate, '2026-10-27');
+        expect(skip.plannedLocalTime, '17:00');
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'a double tap on Skip writes one Skip',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+
+        await tester.tap(rowNamed('TRT'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        // Two taps before any frame: both reach the button's handler.
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        expect(await readSkips(tester, database), hasLength(1));
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'a future day\'s row has no log action, so no Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_tomorrow),
+          plannedDay: _plannedDay(_tomorrow),
+        );
+        await _pumpView(tester, _emptyDay(_tomorrow), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LogDoseSheet), findsNothing);
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(controller.skippedTargets, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a Pending row\'s Skip names its own planned dose, and a Skipped row '
+      'opens the sheet with Undo skip',
+      (tester) async {
+        const skip = PlanSkip(
+          skipId: 'skip-ghk',
+          protocolId: 'protocol-night',
+          compoundId: 'c-ghk',
+          localDate: _today,
+          plannedLocalTime: '21:00',
+        );
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today, skips: <PlanSkip>[skip]),
+        );
+        await _pumpView(tester, _emptyDay(_today), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Skipped');
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-creatine'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.pumpAndSettle();
+        final target = controller.skippedTargets.single;
+        expect(
+          (
+            target.protocolId,
+            target.compoundId,
+            target.localDate,
+            target.plannedLocalTime,
+            target.skipId,
+          ),
+          ('protocol-daily', 'c-creatine', _today, '17:00', null),
+        );
+
+        await tester.tap(_rowFinder('protocol-night', 'c-ghk'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.pumpAndSettle();
+        expect(controller.unskippedIds, <String>['skip-ghk']);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'the Skipped label is a word beside its own icon, and meets '
+      'accessibility guidelines in both themes',
+      (tester) async {
+        const skip = PlanSkip(
+          skipId: 'skip-ghk',
+          protocolId: 'protocol-night',
+          compoundId: 'c-ghk',
+          localDate: _yesterday,
+          plannedLocalTime: '21:00',
+        );
+        for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+          final semantics = tester.ensureSemantics();
+          await _pumpView(
+            tester,
+            _emptyDay(_yesterday),
+            theme: theme,
+            controller: _FakeProtocolDayController(
+              _emptyDay(_yesterday),
+              plannedDay: _plannedDay(_yesterday, skips: <PlanSkip>[skip]),
+            ),
+          );
+          await _pumpUntilFound(
+              tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+          final icons = <IconData?>{};
+          for (final (protocolId, compoundId, label)
+              in <(String, String, String)>[
+            ('protocol-night', 'c-ghk', 'Skipped'),
+            ('protocol-daily', 'c-trt', 'Not logged'),
+          ]) {
+            final row = _rowFinder(protocolId, compoundId);
+            final text = find.descendant(of: row, matching: find.text(label));
+            expect(text, findsOneWidget);
+            final labelRow =
+                find.ancestor(of: text, matching: find.byType(Row)).first;
+            final icon = find.descendant(
+              of: labelRow,
+              matching: find.byType(Icon),
+            );
+            expect(icon, findsOneWidget);
+            icons.add(tester.widget<Icon>(icon).icon);
+          }
+          // Skipped and Not logged differ in word and in icon, not by color.
+          expect(icons, hasLength(2));
+
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(
+            tester,
+            meetsGuideline(androidTapTargetGuideline),
+          );
+          await expectLater(
+            tester,
+            meetsGuideline(labeledTapTargetGuideline),
+          );
+
+          semantics.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      },
+    );
+  });
+
+  group("Today's Protocols tab", () {
+    const today = ProtocolDayDate(year: 2026, month: 6, day: 30);
+    Widget tab() => const Scaffold(
+          body: SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: ProtocolsTodayBody(localDate: today),
+          ),
+        );
+
+    testWidgets(
+        'first run explains Protocols and offers New protocol and Log a dose',
+        (tester) async {
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        home: tab(),
+        overrides: _protocolListOverrides(withProtocol: false),
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsTodayBody.introKey));
+
+      expect(find.text('Plan what you take'), findsOneWidget);
+      expect(
+        find.byKey(ProtocolsTodayBody.newProtocolButtonKey),
+        findsOneWidget,
+      );
+      expect(find.byKey(ProtocolsTodayBody.logDoseButtonKey), findsOneWidget);
+    });
+
+    testWidgets(
+        "shows the day's logged Doses and the user's Protocols, with New "
+        'protocol at the end of the list', (tester) async {
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        home: tab(),
+        overrides: _protocolListOverrides(),
+      );
+      await _pumpUntilFound(tester, find.text('Magnesium'));
+
+      expect(find.byKey(ProtocolsDayView.doseRowKey('dose-1')), findsOneWidget);
+      expect(find.byKey(ProtocolsTodayBody.introKey), findsNothing);
+      expect(
+        find.byKey(ProtocolsTodayBody.yourProtocolsKey),
+        findsOneWidget,
+      );
+      expect(find.text('Sleep stack'), findsOneWidget);
+      expect(find.text('Magnesium'), findsOneWidget);
+      expect(find.text('New protocol'), findsOneWidget);
+    });
+
+    testWidgets('a set lock shows only the unlock form, never a Dose',
+        (tester) async {
+      final lockStore = _FakeLockStore()
+        ..enabled = true
+        ..pinHash = 'hash';
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        home: tab(),
+        lockStore: lockStore,
+        overrides: [
+          ..._protocolListOverrides(),
+          biometricAuthenticatorProvider.overrideWith((ref) => _NoBiometrics()),
+        ],
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsTodayBody.lockedKey));
+
+      expect(find.text('Protocols are locked'), findsOneWidget);
+      expect(find.byKey(ProtocolsUnlockForm.pinFieldKey), findsOneWidget);
+      expect(find.text('Creatine'), findsNothing);
+      expect(find.byKey(ProtocolsTodayBody.logDoseButtonKey), findsNothing);
+    });
+
+    testWidgets('Log a dose opens the Compound list on the tab\'s date',
+        (tester) async {
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        home: tab(),
+        compounds: _seededCompounds(),
+        overrides: _protocolListOverrides(withProtocol: false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsTodayBody.logDoseButtonKey),
+      );
+
+      await tester.tap(find.byKey(ProtocolsTodayBody.logDoseButtonKey));
+      await tester.pumpAndSettle();
+
+      final list = tester.widget<CompoundListScreen>(
+        find.byType(CompoundListScreen),
+      );
+      expect(list.protocolDay, today);
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('meets accessibility guidelines in ${brightness.name}',
+          (tester) async {
+        await _pumpView(
+          tester,
+          _dayWithDoses(),
+          home: tab(),
+          theme: brightness == Brightness.dark
+              ? AppTheme.dark()
+              : AppTheme.light(),
+          overrides: _protocolListOverrides(),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsTodayBody.yourProtocolsKey),
+        );
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      });
+    }
+  });
+}
+
+/// Seeds the CUJ 1 stack in the test's own zone, with frames pumped until it
+/// lands, so the database's queue and stream timers all run on fake time.
+Future<void> _seedOnFakeTime(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+) {
+  return _runOnFakeTime(tester, () => _seedDailyStack(repositories));
+}
+
+/// Runs [seed] in the test's own zone, with frames pumped until it lands, so
+/// the database's queue and stream timers all run on fake time.
+Future<void> _runOnFakeTime(
+  WidgetTester tester,
+  Future<void> Function() seed,
+) async {
+  var seeded = false;
+  unawaited(seed().then((_) => seeded = true));
+  for (var frame = 0; frame < 100 && !seeded; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(seeded, isTrue);
+}
+
+/// The Protocol Day view over a real repository and [clock].
+Future<void> _pumpLiveView(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  DateTime Function() clock,
+) {
+  return tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        protocolsClockProvider.overrideWithValue(clock),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.light(),
+        home: const ProtocolsDayView(),
+      ),
+    ),
+  );
+}
+
+/// Unmounts, then closes the database on fake time: Drift's close waits for
+/// its stream-cache timers, which only frames can fire.
+Future<void> _closeLive(WidgetTester tester, AppDatabase database) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  var closed = false;
+  unawaited(database.close().then((_) => closed = true));
+  for (var frame = 0; frame < 100 && !closed; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(closed, isTrue);
 }
 
 Future<void> _pumpView(
@@ -242,10 +1819,20 @@ Future<void> _pumpView(
   ThemeData? theme,
   _FakeProtocolDayController? controller,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
+  List<Override> overrides = const <Override>[],
+  ProtocolsLockStore? lockStore,
+  Widget home = const ProtocolsDayView(),
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...overrides,
+        // The Compound list and Protocol list open behind
+        // `ProtocolsLockGate`; the default store has no lock, which keeps
+        // them off the secure-storage plugin.
+        protocolsLockStoreProvider.overrideWith(
+          (ref) => lockStore ?? _FakeLockStore(),
+        ),
         protocolDayControllerProvider.overrideWith(
           () => controller ?? _FakeProtocolDayController(day),
         ),
@@ -255,6 +1842,9 @@ Future<void> _pumpView(
         recentCompoundIdsProvider.overrideWith(
           (ref) => Stream<List<String>>.value(const <String>[]),
         ),
+        activePurposesProvider.overrideWith(
+          (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+        ),
         // LogDoseSheet's OPTIONAL Protocol tag picker reads this;
         // no Protocols fixture here, so it renders "None (ad-hoc)" only.
         protocolOptionListProvider.overrideWith(
@@ -262,15 +1852,110 @@ Future<void> _pumpView(
             const <ProtocolOptionRecord>[],
           ),
         ),
+        protocolsClockProvider.overrideWithValue(() => _now),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
-        home: const ProtocolsDayView(),
+        home: home,
       ),
     ),
   );
+}
+
+/// An in-memory `ProtocolsLockStore`: no lock unless a test sets one.
+class _FakeLockStore implements ProtocolsLockStore {
+  bool enabled = false;
+  String? pinHash;
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<void> setEnabled(bool value) async {
+    enabled = value;
+  }
+
+  @override
+  Future<String?> readPinHash() async => pinHash;
+
+  @override
+  Future<void> writePinHash(String hash) async {
+    pinHash = hash;
+  }
+
+  @override
+  Future<void> clearPin() async {
+    pinHash = null;
+  }
+}
+
+class _NoBiometrics implements BiometricAuthenticator {
+  @override
+  Future<bool> isSupported() async => false;
+
+  @override
+  Future<bool> authenticate({required String reason}) async => false;
+}
+
+class _BannerPermissions implements TimerBackgroundScheduler {
+  _BannerPermissions(this.status);
+
+  TimerBackgroundPermissionStatus status;
+  int requests = 0;
+
+  @override
+  Future<TimerBackgroundPermissionStatus> notificationPermissionStatus() async {
+    return status;
+  }
+
+  @override
+  Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() async {
+    requests += 1;
+    status = TimerBackgroundPermissionStatus.granted;
+    return status;
+  }
+
+  @override
+  Future<TimerBackgroundPermissionStatus> schedule(
+    TimerBackgroundSchedule schedule,
+  ) async {
+    return status;
+  }
+
+  @override
+  Future<void> cancel(String timerId) async {}
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {}
+}
+
+class _BannerPlatform implements ProtocolReminderPlatform {
+  @override
+  Future<void> initialize({
+    required void Function(String? payload) onTap,
+  }) async {}
+
+  @override
+  Future<String?> launchPayload() async => null;
+
+  @override
+  Future<tz.Location> localLocation() async => tz.UTC;
+
+  @override
+  Future<List<PendingProtocolNotification>> pendingNotifications() async {
+    return const <PendingProtocolNotification>[];
+  }
+
+  @override
+  Future<void> schedule(ProtocolReminderNotification notification) async {}
+
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<void> openNotificationSettings() async {}
 }
 
 List<CompoundRecord> _seededCompounds() {
@@ -294,19 +1979,49 @@ List<CompoundRecord> _seededCompounds() {
 }
 
 class _FakeProtocolDayController extends ProtocolDayController {
-  _FakeProtocolDayController(this.day);
+  _FakeProtocolDayController(this.day, {this.plannedDay});
 
   final ProtocolDayRecord day;
+  final PlannedDay? plannedDay;
+  final loggedDoses = <DoseSnapshotDraft>[];
   int seedCalls = 0;
   int previousDayCount = 0;
   int nextDayCount = 0;
   final editedDoseIds = <String>[];
   final editedDrafts = <DoseSnapshotDraft>[];
   final deletedDoseIds = <String>[];
+  final skippedTargets = <PlannedDoseTarget>[];
+  final unskippedIds = <String>[];
 
   @override
   Stream<ProtocolDayState> build() {
-    return Stream<ProtocolDayState>.value(ProtocolDayState(day: day));
+    return Stream<ProtocolDayState>.value(
+      ProtocolDayState(day: day, plannedDay: plannedDay),
+    );
+  }
+
+  @override
+  Future<String> skipPlannedDose(PlannedDoseTarget target) async {
+    skippedTargets.add(target);
+    return 'batch-skip-${skippedTargets.length}';
+  }
+
+  @override
+  Future<String> unskipPlannedDose(String skipId) async {
+    unskippedIds.add(skipId);
+    return 'batch-unskip-${unskippedIds.length}';
+  }
+
+  @override
+  Future<LogDoseResult> logDose(
+    DoseSnapshotDraft draft, {
+    String? unskipId,
+  }) async {
+    loggedDoses.add(draft);
+    return LogDoseResult(
+      batchId: 'batch-log-${loggedDoses.length}',
+      doseId: 'dose-log-${loggedDoses.length}',
+    );
   }
 
   @override
@@ -343,10 +2058,272 @@ bool _chipSelected(WidgetTester tester, Key key) {
   return chip.selected;
 }
 
-ProtocolDayRecord _emptyDay() {
-  return ProtocolDayRecord(
-    localDate: const ProtocolDayDate(year: 2026, month: 6, day: 30),
-    doses: <DoseRecord>[],
+ProtocolDayRecord _emptyDay([
+  ProtocolDayDate localDate = const ProtocolDayDate(
+    year: 2026,
+    month: 6,
+    day: 30,
+  ),
+]) {
+  return ProtocolDayRecord(localDate: localDate, doses: <DoseRecord>[]);
+}
+
+/// "Now" for the Planned list fixtures: the afternoon of 2026-10-27.
+final DateTime _now = DateTime(2026, 10, 27, 15, 30);
+const _today = ProtocolDayDate(year: 2026, month: 10, day: 27);
+const _yesterday = ProtocolDayDate(year: 2026, month: 10, day: 26);
+const _tomorrow = ProtocolDayDate(year: 2026, month: 10, day: 28);
+const _start = ProtocolDayDate(year: 2026, month: 10, day: 1);
+
+/// CUJ 1's moment: 09:30, after the 09:00 doses and before the 17:00 one.
+final DateTime _cuj1Now = DateTime(2026, 10, 27, 9, 30);
+
+PlanMember _member(
+  String compoundId,
+  ScheduleRule rule,
+  PlanAmount amount,
+) {
+  return PlanMember(
+    memberId: 'm-$compoundId',
+    compoundId: compoundId,
+    versions: <ScheduleVersion>[
+      ScheduleVersion(
+        id: 'v-$compoundId',
+        effectiveFrom: _start,
+        rule: rule,
+        amount: amount,
+      ),
+    ],
+  );
+}
+
+ScheduleRule _dailyAt(String time) => TimedScheduleRule(
+      days: const DailyScheduleDays(),
+      times: <String>[time],
+    );
+
+/// Two Protocols: "Daily" (TRT and AgeMate at 09:00, creatine at 17:00) and
+/// "Night" (GHK-Cu at 21:00, and one untimed magnesium).
+List<PlanProtocol> _protocols() {
+  return <PlanProtocol>[
+    PlanProtocol(
+      protocolId: 'protocol-daily',
+      startLocalDate: _start,
+      members: <PlanMember>[
+        _member(
+          'c-trt',
+          _dailyAt('09:00'),
+          const PlanAmount(
+            amountValue: 0.5,
+            amountEntered: '0.5',
+            unit: DoseUnit.milliliter,
+            route: DoseRoute.intramuscular,
+          ),
+        ),
+        _member(
+          'c-agemate',
+          _dailyAt('09:00'),
+          const PlanAmount(
+            amountValue: 1,
+            amountEntered: '1',
+            unit: DoseUnit.capsule,
+            route: DoseRoute.oral,
+          ),
+        ),
+        _member(
+          'c-creatine',
+          _dailyAt('17:00'),
+          const PlanAmount(
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+          ),
+        ),
+      ],
+    ),
+    PlanProtocol(
+      protocolId: 'protocol-night',
+      startLocalDate: _start,
+      members: <PlanMember>[
+        _member(
+          'c-ghk',
+          _dailyAt('21:00'),
+          const PlanAmount(
+            amountValue: 2,
+            amountEntered: '2',
+            unit: DoseUnit.milligram,
+            route: DoseRoute.topical,
+          ),
+        ),
+        _member(
+          'c-magnesium',
+          UntimedScheduleRule(days: const DailyScheduleDays(), count: 1),
+          const PlanAmount(
+            amountValue: 400,
+            amountEntered: '400',
+            unit: DoseUnit.milligram,
+            route: DoseRoute.oral,
+          ),
+        ),
+      ],
+    ),
+  ];
+}
+
+/// The Planned list for [localDate] against [_today], built by the shared
+/// core exactly as the repository builds it.
+PlannedDay _plannedDay(
+  ProtocolDayDate localDate, {
+  List<PlanDose> doses = const <PlanDose>[],
+  List<PlanSkip> skips = const <PlanSkip>[],
+  List<PlanProtocol>? protocols,
+  ProtocolDayRecord? day,
+}) {
+  final days = planDays(protocols ?? _protocols(), localDate, localDate);
+  final isFuture = localDate.compareTo(_today) > 0;
+  final statuses =
+      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, skips, _today);
+  return PlannedDay(
+    localDate: localDate,
+    today: _today,
+    day: day ?? _emptyDay(localDate),
+    planDays: days,
+    dayStatuses: statuses,
+    rowStatuses: isFuture
+        ? dayStatuses(days, const <PlanDose>[], const <PlanSkip>[], localDate)
+        : statuses,
+    compounds: <String, CompoundRecord>{
+      for (final (id, name, unit) in <(String, String, DoseUnit)>[
+        ('c-trt', 'TRT', DoseUnit.milliliter),
+        ('c-agemate', 'AgeMate', DoseUnit.capsule),
+        ('c-creatine', 'Creatine', DoseUnit.gram),
+        ('c-ghk', 'GHK-Cu', DoseUnit.milligram),
+        ('c-magnesium', 'Magnesium', DoseUnit.milligram),
+      ])
+        id: CompoundRecord(
+          id: id,
+          name: name,
+          defaultUnit: unit,
+          defaultRoute: DoseRoute.oral,
+          updatedAt: DateTime.utc(2026, 10, 1),
+        ),
+    },
+    protocols: const <String, ProtocolOptionRecord>{
+      'protocol-daily':
+          ProtocolOptionRecord(id: 'protocol-daily', name: 'Daily'),
+      'protocol-night':
+          ProtocolOptionRecord(id: 'protocol-night', name: 'Night'),
+    },
+  );
+}
+
+/// A TRT Dose logged in Honolulu (UTC−10:00) at 08:40 on [_today] there,
+/// which is 18:40 UTC.
+DoseRecord _honoluluTrtDose() {
+  return DoseRecord(
+    id: 'dose-trt-honolulu',
+    compoundId: 'c-trt',
+    compoundName: 'TRT',
+    amountValue: 0.5,
+    amountEntered: '0.5',
+    unit: DoseUnit.milliliter,
+    route: DoseRoute.intramuscular,
+    tookAt: DateTime.utc(2026, 10, 27, 18, 40),
+    timezone: 'HST',
+    localDate: _today,
+    provenance: DoseProvenance.manual,
+    updatedAt: DateTime.utc(2026, 10, 27, 18, 40),
+    protocolId: 'protocol-daily',
+    protocolName: 'Daily',
+    timezoneOffsetMinutes: -600,
+  );
+}
+
+int _sequence = 0;
+
+PlanDose _planDose(String compoundId, ProtocolDayDate date, String time) {
+  _sequence += 1;
+  return PlanDose(
+    doseId: 'dose-$compoundId-$_sequence',
+    compoundId: compoundId,
+    localDate: date,
+    localTime: time,
+    sequence: 0,
+  );
+}
+
+/// A Planned list row; each fixture Compound has one slot, slot 0.
+Finder _rowFinder(String protocolId, String compoundId) =>
+    find.byKey(ProtocolsDayView.plannedRowKey(protocolId, compoundId, 0));
+
+String _rowText(WidgetTester tester, String protocolId, String compoundId) {
+  return tester
+      .widgetList<Text>(
+        find.descendant(
+          of: _rowFinder(protocolId, compoundId),
+          matching: find.byType(Text),
+        ),
+      )
+      .map((text) => text.data)
+      .join(' | ');
+}
+
+/// The row's label: its last Text.
+String? _rowLabel(WidgetTester tester, String protocolId, String compoundId) {
+  return tester
+      .widgetList<Text>(
+        find.descendant(
+          of: _rowFinder(protocolId, compoundId),
+          matching: find.byType(Text),
+        ),
+      )
+      .last
+      .data;
+}
+
+/// CUJ 1's "Daily" Protocol through the real repositories.
+Future<void> _seedDailyStack(TrainingRepositories repositories) async {
+  Future<String> compound(String name, DoseUnit unit, DoseRoute route) async {
+    final result = await repositories.protocols.createCompound(
+      CompoundDraft(name: name, defaultUnit: unit, defaultRoute: route),
+    );
+    return result.compoundId;
+  }
+
+  final trt = await compound(
+    'TRT',
+    DoseUnit.milliliter,
+    DoseRoute.intramuscular,
+  );
+  final ageMate = await compound('AgeMate', DoseUnit.capsule, DoseRoute.oral);
+  final creatine = await compound('Creatine', DoseUnit.gram, DoseRoute.oral);
+  ScheduleDraft dailyAt(
+      String time, String amount, DoseUnit unit, DoseRoute route) {
+    return ScheduleDraft(
+      rule: _dailyAt(time),
+      doseAmountValue: double.parse(amount),
+      doseAmountEntered: amount,
+      doseUnit: unit,
+      route: route,
+    );
+  }
+
+  final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+  await repositories.protocols.createProtocol(
+    ProtocolDraft(
+      name: 'Daily',
+      startLocalDate: today,
+      compoundIds: <String>[trt, ageMate, creatine],
+      remindersEnabled: true,
+      schedulesByCompoundId: <String, ScheduleDraft?>{
+        trt: dailyAt(
+            '09:00', '0.5', DoseUnit.milliliter, DoseRoute.intramuscular),
+        ageMate: dailyAt('09:00', '1', DoseUnit.capsule, DoseRoute.oral),
+        creatine: dailyAt('17:00', '5', DoseUnit.gram, DoseRoute.oral),
+      },
+    ),
+    today: today,
   );
 }
 
@@ -399,4 +2376,51 @@ Future<void> _pumpUntilFound(
     }
   }
   fail('Could not find $finder.');
+}
+
+/// The Protocols tab's list of Protocols, faked so it never reaches a real
+/// repository: one "Sleep stack" holding Magnesium, or none.
+List<Override> _protocolListOverrides({bool withProtocol = true}) {
+  return <Override>[
+    protocolListControllerProvider.overrideWith(
+      () => _StaticProtocolList(<ProtocolSummaryRecord>[
+        if (withProtocol)
+          ProtocolSummaryRecord(
+            id: 'protocol-sleep',
+            name: 'Sleep stack',
+            startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
+            compoundIds: const <String>['compound-magnesium'],
+          ),
+      ]),
+    ),
+    protocolMemberCompoundNamesProvider(
+      CompoundNameLookupRequest(const <String>['compound-magnesium']),
+    ).overrideWith(
+      (ref) => Stream<Map<String, String>>.value(
+        const <String, String>{'compound-magnesium': 'Magnesium'},
+      ),
+    ),
+  ];
+}
+
+class _StaticProtocolList extends ProtocolListController {
+  _StaticProtocolList(this.protocols);
+
+  final List<ProtocolSummaryRecord> protocols;
+
+  @override
+  Stream<List<ProtocolSummaryRecord>> build() {
+    return Stream<List<ProtocolSummaryRecord>>.value(protocols);
+  }
+}
+
+/// Waits, outside a widget test, for a Drift watch to reach [condition].
+Future<void> _waitForCondition(bool Function() condition) async {
+  final stopwatch = Stopwatch()..start();
+  while (!condition()) {
+    if (stopwatch.elapsed > const Duration(seconds: 2)) {
+      fail('Timed out waiting for condition.');
+    }
+    await pumpEventQueue();
+  }
 }

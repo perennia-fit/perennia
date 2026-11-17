@@ -71,7 +71,7 @@ void main() {
       expect(tile.onChanged, isNull);
       expect(
         find.text(
-          'Supplements stays hidden because secure storage is unavailable',
+          'Protocols stay hidden because secure storage is unavailable',
         ),
         findsOneWidget,
       );

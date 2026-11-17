@@ -75,7 +75,7 @@ export type AgentActivityUndoEntryResult = {
   "outcome": AgentActivityUndoOutcome;
 };
 
-export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported";
+export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported" | "skipped_dependent";
 
 export type AgentAnalyticsPoint = {
   "setId": string;
@@ -134,6 +134,7 @@ export type AgentCompoundBatchWriteCompound = {
   "defaultUnit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
   "defaultRoute": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "strength"?: AgentCompoundStrengthInput;
+  "purposeIds"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -152,7 +153,7 @@ export type AgentCompoundBatchWriteResponse = {
   "compounds": Array<AgentProtocolsEntityBatchWriteResult>;
 };
 
-export type AgentCompoundField = "id" | "name" | "defaultUnit" | "defaultRoute" | "strength" | "updatedAt" | "deletedAt";
+export type AgentCompoundField = "id" | "name" | "defaultUnit" | "defaultRoute" | "strength" | "purposeIds" | "updatedAt" | "deletedAt";
 
 export type AgentCompoundListItem = {
   "id": string;
@@ -160,6 +161,7 @@ export type AgentCompoundListItem = {
   "defaultUnit"?: "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
   "defaultRoute"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "strength"?: AgentCompoundStrength;
+  "purposeIds"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -208,6 +210,7 @@ export type AgentDoseBatchWriteDose = {
   "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "tookAt": string;
   "timezone": string;
+  "timezoneOffsetMinutes"?: number;
   "localDate": string;
   "protocolId"?: string | null;
   "protocolName"?: string | null;
@@ -236,7 +239,7 @@ export type AgentDoseBatchWriteResult = {
   "warnings": Array<AgentDoseValidationIssue>;
 };
 
-export type AgentDoseField = "id" | "compoundId" | "compoundName" | "compoundStrength" | "amountValue" | "amountEntered" | "unit" | "route" | "tookAt" | "timezone" | "localDate" | "provenance" | "protocolId" | "protocolName" | "updatedAt" | "deletedAt";
+export type AgentDoseField = "id" | "compoundId" | "compoundName" | "compoundStrength" | "amountValue" | "amountEntered" | "unit" | "route" | "tookAt" | "timezone" | "timezoneOffsetMinutes" | "localDate" | "provenance" | "protocolId" | "protocolName" | "updatedAt" | "deletedAt";
 
 export type AgentDoseListItem = {
   "id": string;
@@ -249,6 +252,7 @@ export type AgentDoseListItem = {
   "route"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "tookAt"?: string;
   "timezone"?: string;
+  "timezoneOffsetMinutes"?: number | null;
   "localDate"?: string;
   "provenance"?: string;
   "protocolId"?: string | null;
@@ -412,9 +416,10 @@ export type AgentExercise = {
   "id": string;
   "library": AgentExerciseLibrary;
   "name": string;
-  "category": AgentExerciseCategory;
+  "category": NullableAgentExerciseCategory;
   "dimensions": Array<AgentExerciseDimensionId>;
   "equipment": Array<string>;
+  "focusIds"?: Array<string>;
   "loadMode": AgentExerciseLoadMode;
   "recordProfile": AgentExerciseRecordProfile;
   "favorite": boolean;
@@ -435,6 +440,7 @@ export type AgentExerciseAnalyticsResponse = {
   "maxLoadSeries": AgentDerivedSeries;
   "repMaxSeries": Array<AgentAnalyticsRecord>;
   "periodStats": AgentPeriodStats;
+  "progressSeries": NullableAgentProgressSeries;
 };
 
 export type AgentExerciseCatalogBatchWriteCategory = {
@@ -465,6 +471,7 @@ export type AgentExerciseCatalogBatchWriteExercise = {
   "usesRpe"?: boolean;
   "isFavorite"?: boolean;
   "equipment"?: Array<string>;
+  "focusIds"?: Array<string>;
   "notes"?: string | null;
   "customizesExerciseId"?: string | null;
   "updatedAt"?: string;
@@ -510,15 +517,16 @@ export type AgentExerciseDimensionId = "load" | "reps" | "duration" | "distance"
 
 export type AgentExerciseLibrary = "user" | "platform";
 
-export type AgentExerciseListField = "id" | "name" | "library" | "category" | "dimensions" | "equipment" | "loadMode" | "recordProfile" | "favorite" | "active" | "shadowedPlatformExerciseId";
+export type AgentExerciseListField = "id" | "name" | "library" | "category" | "dimensions" | "equipment" | "focusIds" | "loadMode" | "recordProfile" | "favorite" | "active" | "shadowedPlatformExerciseId";
 
 export type AgentExerciseListItem = {
   "id": string;
   "name": string;
   "library"?: AgentExerciseLibrary;
-  "category"?: AgentExerciseCategory;
+  "category"?: NullableAgentExerciseCategory;
   "dimensions"?: Array<AgentExerciseDimensionId>;
   "equipment"?: Array<string>;
+  "focusIds"?: Array<string>;
   "loadMode"?: AgentExerciseLoadMode;
   "recordProfile"?: AgentExerciseRecordProfile;
   "favorite"?: boolean;
@@ -550,6 +558,17 @@ export type AgentExerciseResolveResponse = {
   "matchedExercise": NullableAgentExercise;
   "candidates": Array<AgentExercise>;
   "guidance": NullableAgentExerciseResolveGuidance;
+};
+
+export type AgentFocus = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+  "starter": boolean;
+};
+
+export type AgentFocusListResponse = {
+  "focuses": Array<AgentFocus>;
 };
 
 export type AgentFoodBatchWriteFood = {
@@ -606,6 +625,25 @@ export type AgentFoodBatchWriteResult = {
 };
 
 export type AgentFoodField = "id" | "name" | "foodSource" | "nutrientsPer100" | "isLiquid" | "servingLabel" | "servingSize" | "packageSize" | "isRecipe" | "recipeServingCount" | "updatedAt" | "deletedAt";
+
+export type AgentFoodHistoryItem = {
+  "foodSource": string;
+  "foodId": string;
+  "lastLoggedName": string;
+  "recentCount": number;
+  "lastLoggedAt": string;
+  "lastPortion": {
+  "value": number;
+  "entered": string;
+  "unit": string;
+} | null;
+};
+
+export type AgentFoodHistoryResponse = {
+  "items": Array<AgentFoodHistoryItem>;
+  "limit": number;
+  "totalMatched": number;
+};
 
 export type AgentFoodListItem = {
   "id": string;
@@ -701,13 +739,20 @@ export type AgentMealBatchWriteEntryResult = {
   "warnings": Array<AgentNutrientValidationIssue>;
 };
 
+export type AgentMealBatchWriteIssue = AgentNutrientValidationIssue & {
+  "itemIndex": number | null;
+  "entryId": string | null;
+};
+
 export type AgentMealBatchWriteMeal = {
   "id": string;
-  "mealType": string;
-  "startedAt": string;
+  "mealType"?: string;
+  "startedAt"?: string;
   "endedAt"?: string | null;
-  "timezone": string;
-  "localDate": string;
+  "timezone"?: string;
+  "timezoneOffsetMinutes"?: number;
+  "localDate"?: string;
+  "timePrecision"?: "instant" | "date";
   "deletedAt"?: string | null;
 };
 
@@ -725,6 +770,7 @@ export type AgentMealBatchWriteResponse = {
   "mealId": string;
   "serverClock": string;
   "entries": Array<AgentMealBatchWriteEntryResult>;
+  "warnings": Array<AgentMealBatchWriteIssue>;
 };
 
 export type AgentMealEntry = {
@@ -747,7 +793,24 @@ export type AgentMealEntry = {
   "updatedAt": string;
 };
 
-export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "entries";
+export type AgentMealHistoryFood = {
+  "foodSource": string;
+  "foodId": string;
+  "name": string;
+};
+
+export type AgentMealHistoryItem = {
+  "foods": Array<AgentMealHistoryFood>;
+  "count": number;
+  "lastMealId": string;
+  "lastStartedAt": string;
+};
+
+export type AgentMealHistoryResponse = {
+  "items": Array<AgentMealHistoryItem>;
+};
+
+export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "timezoneOffsetMinutes" | "timePrecision" | "entries";
 
 export type AgentMealListItem = {
   "id": string;
@@ -756,6 +819,8 @@ export type AgentMealListItem = {
   "endedAt"?: string | null;
   "timezone"?: string;
   "localDate"?: string;
+  "timezoneOffsetMinutes"?: number | null;
+  "timePrecision"?: "instant" | "date";
   "entries"?: Array<AgentMealEntry>;
 };
 
@@ -768,6 +833,16 @@ export type AgentMealListResponse = {
 };
 
 export type AgentMealPortionUnit = "gram" | "milliliter" | "ounce" | "fluidOunce" | "serving" | "package";
+
+export type AgentMealTypeItem = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+};
+
+export type AgentMealTypesResponse = {
+  "mealTypes": Array<AgentMealTypeItem>;
+};
 
 export type AgentMetricBatchWriteMetric = {
   "id": string;
@@ -883,6 +958,7 @@ export type AgentMetricReadingListItem = {
   "warnings"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
+  "trendValue"?: number;
 };
 
 export type AgentMetricReadingTimeAnchor = {
@@ -976,6 +1052,22 @@ export type AgentMonitoringSummaryReading = {
   "source": string;
   "externalId": string | null;
   "updatedAt": string;
+};
+
+export type AgentNewBest = {
+  "exerciseId": string;
+  "exerciseName": string;
+  "measure": AgentProgressMeasure;
+  "workoutId": string;
+  "localDate": string;
+  "startedAt": string;
+  "setId": string;
+  "value": number;
+  "unit": AgentReadTrainingUnit;
+};
+
+export type AgentNewBestsResponse = {
+  "newBests": Array<AgentNewBest>;
 };
 
 export type AgentNutrientGoalProgress = {
@@ -1408,6 +1500,7 @@ export type AgentPlanTreeBatchWriteWorkoutTemplate = {
   "id": string;
   "name": string;
   "notes"?: string | null;
+  "focusId"?: string | null;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -1458,6 +1551,9 @@ export type AgentPlatformFood = {
   "servingLabel": string | null;
   "servingSize": number | null;
   "packageSize": number | null;
+  "brand": string | null;
+  "sourceModifiedAt": string | null;
+  "productUrl": string | null;
 };
 
 export type AgentPlatformFoodAttribution = {
@@ -1467,9 +1563,152 @@ export type AgentPlatformFoodAttribution = {
   "sourceUrl": string;
   "licenseName": string;
   "attributionText": string;
+  "disclaimer": string | null;
 };
 
-export type AgentPlatformFoodSource = "usda";
+export type AgentPlatformFoodSource = "usda" | "openFoodFacts";
+
+export type AgentProfile = {
+  "sections": {
+  "aboutYou": AgentProfileAboutYouSection;
+  "trainingGoals": AgentProfileTrainingGoalsSection;
+  "experience": AgentProfileExperienceSection;
+  "trainingSetup": AgentProfileTrainingSetupSection;
+  "healthLimitations": AgentProfileHealthLimitationsSection;
+  "generalNotes": AgentProfileGeneralNotesSection;
+};
+};
+
+export type AgentProfileAboutYouSection = {
+  "values": {
+  "sex": string | null;
+  "birthYear": number | null;
+  "height": AgentProfileHeight;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileBatchWriteRequest = {
+  "idempotencyKey": string;
+  "updatedAt"?: string;
+  "sections": AgentProfileBatchWriteSections;
+};
+
+export type AgentProfileBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "profile": AgentProfile & unknown;
+  "warnings": Array<AgentProfileValidationIssue>;
+};
+
+export type AgentProfileBatchWriteSections = {
+  "aboutYou"?: {
+  "sex"?: string | null;
+  "birthYear"?: number | null;
+  "height"?: {
+  "value": number;
+  "unit": string;
+} | null;
+};
+  "trainingGoals"?: {
+  "goals"?: Array<string> | null;
+};
+  "experience"?: {
+  "levels"?: Array<{
+  "focusId": string;
+  "level": string;
+}> | null;
+};
+  "trainingSetup"?: {
+  "equipment"?: Array<string> | null;
+  "daysPerWeek"?: number | null;
+  "sessionMinutes"?: number | null;
+};
+  "healthLimitations"?: {
+  "text"?: string | null;
+  "none"?: boolean | null;
+};
+  "generalNotes"?: {
+  "text"?: string | null;
+};
+};
+
+export type AgentProfileExperienceEntry = {
+  "focusId": string;
+  "level": string;
+};
+
+export type AgentProfileExperienceSection = {
+  "values": {
+  "levels": Array<AgentProfileExperienceEntry> | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileGeneralNotesSection = {
+  "values": {
+  "text": string | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileHealthLimitationsSection = {
+  "values": {
+  "text": string | null;
+  "none": boolean;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileHeight = {
+  "value": number;
+  "unit": string;
+} | null;
+
+export type AgentProfileTrainingGoalsSection = {
+  "values": {
+  "goals": Array<string> | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileTrainingSetupSection = {
+  "values": {
+  "equipment": Array<string> | null;
+  "daysPerWeek": number | null;
+  "sessionMinutes": number | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileValidationIssue = {
+  "section": string;
+  "field": string;
+  "rule": string;
+  "message": string;
+};
+
+export type AgentProgressMeasure = "estimatedOneRepMax" | "maxLoad" | "maxReps" | "maxDuration" | "minDuration" | "maxDistance" | "fastestPace";
+
+export type AgentProgressPoint = {
+  "workoutId": string;
+  "localDate": string;
+  "startedAt": string;
+  "setId": string;
+  "value": number;
+  "unit": AgentReadTrainingUnit;
+  "isNewBest": boolean;
+};
+
+export type AgentProgressSeries = {
+  "exerciseId": string;
+  "measure": AgentProgressMeasure;
+  "betterIs": "higher" | "lower";
+  "points": Array<AgentProgressPoint>;
+};
 
 export type AgentProteinCohort = {
   "dayCount": number;
@@ -1482,12 +1721,15 @@ export type AgentProteinCohort = {
 export type AgentProtocol = {
   "id": string;
   "name": string;
-  "startDate": string | null;
-  "endDate": string | null;
+  "startLocalDate": string | null;
+  "endLocalDate": string | null;
+  "period": AgentProtocolPeriod;
+  "remindersEnabled": boolean;
+  "archivedOn": string | null;
+  "hasHistory": boolean;
   "updatedAt": string;
   "deletedAt": string | null;
   "members": Array<AgentProtocolMember>;
-  "schedules": Array<AgentProtocolSchedule>;
   "targetOutcomes": Array<AgentProtocolTargetOutcome>;
 };
 
@@ -1496,16 +1738,18 @@ export type AgentProtocolBatchWriteMember = {
   "compoundId": string;
   "position"?: number;
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
+  "archived"?: boolean;
 };
 
 export type AgentProtocolBatchWriteProtocol = {
   "id": AgentProtocolsClientRowId & unknown;
   "name": string;
-  "startDate"?: string | null;
-  "endDate"?: string | null;
+  "startLocalDate": string;
+  "endLocalDate"?: string | null;
+  "period"?: AgentProtocolPeriod;
+  "remindersEnabled"?: boolean;
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
+  "archived"?: boolean;
   "members"?: Array<AgentProtocolBatchWriteMember>;
   "schedules"?: Array<AgentProtocolBatchWriteSchedule>;
   "targetOutcomes"?: Array<AgentProtocolBatchWriteTargetOutcome>;
@@ -1513,6 +1757,7 @@ export type AgentProtocolBatchWriteProtocol = {
 
 export type AgentProtocolBatchWriteRequest = {
   "idempotencyKey": string;
+  "today": string;
   "protocols": Array<AgentProtocolBatchWriteProtocol>;
 };
 
@@ -1523,26 +1768,78 @@ export type AgentProtocolBatchWriteResponse = {
   "batchId": string;
   "serverClock": string;
   "protocols": Array<AgentProtocolsEntityBatchWriteResult>;
+  "warnings": Array<AgentProtocolsBatchWriteIssue>;
 };
 
 export type AgentProtocolBatchWriteSchedule = {
   "id": AgentProtocolsClientRowId & unknown;
   "protocolCompoundId": string;
+  "rule": AgentScheduleRule;
   "doseAmountValue"?: number | null;
   "doseAmountEntered"?: string | null;
   "doseUnit"?: "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
-  "frequency": string;
   "route"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
 };
 
 export type AgentProtocolBatchWriteTargetOutcome = {
   "id": AgentProtocolsClientRowId & unknown;
   "metricId"?: string | null;
-  "outcomeKind"?: string;
+  "outcomeKind"?: "metric" | "performance";
+  "position"?: number;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
+};
+
+export type AgentProtocolDayStatus = {
+  "compoundId": string;
+  "localDate": string;
+  "status": "not_planned" | "paused" | "off_cycle" | "pending" | "logged" | "partly_logged" | "not_logged" | "skipped";
+  "notPlannedReason"?: "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside";
+  "plannedCount": number;
+  "loggedCount": number;
+  "skippedCount": number;
+  "extraCount": number;
+  "fills"?: Array<AgentProtocolDayStatusFill>;
+};
+
+export type AgentProtocolDayStatusFill = {
+  "slot": number;
+  "protocolId": string;
+  "plannedLocalTime": string | null;
+  "amountValue": number | null;
+  "amountEntered": string | null;
+  "unit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
+  "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
+  "doseId": string | null;
+  "skipId": string | null;
+};
+
+export type AgentProtocolDayStatusesResponse = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "today": string;
+  "detail": "summary" | "doses";
+  "dayStatuses": Array<AgentProtocolDayStatus>;
+};
+
+export type AgentProtocolDeleteRequest = {
+  "idempotencyKey": string;
+  "protocolIds": Array<string>;
+};
+
+export type AgentProtocolDeleteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "protocols": Array<AgentProtocolDeleteResult>;
+};
+
+export type AgentProtocolDeleteResult = {
+  "id": string;
+  "outcome": "deleted" | "already_deleted";
 };
 
 export type AgentProtocolListResponse = {
@@ -1556,28 +1853,106 @@ export type AgentProtocolMember = {
   "id": string;
   "compoundId": string;
   "position": number;
+  "archivedOn": string | null;
+  "versions": Array<AgentProtocolScheduleVersion>;
+  "currentVersion": AgentProtocolScheduleVersion & Record<string, unknown> | null;
   "updatedAt": string;
   "deletedAt": string | null;
 };
 
-export type AgentProtocolSchedule = {
+export type AgentProtocolPeriod = {
+  "v": 1;
+  "cycle"?: {
+  "on_days": number;
+  "off_days": number;
+  "anchor": string;
+  "anchor_is_default": boolean;
+} | null;
+  "pauses": Array<{
+  "from": string;
+  "to": string;
+}>;
+} | null;
+
+export type AgentProtocolPlannedDay = {
+  "protocolId": string;
+  "compoundId": string;
+  "localDate": string;
+  "state": "planned" | "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside" | "paused" | "off_cycle";
+  "planned": Array<AgentProtocolPlannedDose>;
+  "archiveDay": boolean;
+};
+
+export type AgentProtocolPlannedDaysResponse = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "plannedDays": Array<AgentProtocolPlannedDay>;
+};
+
+export type AgentProtocolPlannedDose = {
+  "localTime": string | null;
+  "amountValue": number | null;
+  "amountEntered": string | null;
+  "unit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
+  "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
+};
+
+export type AgentProtocolScheduleVersion = {
   "id": string;
   "protocolCompoundId": string;
+  "effectiveFrom": string;
+  "rule": AgentScheduleRule;
   "doseAmountValue": number | null;
   "doseAmountEntered": string | null;
   "doseUnit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
-  "frequency": string;
   "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "updatedAt": string;
-  "deletedAt": string | null;
+};
+
+export type AgentProtocolSkipBatchWriteRequest = {
+  "idempotencyKey": string;
+  "today": string;
+  "skips": Array<AgentProtocolSkipBatchWriteSkip>;
+};
+
+export type AgentProtocolSkipBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "skips": Array<AgentProtocolSkipBatchWriteResult>;
+};
+
+export type AgentProtocolSkipBatchWriteResult = {
+  "id": string;
+  "outcome": "applied" | "superseded" | "duplicate" | "refused";
+};
+
+export type AgentProtocolSkipBatchWriteSkip = {
+  "id": string;
+  "protocolId": string;
+  "compoundId": string;
+  "localDate": string;
+  "plannedLocalTime": string | null;
+  "deletedAt"?: string | null;
 };
 
 export type AgentProtocolTargetOutcome = {
   "id": string;
   "metricId": string | null;
   "outcomeKind": string;
+  "position": number;
   "updatedAt": string;
   "deletedAt": string | null;
+};
+
+export type AgentProtocolsBatchWriteIssue = {
+  "field": string;
+  "rule": string;
+  "message": string;
+  "itemIndex": number;
+  "entityId": string | null;
 };
 
 export type AgentProtocolsClientRowId = string | string;
@@ -1586,6 +1961,39 @@ export type AgentProtocolsEntityBatchWriteResult = {
   "id": string;
   "name": string | null;
   "outcome": "applied" | "superseded" | "duplicate" | "refused";
+};
+
+export type AgentPurpose = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+  "starter": boolean;
+  "deletedAt": string | null;
+};
+
+export type AgentPurposeBatchWritePurpose = {
+  "id": AgentProtocolsClientRowId & unknown;
+  "name": string;
+  "sortOrder": number;
+  "deletedAt"?: string | null;
+};
+
+export type AgentPurposeBatchWriteRequest = {
+  "idempotencyKey": string;
+  "purposes": Array<AgentPurposeBatchWritePurpose>;
+};
+
+export type AgentPurposeBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "purposes": Array<AgentProtocolsEntityBatchWriteResult>;
+};
+
+export type AgentPurposeListResponse = {
+  "purposes": Array<AgentPurpose>;
 };
 
 export type AgentReadDimensionId = "load" | "reps" | "duration" | "distance";
@@ -1651,6 +2059,8 @@ export type AgentRoutineListResponse = {
   "nextCursor": string | null;
   "totalMatched": number;
 };
+
+export type AgentScheduleRule = unknown;
 
 export type AgentSetDimensionId = "load" | "reps" | "duration" | "distance";
 
@@ -1759,6 +2169,12 @@ export type AgentSettingsReadResponse = {
   "updatedAt": string | null;
 };
 
+export type AgentTrainingDay = {
+  "localDate": string;
+  "workoutCount": number;
+  "secondsByFocus": Record<string, unknown>;
+};
+
 export type AgentTrainingDayNutritionResponse = {
   "from": string;
   "to": string;
@@ -1777,6 +2193,33 @@ export type AgentTrainingDayNutritionResponse = {
   "workoutPointLimit": number;
   "truncated": boolean;
 };
+};
+
+export type AgentTrainingDayStatus = "done" | "partly_done" | "done_differently" | "not_done" | "pending" | "planned" | "trained" | "rest" | "no_plan";
+
+export type AgentTrainingDaysResponse = {
+  "days": Array<AgentTrainingDay>;
+  "trainedDayCount": number;
+  "week": {
+  "weekStart": string;
+  "days": Array<AgentTrainingWeekDay>;
+  "counts": {
+  "done": number;
+  "partlyDone": number;
+  "doneDifferently": number;
+  "notDone": number;
+  "trained": number;
+};
+  "comparedRoutineIds": Array<string>;
+};
+};
+
+export type AgentTrainingWeekDay = {
+  "localDate": string;
+  "status": AgentTrainingDayStatus;
+  "plannedCount": number;
+  "matchedCount": number;
+  "workoutCount": number;
 };
 
 export type AgentWorkoutBatchWriteRequest = {
@@ -1824,6 +2267,7 @@ export type AgentWorkoutBatchWriteWorkout = {
   "endedAt"?: string | null;
   "timezone": string;
   "comment"?: string | null;
+  "focusId"?: string | null;
   "deletedAt"?: string | null;
 };
 
@@ -1852,6 +2296,7 @@ export type AgentWorkoutDetailWorkout = {
   "localDate": string | null;
   "endedAt": string | null;
   "comment": string | null;
+  "focusId"?: string | null;
   "updatedAt": string;
   "active": boolean;
 };
@@ -1902,7 +2347,7 @@ export type AgentWorkoutFuelling = {
   "minutesUntilPostWorkoutMeal": number | null;
 };
 
-export type AgentWorkoutListField = "id" | "startedAt" | "endedAt" | "timezone" | "comment" | "setCount" | "exerciseNames";
+export type AgentWorkoutListField = "id" | "startedAt" | "endedAt" | "timezone" | "comment" | "focusId" | "setCount" | "exerciseNames";
 
 export type AgentWorkoutListItem = {
   "id": string;
@@ -1910,6 +2355,7 @@ export type AgentWorkoutListItem = {
   "endedAt"?: string | null;
   "timezone"?: string | null;
   "comment"?: string | null;
+  "focusId"?: string | null;
   "setCount"?: number;
   "exerciseNames"?: Array<string>;
 };
@@ -1926,6 +2372,7 @@ export type AgentWorkoutTemplateDetail = {
   "id": string;
   "name": string;
   "notes": string | null;
+  "focusId": string | null;
   "exercises": Array<AgentPlanTemplateExercise>;
   "groups": Array<AgentPlanTemplateGroup>;
   "exerciseCount": number;
@@ -1950,12 +2397,13 @@ export type AgentWorkoutTemplateLink = {
   "active": boolean;
 };
 
-export type AgentWorkoutTemplateListField = "id" | "name" | "notes" | "exerciseCount" | "groupCount" | "updatedAt" | "deletedAt";
+export type AgentWorkoutTemplateListField = "id" | "name" | "notes" | "focusId" | "exerciseCount" | "groupCount" | "updatedAt" | "deletedAt";
 
 export type AgentWorkoutTemplateListItem = {
   "id": string;
   "name": string;
   "notes"?: string | null;
+  "focusId"?: string | null;
   "exerciseCount"?: number;
   "groupCount"?: number;
   "updatedAt"?: string;
@@ -1974,6 +2422,8 @@ export type NullableAgentAnalyticsRecord = AgentAnalyticsRecord | unknown | null
 
 export type NullableAgentExercise = AgentExercise | unknown | null;
 
+export type NullableAgentExerciseCategory = AgentExerciseCategory | unknown | null;
+
 export type NullableAgentExerciseResolveGuidance = AgentExerciseResolveGuidance | unknown | null;
 
 export type NullableAgentHistorySetCategory = AgentHistorySetCategory | unknown | null;
@@ -1981,6 +2431,8 @@ export type NullableAgentHistorySetCategory = AgentHistorySetCategory | unknown 
 export type NullableAgentMonitoringHeartRateSummary = AgentMonitoringHeartRateSummary | unknown | null;
 
 export type NullableAgentMonitoringRouteSummary = AgentMonitoringRouteSummary | unknown | null;
+
+export type NullableAgentProgressSeries = AgentProgressSeries | unknown | null;
 
 export type GetAgentEnergyBalanceInput = {
   "from": string;
@@ -2053,6 +2505,7 @@ export type ListAgentActivityInput = {
 export type ListAgentCompoundsInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
+  "purpose"?: string;
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
@@ -2073,11 +2526,16 @@ export type ListAgentDosesInput = {
 export type ListAgentExercisesInput = {
   "search"?: string;
   "category"?: string;
+  "focus"?: string;
   "favorite"?: "true" | "false";
   "activeOnly"?: "true" | "false";
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
+};
+
+export type ListAgentFoodHistoryInput = {
+  "limit"?: number;
 };
 
 export type ListAgentFoodsInput = {
@@ -2101,6 +2559,10 @@ export type ListAgentHistorySetsInput = {
   "cursor"?: string;
 };
 
+export type ListAgentMealHistoryInput = {
+  "limit"?: number;
+};
+
 export type ListAgentMealsInput = {
   "from"?: string;
   "to"?: string;
@@ -2117,6 +2579,7 @@ export type ListAgentMetricReadingsInput = {
   "provenance"?: string;
   "source"?: string;
   "includeArchived"?: boolean | null;
+  "includeTrend"?: "true" | "false";
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
@@ -2133,11 +2596,36 @@ export type ListAgentMetricsInput = {
   "fields"?: string;
 };
 
+export type ListAgentNewBestsInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+};
+
+export type ListAgentProtocolDayStatusesInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "compoundId"?: string;
+  "protocolId"?: string;
+  "today": string;
+  "detail"?: "summary" | "doses";
+};
+
+export type ListAgentProtocolPlannedDaysInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "compoundId"?: string;
+  "protocolId"?: string;
+};
+
 export type ListAgentProtocolsInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
   "limit"?: number;
   "cursor"?: string;
+};
+
+export type ListAgentPurposesInput = {
+  "includeArchived"?: "true" | "false";
 };
 
 export type ListAgentRoutinesInput = {
@@ -2146,6 +2634,12 @@ export type ListAgentRoutinesInput = {
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
+};
+
+export type ListAgentTrainingDaysInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "today": string;
 };
 
 export type ListAgentWorkoutsInput = {
@@ -2171,6 +2665,7 @@ export type ReadAgentEffectWindowInput = {
   "metricKey"?: string;
   "from": string;
   "to": string;
+  "timezoneOffsetMinutes"?: number | null;
 };
 
 export type ResolveAgentExerciseNameInput = {
@@ -2197,11 +2692,15 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "batchWriteAgentMetrics",
   "batchWriteAgentNutritionGoals",
   "batchWriteAgentPlanTree",
+  "batchWriteAgentProfile",
+  "batchWriteAgentProtocolSkips",
   "batchWriteAgentProtocols",
+  "batchWriteAgentPurposes",
   "batchWriteAgentSettings",
   "batchWriteAgentWorkout",
   "captureAgentWorkoutTemplate",
   "createAgentApiKey",
+  "deleteAgentProtocols",
   "getAgentEnergyBalance",
   "getAgentExerciseAnalytics",
   "getAgentMonitoringActivity",
@@ -2217,18 +2716,28 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentCompounds",
   "listAgentDoses",
   "listAgentExercises",
+  "listAgentFocuses",
+  "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
+  "listAgentMealHistory",
+  "listAgentMealTypes",
   "listAgentMeals",
   "listAgentMetricReadings",
   "listAgentMetrics",
+  "listAgentNewBests",
   "listAgentNutritionGoals",
+  "listAgentProtocolDayStatuses",
+  "listAgentProtocolPlannedDays",
   "listAgentProtocols",
+  "listAgentPurposes",
   "listAgentRoutines",
+  "listAgentTrainingDays",
   "listAgentWorkoutTemplates",
   "listAgentWorkouts",
   "materializeAgentWorkoutTemplate",
   "readAgentEffectWindow",
+  "readAgentProfile",
   "readAgentSettings",
   "resolveAgentExerciseName",
   "revokeAgentApiKey",
@@ -2357,10 +2866,40 @@ export class PerenniaAgentClient {
     });
   }
 
+  async batchWriteAgentProfile(body: AgentProfileBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProfileBatchWriteResponse> {
+    return this.request<AgentProfileBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/profile/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
   async batchWriteAgentProtocols(body: AgentProtocolBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProtocolBatchWriteResponse> {
     return this.request<AgentProtocolBatchWriteResponse>({
       method: "POST",
       path: "/agent/protocols/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentProtocolSkips(body: AgentProtocolSkipBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProtocolSkipBatchWriteResponse> {
+    return this.request<AgentProtocolSkipBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/protocols/skips/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentPurposes(body: AgentPurposeBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentPurposeBatchWriteResponse> {
+    return this.request<AgentPurposeBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/protocols/purposes/batch-write",
       expectedStatus: 200,
       body: body,
       signal: options.signal
@@ -2402,6 +2941,16 @@ export class PerenniaAgentClient {
       method: "POST",
       path: "/agent/api-keys",
       expectedStatus: 201,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async deleteAgentProtocols(body: AgentProtocolDeleteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProtocolDeleteResponse> {
+    return this.request<AgentProtocolDeleteResponse>({
+      method: "POST",
+      path: "/agent/protocols/delete",
+      expectedStatus: 200,
       body: body,
       signal: options.signal
     });
@@ -2528,7 +3077,7 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/protocols/compounds",
       expectedStatus: 200,
-      query: { "search": input.search, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "search": input.search, "includeArchived": input.includeArchived, "purpose": input.purpose, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
       signal: options.signal
     });
   }
@@ -2548,7 +3097,26 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/exercises",
       expectedStatus: 200,
-      query: { "search": input.search, "category": input.category, "favorite": input.favorite, "activeOnly": input.activeOnly, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "search": input.search, "category": input.category, "focus": input.focus, "favorite": input.favorite, "activeOnly": input.activeOnly, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentFocuses(options: AgentClientRequestOptions = {}): Promise<AgentFocusListResponse> {
+    return this.request<AgentFocusListResponse>({
+      method: "GET",
+      path: "/agent/focuses",
+      expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
+  async listAgentFoodHistory(input: ListAgentFoodHistoryInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentFoodHistoryResponse> {
+    return this.request<AgentFoodHistoryResponse>({
+      method: "GET",
+      path: "/agent/foods/history",
+      expectedStatus: 200,
+      query: { "limit": input.limit },
       signal: options.signal
     });
   }
@@ -2573,6 +3141,16 @@ export class PerenniaAgentClient {
     });
   }
 
+  async listAgentMealHistory(input: ListAgentMealHistoryInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMealHistoryResponse> {
+    return this.request<AgentMealHistoryResponse>({
+      method: "GET",
+      path: "/agent/meals/history",
+      expectedStatus: 200,
+      query: { "limit": input.limit },
+      signal: options.signal
+    });
+  }
+
   async listAgentMeals(input: ListAgentMealsInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMealListResponse> {
     return this.request<AgentMealListResponse>({
       method: "GET",
@@ -2583,12 +3161,21 @@ export class PerenniaAgentClient {
     });
   }
 
+  async listAgentMealTypes(options: AgentClientRequestOptions = {}): Promise<AgentMealTypesResponse> {
+    return this.request<AgentMealTypesResponse>({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
   async listAgentMetricReadings(input: ListAgentMetricReadingsInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMetricReadingsResponse> {
     return this.request<AgentMetricReadingsResponse>({
       method: "GET",
       path: "/agent/metrics/readings",
       expectedStatus: 200,
-      query: { "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "provenance": input.provenance, "source": input.source, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "provenance": input.provenance, "source": input.source, "includeArchived": input.includeArchived, "includeTrend": input.includeTrend, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
       signal: options.signal
     });
   }
@@ -2603,11 +3190,41 @@ export class PerenniaAgentClient {
     });
   }
 
+  async listAgentNewBests(input: ListAgentNewBestsInput, options: AgentClientRequestOptions = {}): Promise<AgentNewBestsResponse> {
+    return this.request<AgentNewBestsResponse>({
+      method: "GET",
+      path: "/agent/progress/new-bests",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate },
+      signal: options.signal
+    });
+  }
+
   async listAgentNutritionGoals(options: AgentClientRequestOptions = {}): Promise<AgentNutritionGoalListResponse> {
     return this.request<AgentNutritionGoalListResponse>({
       method: "GET",
       path: "/agent/nutrition/goals",
       expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolDayStatuses(input: ListAgentProtocolDayStatusesInput, options: AgentClientRequestOptions = {}): Promise<AgentProtocolDayStatusesResponse> {
+    return this.request<AgentProtocolDayStatusesResponse>({
+      method: "GET",
+      path: "/agent/protocols/day-statuses",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "compoundId": input.compoundId, "protocolId": input.protocolId, "today": input.today, "detail": input.detail },
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolPlannedDays(input: ListAgentProtocolPlannedDaysInput, options: AgentClientRequestOptions = {}): Promise<AgentProtocolPlannedDaysResponse> {
+    return this.request<AgentProtocolPlannedDaysResponse>({
+      method: "GET",
+      path: "/agent/protocols/planned-days",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "compoundId": input.compoundId, "protocolId": input.protocolId },
       signal: options.signal
     });
   }
@@ -2622,12 +3239,32 @@ export class PerenniaAgentClient {
     });
   }
 
+  async listAgentPurposes(input: ListAgentPurposesInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentPurposeListResponse> {
+    return this.request<AgentPurposeListResponse>({
+      method: "GET",
+      path: "/agent/protocols/purposes",
+      expectedStatus: 200,
+      query: { "includeArchived": input.includeArchived },
+      signal: options.signal
+    });
+  }
+
   async listAgentRoutines(input: ListAgentRoutinesInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentRoutineListResponse> {
     return this.request<AgentRoutineListResponse>({
       method: "GET",
       path: "/agent/routines",
       expectedStatus: 200,
       query: { "search": input.search, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentTrainingDays(input: ListAgentTrainingDaysInput, options: AgentClientRequestOptions = {}): Promise<AgentTrainingDaysResponse> {
+    return this.request<AgentTrainingDaysResponse>({
+      method: "GET",
+      path: "/agent/progress/training-days",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "today": input.today },
       signal: options.signal
     });
   }
@@ -2667,7 +3304,16 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/protocols/effect-window",
       expectedStatus: 200,
-      query: { "compoundId": input.compoundId, "protocolId": input.protocolId, "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to },
+      query: { "compoundId": input.compoundId, "protocolId": input.protocolId, "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "timezoneOffsetMinutes": input.timezoneOffsetMinutes },
+      signal: options.signal
+    });
+  }
+
+  async readAgentProfile(options: AgentClientRequestOptions = {}): Promise<AgentProfile> {
+    return this.request<AgentProfile>({
+      method: "GET",
+      path: "/agent/profile",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

@@ -3,10 +3,11 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:cryptography/cryptography.dart';
-import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 
@@ -78,6 +79,68 @@ void main() {
           reason: tableName,
         );
       }
+    });
+
+    test('exports and restores User Profile sections as an entity', () async {
+      expect(
+        AppDatabase.tableNames,
+        contains(AppDatabase.userProfileSectionsTable),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        <String, Object?>{'text': 'Notes'},
+      );
+
+      final bytes = await repositories.portableArchives.exportPortableArchive();
+
+      final rows =
+          _archiveRowsByTable(bytes)[AppDatabase.userProfileSectionsTable]!;
+      expect(rows, hasLength(1));
+      expect(rows.single['section'], 'general_notes');
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restored = TrainingRepositories(restoredDatabase);
+      await restored.portableArchives.importPortableArchive(bytes);
+      expect(
+        (await restored.userProfile.watch().first).generalNotesText,
+        'Notes',
+      );
+    });
+
+    test(
+        'imports a schema-66 archive with no User Profile file, and refuses a '
+        'schema-67 archive that lacks one', () async {
+      await _seedWorkoutData(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restored = TrainingRepositories(restoredDatabase);
+      await restored.portableArchives.importPortableArchive(
+        _withoutEntity(
+          source,
+          AppDatabase.userProfileSectionsTable,
+          schemaVersion: 66,
+        ),
+      );
+      expect(
+        await restoredDatabase.select(restoredDatabase.userProfileSections).get(),
+        isEmpty,
+      );
+      expect(await restoredDatabase.select(restoredDatabase.loggedSets).get(),
+          isNotEmpty);
+
+      await expectLater(
+        restored.portableArchives.importPortableArchive(
+          _withoutEntity(
+            source,
+            AppDatabase.userProfileSectionsTable,
+            schemaVersion: 67,
+          ),
+        ),
+        throwsA(isA<PortableArchiveException>()),
+      );
     });
 
     test('fresh export contains only the current plan entities', () async {
@@ -312,6 +375,212 @@ void main() {
       expect(
         _ids(restoredRows[AppDatabase.activityLogTable]!),
         containsAll(_ids(sourceRows[AppDatabase.activityLogTable]!)),
+      );
+    });
+
+    test(
+        'merges an archive from another install into the default measurements '
+        'this device already seeded', () async {
+      final sourceDatabase = AppDatabase.inMemory();
+      addTearDown(sourceDatabase.close);
+      final source = TrainingRepositories(sourceDatabase);
+      await source.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final sourceDefaults = await _defaultMeasurementsByName(source);
+      for (final (index, value) in <String>['84.0', '83.5'].indexed) {
+        await source.measurements.createEntry(
+          MeasurementEntryDraft(
+            measurementId: sourceDefaults['Body Weight']!.id,
+            valueEntered: value,
+            measuredAt: DateTime.utc(2026, 5, 1 + index, 7),
+          ),
+        );
+      }
+      await source.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: sourceDefaults['Body Fat']!.id,
+          valueEntered: '18.5',
+          measuredAt: DateTime.utc(2026, 5, 1, 7),
+        ),
+      );
+      final archive = await source.portableArchives.exportPortableArchive();
+
+      // The target opened Body Tracker before restoring, so it seeded its own
+      // defaults under different random ids and logged a reading of its own.
+      await repositories.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final localDefaults = await _defaultMeasurementsByName(repositories);
+      expect(
+        localDefaults['Body Weight']!.id,
+        isNot(sourceDefaults['Body Weight']!.id),
+      );
+      await repositories.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: localDefaults['Body Weight']!.id,
+          valueEntered: '82.0',
+          measuredAt: DateTime.utc(2026, 6, 1, 7),
+        ),
+      );
+
+      await repositories.portableArchives.importPortableArchive(archive);
+
+      final active = await repositories.measurements.listActive();
+      expect(
+        active.map((measurement) => measurement.name),
+        <String>['Body Weight', 'Body Fat'],
+      );
+      expect(active.map((measurement) => measurement.id), <String>[
+        localDefaults['Body Weight']!.id,
+        localDefaults['Body Fat']!.id,
+      ]);
+      final bodyWeightHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: localDefaults['Body Weight']!.id);
+      expect(
+        bodyWeightHistory.map((entry) => entry.entry.valueEntered),
+        unorderedEquals(<String>['82.0', '84.0', '83.5']),
+      );
+      final bodyFatHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: localDefaults['Body Fat']!.id);
+      expect(
+        bodyFatHistory.map((entry) => entry.entry.valueEntered),
+        <String>['18.5'],
+      );
+
+      // No row, reading, or Activity Log entry is left under the archive's
+      // ids, so neither Recent activity nor undo can bring them back.
+      final sourceIds = sourceDefaults.values.map((m) => m.id).toSet();
+      final metricIds = (await database.select(database.metrics).get())
+          .map((row) => row.id)
+          .toSet();
+      expect(metricIds.intersection(sourceIds), isEmpty);
+      final readingMetricIds =
+          (await database.select(database.metricReadings).get())
+              .map((row) => row.metricId)
+              .toSet();
+      expect(readingMetricIds.intersection(sourceIds), isEmpty);
+      final activity = await database.select(database.activityLog).get();
+      for (final row in activity) {
+        for (final sourceId in sourceIds) {
+          expect(row.entityId, isNot(sourceId));
+          expect(row.beforeImage ?? '', isNot(contains(sourceId)));
+          expect(row.afterImage ?? '', isNot(contains(sourceId)));
+        }
+      }
+
+      // Restoring the same archive again changes nothing.
+      final again =
+          await repositories.portableArchives.importPortableArchive(archive);
+      expect(again.changedRowsByTable[AppDatabase.metricsTable], isNull);
+      expect(again.changedRowsByTable[AppDatabase.metricReadingsTable], isNull);
+      expect(
+        (await repositories.measurements.listActive()).map((m) => m.name),
+        <String>['Body Weight', 'Body Fat'],
+      );
+    });
+
+    test(
+        'keeps an archive default measurement separate when its unit differs '
+        'or it was archived on the source', () async {
+      final sourceDatabase = AppDatabase.inMemory();
+      addTearDown(sourceDatabase.close);
+      final source = TrainingRepositories(sourceDatabase);
+      await source.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.pound,
+      );
+      final sourceDefaults = await _defaultMeasurementsByName(source);
+      await source.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: sourceDefaults['Body Weight']!.id,
+          valueEntered: '185',
+          measuredAt: DateTime.utc(2026, 5, 1, 7),
+        ),
+      );
+      await source.measurements
+          .softDeleteMeasurement(sourceDefaults['Body Fat']!.id);
+      final archive = await source.portableArchives.exportPortableArchive();
+
+      await repositories.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final localDefaults = await _defaultMeasurementsByName(repositories);
+
+      await repositories.portableArchives.importPortableArchive(archive);
+
+      // A pound reading must not be relabelled as kilograms, so the pound
+      // Body Weight stays its own measurement with its own history.
+      final bodyWeights = (await repositories.measurements.listActive())
+          .where((measurement) => measurement.name == 'Body Weight')
+          .toList();
+      expect(
+        bodyWeights.map((measurement) => measurement.unit),
+        unorderedEquals(<MeasurementUnit>[
+          MeasurementUnit.kilogram,
+          MeasurementUnit.pound,
+        ]),
+      );
+      final poundHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: sourceDefaults['Body Weight']!.id);
+      expect(poundHistory.map((entry) => entry.entry.valueEntered), ['185']);
+
+      // The source's archived Body Fat stays archived under its own id and
+      // leaves this device's live Body Fat alone.
+      final bodyFats = (await repositories.measurements.listActive())
+          .where((measurement) => measurement.name == 'Body Fat');
+      expect(
+        bodyFats.map((measurement) => measurement.id),
+        <String>[localDefaults['Body Fat']!.id],
+      );
+    });
+
+    test('reports a missing or wrong passphrase as a passphrase failure',
+        () async {
+      await _seedWorkoutData(repositories);
+      final plaintext =
+          await repositories.portableArchives.exportPortableArchive();
+      final encrypted =
+          await repositories.portableArchives.exportPortableArchive(
+        encryption:
+            const PortableArchiveEncryptionOptions(passphrase: 'right pass'),
+      );
+      final archives = repositories.portableArchives;
+
+      expect(archives.isEncryptedPortableArchive(plaintext), isFalse);
+      expect(archives.isEncryptedPortableArchive(encrypted), isTrue);
+      expect(
+        archives.isEncryptedPortableArchive(utf8.encode('not a zip')),
+        isFalse,
+      );
+      await expectLater(
+        archives.decryptPortableArchive(encrypted),
+        throwsA(
+          isA<PortableArchivePassphraseException>().having(
+            (error) => error.passphraseProvided,
+            'passphraseProvided',
+            isFalse,
+          ),
+        ),
+      );
+      await expectLater(
+        archives.decryptPortableArchive(encrypted, passphrase: 'wrong pass'),
+        throwsA(
+          isA<PortableArchivePassphraseException>().having(
+            (error) => error.passphraseProvided,
+            'passphraseProvided',
+            isTrue,
+          ),
+        ),
+      );
+
+      final decrypted = await archives.decryptPortableArchive(
+        encrypted,
+        passphrase: 'right pass',
+      );
+      expect(archives.isEncryptedPortableArchive(decrypted), isFalse);
+      expect(
+        _archiveRowsByTable(decrypted),
+        _archiveRowsByTable(plaintext),
       );
     });
 
@@ -879,6 +1148,230 @@ void main() {
       expect(restoredRows[AppDatabase.templateLinksTable], isEmpty);
     });
 
+    test('imports a schema-62 archive Focus without colorHex as null',
+        () async {
+      final focusId = await repositories.focuses.create('Climbing');
+      await repositories.focuses.recolor(focusId, colorHex: '#5FB05C');
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema62Archive = _asSchema62Archive(currentArchive);
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema62Archive,
+      );
+
+      final restored = await (restoredDatabase.select(restoredDatabase.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .getSingle();
+      expect(restored.name, 'Climbing');
+      expect(restored.colorHex, isNull);
+    });
+
+    test('a schema-62 archive Focus keeps the color stored since', () async {
+      final focusId = await repositories.focuses.create('Climbing');
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema62Archive = _asSchema62Archive(currentArchive);
+
+      final colored = AppDatabase.inMemory();
+      addTearDown(colored.close);
+      final coloredRepositories = TrainingRepositories(colored);
+      await coloredRepositories.portableArchives.importPortableArchive(
+        currentArchive,
+      );
+      await coloredRepositories.focuses.recolor(
+        focusId,
+        colorHex: '#5FB05C',
+      );
+      // The archive's row is now the newer one, as if an older device
+      // renamed the Focus after this one colored it.
+      await (colored.update(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .write(
+        FocusesCompanion(
+          updatedAt: Value<DateTime>(DateTime.utc(2000)),
+        ),
+      );
+
+      await coloredRepositories.portableArchives.importPortableArchive(
+        schema62Archive,
+      );
+
+      final restored = await (colored.select(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .getSingle();
+      expect(restored.colorHex, '#5FB05C');
+    });
+
+    test('Purposes and Compound tags round-trip (compound-purposes.md, D1)',
+        () async {
+      final purposeId = await repositories.protocols.purposes.create('Joints');
+      await repositories.protocols.purposes.create('Archived');
+      await repositories.protocols.purposes.archive(
+        (await repositories.protocols.purposes.listActive()).last.id,
+      );
+      final compound = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          purposeIds: <String>[purposeId],
+        ),
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      await TrainingRepositories(restoredDatabase)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      expect(
+        await restoredDatabase.select(restoredDatabase.purposes).get(),
+        await database.select(database.purposes).get(),
+      );
+      final restored = await (restoredDatabase.select(restoredDatabase.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(restored.purposeIds, '["$purposeId"]');
+    });
+
+    test('a schema-65 archive imports with no Purposes and empty lists',
+        () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      final schema65Archive = _asSchema65Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      await TrainingRepositories(restoredDatabase)
+          .portableArchives
+          .importPortableArchive(schema65Archive);
+
+      expect(
+        await restoredDatabase.select(restoredDatabase.purposes).get(),
+        isEmpty,
+      );
+      final restored = await (restoredDatabase.select(restoredDatabase.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(restored.name, 'Collagen');
+      expect(restored.purposeIds, '[]');
+    });
+
+    test('a newer row in a schema-65 archive keeps the local tags', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Renamed on the old device',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      final schema65Archive = _asSchema65Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      final localRepositories = TrainingRepositories(local);
+      await (local.into(local.compounds)).insert(
+        CompoundsCompanion.insert(
+          id: compound.compoundId,
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram.name,
+          defaultRoute: DoseRoute.oral.name,
+          purposeIds: const Value<String>('["purpose-1"]'),
+          // The archive's row is newer.
+          updatedAt: DateTime.utc(2000),
+        ),
+      );
+
+      await localRepositories.portableArchives.importPortableArchive(
+        schema65Archive,
+      );
+
+      final merged = await (local.select(local.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(merged.name, 'Renamed on the old device');
+      expect(merged.purposeIds, '["purpose-1"]');
+    });
+
+    test('a newer row in a current archive carries its own tags', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          purposeIds: <String>[],
+        ),
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      await local.into(local.compounds).insert(
+            CompoundsCompanion.insert(
+              id: compound.compoundId,
+              name: 'Collagen',
+              defaultUnit: DoseUnit.gram.name,
+              defaultRoute: DoseRoute.oral.name,
+              purposeIds: const Value<String>('["purpose-1"]'),
+              updatedAt: DateTime.utc(2000),
+            ),
+          );
+
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      final merged = await (local.select(local.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(merged.purposeIds, '[]');
+    });
+
+    test(
+        'restores a schema-64 archive Meal with no time precision as instant '
+        'with a null offset', () async {
+      await _seedNutritionData(repositories);
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema64Archive = _asSchema64Archive(currentArchive);
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema64Archive,
+      );
+
+      final sourceMeals = await database.select(database.meals).get();
+      final restoredMeals =
+          await restoredDatabase.select(restoredDatabase.meals).get();
+      expect(restoredMeals, hasLength(sourceMeals.length));
+      expect(restoredMeals, isNotEmpty);
+      for (final meal in restoredMeals) {
+        expect(meal.timePrecision, 'instant');
+        expect(meal.timezoneOffsetMinutes, isNull);
+        final source = sourceMeals.singleWhere((row) => row.id == meal.id);
+        expect(meal.localDate, source.localDate);
+        expect(meal.startedAt, source.startedAt);
+      }
+    });
+
     test('imports an exact schema-52 archive with an opaque Routine seam',
         () async {
       await _seedWorkoutData(repositories);
@@ -904,6 +1397,77 @@ void main() {
           .getSingle();
       expect(restoredLink.routineId, isNull);
       expect(restoredLink.workoutTemplateId, 'archive-template');
+      expect(
+        await restoredDatabase.customSelect('PRAGMA foreign_key_check').get(),
+        isEmpty,
+      );
+    });
+
+    test(
+        'imports a schema-60 archive\'s Compounds and Doses and skips its '
+        'Protocol plan rows and their Activity Log rows', () async {
+      await _seedProtocolsData(repositories);
+      final compound = (await repositories.protocols.listCompounds()).single;
+      await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Archive stack',
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
+          compoundIds: <String>[compound.id],
+          schedulesByCompoundId: <String, ScheduleDraft?>{
+            compound.id: ScheduleDraft(
+              rule: TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['09:00'],
+              ),
+              doseAmountValue: 2000,
+              doseAmountEntered: '2000',
+              doseUnit: DoseUnit.internationalUnit,
+              route: DoseRoute.oral,
+            ),
+          },
+          targetOutcomes: const <ProtocolTargetOutcomeDraft>[
+            ProtocolTargetOutcomeDraft.performance,
+          ],
+        ),
+      );
+      final schema60Archive = _asSchema60Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema60Archive,
+      );
+
+      final restoredRows = _archiveRowsByTable(
+        await restoredRepositories.portableArchives.exportPortableArchive(),
+      );
+      _expectSeededProtocolsArchiveRows(restoredRows);
+      // A Dose from before the offset existed restores with none.
+      expect(
+        restoredRows[AppDatabase.dosesTable]!.single['timezoneOffsetMinutes'],
+        isNull,
+      );
+      for (final table in _protocolPlanTables) {
+        expect(restoredRows[table], isEmpty, reason: table);
+        expect(
+          restoredRows[AppDatabase.activityLogTable]!
+              .where((row) => row['entityTable'] == table),
+          isEmpty,
+          reason: '$table Activity Log rows',
+        );
+      }
+      expect(
+        restoredRows[AppDatabase.activityLogTable]!
+            .map((row) => row['entityTable'])
+            .toSet(),
+        containsAll(<String>[
+          AppDatabase.compoundsTable,
+          AppDatabase.dosesTable,
+        ]),
+      );
       expect(
         await restoredDatabase.customSelect('PRAGMA foreign_key_check').get(),
         isEmpty,
@@ -941,6 +1505,117 @@ void main() {
           await restoredRepositories.routinePlans.getById(routineId);
       expect(restored?.cadence, isNull);
       expect(restored?.entries.single.slot, isNull);
+    });
+
+    test('Skips round-trip, live and removed, into a fresh database (D8)',
+        () async {
+      final skipIds = await _seedProtocolSkips(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+      final archived = _archiveRowsByTable(source)[
+          AppDatabase.protocolSkipsTable]!;
+      expect(_ids(archived), skipIds.toSet());
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(source);
+
+      final sourceRows = await (database.select(database.protocolSkips)
+            ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+          .get();
+      final restoredRows =
+          await (restoredDatabase.select(restoredDatabase.protocolSkips)
+                ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+              .get();
+      expect(restoredRows, sourceRows);
+      expect(restoredRows.where((row) => row.deletedAt != null), hasLength(1));
+      // Importing again merges: nothing changes.
+      await restoredRepositories.portableArchives.importPortableArchive(source);
+      expect(
+        await restoredDatabase.select(restoredDatabase.protocolSkips).get(),
+        hasLength(restoredRows.length),
+      );
+    });
+
+    test(
+        'imports a schema-63 archive with no Skips file, and refuses a '
+        'schema-64 archive that lacks one (D8)', () async {
+      await _seedProtocolsData(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        _withoutProtocolSkips(source, schemaVersion: 63),
+      );
+      final restored = _archiveRowsByTable(
+        await restoredRepositories.portableArchives.exportPortableArchive(),
+      );
+      expect(restored[AppDatabase.dosesTable], hasLength(1));
+      expect(restored[AppDatabase.protocolSkipsTable], isEmpty);
+
+      await expectLater(
+        restoredRepositories.portableArchives.importPortableArchive(
+          _withoutProtocolSkips(source, schemaVersion: 64),
+        ),
+        throwsA(isA<PortableArchiveException>()),
+      );
+    });
+
+    test('rejects a malformed Skip row before writing anything (D8)',
+        () async {
+      await _seedProtocolSkips(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      final invalidRows = <String, Map<String, Object?>>{
+        'not a real date': <String, Object?>{'localDate': '2026-02-30'},
+        'not a date at all': <String, Object?>{'localDate': 'yesterday'},
+        'a time past 23:59': <String, Object?>{'plannedLocalTime': '24:00'},
+        'a time without minutes': <String, Object?>{'plannedLocalTime': '9'},
+        'no Protocol': <String, Object?>{'protocolId': null},
+      };
+      for (final invalid in invalidRows.entries) {
+        final tampered = _withUpdatedArchiveEntityRow(
+          source,
+          tableName: AppDatabase.protocolSkipsTable,
+          update: (row) => <String, Object?>{...row, ...invalid.value},
+        );
+        await expectLater(
+          restoredRepositories.portableArchives.importPortableArchive(tampered),
+          throwsA(isA<PortableArchiveException>()),
+          reason: invalid.key,
+        );
+        expect(
+          await restoredDatabase.select(restoredDatabase.protocolSkips).get(),
+          isEmpty,
+          reason: invalid.key,
+        );
+        expect(
+          await restoredDatabase.select(restoredDatabase.doses).get(),
+          isEmpty,
+          reason: invalid.key,
+        );
+      }
+
+      // A Skip dated after today is not judged: an archive is a past record.
+      final future = _withUpdatedArchiveEntityRow(
+        source,
+        tableName: AppDatabase.protocolSkipsTable,
+        update: (row) => <String, Object?>{...row, 'localDate': '2999-01-01'},
+      );
+      await restoredRepositories.portableArchives.importPortableArchive(future);
+      expect(
+        (await restoredDatabase.select(restoredDatabase.protocolSkips).get())
+            .map((row) => row.localDate),
+        contains('2999-01-01'),
+      );
     });
 
     test('rejects hard-invalid Prescriptions before writing anything',
@@ -2228,6 +2903,94 @@ Future<void> _seedProtocolsData(TrainingRepositories repositories) async {
   );
 }
 
+/// A Protocol with three Skips, one of them removed, plus a Dose. Returns
+/// every Skip's id.
+Future<List<String>> _seedProtocolSkips(
+  TrainingRepositories repositories,
+) async {
+  await _seedProtocolsData(repositories);
+  final compoundId = (await repositories.protocols.listCompounds()).single.id;
+  const start = ProtocolDayDate(year: 2026, month: 6, day: 1);
+  const today = ProtocolDayDate(year: 2026, month: 6, day: 16);
+  final protocolId = (await repositories.protocols.createProtocol(
+    ProtocolDraft(
+      name: 'Vitamin D',
+      startLocalDate: start,
+      compoundIds: <String>[compoundId],
+    ),
+    today: start,
+  ))
+      .protocolId;
+  final database = repositories.database;
+  Future<String> skip(ProtocolDayDate date, String? time) async {
+    final before = (await database.select(database.protocolSkips).get())
+        .map((row) => row.id)
+        .toSet();
+    await repositories.protocols.skipPlannedDose(
+      ProtocolSkipDraft(
+        protocolId: protocolId,
+        compoundId: compoundId,
+        localDate: date,
+        plannedLocalTime: time,
+      ),
+      today: today,
+    );
+    return (await database.select(database.protocolSkips).get())
+        .map((row) => row.id)
+        .toSet()
+        .difference(before)
+        .single;
+  }
+
+  final ids = <String>[
+    await skip(today, '08:00'),
+    await skip(today.addDays(-1), null),
+    await skip(today.addDays(-2), '21:00'),
+  ];
+  await repositories.protocols.unskipPlannedDose(ids.last);
+  return ids;
+}
+
+/// [bytes] as an archive at [schemaVersion] with no `protocol_skips` file
+/// or manifest entry, as every schema before 64 wrote it.
+List<int> _withoutProtocolSkips(List<int> bytes, {required int schemaVersion}) {
+  return _withoutEntity(
+    bytes,
+    AppDatabase.protocolSkipsTable,
+    schemaVersion: schemaVersion,
+  );
+}
+
+List<int> _withoutEntity(
+  List<int> bytes,
+  String table, {
+  required int schemaVersion,
+}) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = schemaVersion;
+  manifest['entities'] = (manifest['entities']! as List<Object?>)
+      .where(
+        (entry) => (entry! as Map<String, Object?>)['table'] != table,
+      )
+      .toList(growable: false);
+  final entityFileName = PortableArchiveRepository.entityFileName(table);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName ||
+        file.name == entityFileName) {
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
 Future<void> _seedMetricData(TrainingRepositories repositories) async {
   final metricId = await repositories.metrics.createMetric(
     const MetricDraft(
@@ -2271,11 +3034,12 @@ Future<void> _seedMetricData(TrainingRepositories repositories) async {
 
 Future<void> _seedNutritionData(TrainingRepositories repositories) async {
   final quickEntry = await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Breakfast',
-      startedAt: DateTime.utc(2026, 6, 16, 9),
-      timezone: 'UTC',
-      localDate: const NutritionDayDate(year: 2026, month: 6, day: 16),
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 16, 9),
+        mealTypeName: 'Breakfast',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Archive oats',
@@ -2593,7 +3357,8 @@ void _expectSeededNutritionArchiveRows(
   expect(mealRows, hasLength(1));
   final meal = mealRows.single;
   expect(meal['mealType'], 'Breakfast');
-  expect(meal['timezone'], 'UTC');
+  // An app Meal takes the device zone's label at its own instant.
+  expect(meal['timezone'], DateTime(2026, 6, 16, 9).timeZoneName);
   expect(meal['localDate'], '2026-06-16');
   expect(meal['endedAt'], isNull);
   expect(meal['deletedAt'], isNull);
@@ -2798,6 +3563,187 @@ List<int> _asSchema52Archive(List<int> bytes) {
   return ZipEncoder().encode(archive);
 }
 
+const _protocolPlanTables = <String>{
+  AppDatabase.protocolsTable,
+  AppDatabase.protocolCompoundsTable,
+  AppDatabase.schedulesTable,
+  AppDatabase.protocolTargetOutcomesTable,
+};
+
+/// [bytes] as a schema-60 archive: the Protocol plan rows in the shape before
+/// schema 61 (instant bounds and a `frequency`, which today's rows cannot
+/// decode), and Doses without a UTC offset.
+List<int> _asSchema60Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 60;
+  final protocolsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.protocolsTable);
+  final schedulesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.schedulesTable);
+  final dosesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.dosesTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == protocolsFileName ||
+        file.name == schedulesFileName ||
+        file.name == dosesFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        if (file.name == protocolsFileName) {
+          expect(old.remove('startLocalDate'), isNotNull);
+          old
+            ..remove('endLocalDate')
+            ..remove('period')
+            ..remove('remindersEnabled')
+            ..remove('archivedOn')
+            ..['startDate'] = 1780272000000
+            ..['endDate'] = null;
+        } else if (file.name == schedulesFileName) {
+          expect(old.remove('rule'), isNotNull);
+          old
+            ..remove('effectiveFrom')
+            ..['frequency'] = 'onceDaily';
+        } else {
+          old.remove('timezoneOffsetMinutes');
+        }
+        return old;
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// The archive as schema 62 wrote it: Focus rows had no `colorHex`.
+List<int> _asSchema62Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 62;
+  final focusesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.focusesTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == focusesFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('colorHex'), isTrue);
+        return old..remove('colorHex');
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-65 build wrote it: no `purposes` entity, and
+/// Compounds carry no `purposeIds` (docs/designs/compound-purposes.md, D2).
+List<int> _asSchema65Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source);
+  manifest['schemaVersion'] = 65;
+  manifest['entities'] =
+      (manifest['entities']! as List<Object?>).where((entry) {
+    final entity = entry! as Map<String, Object?>;
+    return entity['table'] != AppDatabase.purposesTable;
+  }).toList(growable: false);
+  final purposesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.purposesTable);
+  final compoundsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.compoundsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName ||
+        file.name == purposesFileName) {
+      continue;
+    }
+    if (file.name == compoundsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('purposeIds'), isTrue);
+        return old..remove('purposeIds');
+      }).toList(growable: false);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-64 build wrote it: Meals carry neither
+/// `timezoneOffsetMinutes` nor `timePrecision` (docs/designs/meal-logging.md
+/// §1).
+List<int> _asSchema64Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 64;
+  final mealsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.mealsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == mealsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('timePrecision'), isTrue);
+        expect(old.containsKey('timezoneOffsetMinutes'), isTrue);
+        return old
+          ..remove('timePrecision')
+          ..remove('timezoneOffsetMinutes');
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
 List<int> _asSchema53Archive(List<int> bytes) {
   final source = _decodeArchive(bytes);
   final manifest = _manifestFrom(source)..['schemaVersion'] = 53;
@@ -2942,4 +3888,13 @@ List<int> _tamperEncryptedPayload(List<int> bytes) {
       ),
     );
   return ZipEncoder().encode(archive);
+}
+
+Future<Map<String, MeasurementRecord>> _defaultMeasurementsByName(
+  TrainingRepositories repositories,
+) async {
+  return <String, MeasurementRecord>{
+    for (final measurement in await repositories.measurements.listActive())
+      measurement.name: measurement,
+  };
 }

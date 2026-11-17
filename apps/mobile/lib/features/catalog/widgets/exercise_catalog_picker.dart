@@ -8,6 +8,9 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../../domain/training/focus_exercise_groups.dart';
+import '../../focus/controllers/focus_providers.dart';
+import '../../focus/widgets/focus_visuals.dart';
 import '../controllers/exercise_catalog_controller.dart';
 import '../search/exercise_search.dart';
 import 'exercise_editor_screen.dart';
@@ -16,9 +19,15 @@ class ExerciseCatalogPicker extends ConsumerWidget {
   const ExerciseCatalogPicker({
     super.key,
     this.onExerciseSelected,
+    this.initialFocusId,
   });
 
-  static const typeFilterKey = Key('exercise-catalog-filter-type');
+  /// The Focus the picker opens on: a Workout's own Focus when adding to it.
+  /// The user can switch to another Focus or to All at any time; the switch
+  /// changes only what the list shows, never the Workout's Focus.
+  final String? initialFocusId;
+
+  static const focusFilterKey = Key('exercise-catalog-filter-focus');
   static const bodyPartFilterKey = Key('exercise-catalog-filter-body-part');
   static const equipmentFilterKey = Key('exercise-catalog-filter-equipment');
   static const searchFieldKey = Key('exercise-catalog-search');
@@ -30,8 +39,8 @@ class ExerciseCatalogPicker extends ConsumerWidget {
 
   final ValueChanged<ExerciseRecord>? onExerciseSelected;
 
-  static Key typeFilterOptionKey(String id) {
-    return Key('exercise-catalog-filter-type-option-$id');
+  static Key focusFilterOptionKey(String? focusId) {
+    return Key('exercise-catalog-filter-focus-option-${focusId ?? 'all'}');
   }
 
   static Key bodyPartFilterOptionKey(String id) {
@@ -65,6 +74,7 @@ class ExerciseCatalogPicker extends ConsumerWidget {
     return state.when(
       data: (catalog) => _CatalogSections(
         sections: catalog.sections,
+        initialFocusId: initialFocusId,
         onExerciseSelected: onExerciseSelected,
       ),
       loading: () => const SizedBox.shrink(),
@@ -81,10 +91,12 @@ class ExerciseCatalogPicker extends ConsumerWidget {
 class _CatalogSections extends ConsumerStatefulWidget {
   const _CatalogSections({
     required this.sections,
+    required this.initialFocusId,
     required this.onExerciseSelected,
   });
 
   final List<ExerciseCatalogSectionRecord> sections;
+  final String? initialFocusId;
   final ValueChanged<ExerciseRecord>? onExerciseSelected;
 
   @override
@@ -98,10 +110,11 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
   late final TextEditingController _searchController;
   late _CatalogFilterOptions _filterOptions;
   Timer? _searchDebounceTimer;
-  String _selectedTypeId = _allFilterId;
+  late String? _selectedFocusId = widget.initialFocusId;
   String _selectedBodyPartId = _allFilterId;
   String _selectedEquipmentId = _allFilterId;
   String _query = '';
+  int _visibleTotalCount = 0;
   int _visibleExerciseLimit = ExerciseCatalogPicker.pageSize;
 
   @override
@@ -132,9 +145,13 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
   @override
   Widget build(BuildContext context) {
     final filterOptions = _filterOptions;
-    final selectedTypeId = _effectiveSelectedId(
-      _selectedTypeId,
-      filterOptions.typeOptions,
+    final focuses =
+        ref.watch(activeFocusesProvider).value ?? const <FocusRecord>[];
+    final selectedFocus = _selectedFocus(focuses);
+    final visibleSections = _currentVisibleSections(selectedFocus);
+    _visibleTotalCount = visibleSections.fold<int>(
+      0,
+      (total, section) => total + section.exercises.length,
     );
     final selectedBodyPartId = _effectiveSelectedId(
       _selectedBodyPartId,
@@ -143,13 +160,6 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
     final selectedEquipmentId = _effectiveSelectedId(
       _selectedEquipmentId,
       filterOptions.equipmentOptions,
-    );
-    final visibleSections = _visibleSections(
-      widget.sections,
-      selectedTypeId: selectedTypeId,
-      selectedBodyPartId: selectedBodyPartId,
-      selectedEquipmentId: selectedEquipmentId,
-      query: _query,
     );
     final visibleSlice = _CatalogSlice.fromSections(
       visibleSections,
@@ -201,18 +211,23 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
         ),
         const SizedBox(height: AppDimens.base),
         if (hasCatalogExercises) ...[
+          if (focuses.isNotEmpty) ...[
+            _FocusChips(
+              focuses: focuses,
+              selectedFocusId: selectedFocus?.id,
+              onSelected: (focusId) {
+                _resetCatalogWindow(() {
+                  _selectedFocusId = focusId;
+                });
+              },
+            ),
+            const SizedBox(height: AppDimens.dense),
+          ],
           _CatalogFilterControls(
-            typeOptions: filterOptions.typeOptions,
             bodyPartOptions: filterOptions.bodyPartOptions,
             equipmentOptions: filterOptions.equipmentOptions,
-            selectedTypeId: selectedTypeId,
             selectedBodyPartId: selectedBodyPartId,
             selectedEquipmentId: selectedEquipmentId,
-            onTypeChanged: (value) {
-              _resetCatalogWindow(() {
-                _selectedTypeId = value;
-              });
-            },
             onBodyPartChanged: (value) {
               _resetCatalogWindow(() {
                 _selectedBodyPartId = value;
@@ -303,31 +318,7 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
       return;
     }
 
-    final filterOptions = _filterOptions;
-    final selectedTypeId = _effectiveSelectedId(
-      _selectedTypeId,
-      filterOptions.typeOptions,
-    );
-    final selectedBodyPartId = _effectiveSelectedId(
-      _selectedBodyPartId,
-      filterOptions.bodyPartOptions,
-    );
-    final selectedEquipmentId = _effectiveSelectedId(
-      _selectedEquipmentId,
-      filterOptions.equipmentOptions,
-    );
-    final visibleSections = _visibleSections(
-      widget.sections,
-      selectedTypeId: selectedTypeId,
-      selectedBodyPartId: selectedBodyPartId,
-      selectedEquipmentId: selectedEquipmentId,
-      query: _query,
-    );
-    final totalCount = visibleSections.fold<int>(
-      0,
-      (total, section) => total + section.exercises.length,
-    );
-
+    final totalCount = _visibleTotalCount;
     if (_visibleExerciseLimit >= totalCount) {
       return;
     }
@@ -340,30 +331,81 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
     });
   }
 
+  FocusRecord? _selectedFocus(List<FocusRecord> focuses) {
+    final focusId = _selectedFocusId;
+    if (focusId == null) {
+      return null;
+    }
+    for (final focus in focuses) {
+      if (focus.id == focusId) {
+        return focus;
+      }
+    }
+    return null;
+  }
+
+  /// Computed in build only; the scroll listener reads the count it left in
+  /// [_visibleTotalCount] instead of recomputing the sections.
+  List<ExerciseCatalogSectionRecord> _currentVisibleSections(
+    FocusRecord? focus,
+  ) {
+    final filterOptions = _filterOptions;
+    final uses = focus == null
+        ? const <FocusExerciseUse>[]
+        : ref.watch(focusExerciseUsesProvider(focus.id)).value ??
+            const <FocusExerciseUse>[];
+    final starters = focus == null
+        ? const <String>[]
+        : ref.watch(focusStarterExerciseIdsProvider).value?[focus.id] ??
+            const <String>[];
+    return _visibleSections(
+      widget.sections,
+      focus: focus,
+      focusUses: uses,
+      starterIds: starters,
+      selectedBodyPartId: _effectiveSelectedId(
+        _selectedBodyPartId,
+        filterOptions.bodyPartOptions,
+      ),
+      selectedEquipmentId: _effectiveSelectedId(
+        _selectedEquipmentId,
+        filterOptions.equipmentOptions,
+      ),
+      query: _query,
+    );
+  }
+
+  /// With a Focus selected and no search, the user's own exercises under it
+  /// come first, then the Focus's staples, then the rest of it by Category.
+  /// A search looks through everything, with the Focus's matches ranked
+  /// first, so an exercise outside the Focus is always one search away.
   List<ExerciseCatalogSectionRecord> _visibleSections(
     List<ExerciseCatalogSectionRecord> sections, {
-    required String selectedTypeId,
+    required FocusRecord? focus,
+    required List<FocusExerciseUse> focusUses,
+    required List<String> starterIds,
     required String selectedBodyPartId,
     required String selectedEquipmentId,
     required String query,
   }) {
     final candidateSections = sections.where((section) => !section.isVirtual);
-    return candidateSections
+    bool matches(
+        ExerciseRecord exercise, ExerciseCatalogSectionRecord section) {
+      return _exerciseMatchesFilters(
+            exercise,
+            section: section,
+            selectedBodyPartId: selectedBodyPartId,
+            selectedEquipmentId: selectedEquipmentId,
+          ) &&
+          exerciseNameMatchesQuery(exercise.name, query);
+    }
+
+    final filteredSections = candidateSections
         .map(
           (section) => ExerciseCatalogSectionRecord(
             category: section.category,
             exercises: section.exercises
-                .where(
-                  (exercise) =>
-                      _exerciseMatchesFilters(
-                        exercise,
-                        section: section,
-                        selectedTypeId: selectedTypeId,
-                        selectedBodyPartId: selectedBodyPartId,
-                        selectedEquipmentId: selectedEquipmentId,
-                      ) &&
-                      exerciseNameMatchesQuery(exercise.name, query),
-                )
+                .where((exercise) => matches(exercise, section))
                 .toList(growable: false),
             virtualId: section.virtualId,
             virtualTitle: section.virtualTitle,
@@ -371,6 +413,83 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
         )
         .where((section) => section.exercises.isNotEmpty)
         .toList(growable: false);
+    if (focus == null) {
+      return filteredSections;
+    }
+
+    final l10n = context.l10n;
+    final inFocus = <ExerciseRecord>[];
+    final outsideFocus = <ExerciseRecord>[];
+    for (final section in filteredSections) {
+      for (final exercise in section.exercises) {
+        (exercise.focusIds.contains(focus.id) ? inFocus : outsideFocus)
+            .add(exercise);
+      }
+    }
+
+    if (query.trim().isNotEmpty) {
+      return <ExerciseCatalogSectionRecord>[
+        if (inFocus.isNotEmpty)
+          ExerciseCatalogSectionRecord(
+            category: null,
+            exercises: inFocus,
+            virtualId: _inFocusSectionId,
+            virtualTitle: l10n.exerciseCatalogInFocus(focus.name),
+          ),
+        if (outsideFocus.isNotEmpty)
+          ExerciseCatalogSectionRecord(
+            category: null,
+            exercises: outsideFocus,
+            virtualId: _outsideFocusSectionId,
+            virtualTitle: l10n.exerciseCatalogOtherExercises,
+          ),
+      ];
+    }
+
+    final groups = focusExerciseGroups(
+      exercises: [for (final section in filteredSections) ...section.exercises],
+      focusId: focus.id,
+      uses: focusUses,
+      starterIds: starterIds,
+    );
+    final history = [for (final (exercise, _) in groups.recent) exercise];
+    final staples = groups.staples;
+    final ledIds = {
+      for (final exercise in history) exercise.id,
+      for (final exercise in staples) exercise.id,
+    };
+    // The rest of the Focus stays grouped by Category, as the whole library is.
+    return <ExerciseCatalogSectionRecord>[
+      if (history.isNotEmpty)
+        ExerciseCatalogSectionRecord(
+          category: null,
+          exercises: history,
+          virtualId: _focusHistorySectionId,
+          virtualTitle: l10n.focusLibraryYourExercises(focus.name),
+        ),
+      if (staples.isNotEmpty)
+        ExerciseCatalogSectionRecord(
+          category: null,
+          exercises: staples,
+          virtualId: _focusStaplesSectionId,
+          virtualTitle: l10n.focusLibraryStaples(focus.name),
+        ),
+      for (final section in filteredSections)
+        if (section.exercises
+                .where(
+                  (exercise) =>
+                      exercise.focusIds.contains(focus.id) &&
+                      !ledIds.contains(exercise.id),
+                )
+                .toList(growable: false)
+            case final exercises when exercises.isNotEmpty)
+          ExerciseCatalogSectionRecord(
+            category: section.category,
+            exercises: exercises,
+            virtualId: section.virtualId,
+            virtualTitle: section.virtualTitle,
+          ),
+    ];
   }
 }
 
@@ -394,24 +513,18 @@ class _EmptyCatalogSearch extends StatelessWidget {
 
 class _CatalogFilterControls extends StatelessWidget {
   const _CatalogFilterControls({
-    required this.typeOptions,
     required this.bodyPartOptions,
     required this.equipmentOptions,
-    required this.selectedTypeId,
     required this.selectedBodyPartId,
     required this.selectedEquipmentId,
-    required this.onTypeChanged,
     required this.onBodyPartChanged,
     required this.onEquipmentChanged,
   });
 
-  final List<_FilterOption> typeOptions;
   final List<_FilterOption> bodyPartOptions;
   final List<_FilterOption> equipmentOptions;
-  final String selectedTypeId;
   final String selectedBodyPartId;
   final String selectedEquipmentId;
-  final ValueChanged<String> onTypeChanged;
   final ValueChanged<String> onBodyPartChanged;
   final ValueChanged<String> onEquipmentChanged;
 
@@ -421,22 +534,11 @@ class _CatalogFilterControls extends StatelessWidget {
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
         final itemWidth =
-            maxWidth >= 560 ? (maxWidth - (AppDimens.dense * 2)) / 3 : maxWidth;
+            maxWidth >= 400 ? (maxWidth - AppDimens.dense) / 2 : maxWidth;
         return Wrap(
           spacing: AppDimens.dense,
           runSpacing: AppDimens.dense,
           children: [
-            SizedBox(
-              width: itemWidth,
-              child: _FilterDropdown(
-                fieldKey: ExerciseCatalogPicker.typeFilterKey,
-                label: 'Type',
-                value: selectedTypeId,
-                options: typeOptions,
-                optionKeyBuilder: ExerciseCatalogPicker.typeFilterOptionKey,
-                onChanged: onTypeChanged,
-              ),
-            ),
             SizedBox(
               width: itemWidth,
               child: _FilterDropdown(
@@ -525,7 +627,6 @@ class _FilterDropdown extends StatelessWidget {
 
 class _CatalogFilterOptions {
   const _CatalogFilterOptions({
-    required this.typeOptions,
     required this.bodyPartOptions,
     required this.equipmentOptions,
   });
@@ -563,13 +664,11 @@ class _CatalogFilterOptions {
     ];
 
     return _CatalogFilterOptions(
-      typeOptions: _typeOptions,
       bodyPartOptions: bodyPartOptions,
       equipmentOptions: equipmentOptions,
     );
   }
 
-  final List<_FilterOption> typeOptions;
   final List<_FilterOption> bodyPartOptions;
   final List<_FilterOption> equipmentOptions;
 }
@@ -683,14 +782,16 @@ class _CategorySection extends StatelessWidget {
       children: [
         Row(
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: _categoryColor(section.category?.colorHex),
-                shape: BoxShape.circle,
+            if (section.category != null) ...[
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _categoryColor(section.category?.colorHex),
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox.square(dimension: 10),
               ),
-              child: const SizedBox.square(dimension: 10),
-            ),
-            const SizedBox(width: AppDimens.dense),
+              const SizedBox(width: AppDimens.dense),
+            ],
             Expanded(
               child: Text(
                 section.title,
@@ -961,17 +1062,6 @@ String _equipmentLabel(List<ExerciseEquipment> equipment) {
 }
 
 const _allFilterId = 'all';
-const _typeStrengthId = 'strength';
-const _typeCardioId = 'cardio';
-const _typeMobilityId = 'mobility';
-
-const _typeOptions = <_FilterOption>[
-  _FilterOption(id: _allFilterId, label: 'All types'),
-  _FilterOption(id: _typeCardioId, label: 'Cardio'),
-  _FilterOption(id: _typeStrengthId, label: 'Strength'),
-  _FilterOption(id: _typeMobilityId, label: 'Mobility'),
-];
-
 const _modalityCategoryNames = <String>{
   'cardio',
   'running',
@@ -981,17 +1071,10 @@ const _modalityCategoryNames = <String>{
   'strength',
 };
 
-const _cardioCategoryNames = <String>{
-  'cardio',
-  'running',
-  'cycling',
-  'swimming',
-};
-
-final _mobilityNamePattern = RegExp(
-  r'\b(mobility|stretch|flow|yoga|warm[- ]?up|cool[- ]?down|foam roll)\b',
-  caseSensitive: false,
-);
+const _focusHistorySectionId = 'focus-history';
+const _focusStaplesSectionId = 'focus-staples';
+const _inFocusSectionId = 'in-focus';
+const _outsideFocusSectionId = 'outside-focus';
 
 String _effectiveSelectedId(
   String selectedId,
@@ -1005,28 +1088,11 @@ String _effectiveSelectedId(
 bool _exerciseMatchesFilters(
   ExerciseRecord exercise, {
   required ExerciseCatalogSectionRecord section,
-  required String selectedTypeId,
   required String selectedBodyPartId,
   required String selectedEquipmentId,
 }) {
-  return _exerciseMatchesType(exercise, section, selectedTypeId) &&
-      _exerciseMatchesBodyPart(section, selectedBodyPartId) &&
+  return _exerciseMatchesBodyPart(section, selectedBodyPartId) &&
       _exerciseMatchesEquipment(exercise, selectedEquipmentId);
-}
-
-bool _exerciseMatchesType(
-  ExerciseRecord exercise,
-  ExerciseCatalogSectionRecord section,
-  String selectedTypeId,
-) {
-  return switch (selectedTypeId) {
-    _allFilterId => true,
-    _typeCardioId => _isCardioExercise(exercise, section),
-    _typeMobilityId => _isMobilityExercise(exercise, section),
-    _typeStrengthId => !_isCardioExercise(exercise, section) &&
-        !_isMobilityExercise(exercise, section),
-    _ => true,
-  };
 }
 
 bool _exerciseMatchesBodyPart(
@@ -1055,32 +1121,55 @@ bool _isBodyPartSection(ExerciseCatalogSectionRecord section) {
   );
 }
 
-bool _isCardioExercise(
-  ExerciseRecord exercise,
-  ExerciseCatalogSectionRecord section,
-) {
-  final categoryName = section.category?.name;
-  if (categoryName != null &&
-      _cardioCategoryNames.contains(_normalizedFilterName(categoryName))) {
-    return true;
-  }
-
-  return exercise.type.hasDimension(DimensionId.distance) &&
-      exercise.type.hasDimension(DimensionId.duration) &&
-      !exercise.type.hasDimension(DimensionId.load) &&
-      !exercise.type.hasDimension(DimensionId.reps);
-}
-
-bool _isMobilityExercise(
-  ExerciseRecord exercise,
-  ExerciseCatalogSectionRecord section,
-) {
-  final categoryName = section.category?.name;
-  return categoryName != null &&
-          _normalizedFilterName(categoryName) == 'mobility' ||
-      _mobilityNamePattern.hasMatch(exercise.name);
-}
-
 String _normalizedFilterName(String value) {
   return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+}
+
+/// One row of Focus chips: All, then every active Focus in the user's order.
+/// It scrolls sideways rather than wrapping, so the list keeps its place
+/// under the thumb however many Focuses the user has.
+class _FocusChips extends StatelessWidget {
+  const _FocusChips({
+    required this.focuses,
+    required this.selectedFocusId,
+    required this.onSelected,
+  });
+
+  final List<FocusRecord> focuses;
+  final String? selectedFocusId;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Semantics(
+      key: ExerciseCatalogPicker.focusFilterKey,
+      label: l10n.exerciseCatalogFocusFilterLabel,
+      container: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            FocusChip(
+              key: ExerciseCatalogPicker.focusFilterOptionKey(null),
+              label: l10n.exerciseCatalogFocusAll,
+              icon: null,
+              selected: selectedFocusId == null,
+              onSelected: (_) => onSelected(null),
+            ),
+            for (final focus in focuses) ...[
+              const SizedBox(width: AppDimens.dense / 2),
+              FocusChip(
+                key: ExerciseCatalogPicker.focusFilterOptionKey(focus.id),
+                label: focus.name,
+                icon: focusIcon(focus.id),
+                selected: selectedFocusId == focus.id,
+                onSelected: (_) => onSelected(focus.id),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -1,0 +1,552 @@
+{
+  "name": "m37-progress-measure",
+  "domain": "progress-measure",
+  "schemaVersion": 1,
+  "schema": "m37-progress-measure.schema.json",
+  "cases": [
+    {
+      "name": "record-profile-rep-max",
+      "function": "progress_series",
+      "note": "repMax takes each Workout's highest e1RM point; 100 kg x 6 beats 100 kg x 5.",
+      "input": {
+        "exerciseId": "e-squat",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+            {"id": "s2", "position": 1, "isCompleted": true, "values": {"load": {"entered": "105", "unit": "kilogram"}, "reps": {"entered": "3", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"load": {"entered": "110", "unit": "kilogram"}, "reps": {"entered": "1", "unit": "repetition"}}},
+            {"id": "s4", "position": 1, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "6", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "sets": [
+            {"id": "s5", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 112.5, "unit": "kilogram", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s4", "value": 116.12903225806451, "unit": "kilogram", "isNewBest": true},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "setId": "s5", "value": 112.5, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-max-load",
+      "function": "progress_series",
+      "note": "maxLoad takes the headline record: the heaviest Performed Set.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "8", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"load": {"entered": "85", "unit": "kilogram"}, "reps": {"entered": "3", "unit": "repetition"}}},
+            {"id": "s3", "position": 1, "isCompleted": true, "values": {"load": {"entered": "70", "unit": "kilogram"}, "reps": {"entered": "10", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 80, "unit": "kilogram", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 85, "unit": "kilogram", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-max-reps",
+      "function": "progress_series",
+      "note": "maxReps: a worse Workout is a point but not a New Best.",
+      "input": {
+        "exerciseId": "e-pullup",
+        "profile": {"dimensions": ["reps"], "loadMode": "added", "recordProfile": "maxReps"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "10", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "8", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "12", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-pullup", "measure": "maxReps", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 10, "unit": "repetition", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 8, "unit": "repetition", "isNewBest": false},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "setId": "s3", "value": 12, "unit": "repetition", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-max-duration",
+      "function": "progress_series",
+      "note": "maxDuration: the longest hold.",
+      "input": {
+        "exerciseId": "e-plank",
+        "profile": {"dimensions": ["duration"], "loadMode": "added", "recordProfile": "maxDuration"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"duration": {"entered": "60", "unit": "second"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"duration": {"entered": "90", "unit": "second"}}},
+            {"id": "s3", "position": 1, "isCompleted": true, "values": {"duration": {"entered": "45", "unit": "second"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-plank", "measure": "maxDuration", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 60, "unit": "second", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 90, "unit": "second", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-max-distance",
+      "function": "progress_series",
+      "note": "maxDistance in kilometres, miles converted.",
+      "input": {
+        "exerciseId": "e-ride",
+        "profile": {"dimensions": ["distance"], "loadMode": "added", "recordProfile": "maxDistance"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "20", "unit": "kilometer"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "18.5", "unit": "kilometer"}}}
+          ]},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "15", "unit": "mile"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-ride", "measure": "maxDistance", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 20, "unit": "kilometer", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 18.5, "unit": "kilometer", "isNewBest": false},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "setId": "s3", "value": 24.14016, "unit": "kilometer", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-min-duration",
+      "function": "progress_series",
+      "note": "minDuration is better when lower.",
+      "input": {
+        "exerciseId": "e-row-2k",
+        "profile": {"dimensions": ["distance", "duration"], "loadMode": "added", "recordProfile": "minDuration"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "2", "unit": "kilometer"}, "duration": {"entered": "480", "unit": "second"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "2", "unit": "kilometer"}, "duration": {"entered": "470", "unit": "second"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-row-2k", "measure": "minDuration", "betterIs": "lower",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 480, "unit": "second", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 470, "unit": "second", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "cuj9-record-profile-fastest-pace",
+      "function": "progress_series",
+      "note": "CUJ 9: 5:22 /km and 5:30 /km before the period, then 5:04 /km on Saturday. Pace is seconds per kilometre with unit second.",
+      "input": {
+        "exerciseId": "e-5k-run",
+        "profile": {"dimensions": ["distance", "duration"], "loadMode": "added", "recordProfile": "fastestPace"},
+        "workouts": [
+          {"workoutId": "w-oct17", "localDate": "2026-10-17", "startedAt": "2026-10-17T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "5", "unit": "kilometer"}, "duration": {"entered": "1610", "unit": "second"}}}
+          ]},
+          {"workoutId": "w-oct24", "localDate": "2026-10-24", "startedAt": "2026-10-24T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "5", "unit": "kilometer"}, "duration": {"entered": "1650", "unit": "second"}}}
+          ]},
+          {"workoutId": "w-oct31", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "5", "unit": "kilometer"}, "duration": {"entered": "1520", "unit": "second"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-5k-run", "measure": "fastestPace", "betterIs": "lower",
+        "points": [
+          {"workoutId": "w-oct17", "localDate": "2026-10-17", "startedAt": "2026-10-17T07:00:00.000Z", "setId": "s1", "value": 322, "unit": "second", "isNewBest": false},
+          {"workoutId": "w-oct24", "localDate": "2026-10-24", "startedAt": "2026-10-24T07:00:00.000Z", "setId": "s2", "value": 330, "unit": "second", "isNewBest": false},
+          {"workoutId": "w-oct31", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "setId": "s3", "value": 304, "unit": "second", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "record-profile-min-assistance-has-no-series",
+      "function": "progress_series",
+      "note": "A record per rep count has no single number, so no series.",
+      "input": {
+        "exerciseId": "e-assisted-dip",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "assisted", "recordProfile": "minAssistancePerRepCount"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "20", "unit": "kilogram"}, "reps": {"entered": "8", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "record-profile-completion-streak-has-no-series",
+      "function": "progress_series",
+      "note": "Completion-only exercises have no value, so no series.",
+      "input": {
+        "exerciseId": "e-stretch",
+        "profile": {"dimensions": [], "loadMode": "added", "recordProfile": "completionStreak"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {}}
+          ]}
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "assisted-rep-max-has-no-points",
+      "function": "progress_series",
+      "note": "An assisted repMax exercise has no e1RM, so its series has no points.",
+      "input": {
+        "exerciseId": "e-assisted-pullup",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "assisted", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "20", "unit": "kilogram"}, "reps": {"entered": "8", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"load": {"entered": "15", "unit": "kilogram"}, "reps": {"entered": "8", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-assisted-pullup", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": []
+      }
+    },
+    {
+      "name": "sets-without-the-measure-add-no-point",
+      "function": "progress_series",
+      "note": "A Workout whose Sets carry reps but no load has no maxLoad point.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "10", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 80, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "only-incomplete-sets-add-no-point",
+      "function": "progress_series",
+      "note": "D0: incomplete Sets are not Performed, so a Workout of only incomplete Sets has no point, and the next is judged against the one before it.",
+      "input": {
+        "exerciseId": "e-squat",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": false, "values": {"load": {"entered": "120", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"load": {"entered": "102.5", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 112.5, "unit": "kilogram", "isNewBest": false},
+          {"workoutId": "w3", "localDate": "2026-09-21", "startedAt": "2026-09-21T07:00:00.000Z", "setId": "s3", "value": 115.3125, "unit": "kilogram", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "incomplete-heavier-set-is-ignored",
+      "function": "progress_series",
+      "note": "The heavier Set is incomplete, so the complete one is the Workout's value.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+            {"id": "s2", "position": 1, "isCompleted": false, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 80, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "equal-values-are-not-new-bests",
+      "function": "progress_series",
+      "note": "Matching the best is not a New Best.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 80, "unit": "kilogram", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s2", "value": 80, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "first-workout-is-not-a-new-best",
+      "function": "progress_series",
+      "note": "The first point is never a New Best.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 80, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "kilograms-and-pounds-in-one-exercise",
+      "function": "progress_series",
+      "note": "Loads are normalized to kilograms before e1RM: 225 lb x 5 beats 100 kg x 5, and 220 lb x 5 loses to it inside the first Workout.",
+      "input": {
+        "exerciseId": "e-squat",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+            {"id": "s2", "position": 1, "isCompleted": true, "values": {"load": {"entered": "220", "unit": "pound"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s3", "position": 0, "isCompleted": true, "values": {"load": {"entered": "225", "unit": "pound"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s1", "value": 112.5, "unit": "kilogram", "isNewBest": false},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s3", "value": 114.81556865625001, "unit": "kilogram", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "rep-max-set-above-ten-reps-has-no-e1rm",
+      "function": "progress_series",
+      "note": "The engine's e1RM covers 1 to 10 reps: a Workout of only a 12-rep Set has no point, and a lighter 5-rep Set is the value of the next.",
+      "input": {
+        "exerciseId": "e-squat",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "12", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "12", "unit": "repetition"}}},
+            {"id": "s3", "position": 1, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s3", "value": 90, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "pace-set-with-zero-distance",
+      "function": "progress_series",
+      "note": "A zero-distance Set has no pace: alone it adds no point, beside a real Set it is skipped.",
+      "input": {
+        "exerciseId": "e-5k-run",
+        "profile": {"dimensions": ["distance", "duration"], "loadMode": "added", "recordProfile": "fastestPace"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "0", "unit": "kilometer"}, "duration": {"entered": "600", "unit": "second"}}}
+          ]},
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"distance": {"entered": "0", "unit": "kilometer"}, "duration": {"entered": "300", "unit": "second"}}},
+            {"id": "s3", "position": 1, "isCompleted": true, "values": {"distance": {"entered": "5", "unit": "kilometer"}, "duration": {"entered": "1500", "unit": "second"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-5k-run", "measure": "fastestPace", "betterIs": "lower",
+        "points": [
+          {"workoutId": "w2", "localDate": "2026-09-14", "startedAt": "2026-09-14T07:00:00.000Z", "setId": "s3", "value": 300, "unit": "second", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "two-workouts-on-one-date-ordered-by-start",
+      "function": "progress_series",
+      "note": "Two Workouts on one date are ordered by startedAt, not by id or input order, so the evening one is the New Best.",
+      "input": {
+        "exerciseId": "e-pullup",
+        "profile": {"dimensions": ["reps"], "loadMode": "added", "recordProfile": "maxReps"},
+        "workouts": [
+          {"workoutId": "w-a", "localDate": "2026-10-10", "startedAt": "2026-10-10T18:00:00.000Z", "sets": [
+            {"id": "s2", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "12", "unit": "repetition"}}}
+          ]},
+          {"workoutId": "w-z", "localDate": "2026-10-10", "startedAt": "2026-10-10T06:00:00.000Z", "sets": [
+            {"id": "s1", "position": 0, "isCompleted": true, "values": {"reps": {"entered": "10", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-pullup", "measure": "maxReps", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w-z", "localDate": "2026-10-10", "startedAt": "2026-10-10T06:00:00.000Z", "setId": "s1", "value": 10, "unit": "repetition", "isNewBest": false},
+          {"workoutId": "w-a", "localDate": "2026-10-10", "startedAt": "2026-10-10T18:00:00.000Z", "setId": "s2", "value": 12, "unit": "repetition", "isNewBest": true}
+        ]
+      }
+    },
+    {
+      "name": "tied-sets-lower-position-wins-e1rm",
+      "function": "progress_series",
+      "note": "Equal e1RM points inside a Workout: the Set with the lower position is used, whatever its id.",
+      "input": {
+        "exerciseId": "e-squat",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "repMax"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s-a", "position": 1, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+            {"id": "s-b", "position": 0, "isCompleted": true, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s-b", "value": 112.5, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "tied-sets-lower-position-wins-headline",
+      "function": "progress_series",
+      "note": "Equal headline values inside a Workout: the Set with the lower position is used, whatever its id.",
+      "input": {
+        "exerciseId": "e-press",
+        "profile": {"dimensions": ["load", "reps"], "loadMode": "added", "recordProfile": "maxLoad"},
+        "workouts": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "sets": [
+            {"id": "s-a", "position": 1, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+            {"id": "s-b", "position": 0, "isCompleted": true, "values": {"load": {"entered": "80", "unit": "kilogram"}, "reps": {"entered": "3", "unit": "repetition"}}}
+          ]}
+        ]
+      },
+      "expected": {
+        "exerciseId": "e-press", "measure": "maxLoad", "betterIs": "higher",
+        "points": [
+          {"workoutId": "w1", "localDate": "2026-09-07", "startedAt": "2026-09-07T07:00:00.000Z", "setId": "s-b", "value": 80, "unit": "kilogram", "isNewBest": false}
+        ]
+      }
+    },
+    {
+      "name": "filtered-to-a-period-with-earlier-history",
+      "function": "new_bests_between",
+      "note": "Only New Bests dated inside [from, to] are returned, newest first; earlier New Bests and points after `to` are not.",
+      "input": {
+        "series": [
+          {"exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher", "points": [
+            {"workoutId": "w1", "localDate": "2026-09-01", "startedAt": "2026-09-01T07:00:00.000Z", "setId": "s1", "value": 100, "unit": "kilogram", "isNewBest": false},
+            {"workoutId": "w2", "localDate": "2026-09-20", "startedAt": "2026-09-20T07:00:00.000Z", "setId": "s2", "value": 105, "unit": "kilogram", "isNewBest": true},
+            {"workoutId": "w3", "localDate": "2026-10-01", "startedAt": "2026-10-01T07:00:00.000Z", "setId": "s3", "value": 107.5, "unit": "kilogram", "isNewBest": true},
+            {"workoutId": "w4", "localDate": "2026-10-12", "startedAt": "2026-10-12T07:00:00.000Z", "setId": "s4", "value": 101, "unit": "kilogram", "isNewBest": false},
+            {"workoutId": "w5", "localDate": "2026-10-26", "startedAt": "2026-10-26T07:00:00.000Z", "setId": "s5", "value": 110, "unit": "kilogram", "isNewBest": true},
+            {"workoutId": "w6", "localDate": "2026-10-27", "startedAt": "2026-10-27T07:00:00.000Z", "setId": "s6", "value": 112.5, "unit": "kilogram", "isNewBest": true}
+          ]}
+        ],
+        "from": "2026-10-01",
+        "to": "2026-10-26"
+      },
+      "expected": [
+        {"exerciseId": "e-squat", "measure": "estimatedOneRepMax", "workoutId": "w5", "localDate": "2026-10-26", "startedAt": "2026-10-26T07:00:00.000Z", "setId": "s5", "value": 110, "unit": "kilogram"},
+        {"exerciseId": "e-squat", "measure": "estimatedOneRepMax", "workoutId": "w3", "localDate": "2026-10-01", "startedAt": "2026-10-01T07:00:00.000Z", "setId": "s3", "value": 107.5, "unit": "kilogram"}
+      ]
+    },
+    {
+      "name": "two-exercises-on-one-date-ordered-by-exercise-id",
+      "function": "new_bests_between",
+      "note": "New Bests of one Workout from two exercises are ordered by exerciseId ascending; a later Workout on the same date comes first.",
+      "input": {
+        "series": [
+          {"exerciseId": "e-squat", "measure": "estimatedOneRepMax", "betterIs": "higher", "points": [
+            {"workoutId": "w1", "localDate": "2026-10-20", "startedAt": "2026-10-20T07:00:00.000Z", "setId": "s1", "value": 100, "unit": "kilogram", "isNewBest": false},
+            {"workoutId": "w2", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "setId": "s2", "value": 105, "unit": "kilogram", "isNewBest": true}
+          ]},
+          {"exerciseId": "e-bench", "measure": "maxLoad", "betterIs": "higher", "points": [
+            {"workoutId": "w1", "localDate": "2026-10-20", "startedAt": "2026-10-20T07:00:00.000Z", "setId": "s3", "value": 80, "unit": "kilogram", "isNewBest": false},
+            {"workoutId": "w2", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "setId": "s4", "value": 82.5, "unit": "kilogram", "isNewBest": true}
+          ]},
+          {"exerciseId": "e-5k-run", "measure": "fastestPace", "betterIs": "lower", "points": [
+            {"workoutId": "w0", "localDate": "2026-10-20", "startedAt": "2026-10-20T18:00:00.000Z", "setId": "s5", "value": 322, "unit": "second", "isNewBest": false},
+            {"workoutId": "w3", "localDate": "2026-10-31", "startedAt": "2026-10-31T18:00:00.000Z", "setId": "s6", "value": 304, "unit": "second", "isNewBest": true}
+          ]}
+        ],
+        "from": "2026-10-26",
+        "to": "2026-11-01"
+      },
+      "expected": [
+        {"exerciseId": "e-5k-run", "measure": "fastestPace", "workoutId": "w3", "localDate": "2026-10-31", "startedAt": "2026-10-31T18:00:00.000Z", "setId": "s6", "value": 304, "unit": "second"},
+        {"exerciseId": "e-bench", "measure": "maxLoad", "workoutId": "w2", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "setId": "s4", "value": 82.5, "unit": "kilogram"},
+        {"exerciseId": "e-squat", "measure": "estimatedOneRepMax", "workoutId": "w2", "localDate": "2026-10-31", "startedAt": "2026-10-31T07:00:00.000Z", "setId": "s2", "value": 105, "unit": "kilogram"}
+      ]
+    }
+  ]
+}

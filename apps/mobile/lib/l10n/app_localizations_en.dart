@@ -36,7 +36,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeLibraryTrainingSection => 'TRAINING';
 
   @override
-  String get homeLibrarySupplementsSection => 'SUPPLEMENTS';
+  String get homeLibraryProtocolsSection => 'PROTOCOLS';
 
   @override
   String get homeCreateExercise => 'Create exercise';
@@ -79,9 +79,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeManageAccountAndSync => 'Manage account and sync';
 
   @override
-  String get homeManageRoutines => 'Manage routines';
-
-  @override
   String get homeLogAction => 'Log';
 
   @override
@@ -94,10 +91,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeStartWorkoutFailed => 'Could not start workout. Try again.';
 
   @override
-  String get homeLogFood => 'Food';
-
-  @override
-  String get homeLogSupplement => 'Supplement';
+  String get homeLogDose => 'Dose';
 
   @override
   String get homeDomainToggleLabel => 'Home domain';
@@ -115,10 +109,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeNutritionUnavailable => 'Nutrition Day unavailable';
 
   @override
-  String get homeStartNewWorkout => 'Start New Workout';
+  String get homeStartNewWorkout => 'Start workout';
 
   @override
-  String get homeLoadRoutine => 'Load Routine';
+  String get homeLoadRoutine => 'Routines';
 
   @override
   String get homeAddExercise => 'Add exercise';
@@ -172,6 +166,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String homeUpNextPreviewLabel(String templateName) {
+    return 'Preview $templateName';
+  }
+
+  @override
   String homeUpNextDoneLabel(String templateName) {
     return '$templateName, done';
   }
@@ -181,36 +180,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not start this session. Try again.';
 
   @override
-  String get templatePickerTitle => 'Load a Template';
-
-  @override
-  String get templatePickerTodayUpNextHeading => 'Today / Up next';
-
-  @override
-  String get templatePickerRoutinesHeading => 'Routines';
-
-  @override
-  String get templatePickerAllTemplatesHeading => 'All Templates';
-
-  @override
-  String get templatePickerSearchHint => 'Search templates';
-
-  @override
-  String get templatePickerEmptyTitle => 'No plans yet';
-
-  @override
-  String get templatePickerEmptyMessage =>
-      'Finish a workout, then save it as a template.';
-
-  @override
-  String get templatePickerNoSearchResults => 'No templates match your search.';
-
-  @override
-  String templatePickerCustomizeTooltip(String templateName) {
-    return 'Customize $templateName';
-  }
-
-  @override
   String get templatePickerPreviewStart => 'Start workout';
 
   @override
@@ -218,7 +187,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templatePickerPreviewEmptyExercises =>
-      'No exercises in this template yet.';
+      'No exercises in this workout yet.';
+
+  @override
+  String get routinesSheetTitle => 'Routines';
+
+  @override
+  String get routinesSheetManage => 'Manage';
+
+  @override
+  String get routinesSheetEdit => 'Edit';
+
+  @override
+  String get routinesSheetBack => 'All routines';
+
+  @override
+  String routinesSheetNext(String name) {
+    return 'Next: $name';
+  }
+
+  @override
+  String get routinesSheetUpNext => 'Up next';
+
+  @override
+  String get routinesSheetDone => 'Done';
+
+  @override
+  String routinesSheetWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String routinesSheetExerciseCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count exercises',
+      one: '1 exercise',
+      zero: 'No exercises',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get routinesSheetOtherWorkouts => 'Other saved workouts';
+
+  @override
+  String get routinesSheetNotInRoutine => 'Not in a routine';
+
+  @override
+  String routinesSheetStartTooltip(String name) {
+    return 'Start $name';
+  }
+
+  @override
+  String get routinesSheetEmptyTitle => 'No routines yet';
+
+  @override
+  String get routinesSheetEmptyMessage =>
+      'Create a routine to start its workouts from here.';
+
+  @override
+  String get routinesSheetEmptyAction => 'Create a routine';
 
   @override
   String get workoutTitle => 'Workout';
@@ -264,13 +300,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutResume => 'Resume Workout';
 
   @override
-  String get workoutFinished => 'Workout finished';
-
-  @override
   String get workoutResumed => 'Workout resumed';
 
   @override
-  String get workoutShareAction => 'Share';
+  String finishSummaryFacts(String duration, String sets, int exercises) {
+    String _temp0 = intl.Intl.pluralLogic(
+      exercises,
+      locale: localeName,
+      other: '$exercises exercises',
+      one: '1 exercise',
+    );
+    return '$duration · $sets · $_temp0';
+  }
+
+  @override
+  String get finishSummaryNewBests => 'New bests';
+
+  @override
+  String get finishSummaryNoNewBests => 'None';
+
+  @override
+  String finishSummaryUpdate(String template) {
+    return 'Update \"$template\"';
+  }
+
+  @override
+  String finishSummaryUpdated(String template) {
+    return '\"$template\" updated';
+  }
+
+  @override
+  String finishSummaryUpdateFailed(String template) {
+    return 'Couldn\'t update \"$template\"';
+  }
+
+  @override
+  String get finishSummaryCopy => 'Copy summary';
+
+  @override
+  String get finishSummaryCopied => 'Copied';
+
+  @override
+  String get finishSummaryDone => 'Done';
 
   @override
   String get workoutEditStartTime => 'Edit start time';
@@ -367,6 +438,30 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get workoutExerciseDone => 'Done';
+
+  @override
+  String workoutPerformedSetFraction(int performed, int total) {
+    return '$performed/$total sets';
+  }
+
+  @override
+  String workoutPerformedSetsOfTotal(int performed, int total) {
+    return '$performed of $total sets';
+  }
+
+  @override
+  String workoutGroupRound(int round, int total) {
+    return 'Round $round of $total';
+  }
+
+  @override
+  String get workoutGroupAllRoundsDone => 'All rounds done';
+
+  @override
+  String get workoutCurrentExercise => 'Now';
+
+  @override
   String get cancelAction => 'Cancel';
 
   @override
@@ -402,6 +497,59 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navRoutines => 'Routines';
 
   @override
+  String get navCompounds => 'Compounds';
+
+  @override
+  String get protocolsDomainTitle => 'Protocols';
+
+  @override
+  String get protocolsLibrarySubtitle =>
+      'What you take, when, and for how long';
+
+  @override
+  String get compoundsLibrarySubtitle =>
+      'Everything you take, and each one\'s history';
+
+  @override
+  String get protocolsYourProtocols => 'Your protocols';
+
+  @override
+  String get protocolsNewProtocol => 'New protocol';
+
+  @override
+  String get protocolsLogDose => 'Log a dose';
+
+  @override
+  String get protocolsLoggedHeading => 'Logged';
+
+  @override
+  String get protocolsNothingToday => 'Nothing planned or logged on this day.';
+
+  @override
+  String get protocolsIntroTitle => 'Plan what you take';
+
+  @override
+  String get protocolsIntroMessage =>
+      'A protocol lists what you take and when. With times set, it can remind you when each dose is due.';
+
+  @override
+  String get protocolsLockedTitle => 'Protocols are locked';
+
+  @override
+  String get protocolsLockUnavailableTitle => 'Protocols lock unavailable';
+
+  @override
+  String get protocolsLockUnavailableMessage =>
+      'Protocols stay hidden because the device\'s secure storage could not be read.';
+
+  @override
+  String get privacyShowProtocolsOnToday => 'Show Protocols on Today';
+
+  @override
+  String get privacyShowProtocolsOnTodaySubtitle =>
+      'Off hides the tab on this device. Protocols stay in Library.';
+
+  @override
   String get navSettings => 'Settings';
 
   @override
@@ -409,9 +557,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get navMetrics => 'Metrics';
-
-  @override
-  String get navSupplements => 'Supplements';
 
   @override
   String get agentKeysSignedOutTitle => 'Sign in to manage agent keys';
@@ -842,6 +987,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activityUndoGenericConflict => 'Activity could not be undone';
 
   @override
+  String get activityUndoDependentConflict =>
+      'Can\'t undo: foods were added to this meal afterwards.';
+
+  @override
+  String get activityUndoDuplicatePurposeNameConflict =>
+      'Can\'t undo: another purpose now has this name.';
+
+  @override
   String get activityRelativeLessThanOneMinuteAgo => 'less than 1 min ago';
 
   @override
@@ -883,9 +1036,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingOpenNavigationTooltip => 'Open navigation';
-
-  @override
-  String get trainingSetSaved => 'Set saved';
 
   @override
   String get trainingExercisesTitle => 'Exercises';
@@ -956,42 +1106,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingSaveGroup => 'Save group';
 
   @override
-  String get trainingRestTimer => 'Rest timer';
-
-  @override
   String trainingRestCountdown(String remaining) {
     return 'Rest $remaining';
   }
 
   @override
-  String get trainingRestComplete => 'Rest complete';
+  String trainingRestStripRemainingLabel(int minutes, int seconds) {
+    return 'Rest, $minutes minutes $seconds seconds left';
+  }
 
   @override
-  String get trainingRestSecondsLabel => 'Rest sec';
+  String get trainingRestStripShorten => '−15 s';
 
   @override
-  String get trainingStartTimer => 'Start';
+  String get trainingRestStripShortenLabel => 'Rest 15 seconds less';
 
   @override
-  String get trainingUpdateTimer => 'Update';
+  String get trainingRestStripLengthen => '+15 s';
 
   @override
-  String get trainingCancelTimerTooltip => 'Cancel timer';
+  String get trainingRestStripLengthenLabel => 'Rest 15 seconds more';
+
+  @override
+  String get trainingStopRestTooltip => 'Stop rest';
+
+  @override
+  String get trainingStartRest => 'Start rest';
+
+  @override
+  String get trainingRestVolumeTitle => 'Alert volume';
+
+  @override
+  String trainingRestGetReady(String time) {
+    return 'Get ready · $time';
+  }
+
+  @override
+  String get trainingRestOver => 'Rest over';
+
+  @override
+  String trainingRestOverElapsed(String time) {
+    return '+$time';
+  }
+
+  @override
+  String get trainingRestNotificationTitle => 'Rest timer';
+
+  @override
+  String get trainingRestNotificationCountdown => 'Rest';
+
+  @override
+  String trainingRestNotificationGetReady(String exercise, int number) {
+    return 'Get ready · $exercise · Set $number';
+  }
+
+  @override
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time) {
+    return '$exercise · Set $number in $time';
+  }
+
+  @override
+  String get trainingRestNotificationOver => 'Rest over';
 
   @override
   String get trainingPersonalRecordTooltip => 'Personal record';
-
-  @override
-  String get trainingEditSetTooltip => 'Edit set';
-
-  @override
-  String get trainingDeleteSetTooltip => 'Delete set';
-
-  @override
-  String get trainingMarkSetCompleteLabel => 'Mark set complete';
-
-  @override
-  String get trainingMarkSetIncompleteLabel => 'Mark set incomplete';
 
   @override
   String get trainingReorderSetLabel => 'Reorder set';
@@ -1023,12 +1202,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingRpeLabel => 'RPE';
-
-  @override
-  String get trainingSaveSet => 'Save set';
-
-  @override
-  String get trainingSaveChanges => 'Save changes';
 
   @override
   String get trainingCompletedSet => 'Completed set';
@@ -1090,23 +1263,161 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingUnitMile => 'mi';
 
   @override
-  String get workoutTemplatesTitle => 'Workout Templates';
+  String get trainingLogSet => 'Log set';
+
+  @override
+  String trainingLogSetOf(int number, int total) {
+    return 'Log set $number of $total';
+  }
+
+  @override
+  String trainingSetLogged(int number) {
+    return 'Set $number logged';
+  }
+
+  @override
+  String trainingSetLoggedCarried(int number, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count later sets updated',
+      one: '1 later set updated',
+    );
+    return 'Set $number logged · $_temp0';
+  }
+
+  @override
+  String trainingSetNotLogged(String reason) {
+    return 'Set not logged: $reason';
+  }
+
+  @override
+  String trainingSetNotUpdated(String reason) {
+    return 'Set not updated: $reason';
+  }
+
+  @override
+  String get trainingPlannedSetRemoved => 'Planned set removed';
+
+  @override
+  String get trainingSetDeleted => 'Set deleted';
+
+  @override
+  String get trainingRoundAdded => 'Round added';
+
+  @override
+  String get trainingUndo => 'Undo';
+
+  @override
+  String get trainingUndoConflict => 'Couldn\'t undo: changed since';
+
+  @override
+  String get trainingRestAfterLabel => 'Rest after';
+
+  @override
+  String get trainingRestOff => 'Off';
+
+  @override
+  String get trainingDecreaseRestTooltip => 'Decrease rest';
+
+  @override
+  String get trainingIncreaseRestTooltip => 'Increase rest';
+
+  @override
+  String trainingContextRoundNext(
+      String groupName, int round, int total, String exerciseName) {
+    return '$groupName · Round $round of $total · Next: $exerciseName';
+  }
+
+  @override
+  String trainingContextRound(String groupName, int round, int total) {
+    return '$groupName · Round $round of $total';
+  }
+
+  @override
+  String trainingContextAllRoundsDone(String groupName) {
+    return '$groupName · All rounds done';
+  }
+
+  @override
+  String get trainingAddSet => 'Add set';
+
+  @override
+  String get trainingAddRound => 'Add round';
+
+  @override
+  String get trainingNotDone => 'Not done';
+
+  @override
+  String get trainingUpdateSet => 'Update';
+
+  @override
+  String get trainingDeleteSet => 'Delete';
+
+  @override
+  String trainingNextExercise(String exerciseName) {
+    return 'Next: $exerciseName';
+  }
+
+  @override
+  String get trainingScreenMenuTooltip => 'More options';
+
+  @override
+  String get trainingExerciseOverviewMenuItem => 'Exercise overview';
+
+  @override
+  String get replaceExerciseMenuItem => 'Replace exercise';
+
+  @override
+  String get replaceExerciseReplaced => 'Replaced';
+
+  @override
+  String get replaceExerciseAlreadyInWorkout => 'Already in this workout';
+
+  @override
+  String get replaceExerciseNotReplaced => 'Exercise not replaced';
+
+  @override
+  String workoutExerciseOptionsTooltip(String exerciseName) {
+    return 'Options for $exerciseName';
+  }
+
+  @override
+  String trainingSetRowDoneLabel(int number, String values) {
+    return 'Set $number, done, $values';
+  }
+
+  @override
+  String trainingSetRowNextLabel(int number, String values) {
+    return 'Set $number, next, $values';
+  }
+
+  @override
+  String trainingSetRowPlannedLabel(int number, String values) {
+    return 'Set $number, planned, $values';
+  }
+
+  @override
+  String get trainingRemovePlannedSetAction => 'Remove planned set';
+
+  @override
+  String get workoutTemplatesTitle => 'Saved workouts';
 
   @override
   String get workoutTemplatesLibrarySubtitle =>
-      'Reusable plans for one Workout';
+      'Reusable plans for one workout';
 
   @override
-  String get workoutTemplatesNew => 'New Workout Template';
+  String get workoutTemplatesNew => 'New saved workout';
 
   @override
-  String get workoutTemplatesCreateTitle => 'Create Workout Template';
+  String get workoutTemplatesCreateTitle => 'Create saved workout';
 
   @override
-  String get workoutTemplatesCreate => 'Create Workout Template';
+  String get workoutTemplatesCreate => 'Create saved workout';
 
   @override
-  String get workoutTemplatesNameLabel => 'Workout Template name';
+  String get workoutTemplatesNameLabel => 'Workout name';
 
   @override
   String get workoutTemplatesNotesLabel => 'Standing notes';
@@ -1115,35 +1426,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatesCancel => 'Cancel';
 
   @override
-  String get workoutTemplatesActiveHeading => 'Active Workout Templates';
+  String get workoutTemplatesActiveHeading => 'Active';
 
   @override
-  String get workoutTemplatesArchivedHeading => 'Archived Workout Templates';
+  String get workoutTemplatesArchivedHeading => 'Archived';
 
   @override
-  String get workoutTemplatesShowArchived => 'Show archived Workout Templates';
+  String get workoutTemplatesShowArchived => 'Show archived workouts';
 
   @override
-  String get workoutTemplatesHideArchived => 'Hide archived Workout Templates';
+  String get workoutTemplatesHideArchived => 'Hide archived workouts';
 
   @override
-  String get workoutTemplatesEmptyTitle => 'No Workout Templates yet';
+  String get workoutTemplatesEmptyTitle => 'No saved workouts yet';
 
   @override
   String get workoutTemplatesEmptyMessage =>
       'Create a reusable plan for one Workout.';
 
   @override
-  String get workoutTemplatesArchivedEmpty => 'No archived Workout Templates.';
+  String get workoutTemplatesArchivedEmpty => 'No archived workouts.';
 
   @override
   String workoutTemplatesExerciseCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Template Exercises',
-      one: '1 Template Exercise',
-      zero: 'No Template Exercises',
+      other: '$count exercises',
+      one: '1 exercise',
+      zero: 'No exercises',
     );
     return '$_temp0';
   }
@@ -1154,21 +1465,21 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get workoutTemplatesArchive => 'Archive Workout Template';
+  String get workoutTemplatesArchive => 'Archive saved workout';
 
   @override
-  String get workoutTemplatesArchiveTitle => 'Archive Workout Template?';
+  String get workoutTemplatesArchiveTitle => 'Archive saved workout?';
 
   @override
   String get workoutTemplatesArchiveMessage =>
-      'This hides the template from active lists and pickers. Logged Workouts remain unchanged.';
+      'This hides it from active lists and pickers. Logged workouts remain unchanged.';
 
   @override
-  String get workoutTemplatesRestore => 'Restore Workout Template';
+  String get workoutTemplatesRestore => 'Restore saved workout';
 
   @override
   String get workoutTemplatesActionFailed =>
-      'The Workout Template could not be updated.';
+      'The saved workout could not be updated.';
 
   @override
   String workoutTemplatesStartTooltip(String name) {
@@ -1179,23 +1490,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatesStartFailed => 'The Workout could not be started.';
 
   @override
-  String get workoutTemplateEditorTitle => 'Edit Workout Template';
+  String get workoutTemplateEditorTitle => 'Edit saved workout';
 
   @override
-  String get workoutTemplateSaveDetails => 'Save Workout Template details';
+  String get workoutTemplateSaveDetails => 'Save details';
 
   @override
-  String get workoutTemplateDetailsSaved => 'Workout Template details saved';
+  String get workoutTemplateDetailsSaved => 'Details saved';
 
   @override
-  String get workoutTemplateExercisesHeading => 'Template Exercises';
+  String get workoutTemplateExercisesHeading => 'Exercises';
 
   @override
-  String get workoutTemplateAddExercise => 'Add Template Exercise';
+  String get workoutTemplateAddExercise => 'Add exercise';
 
   @override
   String get workoutTemplateNoExercises =>
-      'No Template Exercises. Add one to build the plan.';
+      'No exercises. Add one to build the plan.';
 
   @override
   String get workoutTemplateExerciseNotes => 'Exercise standing notes';
@@ -1207,17 +1518,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplateSaveExerciseNotes => 'Save exercise notes';
 
   @override
-  String get workoutTemplateRemoveExercise => 'Remove Template Exercise';
+  String get workoutTemplateRemoveExercise => 'Remove exercise';
 
   @override
-  String get workoutTemplateRemoveExerciseTitle => 'Remove Template Exercise?';
+  String get workoutTemplateRemoveExerciseTitle => 'Remove exercise?';
 
   @override
   String get workoutTemplateRemoveExerciseMessage =>
       'Its Prescriptions are removed from this plan. Logged Workouts remain unchanged.';
 
   @override
-  String get workoutTemplateReorderExercise => 'Reorder Template Exercise';
+  String get workoutTemplateReorderExercise => 'Reorder exercise';
 
   @override
   String get workoutTemplatePrescriptionsHeading => 'Prescriptions';
@@ -1242,7 +1553,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplatePrescriptionCopyPreviousHelp =>
-      'Use the values from the previous session when this template is loaded.';
+      'Use the values from the previous session when this workout is started.';
 
   @override
   String get workoutTemplatePrescriptionRepeat => 'Repeat';
@@ -1281,10 +1592,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatePrescriptionSaveAnyway => 'Save anyway';
 
   @override
-  String get workoutTemplateUnavailable => 'Workout Template unavailable';
+  String get workoutTemplateUnavailable => 'Saved workout unavailable';
 
   @override
-  String get workoutTemplateExercisePickerTitle => 'Add Template Exercise';
+  String get workoutTemplateExercisePickerTitle => 'Add exercise';
 
   @override
   String get workoutTemplateGroupsHeading => 'Groups';
@@ -1298,7 +1609,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupNeedsExercises =>
-      'Add at least two ungrouped Template Exercises first.';
+      'Add at least two ungrouped exercises first.';
 
   @override
   String get workoutTemplateCreateGroup => 'Create Group';
@@ -1325,19 +1636,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'A round is one pass through every exercise in this Group.';
 
   @override
-  String get workoutTemplateGroupMembers => 'Template Exercises';
+  String get workoutTemplateGroupMembers => 'Exercises';
 
   @override
-  String get workoutTemplateSelectedGroupMembers =>
-      'Selected Template Exercises';
+  String get workoutTemplateSelectedGroupMembers => 'Selected exercises';
 
   @override
-  String get workoutTemplateAvailableGroupMembers =>
-      'Available Template Exercises';
+  String get workoutTemplateAvailableGroupMembers => 'Available exercises';
 
   @override
   String get workoutTemplateNoSelectedGroupMembers =>
-      'Select at least two Template Exercises below.';
+      'Select at least two exercises below.';
 
   @override
   String workoutTemplateReorderGroupMember(String name) {
@@ -1369,7 +1678,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupMembersInvalid =>
-      'Select at least two Template Exercises.';
+      'Select at least two exercises.';
 
   @override
   String get workoutTemplateSaveGroup => 'Save Group';
@@ -1394,8 +1703,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Template Exercises',
-      one: '1 Template Exercise',
+      other: '$count exercises',
+      one: '1 exercise',
     );
     return '$_temp0';
   }
@@ -1442,7 +1751,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateDissolveGroupMessage =>
-      'Exercises and Prescriptions stay in this Workout Template.';
+      'Exercises and Prescriptions stay in this saved workout.';
 
   @override
   String get workoutTemplateDissolveGroupSuccess => 'Group dissolved';
@@ -1454,7 +1763,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupedExerciseRemoveMessage =>
-      'Edit or dissolve the Group before removing this Template Exercise.';
+      'Edit or dissolve the Group before removing this exercise.';
 
   @override
   String get routinePlansTitle => 'Routines';
@@ -1488,7 +1797,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansEmptyMessage =>
-      'Create a Routine to keep an ordered collection of Workout Templates.';
+      'Create a Routine to keep the workouts of one plan together.';
 
   @override
   String get routinePlansActiveHeading => 'ACTIVE';
@@ -1510,8 +1819,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Workout Templates',
-      one: '1 Workout Template',
+      other: '$count workouts',
+      one: '1 workout',
     );
     return '$_temp0';
   }
@@ -1544,23 +1853,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routinePlansRestore => 'Restore Routine';
 
   @override
-  String routinePlansStartTooltip(String name) {
-    return 'Start $name';
-  }
-
-  @override
-  String routinePlansStartSheetTitle(String name) {
-    return 'Start $name';
-  }
-
-  @override
-  String get routinePlansStartEmptyMessage =>
-      'Add a Workout Template to this Routine first.';
-
-  @override
-  String get routinePlansStartFailed => 'The Workout could not be started.';
-
-  @override
   String get routinePlansCancel => 'Cancel';
 
   @override
@@ -1570,29 +1862,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansArchiveMessage =>
-      'Workout Templates and this Routine\'s references remain unchanged and restorable.';
+      'Its saved workouts remain unchanged, and the Routine can be restored.';
 
   @override
   String get routinePlansSaveDetails => 'Save Routine';
 
   @override
-  String get routinePlansTemplatesHeading => 'Workout Templates';
+  String get routinePlansTemplatesHeading => 'Workouts';
 
   @override
-  String get routinePlansAddTemplate => 'Add Workout Template';
+  String get routinePlansAddTemplate => 'Add workout';
 
   @override
-  String get routinePlansNoTemplates =>
-      'No Workout Templates in this Routine yet.';
+  String get routinePlansNoTemplates => 'No workouts in this Routine yet.';
 
   @override
-  String get routinePlansTemplateLabel => 'Workout Template';
+  String get routinePlansTemplateLabel => 'Workout';
 
   @override
-  String get routinePlansArchivedTemplateLabel => 'Archived Workout Template';
+  String get routinePlansArchivedTemplateLabel => 'Archived workout';
 
   @override
-  String get routinePlansRestoreTemplate => 'Restore Workout Template';
+  String get routinePlansRestoreTemplate => 'Restore workout';
 
   @override
   String routinePlansReorderTemplate(String name) {
@@ -1620,15 +1911,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String routinePlansRemoveReferenceMessage(String name) {
-    return 'This removes only the reference from $name. The Workout Template remains available everywhere else.';
+    return 'This removes it only from $name. The saved workout remains available everywhere else.';
   }
 
   @override
-  String get routinePlansTemplatePickerTitle => 'Add Workout Template';
+  String get routinePlansTemplatePickerTitle => 'Add workout';
 
   @override
   String get routinePlansNoAvailableTemplates =>
-      'Create an active Workout Template in Library before adding one to this Routine.';
+      'Create a saved workout in Library before adding one to this Routine.';
 
   @override
   String get routinePlansCadenceHeading => 'Cadence';
@@ -1650,7 +1941,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansRotatingWindowHelp =>
-      'Each position can contain more than one Workout Template.';
+      'Each position can hold more than one workout.';
 
   @override
   String get routinePlansRotatingWindowError =>
@@ -1700,7 +1991,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String routinePlansAddTemplateToSlot(String slot) {
-    return 'Add Workout Template to $slot';
+    return 'Add workout to $slot';
   }
 
   @override
@@ -1726,10 +2017,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routinePlansCurrentSlot => 'Current slot';
 
   @override
-  String get workoutCaptureMenuAction => 'Save as Workout Template';
+  String get workoutCaptureMenuAction => 'Save for reuse';
 
   @override
-  String get workoutCaptureTitle => 'Save workout as template';
+  String get workoutCaptureTitle => 'Save workout for reuse';
 
   @override
   String get workoutCaptureLoading => 'Preparing capture preview';
@@ -1811,10 +2102,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get workoutCaptureNameLabel => 'Workout Template name';
+  String get workoutCaptureNameLabel => 'Workout name';
 
   @override
-  String get workoutCaptureNameRequired => 'Enter a Workout Template name.';
+  String get workoutCaptureNameRequired => 'Enter a workout name.';
 
   @override
   String get workoutCaptureRoutineLabel => 'Add to Routine';
@@ -1878,7 +2169,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutCaptureReferenceNote =>
-      'This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.';
+      'This creates a new saved workout from what you logged. The logged workout stays unchanged; adding it to a Routine adds only a reference.';
 
   @override
   String get workoutCaptureErrorsTitle => 'Cannot save yet';
@@ -1891,20 +2182,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'I reviewed these warnings and want to save anyway.';
 
   @override
-  String get workoutCaptureSave => 'Save Template';
+  String get workoutCaptureSave => 'Save';
 
   @override
   String get workoutCaptureSaving => 'Saving...';
 
   @override
   String get workoutCaptureSaveFailed =>
-      'The Workout Template could not be saved. Review your choices and try again.';
+      'The saved workout could not be created. Review your choices and try again.';
 
   @override
-  String get workoutCaptureSaved => 'Workout Template saved.';
+  String get workoutCaptureSaved => 'Saved for reuse.';
 
   @override
-  String get workoutUpdateTemplateMenuAction => 'Update template';
+  String get workoutUpdateTemplateMenuAction => 'Update saved workout';
 
   @override
   String templateUpdatePromptTitle(String name) {
@@ -1915,18 +2206,2227 @@ class AppLocalizationsEn extends AppLocalizations {
   String get templateUpdateDismissAction => 'Not now';
 
   @override
-  String get templateUpdateConfirmAction => 'Update template';
+  String get templateUpdateConfirmAction => 'Update saved workout';
 
   @override
-  String get templateUpdateConfirmedMessage => 'Template updated.';
+  String get templateUpdateConfirmedMessage => 'Saved workout updated.';
 
   @override
   String get templateUpdateNotLinkedMessage =>
-      'This workout isn\'t linked to a Workout Template.';
+      'This workout didn\'t start from a saved workout.';
 
   @override
   String get templateUpdateGroupsChangedNote => 'Exercise groups changed';
 
   @override
   String get templateUpdateNoChangesNote => 'No changes to update';
+
+  @override
+  String templateChangeAdd(String exercise) {
+    return 'Add $exercise';
+  }
+
+  @override
+  String templateChangeRemove(String exercise) {
+    return 'Remove $exercise';
+  }
+
+  @override
+  String templateChangeSets(String exercise) {
+    return '$exercise: sets changed';
+  }
+
+  @override
+  String get templateStartNoExercises => 'No exercises';
+
+  @override
+  String templateStartEmptyTitle(String name) {
+    return '\"$name\" has no exercises';
+  }
+
+  @override
+  String get templateStartEmptyMessage =>
+      'Starting it opens an empty workout. Add exercises to it to have them load when you start it.';
+
+  @override
+  String get templateStartEmptyConfirmAction => 'Start empty workout';
+
+  @override
+  String get workoutTemplateNotesTitle => 'Plan notes';
+
+  @override
+  String workoutTemplateNotesSource(String name) {
+    return 'From $name';
+  }
+
+  @override
+  String get workoutTemplateNotesShowMore => 'Show more';
+
+  @override
+  String get workoutTemplateNotesShowLess => 'Show less';
+
+  @override
+  String get activityBackupRestoreActor => 'Backup restore';
+
+  @override
+  String get backupRestoreSectionTitle => 'Restore';
+
+  @override
+  String get backupRestoreDescription =>
+      'Bring in workouts, food, and body readings from a Perennia backup file. Restoring only adds and updates; nothing on this device is erased.';
+
+  @override
+  String get backupRestoreButton => 'Restore from backup';
+
+  @override
+  String get backupRestoreReadingProgress => 'Reading backup…';
+
+  @override
+  String get backupRestoreRestoringProgress => 'Restoring…';
+
+  @override
+  String get backupRestorePassphraseTitle => 'Encrypted backup';
+
+  @override
+  String get backupRestorePassphraseMessage =>
+      'Enter the passphrase this backup was made with.';
+
+  @override
+  String get backupRestorePassphraseLabel => 'Backup passphrase';
+
+  @override
+  String get backupRestorePassphraseRejected =>
+      'That passphrase didn\'t unlock this backup.';
+
+  @override
+  String get backupRestoreUnlockAction => 'Unlock';
+
+  @override
+  String get backupRestoreCancelAction => 'Cancel';
+
+  @override
+  String get backupRestoreConfirmTitle => 'Restore this backup?';
+
+  @override
+  String backupRestoreCreatedAt(String date) {
+    return 'Made $date';
+  }
+
+  @override
+  String backupRestoreWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreSetCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sets',
+      one: '1 set',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreFoodEntryCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count food entries',
+      one: '1 food entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreMetricReadingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count metric readings',
+      one: '1 metric reading',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get backupRestoreMergeExplanation =>
+      'Restoring adds anything this device is missing. Nothing here is erased: when the backup and this device both have the same item, the more recently edited one is kept. You can undo the restore from Recent activity.';
+
+  @override
+  String get backupRestoreConfirmAction => 'Restore';
+
+  @override
+  String get backupRestoreDoneTitle => 'Backup restored';
+
+  @override
+  String backupRestoreChangedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items added or updated.',
+      one: '1 item added or updated.',
+      zero: 'Nothing new: this device already had everything in the backup.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreUnchangedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items were already up to date.',
+      one: '1 item was already up to date.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get backupRestoreDoneAction => 'Done';
+
+  @override
+  String get backupRestoreFailedTitle => 'Couldn\'t restore this backup';
+
+  @override
+  String get backupRestoreUnreadableMessage =>
+      'This file isn\'t a Perennia backup, or it\'s damaged. Nothing on this device was changed.';
+
+  @override
+  String get backupRestoreNewerVersionMessage =>
+      'This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.';
+
+  @override
+  String get backupSettingsTitle => 'Backup & restore';
+
+  @override
+  String get backupSettingsHubSubtitle => 'Back up to a file or restore one';
+
+  @override
+  String get backupNowSectionTitle => 'Back up';
+
+  @override
+  String get backupNowDescription =>
+      'Save your workouts, food, and body readings to a backup file. Keep it somewhere off this phone, like a cloud drive, so you can restore it on a new one.';
+
+  @override
+  String get backupNowButton => 'Back up now';
+
+  @override
+  String get backupNowProgress => 'Backing up…';
+
+  @override
+  String get backupNowSavedMessage => 'Backup saved.';
+
+  @override
+  String get backupNowFailedTitle => 'Couldn\'t save the backup';
+
+  @override
+  String get backupNowFailedMessage =>
+      'The backup file couldn\'t be written there. Try again, or choose another place.';
+
+  @override
+  String get backupNowUnsupportedMessage =>
+      'This device can\'t save a backup file.';
+
+  @override
+  String get backupPassphraseLabel => 'Backup passphrase';
+
+  @override
+  String get backupPassphraseHelper =>
+      'Optional. When set, backups are encrypted, and restoring one asks for this passphrase. Without it the backup can\'t be opened.';
+
+  @override
+  String get autoBackupSwitchTitle => 'Auto-backup';
+
+  @override
+  String get autoBackupChooseFolderButton => 'Choose backup folder';
+
+  @override
+  String get autoBackupFolderWarningLabel => 'Auto-backup folder warning';
+
+  @override
+  String get autoBackupGrantPrompt =>
+      'Choose a backup folder again to resume auto-backup.';
+
+  @override
+  String get startWorkoutSheetTitle => 'Start a workout';
+
+  @override
+  String get startWorkoutFocusSection => 'Focus';
+
+  @override
+  String get startWorkoutEditFocusesTooltip => 'Edit focuses';
+
+  @override
+  String get startWorkoutEmpty => 'Empty workout';
+
+  @override
+  String get startWorkoutEmptySubtitle => 'Start without a focus';
+
+  @override
+  String startWorkoutFocusTileLabel(String focus) {
+    return 'Start a workout: $focus';
+  }
+
+  @override
+  String get workoutNoFocus => 'No focus';
+
+  @override
+  String workoutFocusSemanticLabel(String focus) {
+    return 'Focus: $focus. Change focus';
+  }
+
+  @override
+  String get workoutChooseFocus => 'Choose a focus';
+
+  @override
+  String workoutFocusChanged(String focus) {
+    return 'Focus set to $focus';
+  }
+
+  @override
+  String get workoutFocusCleared => 'Focus removed';
+
+  @override
+  String get focusPickerTitle => 'Focus';
+
+  @override
+  String get focusPickerNone => 'No focus';
+
+  @override
+  String get focusPickerEdit => 'Edit focuses';
+
+  @override
+  String focusArchivedName(String focus) {
+    return '$focus (archived)';
+  }
+
+  @override
+  String focusLibraryYourExercises(String focus) {
+    return 'Recent under $focus';
+  }
+
+  @override
+  String focusLibraryCatalog(String focus) {
+    return 'More $focus exercises';
+  }
+
+  @override
+  String focusLibraryBrowseAll(String focus) {
+    return 'Browse all $focus exercises';
+  }
+
+  @override
+  String get focusLibrarySearchAll => 'Search all exercises';
+
+  @override
+  String focusLibraryAddExerciseTooltip(String exercise) {
+    return 'Add $exercise';
+  }
+
+  @override
+  String get focusUseToday => 'Today';
+
+  @override
+  String get focusUseYesterday => 'Yesterday';
+
+  @override
+  String focusUseWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String focusUseSubtitle(String when, String count) {
+    return '$when · $count';
+  }
+
+  @override
+  String get exerciseCatalogFocusAll => 'All';
+
+  @override
+  String get exerciseCatalogFocusFilterLabel => 'Focus';
+
+  @override
+  String exerciseCatalogInFocus(String focus) {
+    return 'In $focus';
+  }
+
+  @override
+  String get exerciseCatalogOtherExercises => 'Other exercises';
+
+  @override
+  String get focusManagerTitle => 'Focuses';
+
+  @override
+  String get focusManagerLibrarySubtitle =>
+      'What you train, for starting a workout';
+
+  @override
+  String get focusManagerAdd => 'Add focus';
+
+  @override
+  String get focusManagerNameLabel => 'Name';
+
+  @override
+  String get focusManagerRename => 'Rename';
+
+  @override
+  String get focusManagerArchive => 'Archive';
+
+  @override
+  String get focusManagerSave => 'Save';
+
+  @override
+  String get focusManagerReorderHint => 'Press and hold to reorder.';
+
+  @override
+  String focusManagerArchiveTitle(String focus) {
+    return 'Archive $focus?';
+  }
+
+  @override
+  String get focusColorMenu => 'Color';
+
+  @override
+  String focusColorDialogTitle(String name) {
+    return 'Color for $name';
+  }
+
+  @override
+  String get focusColorBack => 'Back';
+
+  @override
+  String get focusColorCardio => 'Cardio';
+
+  @override
+  String get focusColorCore => 'Core';
+
+  @override
+  String get focusColorShoulders => 'Shoulders';
+
+  @override
+  String get focusColorArms => 'Arms';
+
+  @override
+  String get focusColorLegs => 'Legs';
+
+  @override
+  String get focusColorChest => 'Chest';
+
+  @override
+  String get focusManagerArchiveBody =>
+      'Workouts already logged under it keep it. It stops being offered when you start a workout.';
+
+  @override
+  String get focusManagerDuplicateName =>
+      'A focus with that name already exists.';
+
+  @override
+  String get focusManagerEmptyName => 'Enter a name.';
+
+  @override
+  String get focusManagerEmpty =>
+      'No focuses. Add one to start workouts from it.';
+
+  @override
+  String get exerciseEditorFocusesLabel => 'Focuses';
+
+  @override
+  String get exerciseEditorFocusesHelp =>
+      'Offered first when you start a workout under one of these.';
+
+  @override
+  String get workoutTemplateFocusLabel => 'Focus';
+
+  @override
+  String homeSessionHeaderWithFocus(String focus, String time) {
+    return '$focus · $time';
+  }
+
+  @override
+  String get focusLibraryHeading => 'Add your first exercise';
+
+  @override
+  String focusLibraryStaples(String focus) {
+    return '$focus staples';
+  }
+
+  @override
+  String get focusManagerSaveFailed => 'Could not save the focus. Try again.';
+
+  @override
+  String get protocolEditorNewTitle => 'New Protocol';
+
+  @override
+  String get protocolEditorEditTitle => 'Edit Protocol';
+
+  @override
+  String get protocolEditorNameLabel => 'Name';
+
+  @override
+  String get protocolEditorStartDateLabel => 'Start date';
+
+  @override
+  String get protocolEditorPeriodHeading => 'Period';
+
+  @override
+  String get protocolEditorUntilLabel => 'Until an end date';
+
+  @override
+  String get protocolEditorOngoing => 'Ongoing, with no end date';
+
+  @override
+  String get protocolEditorEndDateLabel => 'End date';
+
+  @override
+  String get protocolEditorDoseCountButton =>
+      'Set the end date from a number of doses';
+
+  @override
+  String get protocolEditorDoseCountTitle => 'End after a number of doses';
+
+  @override
+  String get protocolEditorDoseCountMemberLabel => 'Count the doses of';
+
+  @override
+  String get protocolEditorDoseCountLabel => 'Number of doses';
+
+  @override
+  String protocolEditorDoseCountResult(String date) {
+    return 'Ends $date';
+  }
+
+  @override
+  String get protocolEditorDoseCountUnavailable =>
+      'Unavailable for this Schedule';
+
+  @override
+  String protocolEditorDoseCountRange(int min, int max) {
+    return 'Enter a number from $min to $max';
+  }
+
+  @override
+  String get protocolEditorDoseCountApply => 'Set end date';
+
+  @override
+  String get protocolEditorCancel => 'Cancel';
+
+  @override
+  String get protocolEditorCycleLabel => 'Cycle';
+
+  @override
+  String get protocolEditorCycleSubtitle => 'Days on, then days off, repeating';
+
+  @override
+  String get protocolEditorCycleOnDaysLabel => 'Days on';
+
+  @override
+  String get protocolEditorCycleOffDaysLabel => 'Days off';
+
+  @override
+  String get protocolEditorCycleAnchorLabel => 'Cycle counted from';
+
+  @override
+  String protocolEditorAnchorIsStart(String date) {
+    return '$date (the start date)';
+  }
+
+  @override
+  String get protocolEditorPausesHeading => 'Pauses';
+
+  @override
+  String get protocolEditorPausesEmpty => 'No Pauses';
+
+  @override
+  String get protocolEditorAddPause => 'Add a Pause';
+
+  @override
+  String get protocolEditorRemovePause => 'Remove Pause';
+
+  @override
+  String protocolEditorDateRange(String from, String to) {
+    return '$from – $to';
+  }
+
+  @override
+  String get protocolEditorCompoundsHeading => 'Compounds';
+
+  @override
+  String protocolEditorScheduleTitle(String compound) {
+    return '$compound Schedule';
+  }
+
+  @override
+  String protocolEditorScheduleCurrentVersion(String date) {
+    return 'Current Schedule applies from $date';
+  }
+
+  @override
+  String get protocolEditorRuleTimed => 'At set times';
+
+  @override
+  String get protocolEditorRuleUntimed => 'Any time';
+
+  @override
+  String get protocolEditorRuleAsNeeded => 'As needed';
+
+  @override
+  String get protocolEditorRuleNone => 'No schedule';
+
+  @override
+  String get protocolEditorDaysDaily => 'Every day';
+
+  @override
+  String get protocolEditorDaysWeekdays => 'Weekdays';
+
+  @override
+  String get protocolEditorDaysEveryN => 'Every N days';
+
+  @override
+  String get protocolEditorEveryNLabel => 'Every how many days';
+
+  @override
+  String get protocolEditorEveryNAnchorLabel => 'Counted from';
+
+  @override
+  String get protocolEditorTimesHeading => 'Times';
+
+  @override
+  String get protocolEditorAddTime => 'Add a time';
+
+  @override
+  String protocolEditorRemoveTime(String time) {
+    return 'Remove $time';
+  }
+
+  @override
+  String get protocolEditorUntimedCountLabel => 'Doses a day';
+
+  @override
+  String get protocolEditorPlannedAmountLabel => 'Planned amount';
+
+  @override
+  String get protocolEditorUnitLabel => 'Unit';
+
+  @override
+  String get protocolEditorRouteLabel => 'Route';
+
+  @override
+  String get protocolEditorTargetOutcomesHeading =>
+      'Target outcomes (optional)';
+
+  @override
+  String get protocolEditorTargetOutcomesHelp =>
+      'Which Metrics or performance to correlate — seeds the later Effect view; no analysis happens here.';
+
+  @override
+  String get protocolEditorPerformance => 'Performance';
+
+  @override
+  String get protocolEditorSave => 'Save';
+
+  @override
+  String get protocolEditorArchive => 'Archive';
+
+  @override
+  String get protocolEditorDelete => 'Delete';
+
+  @override
+  String protocolArchiveConfirmTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String get protocolArchiveConfirmMessage =>
+      'Doses you logged stay in your history. From tomorrow it plans nothing, and today\'s doses you haven\'t logged are no longer expected.';
+
+  @override
+  String protocolDeleteConfirmTitle(String name) {
+    return 'Delete $name?';
+  }
+
+  @override
+  String get protocolDeleteConfirmMessage =>
+      'Nothing has been logged for this Protocol, so it is removed completely. You can still recover it from the Activity Log.';
+
+  @override
+  String get protocolOnlyArchivable =>
+      'Something was logged for this Protocol, so it can only be archived.';
+
+  @override
+  String get protocolEditorNameRequired => 'Name is required.';
+
+  @override
+  String get protocolEditorCompoundRequired =>
+      'A Protocol requires at least one Compound.';
+
+  @override
+  String get protocolEditorFixIssues => 'Fix the marked fields to save.';
+
+  @override
+  String protocolEditorSaveFailed(String error) {
+    return 'Could not save the Protocol: $error';
+  }
+
+  @override
+  String protocolEditorDeleteFailed(String error) {
+    return 'Could not delete the Protocol: $error';
+  }
+
+  @override
+  String protocolEditorArchiveFailed(String error) {
+    return 'Could not archive the Protocol: $error';
+  }
+
+  @override
+  String get protocolEditorCompoundFallback => 'Compound';
+
+  @override
+  String get protocolPlanIssueTimesFormat =>
+      'Each time must be HH:MM, from 00:00 to 23:59.';
+
+  @override
+  String protocolPlanIssueTimesCount(int max) {
+    return 'Plan 1 to $max times a day.';
+  }
+
+  @override
+  String get protocolPlanIssueTimesDistinct =>
+      'The same time is planned twice.';
+
+  @override
+  String protocolPlanIssueUntimedCount(int max) {
+    return 'Plan 1 to $max doses a day.';
+  }
+
+  @override
+  String get protocolPlanIssueWeekdaysValid => 'Choose at least one weekday.';
+
+  @override
+  String protocolPlanIssueEveryNRange(int min, int max) {
+    return 'Every N days takes a number from $min to $max.';
+  }
+
+  @override
+  String get protocolPlanIssueAnchorDate => 'Choose a real date to count from.';
+
+  @override
+  String get protocolPlanIssueAmountRequired =>
+      'Enter a planned amount, unit and route that a Dose could log.';
+
+  @override
+  String get protocolPlanIssueAmountAbsent =>
+      'As needed and No schedule carry no amount, unit or route.';
+
+  @override
+  String protocolPlanIssueCycleLengths(int max) {
+    return 'A cycle is 1 to $max days on and 1 to $max days off.';
+  }
+
+  @override
+  String get protocolPlanIssueBoundsOrder =>
+      'The end date can\'t be before the start date.';
+
+  @override
+  String protocolPlanIssuePauseCount(int max) {
+    return 'A Protocol holds at most $max Pauses.';
+  }
+
+  @override
+  String get protocolPlanIssuePauseOrder =>
+      'A Pause can\'t end before it starts.';
+
+  @override
+  String get protocolPlanIssuePauseBounds =>
+      'Each Pause must fall within the Protocol\'s dates.';
+
+  @override
+  String get protocolPlanIssuePauseOverlap => 'Two Pauses can\'t overlap.';
+
+  @override
+  String protocolPlanIssueTimesMany(int count) {
+    return 'More than $count times a day is unusual. Check the times before saving.';
+  }
+
+  @override
+  String get effectPlanBreaksCountedAsDuring =>
+      'Off-cycle and paused days are counted as during.';
+
+  @override
+  String get plannedListRowLogged => 'Logged';
+
+  @override
+  String get plannedListRowPending => 'Pending';
+
+  @override
+  String get plannedListRowNotLogged => 'Not logged';
+
+  @override
+  String get plannedListRowSkipped => 'Skipped';
+
+  @override
+  String get plannedListAnyTime => 'Any time';
+
+  @override
+  String get plannedListLogAll => 'Log all planned';
+
+  @override
+  String get logDoseDateLabel => 'Date';
+
+  @override
+  String get logDoseSkip => 'Skip';
+
+  @override
+  String get logDoseUnskip => 'Undo skip';
+
+  @override
+  String get dayStatusNotPlanned => 'Not planned';
+
+  @override
+  String get dayStatusPaused => 'Paused';
+
+  @override
+  String get dayStatusOffCycle => 'Off cycle';
+
+  @override
+  String get dayStatusPending => 'Pending';
+
+  @override
+  String get dayStatusLogged => 'Logged';
+
+  @override
+  String get dayStatusPartlyLogged => 'Partly logged';
+
+  @override
+  String get dayStatusNotLogged => 'Not logged';
+
+  @override
+  String get dayStatusSkipped => 'Skipped';
+
+  @override
+  String get notPlannedReasonNotScheduledToday => 'Not scheduled that day';
+
+  @override
+  String get notPlannedReasonAsNeeded => 'As needed';
+
+  @override
+  String get notPlannedReasonNoSchedule => 'No schedule';
+
+  @override
+  String get notPlannedReasonRemoved => 'Removed';
+
+  @override
+  String get notPlannedReasonOutside => 'Outside the Protocol\'s dates';
+
+  @override
+  String get consistencyButton => 'Consistency';
+
+  @override
+  String consistencyScreenTitle(String name) {
+    return 'Consistency · $name';
+  }
+
+  @override
+  String consistencyRangeDays(int count) {
+    return '$count days';
+  }
+
+  @override
+  String get consistencyRangeCustom => 'Custom';
+
+  @override
+  String get consistencyPlanned => 'Planned';
+
+  @override
+  String get consistencyExtra => 'Extra';
+
+  @override
+  String consistencyExtraCount(int count) {
+    return '$count extra';
+  }
+
+  @override
+  String consistencySkippedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skipped',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get consistencyNotInProtocol =>
+      'Not in a Protocol, so its days have no Day Status. Its Doses are listed by date.';
+
+  @override
+  String get consistencyNoDoses => 'No Doses logged in this range.';
+
+  @override
+  String get consistencyLoadError => 'Could not load this range.';
+
+  @override
+  String get consistencyChartEmpty =>
+      'Nothing planned or logged in this range.';
+
+  @override
+  String get consistencyChartLoggedLegend => 'Logged Dose';
+
+  @override
+  String get consistencyChartExtraLegend => 'Extra Dose';
+
+  @override
+  String get consistencyChartPlannedLegend => 'Planned time';
+
+  @override
+  String consistencyChartSemantics(String from, String to) {
+    return 'Dose times against planned times, $from – $to';
+  }
+
+  @override
+  String get protocolReminderTitle => 'Protocols';
+
+  @override
+  String protocolReminderBody(String time) {
+    return 'Planned for $time';
+  }
+
+  @override
+  String get protocolReminderChannelName => 'Reminders';
+
+  @override
+  String get protocolRemindersSwitchLabel => 'Reminders';
+
+  @override
+  String get protocolRemindersSwitchSubtitle =>
+      'A notification at each planned time';
+
+  @override
+  String get protocolRemindersPermissionDenied =>
+      'Notifications are off for Perennia';
+
+  @override
+  String get protocolRemindersOpenSettings => 'Open settings';
+
+  @override
+  String protocolRemindersScheduledThrough(String date) {
+    return 'Reminders scheduled through $date';
+  }
+
+  @override
+  String get protocolRemindersBanner => 'Reminders are off on this device';
+
+  @override
+  String get protocolRemindersAllow => 'Allow';
+
+  @override
+  String get protocolRemindersSettingsTile => 'Protocol reminders';
+
+  @override
+  String get protocolRemindersSettingsTileSubtitle =>
+      'Reminders on this device and notification permission';
+
+  @override
+  String get protocolRemindersSettingsTitle => 'Protocol reminders';
+
+  @override
+  String get protocolRemindersDeviceSwitch => 'Reminders on this device';
+
+  @override
+  String get protocolRemindersDeviceSwitchSubtitle =>
+      'Applies to this device only';
+
+  @override
+  String get protocolRemindersPermissionLabel => 'Notifications';
+
+  @override
+  String get protocolRemindersPermissionGranted => 'Allowed';
+
+  @override
+  String get protocolRemindersPermissionNotDetermined => 'Not asked yet';
+
+  @override
+  String get protocolRemindersPermissionUnsupported =>
+      'Not available on this device';
+
+  @override
+  String get progressPeriodWeeks4 => '4 wk';
+
+  @override
+  String get progressPeriodWeeks12 => '12 wk';
+
+  @override
+  String get progressPeriodYear => '1 yr';
+
+  @override
+  String get progressRoutinesAction => 'Routines';
+
+  @override
+  String get progressCardUnavailable => 'Unavailable right now';
+
+  @override
+  String get progressFocusesAction => 'Focuses';
+
+  @override
+  String get progressThisWeekTitle => 'This week';
+
+  @override
+  String get progressThisWeekEmpty => 'Plan your week with a Routine';
+
+  @override
+  String get progressThisWeekNothingLogged => 'Nothing logged yet this week';
+
+  @override
+  String progressThisWeekComparing(String names) {
+    return 'Comparing $names';
+  }
+
+  @override
+  String progressThisWeekComparingWeeklyOnly(String names) {
+    return 'Comparing $names. Weekly Routines only.';
+  }
+
+  @override
+  String get progressThisWeekWeeklyOnly => 'Weekly Routines only.';
+
+  @override
+  String progressThisWeekSemantics(String days) {
+    return 'This week: $days.';
+  }
+
+  @override
+  String progressThisWeekDaySemantics(String weekday, String status) {
+    return '$weekday $status';
+  }
+
+  @override
+  String get progressStatusDone => 'Done';
+
+  @override
+  String get progressStatusPartlyDone => 'Partly done';
+
+  @override
+  String get progressStatusDoneDifferently => 'Done differently';
+
+  @override
+  String get progressStatusNotDone => 'Not done';
+
+  @override
+  String get progressStatusPending => 'Pending';
+
+  @override
+  String get progressStatusPlanned => 'Planned';
+
+  @override
+  String get progressStatusTrained => 'Trained';
+
+  @override
+  String get progressStatusRest => 'Rest';
+
+  @override
+  String get progressStatusNoPlan => 'No plan';
+
+  @override
+  String progressStatusSpoken(String status) {
+    String _temp0 = intl.Intl.selectLogic(
+      status,
+      {
+        'done': 'done',
+        'partly_done': 'partly done',
+        'done_differently': 'done differently',
+        'not_done': 'not done',
+        'pending': 'pending',
+        'planned': 'planned',
+        'trained': 'trained',
+        'rest': 'rest',
+        'no_plan': 'no plan',
+        'other': '',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPartlyDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count partly done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountDoneDifferently(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count done differently',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountNotDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count not done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountTrained(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get progressTrainedDaysTitle => 'Trained days';
+
+  @override
+  String progressTrainedDaysCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained days',
+      one: '1 trained day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressTrainedDaysSemantics(int count, int weeks) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained days in the last $weeks weeks.',
+      one: '1 trained day in the last $weeks weeks.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get progressTrainedDaysEmpty => 'Logged workouts show here';
+
+  @override
+  String get progressFocusTimeTitle => 'Time by Focus';
+
+  @override
+  String get progressFocusTimeEmpty => 'Finished workouts show here';
+
+  @override
+  String get progressFocusTimeNoFocus => 'No Focus';
+
+  @override
+  String get progressFocusTimeUnknownFocus => 'Focus';
+
+  @override
+  String progressFocusTimeAxisHours(int hours) {
+    return '${hours}h';
+  }
+
+  @override
+  String progressFocusTimeEntry(String name, String duration) {
+    return '$name $duration';
+  }
+
+  @override
+  String progressFocusTimeSemantics(String entries) {
+    return 'Time by Focus, this week: $entries';
+  }
+
+  @override
+  String progressHoursSpoken(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressMinutesSpoken(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressHoursMinutesSpoken(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String get progressProtocolsTitle => 'Protocols';
+
+  @override
+  String get progressProtocolsUnlock => 'Unlock';
+
+  @override
+  String get progressProtocolsAll => 'All protocols';
+
+  @override
+  String get progressProtocolsEmpty => 'No protocol days in this period';
+
+  @override
+  String progressCountLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPartlyLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count partly logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountNotLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count not logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPaused(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count paused',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skipped',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get progressKeyExercisesTitle => 'Key exercises';
+
+  @override
+  String get progressKeyExercisesEmpty =>
+      'Mark exercises as favorites to chart them here';
+
+  @override
+  String get progressKeyExercisesNoCharted =>
+      'Your favorites have no charted records';
+
+  @override
+  String get progressKeyExercisesNoSessions => 'No sessions this period';
+
+  @override
+  String get progressMeasureEstimatedOneRepMax => 'e1RM';
+
+  @override
+  String get progressMeasureMaxLoad => 'heaviest';
+
+  @override
+  String get progressMeasureMaxReps => 'most reps';
+
+  @override
+  String get progressMeasureMaxDuration => 'longest';
+
+  @override
+  String get progressMeasureMinDuration => 'shortest';
+
+  @override
+  String get progressMeasureMaxDistance => 'farthest';
+
+  @override
+  String get progressMeasureFastestPace => 'fastest pace';
+
+  @override
+  String progressBest(String value) {
+    return 'Best $value';
+  }
+
+  @override
+  String progressComparisonHigher(String difference) {
+    return '↑ $difference on before';
+  }
+
+  @override
+  String progressComparisonFaster(String difference) {
+    return '$difference faster than before';
+  }
+
+  @override
+  String progressComparisonShorter(String difference) {
+    return '$difference shorter than before';
+  }
+
+  @override
+  String get progressComparisonSame => 'Same as before';
+
+  @override
+  String progressComparisonBestBefore(String value) {
+    return 'Best before $value';
+  }
+
+  @override
+  String get progressComparisonFirst => 'First sessions';
+
+  @override
+  String progressNewBestOn(String date) {
+    return 'New best on $date';
+  }
+
+  @override
+  String get progressNewBestsTitle => 'New bests';
+
+  @override
+  String progressNewBestsTitleCount(int count) {
+    return 'New bests · $count';
+  }
+
+  @override
+  String get progressNewBestsEmpty => 'No new bests in this period';
+
+  @override
+  String progressNewBestRow(String exercise, String value) {
+    return '$exercise · $value';
+  }
+
+  @override
+  String progressNewBestEstimated(String value) {
+    return 'e1RM $value';
+  }
+
+  @override
+  String progressValueKilograms(String value) {
+    return '$value kg';
+  }
+
+  @override
+  String progressValuePounds(String value) {
+    return '$value lb';
+  }
+
+  @override
+  String progressValueReps(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count reps',
+      one: '1 rep',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressValueKilometers(String value) {
+    return '$value km';
+  }
+
+  @override
+  String progressValueMiles(String value) {
+    return '$value mi';
+  }
+
+  @override
+  String progressValuePacePerKilometer(String pace) {
+    return '$pace /km';
+  }
+
+  @override
+  String progressValuePacePerMile(String pace) {
+    return '$pace /mi';
+  }
+
+  @override
+  String progressValueSeconds(int seconds) {
+    return '$seconds s';
+  }
+
+  @override
+  String get progressBodyTitle => 'Body';
+
+  @override
+  String get progressBodyTrackerAction => 'Body Tracker';
+
+  @override
+  String get progressBodyEmpty => 'Log a measurement to see its trend';
+
+  @override
+  String get progressBodyTrendHint => 'Smoothed over about 10 days';
+
+  @override
+  String progressBodyChangeUp(String change) {
+    return '↑ $change';
+  }
+
+  @override
+  String progressBodyChangeDown(String change) {
+    return '↓ $change';
+  }
+
+  @override
+  String get progressBodyNoChange => 'No change';
+
+  @override
+  String progressBodyChartSemantics(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$name: $count readings and their trend in this period',
+      one: '$name: 1 reading and its trend in this period',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get homeLogMeal => 'Meal';
+
+  @override
+  String get nutritionLogMeal => 'Log meal';
+
+  @override
+  String nutritionMealCardSemantics(String time, String type) {
+    return '$time, $type. Open meal';
+  }
+
+  @override
+  String get mealScreenTitle => 'Meal';
+
+  @override
+  String get mealHeaderNow => 'now';
+
+  @override
+  String get mealHeaderChooseTime => 'Choose time';
+
+  @override
+  String get mealHeaderAddFoods => 'add foods';
+
+  @override
+  String get mealTimeNotRecorded => 'time not recorded';
+
+  @override
+  String mealHeaderLabel(String time, String type) {
+    return '$time · $type';
+  }
+
+  @override
+  String mealHeaderSemantics(String time, String type) {
+    return '$time, $type. Change time or meal type';
+  }
+
+  @override
+  String get mealTimeShift15 => '−15 min';
+
+  @override
+  String get mealTimeShift30 => '−30 min';
+
+  @override
+  String get mealTimeShift60 => '−1 h';
+
+  @override
+  String get mealTimeShift15Semantics => '15 minutes ago';
+
+  @override
+  String get mealTimeShift30Semantics => '30 minutes ago';
+
+  @override
+  String get mealTimeShift60Semantics => '1 hour ago';
+
+  @override
+  String get mealTimeSheetDate => 'Date';
+
+  @override
+  String get mealTimeSheetTime => 'Time';
+
+  @override
+  String get mealTimeSheetType => 'Meal type';
+
+  @override
+  String get mealAddFoodsLater => 'Add foods later';
+
+  @override
+  String get mealYourMeals => 'Your meals';
+
+  @override
+  String mealAddToRecent(String time, String type) {
+    return 'Add to $time · $type';
+  }
+
+  @override
+  String get mealLogged => 'Meal logged';
+
+  @override
+  String get mealUndo => 'Undo';
+
+  @override
+  String get mealFoodRemoved => 'Food removed';
+
+  @override
+  String get mealPortionUpdated => 'Portion updated';
+
+  @override
+  String get mealDelete => 'Delete meal';
+
+  @override
+  String get mealDeleteConfirmTitle => 'Delete this meal?';
+
+  @override
+  String get mealDeleteConfirmBody =>
+      'The meal and its foods are removed from the day.';
+
+  @override
+  String get mealDeleteConfirmAction => 'Delete';
+
+  @override
+  String get mealFutureTimeTitle => 'Time is in the future';
+
+  @override
+  String mealFutureTimeBody(String time) {
+    return 'Save $time anyway?';
+  }
+
+  @override
+  String get mealFutureTimeConfirm => 'Save';
+
+  @override
+  String mealRemoveEntry(String food) {
+    return 'Remove $food';
+  }
+
+  @override
+  String get compoundListViewByDay => 'View by day';
+
+  @override
+  String get compoundListSearchHint => 'Search compounds';
+
+  @override
+  String get compoundListEmpty => 'No compounds yet.';
+
+  @override
+  String get compoundListNoMatches => 'No compounds match your search.';
+
+  @override
+  String get compoundListFavorites => 'Favorites';
+
+  @override
+  String get compoundListRecent => 'Recent';
+
+  @override
+  String get compoundListAll => 'All compounds';
+
+  @override
+  String get compoundListAdd => 'Add a compound';
+
+  @override
+  String get compoundListRemoveFavorite => 'Remove favorite';
+
+  @override
+  String get compoundListAddFavorite => 'Add favorite';
+
+  @override
+  String get compoundListEditAction => 'Edit';
+
+  @override
+  String get compoundEditorNewTitle => 'New compound';
+
+  @override
+  String get compoundEditorEditTitle => 'Edit compound';
+
+  @override
+  String get compoundEditorName => 'Name';
+
+  @override
+  String get compoundEditorStrength => 'Strength (optional, e.g. 5 mg/capsule)';
+
+  @override
+  String get compoundEditorDefaultUnit => 'Default unit';
+
+  @override
+  String get compoundEditorDefaultRoute => 'Default route';
+
+  @override
+  String get compoundEditorSave => 'Save';
+
+  @override
+  String get compoundEditorArchive => 'Archive';
+
+  @override
+  String get compoundEditorNameRequired => 'Enter a name';
+
+  @override
+  String get compoundEditorStrengthInvalid => 'Use the form 5 mg/capsule';
+
+  @override
+  String compoundArchiveTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String compoundArchiveInProtocols(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$name is in $count active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.',
+      one:
+          '$name is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String compoundArchiveUnused(String name) {
+    return 'Archiving hides $name from the list and the picker. Its logged Doses stay.';
+  }
+
+  @override
+  String get compoundArchiveConfirm => 'Archive';
+
+  @override
+  String get compoundListMenuTooltip => 'More options';
+
+  @override
+  String get compoundEditorPurposes => 'Purposes';
+
+  @override
+  String get purposeFilterLabel => 'Filter by purpose';
+
+  @override
+  String get purposeFilterAll => 'All';
+
+  @override
+  String get purposeFilterEmpty => 'No compounds with this purpose.';
+
+  @override
+  String get purposeManagerTitle => 'Purposes';
+
+  @override
+  String get purposeManagerAdd => 'Add a Purpose';
+
+  @override
+  String get purposeManagerRowMenuTooltip => 'More options';
+
+  @override
+  String get purposeManagerNameLabel => 'Name';
+
+  @override
+  String get purposeManagerRename => 'Rename';
+
+  @override
+  String get purposeManagerArchive => 'Archive';
+
+  @override
+  String get purposeManagerSave => 'Save';
+
+  @override
+  String get purposeManagerReorderHint => 'Press and hold to reorder.';
+
+  @override
+  String get purposeManagerArchiveBody =>
+      'Archive this purpose? Compounds keep the tag; it stops showing.';
+
+  @override
+  String get purposeManagerNameRequired => 'Enter a name.';
+
+  @override
+  String get purposeManagerDuplicateName =>
+      'A purpose with that name already exists.';
+
+  @override
+  String get purposeManagerSaveFailed =>
+      'Could not save the purpose. Try again.';
+
+  @override
+  String get purposeManagerEmpty =>
+      'No purposes. Add one to filter compounds by it.';
+
+  @override
+  String get compoundPickerTitle => 'Add Compounds';
+
+  @override
+  String get compoundPickerDone => 'Done';
+
+  @override
+  String compoundPickerDoneCount(int count) {
+    return 'Done · $count';
+  }
+
+  @override
+  String compoundPickerCreate(String name) {
+    return 'Create \"$name\"';
+  }
+
+  @override
+  String get protocolEditorAddCompounds => 'Add Compounds';
+
+  @override
+  String get protocolEditorMemberArchived => 'Archived';
+
+  @override
+  String protocolEditorRemoveMember(String compound) {
+    return 'Remove $compound';
+  }
+
+  @override
+  String get protocolEditorFixSchedule => 'Fix this Schedule';
+
+  @override
+  String get protocolScheduleSummaryAddAmount => 'Add an amount';
+
+  @override
+  String protocolScheduleSummaryEveryNDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Every $count days',
+      one: 'Every day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPerDay(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count a day',
+      one: '1 a day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryTablets(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount tablets',
+      one: '$amount tablet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryCapsules(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount capsules',
+      one: '$amount capsule',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryDrops(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount drops',
+      one: '$amount drop',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummarySprays(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount sprays',
+      one: '$amount spray',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPuffs(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount puffs',
+      one: '$amount puff',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPatches(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount patches',
+      one: '$amount patch',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryUnits(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount units',
+      one: '$amount unit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get protocolEditorWhenHeading => 'When';
+
+  @override
+  String protocolEditorPeriodStarts(String date) {
+    return 'Starts $date';
+  }
+
+  @override
+  String get protocolEditorPeriodOngoing => 'Ongoing';
+
+  @override
+  String protocolEditorPeriodUntil(String date) {
+    return 'until $date';
+  }
+
+  @override
+  String protocolEditorPeriodEnded(String date) {
+    return 'Ended $date';
+  }
+
+  @override
+  String protocolEditorPeriodCycle(int onDays, int offDays) {
+    return '$onDays on, $offDays off';
+  }
+
+  @override
+  String protocolEditorPeriodPauses(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Pauses',
+      one: '1 Pause',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get protocolEditorDiscardNewTitle => 'Discard this Protocol?';
+
+  @override
+  String get protocolEditorDiscardChangesTitle => 'Discard changes?';
+
+  @override
+  String get protocolEditorKeepEditing => 'Keep editing';
+
+  @override
+  String get protocolEditorDiscard => 'Discard';
+
+  @override
+  String get navProfile => 'Profile';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileDisclosureLocalOnly =>
+      'Stored on this phone and in its backups. If you sign in, it syncs to your account, where the server\'s operator and any agent you connect can read it.';
+
+  @override
+  String profileDisclosureSynced(String host) {
+    return 'Synced to $host. The server\'s operator and any agent you connect can read it. Change history on the server is kept for up to 180 days.';
+  }
+
+  @override
+  String get profileAgentHistoryLine =>
+      'Agent activity history shows that this section changed, not the text.';
+
+  @override
+  String get profileHealthMedicationsLine =>
+      'Medications and supplements belong in Protocols.';
+
+  @override
+  String get profileNotSet => 'Not set';
+
+  @override
+  String get profileNone => 'None';
+
+  @override
+  String get profileSave => 'Save';
+
+  @override
+  String get profileSectionAboutYou => 'About you';
+
+  @override
+  String get profileSectionTrainingGoals => 'Training Goals';
+
+  @override
+  String get profileSectionExperience => 'Experience';
+
+  @override
+  String get profileSectionTrainingSetup => 'Training setup';
+
+  @override
+  String get profileSectionHealth => 'Health & limitations';
+
+  @override
+  String get profileSectionGeneralNotes => 'General Notes';
+
+  @override
+  String profileFieldValue(String label, String value) {
+    return '$label: $value';
+  }
+
+  @override
+  String get profileFieldSex => 'Sex used for default reference ranges';
+
+  @override
+  String get profileFieldBirthYear => 'Birth year';
+
+  @override
+  String get profileFieldHeight => 'Height';
+
+  @override
+  String get profileFieldHeightCentimetres => 'Height (cm)';
+
+  @override
+  String get profileFieldHeightFeet => 'Height (ft)';
+
+  @override
+  String get profileFieldHeightInches => 'Inches';
+
+  @override
+  String get profileFieldEquipment => 'Equipment';
+
+  @override
+  String get profileFieldDaysPerWeek => 'Days per week';
+
+  @override
+  String get profileFieldSessionLength => 'Session length';
+
+  @override
+  String get profileFieldSessionMinutes => 'Session length (minutes)';
+
+  @override
+  String profileHeightCentimetresValue(String value) {
+    return '$value cm';
+  }
+
+  @override
+  String profileHeightFeetInchesValue(String feet, String inches) {
+    return '$feet ft $inches in';
+  }
+
+  @override
+  String profileSessionMinutesValue(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get profileDaysPerWeekDecrease => 'Fewer days per week';
+
+  @override
+  String get profileDaysPerWeekIncrease => 'More days per week';
+
+  @override
+  String profileCharacterCount(int count, int limit) {
+    return '$count / $limit';
+  }
+
+  @override
+  String profileCharacterCountSemantics(int count, int limit) {
+    return '$count of $limit characters';
+  }
+
+  @override
+  String get profileSexFemale => 'Female';
+
+  @override
+  String get profileSexMale => 'Male';
+
+  @override
+  String get profileGoalLongevity => 'Longevity';
+
+  @override
+  String get profileGoalStrength => 'Strength';
+
+  @override
+  String get profileGoalMuscleGain => 'Muscle gain';
+
+  @override
+  String get profileGoalBodyComposition => 'Body composition';
+
+  @override
+  String get profileGoalEndurance => 'Endurance performance';
+
+  @override
+  String get profileGoalMobility => 'Mobility';
+
+  @override
+  String get profileGoalGeneralFitness => 'General fitness';
+
+  @override
+  String get profileLevelBeginner => 'Beginner';
+
+  @override
+  String get profileLevelIntermediate => 'Intermediate';
+
+  @override
+  String get profileLevelAdvanced => 'Advanced';
+
+  @override
+  String get profileLevelBeginnerMeaning =>
+      'Under a year of regular training in this Focus.';
+
+  @override
+  String get profileLevelIntermediateMeaning => 'One to three years.';
+
+  @override
+  String get profileLevelAdvancedMeaning => 'More than three years.';
+
+  @override
+  String get profileWarningTitle => 'Check this value';
+
+  @override
+  String get profileWarningEdit => 'Edit';
+
+  @override
+  String get profileWarningSaveAnyway => 'Save anyway';
+
+  @override
+  String get profileValidationBirthYearFuture =>
+      'Birth year can\'t be in the future.';
+
+  @override
+  String get profileValidationBirthYearTooOld =>
+      'Birth year can\'t be more than 130 years ago.';
+
+  @override
+  String profileValidationBirthYearImprobable(int age) {
+    return 'That makes you $age. Check the birth year.';
+  }
+
+  @override
+  String get profileValidationHeightNonPositive =>
+      'Height must be more than zero.';
+
+  @override
+  String get profileValidationHeightTooTall =>
+      'Height must be 300 cm (118.1 in) or less.';
+
+  @override
+  String get profileValidationHeightUnit => 'Height must be in cm or in.';
+
+  @override
+  String profileValidationHeightImprobable(String height) {
+    return 'A height of $height is unusual. Check it.';
+  }
+
+  @override
+  String get profileValidationDaysPerWeekRange =>
+      'Days per week must be 1 to 7.';
+
+  @override
+  String get profileValidationSessionMinutesRange =>
+      'Session length must be 1 to 600 minutes.';
+
+  @override
+  String get profileValidationSessionMinutesImprobable =>
+      'Sessions over 4 hours are unusual. Check the length.';
+
+  @override
+  String get profileValidationGoalsUnknown => 'Unknown Training Goal.';
+
+  @override
+  String get profileValidationDuplicate => 'Each item can appear once.';
+
+  @override
+  String get profileValidationEquipmentInvalid =>
+      'Equipment ids must be 1 to 64 characters.';
+
+  @override
+  String get profileValidationLevelsUnknownLevel =>
+      'Level must be Beginner, Intermediate or Advanced.';
+
+  @override
+  String get profileValidationLevelsInvalidFocus => 'Each level needs a Focus.';
+
+  @override
+  String get profileValidationLevelsDuplicateFocus =>
+      'Each Focus can have one level.';
+
+  @override
+  String profileValidationTextTooLong(int limit) {
+    return 'Keep this under $limit characters.';
+  }
+
+  @override
+  String get profileValidationSexUnknown =>
+      'Sex must be Female, Male or Not set.';
+
+  @override
+  String get onboardingTitleAboutYou => 'About you';
+
+  @override
+  String get onboardingTitleGoalsExperience => 'Training Goals and Experience';
+
+  @override
+  String get onboardingTitleTrainingSetup => 'Training setup';
+
+  @override
+  String get onboardingSkipAll => 'Skip all';
+
+  @override
+  String get onboardingSkipThis => 'Skip this';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingDone => 'Done';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingSignInLink => 'Already use Perennia? Sign in';
+
+  @override
+  String get onboardingUnitsLabel => 'Units';
+
+  @override
+  String get onboardingWeekStartLabel => 'Week starts';
+
+  @override
+  String onboardingStepOf(int step, int total) {
+    return 'Step $step of $total';
+  }
+
+  @override
+  String get onboardingLeadAboutYou =>
+      'Perennia uses these to pick default reference ranges for your Metrics, and an agent you connect can read them. Every field is optional, and you can change them later in Account & app, Profile.';
+
+  @override
+  String get onboardingLeadGoalsExperience =>
+      'Logging works the same whatever you pick. This tells an agent you connect what you are working toward and what you already train, so its suggestions fit you.';
+
+  @override
+  String get onboardingLeadTrainingSetup =>
+      'What you can train with and how much time you usually have, so an agent suggests workouts you can actually do.';
+
+  @override
+  String get onboardingGoalsQuestion =>
+      'What are you training for? Pick any that apply.';
+
+  @override
+  String get profileExperienceQuestion =>
+      'Which kinds of training do you do? Pick each one, then your level in it.';
+
+  @override
+  String get profileExperiencePickLevel => 'Pick a level';
+
+  @override
+  String profileExperienceMissingLevel(String focus) {
+    return 'Pick a level for $focus, or unselect it.';
+  }
+
+  @override
+  String get profileExperienceNone => 'New to all of these';
+
+  @override
+  String get profileFocusDescriptionWeights =>
+      'Barbells, dumbbells and machines, for strength and muscle.';
+
+  @override
+  String get profileFocusDescriptionEndurance =>
+      'Running, cycling, rowing, swimming and other cardio, steady or in intervals.';
+
+  @override
+  String get profileFocusDescriptionFunctional =>
+      'Mixed strength and conditioning: CrossFit-style workouts, HYROX-style races, kettlebell flows.';
+
+  @override
+  String get profileFocusDescriptionCalisthenics =>
+      'Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits.';
+
+  @override
+  String get profileFocusDescriptionMobility =>
+      'Stretching, yoga and mobility flows.';
+
+  @override
+  String get profileEquipmentWhere => 'Where do you train?';
+
+  @override
+  String get profileEquipmentPresetGym => 'Gym';
+
+  @override
+  String get profileEquipmentPresetHome => 'Home';
+
+  @override
+  String get profileEquipmentPresetBodyweightOnly => 'Bodyweight only';
+
+  @override
+  String get profileEquipmentGroupFreeWeights => 'Free weights';
+
+  @override
+  String get profileEquipmentGroupRacksMachines =>
+      'Racks, benches and machines';
+
+  @override
+  String get profileEquipmentGroupConditioning => 'Conditioning';
+
+  @override
+  String get profileEquipmentGroupAccessories => 'Accessories';
+
+  @override
+  String get profileEquipmentGroupOther => 'Other';
 }

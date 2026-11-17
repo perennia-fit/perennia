@@ -1,21 +1,39 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart'
-    show TemplateDivergenceSummary;
+    show ExerciseRecord, FocusRecord;
+import '../../../domain/training/plan_logging.dart'
+    show
+        GroupRound,
+        GroupRoundAllDone,
+        GroupRoundInProgress,
+        ProgressExercise,
+        groupRoundFor,
+        nowCardWorkoutExerciseId;
 import '../../../domain/training/training_day.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
+import '../../focus/controllers/focus_providers.dart';
+import '../../focus/repositories/focus_feature_repository.dart';
+import '../../focus/widgets/focus_picker_sheet.dart';
+import '../../focus/widgets/focus_visuals.dart';
+import '../../focus/widgets/focused_exercise_list.dart';
 import '../../template_divergence/repositories/template_divergence_feature_repository.dart';
 import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
+import '../../template_materialize/widgets/template_guidance_card.dart';
 import '../../training/services/timer_notification_router.dart';
+import '../../training/widgets/plan_progress_labels.dart';
+import '../../training/widgets/replace_exercise.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
+import 'copy_workout_summary.dart';
+import 'finish_summary_sheet.dart';
+import 'workout_duration.dart';
 
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
@@ -49,12 +67,28 @@ class WorkoutScreen extends ConsumerWidget {
     return Key('workout.exercise.$workoutExerciseId.open');
   }
 
+  static Key exerciseOptionsButtonKey(String workoutExerciseId) {
+    return Key('workout.exercise.$workoutExerciseId.options');
+  }
+
+  static Key replaceExerciseMenuItemKey(String workoutExerciseId) {
+    return Key('workout.exercise.$workoutExerciseId.replace');
+  }
+
   static Key finishButtonKey(String workoutId) {
     return Key('workout.$workoutId.finish');
   }
 
   static Key resumeButtonKey(String workoutId) {
     return Key('workout.$workoutId.resume');
+  }
+
+  static Key focusButtonKey(String workoutId) {
+    return Key('workout.$workoutId.focus');
+  }
+
+  static Key chooseFocusButtonKey(String workoutId) {
+    return Key('workout.$workoutId.chooseFocus');
   }
 
   static Key notesButtonKey(String workoutId) {
@@ -91,10 +125,6 @@ class WorkoutScreen extends ConsumerWidget {
 
   static Key deleteConfirmButtonKey(String workoutId) {
     return Key('workout.$workoutId.delete.confirm');
-  }
-
-  static Key finishedSnackBarShareActionKey(String workoutId) {
-    return Key('workout.$workoutId.finished.share');
   }
 
   static Key updateTemplateMenuButtonKey(String workoutId) {
@@ -158,6 +188,8 @@ enum _WorkoutMenuAction {
   delete,
 }
 
+enum _WorkoutExerciseMenuAction { replace }
+
 class _WorkoutContent extends ConsumerWidget {
   const _WorkoutContent({
     required this.workout,
@@ -168,9 +200,11 @@ class _WorkoutContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(homeControllerProvider.notifier);
+    final focus = ref.watch(focusRecordProvider(workout.focusId));
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.l10n.workoutTitle),
+        // The Template's current name, read through its Template Link.
+        title: Text(workout.templateName ?? context.l10n.workoutTitle),
         actions: [
           PopupMenuButton<_WorkoutMenuAction>(
             key: WorkoutScreen.optionsButtonKey(workout.id),
@@ -269,7 +303,13 @@ class _WorkoutContent extends ConsumerWidget {
             children: [
               _WorkoutHeader(
                 workout: workout,
-                onAddExercise: () => _showExercisePicker(context, controller),
+                focus: focus,
+                onChangeFocus: () => _changeFocus(context, ref),
+                onAddExercise: () => _showExercisePicker(
+                  context,
+                  controller,
+                  initialFocusId: workout.focusId,
+                ),
                 onFinish: () => _finishWorkout(context, controller, ref),
                 onResume: () async {
                   await controller.resumeWorkout(workout.id);
@@ -282,20 +322,79 @@ class _WorkoutContent extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: AppDimens.base),
-              Text(context.l10n.workoutExercisesTitle,
-                  style: context.textStyles.h2),
-              const SizedBox(height: AppDimens.dense),
-              if (workout.workoutExercises.isEmpty)
+              TemplateGuidanceCard(workoutId: workout.id),
+              // The focused list titles itself: its rows are suggestions, so
+              // they never sit under the logged-exercises heading.
+              if (workout.workoutExercises.isNotEmpty || focus == null) ...[
+                Text(
+                  context.l10n.workoutExercisesTitle,
+                  style: context.textStyles.h2,
+                ),
+                const SizedBox(height: AppDimens.dense),
+              ],
+              if (workout.workoutExercises.isEmpty && focus != null)
+                FocusedExerciseList(
+                  focus: focus,
+                  onExerciseSelected: (exercise) => unawaited(
+                    _addExerciseAndOpen(context, controller, exercise),
+                  ),
+                  onBrowseFocus: () => unawaited(
+                    _showExercisePicker(
+                      context,
+                      controller,
+                      initialFocusId: focus.id,
+                    ),
+                  ),
+                  onSearchAll: () => unawaited(
+                    _showExercisePicker(context, controller),
+                  ),
+                )
+              else if (workout.workoutExercises.isEmpty) ...[
                 Text(
                   context.l10n.homeNoExercisesLoggedYet,
                   style: context.textStyles.body.copyWith(
                     color: context.colors.textSecondary,
                   ),
-                )
-              else
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: WorkoutScreen.chooseFocusButtonKey(workout.id),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, AppDimens.touchTarget),
+                      foregroundColor: context.colors.textPrimary,
+                      iconColor: Theme.of(context).colorScheme.primary,
+                    ),
+                    onPressed: () => unawaited(_changeFocus(context, ref)),
+                    icon: const Icon(Icons.flag_outlined),
+                    label: Text(context.l10n.workoutChooseFocus),
+                  ),
+                ),
+              ] else
                 _WorkoutExerciseList(
                   exercises: workout.workoutExercises,
                   exerciseGroups: workout.exerciseGroups,
+                  isWorkoutOpen: workout.isOpen,
+                  // The Workout screen stays: its cards follow the stream.
+                  onReplace: (exercise) {
+                    // Read now: Replace awaits the picker and the write.
+                    final messenger = ScaffoldMessenger.of(context);
+                    final route = ModalRoute.of(context);
+                    unawaited(
+                      replaceExercise(
+                        context,
+                        ref,
+                        exercise.id,
+                        show: (c) => showTrainingSnackBar(
+                          messenger,
+                          c.message,
+                          route: route,
+                          undoLabel: c.undoLabel,
+                          onUndo: c.onUndo,
+                        ),
+                      ),
+                    );
+                  },
                   onRemove: (exercise) {
                     return _removeExerciseFromWorkout(
                       context,
@@ -331,6 +430,7 @@ class _WorkoutContent extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   key: WorkoutScreen.notesButtonKey(workout.id),
+                  style: _outlinedActionStyle(context),
                   onPressed: () {
                     Navigator.of(context).push<void>(
                       MaterialPageRoute(
@@ -365,7 +465,7 @@ class _WorkoutContent extends ConsumerWidget {
       return;
     }
 
-    final localDate = _workoutLocalDate(workout);
+    final localDate = workoutLocalDate(workout);
     final startedAt = localDate.atLocalTimeOf(_timeOfDayAsDateTime(picked));
     final endedAt = workout.endedAt?.toLocal();
     if (endedAt != null && !startedAt.isBefore(endedAt)) {
@@ -433,16 +533,69 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
-  Future<void> _showExercisePicker(
+  Future<void> _changeFocus(BuildContext context, WidgetRef ref) async {
+    final pick = await pickChangedFocus(context, current: workout.focusId);
+    if (pick == null) {
+      return;
+    }
+    await ref
+        .read(focusFeatureRepositoryProvider)
+        .setWorkoutFocus(workout.id, pick.focusId);
+    if (!context.mounted) {
+      return;
+    }
+    final focusName = pick.focusId == null
+        ? null
+        : ref.read(focusesByIdProvider).value?[pick.focusId]?.name;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          focusName == null
+              ? context.l10n.workoutFocusCleared
+              : context.l10n.workoutFocusChanged(focusName),
+        ),
+      ),
+    );
+  }
+
+  /// Adds [exercise] and lands on it, from the picker sheet or the focused
+  /// list alike. Guarded per Workout until the add has landed: a rapid
+  /// double-tap fires the row's onTap twice before the first add resolves,
+  /// which would otherwise add the exercise twice and stack two pages for
+  /// what the user experienced as one tap.
+  Future<void> _addExerciseAndOpen(
     BuildContext context,
     HomeController controller,
-  ) {
-    // Guards the whole sheet lifetime: a rapid double-tap on a catalog row
-    // fires ExerciseCatalogPicker's onTap twice before the first
-    // addExerciseToWorkout await resolves. Without this, both selections
-    // would add the exercise and auto-land, stacking two ExercisePage
-    // routes for what the user experienced as one tap.
-    var isAddingExercise = false;
+    ExerciseRecord exercise, {
+    VoidCallback? closeSheet,
+  }) async {
+    if (!controller.beginExerciseAdd(workout.id)) {
+      return;
+    }
+    try {
+      final workoutExerciseId = await controller.addExerciseToWorkout(
+        workoutId: workout.id,
+        exerciseId: exercise.id,
+      );
+      closeSheet?.call();
+      if (!context.mounted) {
+        return;
+      }
+      // Auto-land into the just-added exercise instead of leaving the user
+      // back on the workout card list.
+      unawaited(
+        Navigator.of(context).push(buildExercisePageRoute(workoutExerciseId)),
+      );
+    } finally {
+      controller.endExerciseAdd(workout.id);
+    }
+  }
+
+  Future<void> _showExercisePicker(
+    BuildContext context,
+    HomeController controller, {
+    String? initialFocusId,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -453,30 +606,19 @@ class _WorkoutContent extends ConsumerWidget {
             child: SizedBox(
               height: MediaQuery.sizeOf(sheetContext).height * 0.85,
               child: ExerciseCatalogPicker(
-                onExerciseSelected: (exercise) {
-                  if (isAddingExercise) {
-                    return;
-                  }
-                  isAddingExercise = true;
-                  unawaited(() async {
-                    final workoutExerciseId =
-                        await controller.addExerciseToWorkout(
-                      workoutId: workout.id,
-                      exerciseId: exercise.id,
-                    );
-                    if (sheetContext.mounted) {
-                      Navigator.of(sheetContext).pop();
-                    }
-                    if (!context.mounted) {
-                      return;
-                    }
-                    // Auto-land into the just-added exercise instead of
-                    // leaving the user back on the workout card list.
-                    Navigator.of(context).push(
-                      buildExercisePageRoute(workoutExerciseId),
-                    );
-                  }());
-                },
+                initialFocusId: initialFocusId,
+                onExerciseSelected: (exercise) => unawaited(
+                  _addExerciseAndOpen(
+                    context,
+                    controller,
+                    exercise,
+                    closeSheet: () {
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                    },
+                  ),
+                ),
               ),
             ),
           ),
@@ -504,9 +646,7 @@ class _WorkoutContent extends ConsumerWidget {
   ) async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: (workout.localDate ??
-              TrainingDayDate.fromDateTime(workout.startedAt.toLocal()))
-          .toLocalDateTime(),
+      initialDate: workoutLocalDate(workout).toLocalDateTime(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -539,20 +679,26 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
+  /// The Workout is already finished when the sheet opens, so the sheet is
+  /// a summary, not a decision: there is nothing to go back to, and closing
+  /// it in any way (Done, a swipe-down, Back) returns to the screen that
+  /// opened this one.
+  ///
+  /// The pop uses the [NavigatorState] captured up front, not a
+  /// `context.mounted` guard: this widget can be rebuilt away while the sheet
+  /// is open (the Workout became unavailable, say), and the Workout screen
+  /// must still pop.
   Future<void> _finishWorkout(
     BuildContext context,
     HomeController controller,
     WidgetRef ref,
   ) async {
-    // Capture everything context-derived before the await: Finish pops this
-    // screen back to Home, so the SnackBar (and, if diverged, the update
-    // prompt) must be shown on state tied to the surviving Navigator, not to
-    // this (about to be popped) context. `l10n` itself is safe to hold past
-    // the pop — it's a plain resolved instance, not a live context view.
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final l10n = context.l10n;
-    final workoutId = workout.id;
+    // Back can pop this route during the awaits below. context.mounted stays
+    // true while the route animates out, so only the route can say the lifter
+    // has left: the Workout still finishes, but a sheet would open over the
+    // opener, and closing it would pop the opener too.
+    final route = ModalRoute.of(context);
     // Read (not watch): only touched when Finish is actually tapped, so
     // widget tests that never tap Finish never instantiate the real
     // Drift-backed repository behind this provider.
@@ -564,51 +710,26 @@ class _WorkoutContent extends ConsumerWidget {
     // finishing (setting endedAt) doesn't change them, so this can safely
     // happen before the write.
     final divergenceSummary =
-        await divergenceRepository.summaryForWorkout(workoutId);
+        await divergenceRepository.summaryForWorkout(workout.id);
 
-    await controller.finishWorkout(workoutId);
-    if (!context.mounted) {
+    await controller.finishWorkout(workout.id);
+    if (!context.mounted || route?.isActive != true) {
       return;
     }
-    navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(l10n.workoutFinished),
-        action: SnackBarAction(
-          key: WorkoutScreen.finishedSnackBarShareActionKey(workoutId),
-          label: l10n.workoutShareAction,
-          onPressed: () {
-            unawaited(
-              _shareWorkoutSummary(
-                messenger,
-                controller,
-                workoutId,
-                l10n.homeWorkoutSummaryCopied,
-              ),
-            );
-          },
-        ),
-      ),
+    await showFinishSummarySheet(
+      context,
+      workoutId: workout.id,
+      divergenceSummary: divergenceSummary,
     );
-
-    // The update prompt joins Finish's pop-to-Home + Share moment only when
-    // linked and diverged (ROUTINES.md §3.4) — never mid-workout, and never
-    // when there's nothing to ask about.
-    if (divergenceSummary == null || !divergenceSummary.hasDivergence) {
-      return;
+    if (route?.isCurrent == true) {
+      navigator.pop();
     }
-    await _offerTemplateUpdate(
-      navigator: navigator,
-      messenger: messenger,
-      l10n: l10n,
-      divergenceRepository: divergenceRepository,
-      summary: divergenceSummary,
-    );
   }
 
   /// The overflow's "Update template" verb (ROUTINES.md §2, §3.4): available
   /// forever on any linked Workout, regardless of whether it has diverged —
-  /// never automatic, always an explicit ask.
+  /// never automatic, always an explicit ask. Dismissing resolves `false` and
+  /// writes nothing.
   Future<void> _updateWorkoutTemplate(
     BuildContext context,
     WidgetRef ref,
@@ -631,25 +752,6 @@ class _WorkoutContent extends ConsumerWidget {
       );
       return;
     }
-    await _offerTemplateUpdate(
-      navigator: navigator,
-      messenger: messenger,
-      l10n: l10n,
-      divergenceRepository: divergenceRepository,
-      summary: summary,
-    );
-  }
-
-  /// Shared by the Finish prompt and the overflow verb: shows the update
-  /// prompt, and — only on explicit confirmation — performs the atomic
-  /// capture-replace write. Dismissing resolves `false` and writes nothing.
-  Future<void> _offerTemplateUpdate({
-    required NavigatorState navigator,
-    required ScaffoldMessengerState messenger,
-    required AppLocalizations l10n,
-    required TemplateDivergenceFeatureRepository divergenceRepository,
-    required TemplateDivergenceSummary summary,
-  }) async {
     if (!navigator.mounted) {
       return;
     }
@@ -660,7 +762,7 @@ class _WorkoutContent extends ConsumerWidget {
     if (!shouldUpdate) {
       return;
     }
-    await divergenceRepository.updateTemplateFromWorkout(summary.workoutId);
+    await divergenceRepository.updateTemplateFromWorkout(workoutId);
     if (!navigator.mounted) {
       return;
     }
@@ -675,24 +777,12 @@ class _WorkoutContent extends ConsumerWidget {
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final copiedMessage = context.l10n.homeWorkoutSummaryCopied;
-    await _shareWorkoutSummary(
-        messenger, controller, workout.id, copiedMessage);
-  }
-
-  /// Shared by the overflow "Share Workout" action and the Finish snackbar's
-  /// Share action. Takes a [ScaffoldMessengerState] rather than a
-  /// [BuildContext] so it works even after the WorkoutScreen that started it
-  /// has been popped (the Finish flow pops back to Home before this runs).
-  Future<void> _shareWorkoutSummary(
-    ScaffoldMessengerState messenger,
-    HomeController controller,
-    String workoutId,
-    String copiedMessage,
-  ) async {
-    final summary = await controller.shareWorkout(workoutId);
-    await Clipboard.setData(ClipboardData(text: summary));
+    await copyWorkoutSummary(controller, workout.id);
     messenger.showSnackBar(
-      SnackBar(content: Text(copiedMessage)),
+      SnackBar(
+        content: Text(copiedMessage),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -753,11 +843,6 @@ class _WorkoutContent extends ConsumerWidget {
   }
 }
 
-TrainingDayDate _workoutLocalDate(HomeWorkoutSummary workout) {
-  return workout.localDate ??
-      TrainingDayDate.fromDateTime(workout.startedAt.toLocal());
-}
-
 DateTime _timeOfDayAsDateTime(TimeOfDay time) {
   return DateTime(1970, 1, 1, time.hour, time.minute);
 }
@@ -798,12 +883,16 @@ class _MenuRow extends StatelessWidget {
 class _WorkoutHeader extends StatelessWidget {
   const _WorkoutHeader({
     required this.workout,
+    required this.focus,
+    required this.onChangeFocus,
     required this.onAddExercise,
     required this.onFinish,
     required this.onResume,
   });
 
   final HomeWorkoutSummary workout;
+  final FocusRecord? focus;
+  final Future<void> Function() onChangeFocus;
   final Future<void> Function() onAddExercise;
   final Future<void> Function() onFinish;
   final Future<void> Function() onResume;
@@ -822,27 +911,37 @@ class _WorkoutHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            // A Wrap, not a Row: at large text scales the status and the
+            // duration do not fit on one line, so the duration moves below.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppDimens.dense,
               children: [
-                Icon(
-                  workout.isOpen
-                      ? Icons.play_circle_outline
-                      : Icons.check_circle_outline,
-                  color: workout.isOpen
-                      ? Theme.of(context).colorScheme.primary
-                      : context.colors.save,
-                ),
-                const SizedBox(width: AppDimens.dense),
-                Expanded(
-                  child: Text(
-                    workout.isOpen
-                        ? context.l10n.workoutOpenStatus
-                        : context.l10n.workoutFinishedStatus,
-                    style: context.textStyles.h2,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      workout.isOpen
+                          ? Icons.play_circle_outline
+                          : Icons.check_circle_outline,
+                      color: workout.isOpen
+                          ? Theme.of(context).colorScheme.primary
+                          : context.colors.save,
+                    ),
+                    const SizedBox(width: AppDimens.dense),
+                    Flexible(
+                      child: Text(
+                        workout.isOpen
+                            ? context.l10n.workoutOpenStatus
+                            : context.l10n.workoutFinishedStatus,
+                        style: context.textStyles.h2,
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
-                  _formatWorkoutDuration(context.l10n, workout.duration),
+                  formatWorkoutDuration(context.l10n, workout.duration),
                   style: context.textStyles.body.copyWith(
                     color: context.colors.textSecondary,
                   ),
@@ -855,6 +954,12 @@ class _WorkoutHeader extends StatelessWidget {
               style: context.textStyles.body.copyWith(
                 color: context.colors.textSecondary,
               ),
+            ),
+            const SizedBox(height: AppDimens.dense),
+            _FocusControl(
+              workoutId: workout.id,
+              focus: focus,
+              onPressed: onChangeFocus,
             ),
             const SizedBox(height: AppDimens.base),
             SizedBox(
@@ -870,14 +975,10 @@ class _WorkoutHeader extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: workout.isOpen
-                  ? OutlinedButton.icon(
-                      key: WorkoutScreen.finishButtonKey(workout.id),
-                      onPressed: () => unawaited(onFinish()),
-                      icon: const Icon(Icons.flag_outlined),
-                      label: Text(context.l10n.workoutFinish),
-                    )
+                  ? _FinishButton(workoutId: workout.id, onFinish: onFinish)
                   : OutlinedButton.icon(
                       key: WorkoutScreen.resumeButtonKey(workout.id),
+                      style: _outlinedActionStyle(context),
                       onPressed: () => unawaited(onResume()),
                       icon: const Icon(Icons.play_arrow_outlined),
                       label: Text(context.l10n.workoutResume),
@@ -890,10 +991,121 @@ class _WorkoutHeader extends StatelessWidget {
   }
 }
 
+/// Finish Workout. It ignores a tap while an earlier one is still finishing,
+/// so a double tap writes the finish once and opens one Finish summary. The
+/// button looks the same meanwhile: the wait is too short to show as disabled.
+class _FinishButton extends StatefulWidget {
+  const _FinishButton({required this.workoutId, required this.onFinish});
+
+  final String workoutId;
+  final Future<void> Function() onFinish;
+
+  @override
+  State<_FinishButton> createState() => _FinishButtonState();
+}
+
+class _FinishButtonState extends State<_FinishButton> {
+  bool _finishing = false;
+
+  Future<void> _finish() async {
+    if (_finishing) {
+      return;
+    }
+    _finishing = true;
+    try {
+      await widget.onFinish();
+    } finally {
+      _finishing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      key: WorkoutScreen.finishButtonKey(widget.workoutId),
+      style: _outlinedActionStyle(context),
+      onPressed: () => unawaited(_finish()),
+      icon: const Icon(Icons.flag_outlined),
+      label: Text(context.l10n.workoutFinish),
+    );
+  }
+}
+
+/// The Workout's Focus, and the way to change it. A quiet control: the Focus
+/// shapes which exercises are offered first, it is not a mode to manage.
+class _FocusControl extends StatelessWidget {
+  const _FocusControl({
+    required this.workoutId,
+    required this.focus,
+    required this.onPressed,
+  });
+
+  final String workoutId;
+  final FocusRecord? focus;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final focus = this.focus;
+    final name =
+        focus == null ? l10n.workoutNoFocus : focusDisplayName(context, focus);
+    // Its own node: without `container`, the label and tap merge into the
+    // header card, and a screen reader announces the whole card as one
+    // "Change focus" button.
+    // `excludeSemantics` drops the InkWell's own tap, so the node carries it.
+    return Semantics(
+      container: true,
+      button: true,
+      label: l10n.workoutFocusSemanticLabel(name),
+      onTap: () => unawaited(onPressed()),
+      excludeSemantics: true,
+      child: InkWell(
+        key: WorkoutScreen.focusButtonKey(workoutId),
+        borderRadius: AppRadii.cardMd,
+        onTap: () => unawaited(onPressed()),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+          child: Row(
+            children: [
+              Icon(
+                focus == null ? Icons.flag_outlined : focusIcon(focus.id),
+                size: 20,
+                color: focus == null
+                    ? context.colors.textSecondary
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: AppDimens.dense),
+              Flexible(
+                child: Text(
+                  name,
+                  style: context.textStyles.body.copyWith(
+                    color: focus == null
+                        ? context.colors.textSecondary
+                        : context.colors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: AppDimens.dense / 2),
+              Icon(
+                Icons.arrow_drop_down,
+                color: context.colors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _WorkoutExerciseList extends StatefulWidget {
   const _WorkoutExerciseList({
     required this.exercises,
     required this.exerciseGroups,
+    required this.isWorkoutOpen,
+    required this.onReplace,
     required this.onRemove,
     required this.onReorder,
     required this.onLinkAsSuperset,
@@ -902,6 +1114,10 @@ class _WorkoutExerciseList extends StatefulWidget {
 
   final List<HomeWorkoutExerciseSummary> exercises;
   final List<HomeExerciseGroupSummary> exerciseGroups;
+
+  /// Whether the Workout has not ended: only an open Workout marks Now.
+  final bool isWorkoutOpen;
+  final ValueChanged<HomeWorkoutExerciseSummary> onReplace;
   final Future<bool> Function(HomeWorkoutExerciseSummary exercise) onRemove;
   final ValueChanged<List<String>> onReorder;
   final Future<void> Function(
@@ -927,6 +1143,35 @@ class _WorkoutExerciseListState extends State<_WorkoutExerciseList> {
         for (final workoutExerciseId in group.workoutExerciseIds)
           workoutExerciseId: group,
     };
+    final exerciseById = <String, HomeWorkoutExerciseSummary>{
+      for (final exercise in widget.exercises) exercise.id: exercise,
+    };
+    final nowWorkoutExerciseId = widget.isWorkoutOpen
+        ? nowCardWorkoutExerciseId(<ProgressExercise>[
+            for (final exercise in widget.exercises)
+              ProgressExercise(
+                workoutExerciseId: exercise.id,
+                groupId: groupByWorkoutExerciseId[exercise.id]?.id,
+                performed: exercise.performedCount,
+                planned: exercise.plannedCount,
+                latestPerformedAt: exercise.latestPerformedAt,
+              ),
+          ])
+        : null;
+    // The round shows on each group's first card in Workout order.
+    final roundByFirstCardId = <String, GroupRound?>{};
+    final groupsWithRound = <String>{};
+    for (final exercise in widget.exercises) {
+      final group = groupByWorkoutExerciseId[exercise.id];
+      if (group == null || !groupsWithRound.add(group.id)) {
+        continue;
+      }
+      roundByFirstCardId[exercise.id] = groupRoundFor([
+        for (final memberId in group.workoutExerciseIds)
+          if (exerciseById[memberId] case final member?)
+            (performed: member.performedCount, planned: member.plannedCount),
+      ]);
+    }
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       shrinkWrap: true,
@@ -977,8 +1222,11 @@ class _WorkoutExerciseListState extends State<_WorkoutExerciseList> {
                 child: _WorkoutExerciseCard(
                   exercise: exercise,
                   exerciseGroup: exerciseGroup,
+                  isNow: exercise.id == nowWorkoutExerciseId,
+                  groupRound: roundByFirstCardId[exercise.id],
                   index: index,
                   isDragArmed: _armedDragExerciseId == exercise.id,
+                  onReplace: () => widget.onReplace(exercise),
                   onDragHandleDown: () => _setArmedDragExercise(exercise.id),
                   onDragHandleRelease: _clearArmedDragExercise,
                 ),
@@ -1091,20 +1339,34 @@ class _WorkoutExerciseDeleteBackground extends StatelessWidget {
   }
 }
 
+/// The widest an exercise card's progress count gets, as a fraction of the
+/// card's title row; the name takes everything the count leaves.
+const _progressCountMaxWidthFraction = 0.4;
+
 class _WorkoutExerciseCard extends StatelessWidget {
   const _WorkoutExerciseCard({
     required this.exercise,
     required this.exerciseGroup,
+    required this.isNow,
+    required this.groupRound,
     required this.index,
     required this.isDragArmed,
+    required this.onReplace,
     required this.onDragHandleDown,
     required this.onDragHandleRelease,
   });
 
   final HomeWorkoutExerciseSummary exercise;
   final HomeExerciseGroupSummary? exerciseGroup;
+
+  /// Whether this card is the Current Exercise, or its group's first card.
+  final bool isNow;
+
+  /// The group's round, on the group's first card only.
+  final GroupRound? groupRound;
   final int index;
   final bool isDragArmed;
+  final VoidCallback onReplace;
   final VoidCallback onDragHandleDown;
   final VoidCallback onDragHandleRelease;
 
@@ -1119,6 +1381,15 @@ class _WorkoutExerciseCard extends StatelessWidget {
         : context.colors.surface;
     final borderColor =
         isDragArmed ? colorScheme.primary : context.colors.divider;
+    final roundText = switch (groupRound) {
+      null => null,
+      GroupRoundInProgress(:final round, :final of) =>
+        context.l10n.workoutGroupRound(round, of),
+      GroupRoundAllDone() => context.l10n.workoutGroupAllRoundsDone,
+    };
+    final secondaryLabel = context.textStyles.label.copyWith(
+      color: context.colors.textSecondary,
+    );
     return Material(
       key: WorkoutScreen.exerciseCardKey(exercise.id),
       color: cardColor,
@@ -1147,32 +1418,90 @@ class _WorkoutExerciseCard extends StatelessWidget {
                       horizontal: AppDimens.base,
                       vertical: AppDimens.dense,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            exercise.name,
-                            style: context.textStyles.h2,
+                        LayoutBuilder(
+                          builder: (context, constraints) => Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  exercise.name,
+                                  style: context.textStyles.h2,
+                                ),
+                              ),
+                              const SizedBox(width: AppDimens.dense),
+                              // Inflexible, so the name keeps the rest of
+                              // the row; capped, so a large text scale
+                              // wraps the count instead of overflowing.
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth *
+                                      _progressCountMaxWidthFraction,
+                                ),
+                                child: ExerciseProgressCount(
+                                  performed: exercise.performedCount,
+                                  planned: exercise.plannedCount,
+                                  style: secondaryLabel,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: AppDimens.dense),
-                        Text(
-                          _formatSetCount(
-                            context.l10n,
-                            exercise.setCount,
+                        if (isNow || roundText != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: AppDimens.dense / 3,
+                            ),
+                            child: Wrap(
+                              spacing: AppDimens.dense / 2,
+                              runSpacing: AppDimens.dense / 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (isNow) const CurrentExerciseLabel(),
+                                if (roundText != null)
+                                  Text(roundText, style: secondaryLabel),
+                              ],
+                            ),
                           ),
-                          style: context.textStyles.label.copyWith(
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: AppDimens.dense),
-                        Icon(
-                          Icons.chevron_right,
-                          color: context.colors.textSecondary,
-                        ),
                       ],
                     ),
                   ),
+                ),
+              ),
+              // Where the chevron was: a chevron as well as this and the
+              // drag handle leaves a 360 dp card's name narrower than its
+              // progress count.
+              SizedBox.square(
+                dimension: AppDimens.touchTarget,
+                child: PopupMenuButton<_WorkoutExerciseMenuAction>(
+                  key: WorkoutScreen.exerciseOptionsButtonKey(exercise.id),
+                  tooltip: context.l10n.workoutExerciseOptionsTooltip(
+                    exercise.name,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: context.colors.textSecondary,
+                  ),
+                  onSelected: (action) {
+                    switch (action) {
+                      case _WorkoutExerciseMenuAction.replace:
+                        onReplace();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<_WorkoutExerciseMenuAction>(
+                      key: WorkoutScreen.replaceExerciseMenuItemKey(
+                        exercise.id,
+                      ),
+                      value: _WorkoutExerciseMenuAction.replace,
+                      child: _MenuRow(
+                        icon: Icons.swap_horiz,
+                        label: context.l10n.replaceExerciseMenuItem,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Listener(
@@ -1379,29 +1708,11 @@ String _formatWorkoutTimeRange(
   return context.l10n.workoutTimeRange(started, ended);
 }
 
-String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {
-  if (duration == null || duration.isNegative) {
-    return l10n.workoutDurationInProgress;
-  }
-
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return minutes == 0
-        ? l10n.workoutDurationHours(hours)
-        : l10n.workoutDurationHoursMinutes(hours, minutes);
-  }
-  if (minutes > 0) {
-    return l10n.workoutDurationMinutes(minutes);
-  }
-  return l10n.workoutDurationSeconds(seconds);
-}
-
-String _formatSetCount(AppLocalizations l10n, int count) {
-  return switch (count) {
-    0 => l10n.workoutNoSets,
-    1 => l10n.workoutOneSet,
-    _ => l10n.workoutSetCount(count),
-  };
+/// Outlined buttons draw their label in Signal Cyan by default, which falls
+/// below AA contrast on the light surface; the label takes the primary text
+/// color instead, as the Settings screens' outlined buttons do.
+ButtonStyle _outlinedActionStyle(BuildContext context) {
+  return OutlinedButton.styleFrom(
+    foregroundColor: context.colors.textPrimary,
+  );
 }

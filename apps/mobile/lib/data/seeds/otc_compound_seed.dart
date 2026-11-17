@@ -7,11 +7,15 @@ import '../../domain/protocols/protocols.dart';
 /// row carries only a name + a sensible default unit/route (from the curated
 /// registries) and, where it reads naturally, an optional strength.
 ///
-/// CRITICAL neutral-instrument posture: a seed row is **never** named
-/// or categorized by substance type or legality. There is deliberately no
-/// "category"/"class"/"schedule"/"controlled"/"type" field anywhere in the seed
-/// — the genericity IS the legal posture. This is a neutral logbook, not a
-/// facilitator. A reviewer will reject any categorization-by-type/legality.
+/// The neutral-instrument rule, narrowed
+/// (docs/designs/compound-purposes.md): a seed row is **never** classified by
+/// what it is or whether it is legal. There is deliberately no
+/// "category"/"class"/"schedule"/"controlled"/"type" field anywhere in the seed,
+/// and a reviewer will reject one. These rows are all over the counter, and that
+/// is the only reason they may carry Purpose tags, which record what people
+/// commonly take them for and never say that they work. The tags live in
+/// `seedCompoundPurposeIds` in `domain/protocols/compound_purposes.dart`, not on
+/// these rows; a row added here that isn't OTC must stay untagged.
 abstract interface class OtcCompoundSeedSource {
   /// The seed rows to load. Implementations must return STABLE ids so the load
   /// is idempotent across re-runs (mirroring the platform-exercise/usda-food
@@ -19,9 +23,9 @@ abstract interface class OtcCompoundSeedSource {
   List<OtcCompoundSeedRow> load();
 }
 
-/// A single OTC seed `Compound`: a stable id plus the same neutral catalogue
-/// shape as a user-created `Compound` (name + default unit/route + optional
-/// strength). No type/legality field, by design.
+/// A single OTC seed `Compound`: a stable id plus the same catalogue shape as a
+/// user-created `Compound` (name + default unit/route + optional strength). No
+/// type/legality field, by design.
 class OtcCompoundSeedRow {
   const OtcCompoundSeedRow({
     required this.id,

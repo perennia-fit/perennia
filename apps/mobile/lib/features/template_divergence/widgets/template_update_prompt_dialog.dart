@@ -5,9 +5,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import 'template_divergence_diff_text.dart';
 
-/// The Finish-time "update the template?" prompt (ROUTINES.md §3.4) and the
-/// overflow's "Update template" confirmation — the same dialog either way,
-/// since Update means the same thing regardless of when it's invoked.
+/// The Workout menu's "Update template" confirmation.
 /// Dismissing (the back button, tapping outside, or "Not now") pops `false`
 /// (or `null`) and is a silent no: no state is recorded anywhere.
 class TemplateUpdatePromptDialog extends StatelessWidget {

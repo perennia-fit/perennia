@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../theme/theme.dart';
+import '../../../widgets/color_swatch_row.dart';
 
 class CategoryManagerScreen extends ConsumerStatefulWidget {
   const CategoryManagerScreen({super.key});
@@ -368,29 +369,20 @@ class _CategoryRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppDimens.dense),
-          Wrap(
-            spacing: AppDimens.dense,
-            runSpacing: AppDimens.dense,
-            children: [
+          ColorSwatchRow(
+            options: [
               for (final colorHex in _categoryColorPalette)
-                IconButton(
+                ColorSwatchOption(
+                  hex: colorHex,
+                  label: _colorTooltip(colorHex),
                   key: CategoryManagerScreen.colorButtonKey(
                     category.id,
                     colorHex,
                   ),
-                  tooltip: _colorTooltip(colorHex),
-                  onPressed: category.colorHex == colorHex
-                      ? null
-                      : () => onRecolor(colorHex),
-                  icon: Icon(
-                    Icons.circle,
-                    color: colorFromHex(
-                      colorHex,
-                      fallback: context.colors.categoryColor('other'),
-                    ),
-                  ),
                 ),
             ],
+            selectedHex: category.colorHex,
+            onSelected: onRecolor,
           ),
           const Divider(),
         ],

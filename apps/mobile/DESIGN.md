@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: OpenWorkoutLogger
+name: Perennia
 colors:
   primary: "#1FB6CC"
   on-primary: "#06262B"
@@ -101,14 +101,36 @@ components:
   stepper-button:
     rounded: "{rounded.md}"
     size: "{spacing.touch-target}"
+  status-icon:
+    size: 24px
+  legend-icon:
+    size: 16px
+  trained-days-cell:
+    size: 24px
+    gap: 2px
+    fillOpacity: 0.7
+  progress-sparkline:
+    height: 40px
+    bodyHeight: 64px
+    pointRadius: 3px
+    ringWidth: 1.5px
+    lineWidth: 2px
+  notice:
+    backgroundColor: "{colors.chrome-dark}"
+    borderColor: "{colors.divider-dark}"
+    textColor: "{colors.text-primary-dark}"
+    actionColor: "{colors.primary}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    inset: "{spacing.base}"
 ---
 
-# Design System: OpenWorkoutLogger
+# Design System: Perennia
 
 This file follows the Stitch design-md shape. The YAML front matter is normative;
 the prose explains intent.
 
-OpenWorkoutLogger is a dense, utilitarian logbook for the gym floor. Dark theme is
+Perennia is a dense, utilitarian logbook for the gym floor. Dark theme is
 the design anchor, light theme is a first-class mirror, and the app should spend
 space on readable numerals and large touch targets rather than decoration.
 
@@ -116,7 +138,18 @@ Use the tokens above for all colors, text styles, radii, and spacing. Flutter co
 maps these tokens through `ThemeData`, `AppColors`, `AppTextStyles`, and `AppDimens`;
 widgets should consume those APIs instead of hardcoding values.
 
-The primary accent is Signal Cyan. Save and confirm actions use Rested Teal with
-dark ink, destructive actions use Bar Red with white ink, and personal-record
-markers use Trophy Gold with dark ink whenever text sits on the marker. Category
-colors are always paired with text or another non-color signal.
+The primary accent is Signal Cyan. Log set, Save and confirm actions use Rested
+Teal with dark ink, destructive actions use Bar Red with white ink, and
+personal-record markers use Trophy Gold with dark ink whenever text sits on the
+marker. Category colors are always paired with text or another non-color signal.
+
+On the Training Screen, Log set (Update, Delete and Not done for a selected
+performed set) and the rest strip above it are pinned below the scroll, in thumb
+reach. Set rows show their state as performed (check icon), current (arrow and
+the selected-row cyan tint) or planned (secondary text) instead of a checkbox,
+and each state is also in the row's semantics label.
+
+Rest strip: resting shows the elapsed bar; Get ready and 3-2-1 show a 2 dp
+`primary` border with no fill; Rest over uses `surface`. The strip's elapsed bar
+and its Get-ready border count as one cyan element, separate from the Current
+row's highlight; no other part of the strip is cyan.

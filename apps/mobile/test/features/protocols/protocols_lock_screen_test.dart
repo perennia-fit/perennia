@@ -86,7 +86,7 @@ void main() {
       await pumpGate(tester);
 
       expect(find.byKey(ProtocolsLockGate.lockScreenKey), findsOneWidget);
-      expect(find.text('Supplements lock unavailable'), findsOneWidget);
+      expect(find.text('Protocols lock unavailable'), findsOneWidget);
       expect(find.byKey(ProtocolsUnlockForm.pinFieldKey), findsNothing);
       expect(find.text('Ashwagandha 500 mg'), findsNothing);
     },

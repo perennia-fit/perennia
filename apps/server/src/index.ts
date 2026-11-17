@@ -12,11 +12,15 @@ import {
   createSentryCrashReporterFromEnv,
   type CrashReporter
 } from "./observability.js";
+import { SERVER_VERSION } from "./server-version.js";
 import { createDrizzleAgentApiKeyStore } from "./agent-api-keys.js";
 import { createDrizzleActivityLinkMutationStore } from "./activity-links.js";
 import { createAgentMcpServer } from "./agent-mcp.js";
 import { createDrizzleAgentCatalogStore } from "./agent-catalog.js";
 import { createDrizzleAgentReadStore } from "./agent-read-surface.js";
+import { createDrizzleAgentFoodHistoryReadStore } from "./agent-food-history.js";
+import { createDrizzleAgentMealHistoryReadStore } from "./agent-meal-history.js";
+import { createDrizzleAgentMealTypesReadStore } from "./agent-meal-types.js";
 import { createDrizzleAgentNutritionReadStore } from "./agent-nutrition-reads.js";
 import { createDrizzleAgentCrossDomainReadStore } from "./agent-cross-domain-reads.js";
 import { createDrizzleAgentWorkoutBatchWriteStore } from "./agent-workout-batch-write.js";
@@ -31,7 +35,9 @@ import { createDrizzleAgentActivityStore } from "./agent-activity.js";
 import { createDrizzleAgentProtocolsStore } from "./agent-protocols.js";
 import { createDrizzleAgentNutritionGoalStore } from "./agent-nutrition-goals.js";
 import { createDrizzleAgentSettingsStore } from "./agent-settings.js";
+import { createDrizzleAgentProfileStore } from "./agent-profile.js";
 import { createDrizzleAgentPlanReadStore } from "./agent-plan-reads.js";
+import { createDrizzleAgentProgressReadStore } from "./agent-progress-reads.js";
 import { createDrizzleAgentPlanTreeBatchWriteStore } from "./agent-plan-tree-batch-write.js";
 import { createDrizzleAgentPlanMaterializeStore } from "./agent-plan-materialize.js";
 import { createDrizzleAgentPlanCaptureStore } from "./agent-plan-capture.js";
@@ -147,6 +153,8 @@ export {
   AgentMcpRoutineDetailInputSchema,
   AgentMcpRoutineListInputSchema,
   AgentMcpTrainingDayNutritionInputSchema,
+  AgentMcpNewBestsInputSchema,
+  AgentMcpTrainingDaysInputSchema,
   AgentMcpValidateSetInputSchema,
   AgentMcpWorkoutTemplateDetailInputSchema,
   AgentMcpWorkoutTemplateListInputSchema,
@@ -375,7 +383,12 @@ export {
   AgentExerciseResolveQuerySchema,
   agentExerciseListRoute,
   agentExerciseResolveRoute,
+  AgentFocusListResponseSchema,
+  AgentFocusSchema,
+  agentFocusListRoute,
   buildPlatformCatalogExercises,
+  isStarterFocusId,
+  mergeAgentFocuses,
   createDrizzleAgentCatalogStore,
   createInMemoryAgentCatalogStore,
   parseAgentExerciseListQuery,
@@ -390,7 +403,8 @@ export {
   type AgentExerciseListInput,
   type AgentExerciseListResponse,
   type AgentExerciseResolveInput,
-  type AgentExerciseResolveResponse
+  type AgentExerciseResolveResponse,
+  type AgentFocus
 } from "./agent-catalog.js";
 export {
   AGENT_ANALYTICS_DEFAULT_POINT_LIMIT,
@@ -474,6 +488,43 @@ export {
   type AgentNutritionTrendsQuery,
   type AgentNutritionTrendsResponse
 } from "./agent-nutrition-reads.js";
+export {
+  AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
+  AGENT_FOOD_HISTORY_MAX_LIMIT,
+  AgentFoodHistoryItemSchema,
+  AgentFoodHistoryQuerySchema,
+  AgentFoodHistoryResponseSchema,
+  agentFoodHistoryRoute,
+  createDrizzleAgentFoodHistoryReadStore,
+  type AgentFoodHistoryQuery,
+  type AgentFoodHistoryReadStore,
+  type AgentFoodHistoryResponse
+} from "./agent-food-history.js";
+export {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryFoodSchema,
+  AgentMealHistoryItemSchema,
+  AgentMealHistoryQuerySchema,
+  AgentMealHistoryResponseSchema,
+  agentMealHistoryRoute,
+  createDrizzleAgentMealHistoryReadStore,
+  type AgentMealHistoryQuery,
+  type AgentMealHistoryReadStore,
+  type AgentMealHistoryResponse
+} from "./agent-meal-history.js";
+export {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypeItemSchema,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  agentMealTypesRoute,
+  createDrizzleAgentMealTypesReadStore,
+  type AgentMealTypeItem,
+  type AgentMealTypesReadStore,
+  type AgentMealTypesResponse
+} from "./agent-meal-types.js";
 export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
@@ -573,8 +624,17 @@ export {
   AgentMealBatchWriteUnavailableResponseSchema,
   agentMealBatchWriteRoute,
   createDrizzleAgentMealBatchWriteStore,
+  agentMealBatchWriteRejectionMessage,
   prepareAgentMealBatchWrite,
+  resolveAgentMealBatchEntries,
+  type AgentMealBatchEntryResolution,
   type AgentMealBatchPreparation,
+  type AgentMealBatchRejectionStatus,
+  type AgentMealBatchResolvedEntry,
+  type AgentMealBatchResolvedRequest,
+  type AgentMealBatchStoredRow,
+  type AgentMealBatchStoredState,
+  type AgentMealBatchWriteResult,
   type AgentMealBatchPreparedRow,
   type AgentMealBatchWriteEntry,
   type AgentMealBatchWriteEntryResult,
@@ -677,6 +737,23 @@ export {
   type AgentSettingsReadStore
 } from "./agent-settings.js";
 export {
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteRequestSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileBatchWriteSectionsSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  AgentProfileValidationIssueSchema,
+  agentProfileBatchWriteRoute,
+  agentProfileReadRoute,
+  createDrizzleAgentProfileStore,
+  type AgentProfile,
+  type AgentProfileBatchWriteRequest,
+  type AgentProfileBatchWriteResponse,
+  type AgentProfileStore,
+  type AgentProfileValidationIssue
+} from "./agent-profile.js";
+export {
   AGENT_PLAN_DEFAULT_COMPONENT_LIMIT,
   AGENT_PLAN_DEFAULT_PAGE_LIMIT,
   AGENT_PLAN_MAX_COMPONENT_LIMIT,
@@ -720,6 +797,22 @@ export {
   type AgentUpNextTemplateLinkFact,
   type AgentWorkoutTemplateListQuery
 } from "./agent-plan-reads.js";
+export {
+  AgentNewBestsQuerySchema,
+  AgentNewBestsResponseSchema,
+  agentNewBestsRoute,
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  AgentTrainingDaysQuerySchema,
+  AgentTrainingDaysResponseSchema,
+  agentTrainingDaysRoute,
+  createDrizzleAgentProgressReadStore,
+  type AgentNewBestsQuery,
+  type AgentNewBestsResponse,
+  type AgentProgressReadStore,
+  type AgentTrainingDaysQuery,
+  type AgentTrainingDaysResponse
+} from "./agent-progress-reads.js";
 export {
   AGENT_PLAN_TREE_BATCH_ENTITY,
   AGENT_PLAN_TREE_BATCH_WRITE_MAX_ITEMS,
@@ -896,29 +989,72 @@ export {
   type AgentActivityUndoBatchResponse
 } from "./agent-activity.js";
 export {
+  AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS,
+  AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS,
   AgentCompoundBatchWriteResponseSchema,
   AgentCompoundListResponseSchema,
+  AgentPurposeBatchWriteResponseSchema,
+  AgentPurposeListResponseSchema,
   AgentDoseBatchWriteErrorResponseSchema,
   AgentDoseBatchWriteResponseSchema,
   AgentDoseListResponseSchema,
   AgentEffectWindowResponseSchema,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDayStatusesQuerySchema,
+  AgentProtocolDayStatusesResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
+  AgentProtocolDeleteErrorResponseSchema,
+  AgentProtocolDeleteRequestSchema,
+  AgentProtocolDeleteResponseSchema,
+  AgentProtocolSkipBatchWriteErrorResponseSchema,
+  AgentProtocolSkipBatchWriteRequestSchema,
+  AgentProtocolSkipBatchWriteResponseSchema,
+  AgentProtocolSkipBatchWriteSkipSchema,
   AgentProtocolListResponseSchema,
+  AgentProtocolPlannedDaysQuerySchema,
+  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   agentCompoundBatchWriteRoute,
   agentCompoundListRoute,
+  agentPurposeBatchWriteRoute,
+  agentPurposeListRoute,
   agentDoseBatchWriteRoute,
   agentDoseListRoute,
   agentEffectWindowRoute,
   agentProtocolBatchWriteRoute,
+  agentProtocolDayStatusesRoute,
+  agentProtocolDeleteResponse,
+  agentProtocolDeleteRoute,
   agentProtocolListRoute,
+  agentProtocolPlannedDaysRoute,
+  agentProtocolSkipBatchWriteRefusal,
+  agentProtocolSkipBatchWriteResponse,
+  agentProtocolSkipBatchWriteRoute,
   agentProtocolsBatchMarkerId,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   computeEffectWindowSegments,
+  deriveEffectWindow,
+  createActivePurposeCheck,
   createDrizzleAgentProtocolsStore,
+  mergeAgentPurposes,
   prepareAgentCompoundBatchWrite,
+  prepareAgentPurposeBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
+  type AgentProtocolDayStatusesQuery,
+  type AgentProtocolDayStatusesResponse,
+  type AgentProtocolDeleteErrorResponse,
+  type AgentProtocolDeleteRequest,
+  type AgentProtocolDeleteResponse,
+  type AgentProtocolDeleteStoreResult,
+  type AgentProtocolPlannedDaysQuery,
+  type AgentProtocolPlannedDaysResponse,
+  type AgentProtocolSkipBatchWriteErrorResponse,
+  type AgentProtocolSkipBatchWriteRequest,
+  type AgentProtocolSkipBatchWriteResponse,
+  type AgentProtocolSkipStoreResult,
   type AgentProtocolsStore,
   type AgentProtocolsStoreWriteResult
 } from "./agent-protocols.js";
@@ -929,6 +1065,7 @@ export {
   AgentDoseValidationRequestSchema,
   AgentDoseValidationResponseSchema,
   AgentFoodEntryNutrientValidationRequestSchema,
+  AgentMealValidationIssueSchema,
   AgentNutrientAmountSchema,
   AgentNutrientValidationIssueSchema,
   AgentNutrientValidationLimitsSchema,
@@ -947,53 +1084,99 @@ export {
   DOSE_ROUTES,
   DOSE_UNITS,
   DOSE_VALIDATION_LIMITS,
+  MEAL_VALIDATION_LIMITS,
   NUTRIENT_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
   PRESCRIPTION_VALIDATION_LIMITS,
-  PREDEFINED_SET_VALIDATION_LIMITS,
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
   SET_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
   ROUTINE_CADENCE_VALIDATION_LIMITS,
   TEMPLATE_GROUP_VALIDATION_LIMITS,
+  USER_PROFILE_VALIDATION_LIMITS,
   agentDoseValidationRoute,
   agentSetValidationRoute,
   doseValidationLimitsResponse,
   nutrientValidationLimitsResponse,
-  predefinedSetValidationLimitsResponse,
   setValidationLimitsResponse,
   validateAgentDose,
   validateAgentFoodEntry,
+  validateAgentMealTime,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
+  validateAgentProtocolPeriod,
+  validateAgentProtocolSkip,
   validateAgentRoutineCadence,
-  validateAgentPredefinedSet,
+  validateAgentScheduleRule,
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup,
+  validateUserProfileSection,
   type AgentDoseValidationInput,
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult,
   type AgentFoodEntryNutrientValidationInput,
+  type AgentMealTimeValidationInput,
+  type AgentMealTimeValidationResult,
+  type AgentMealValidationIssue,
   type AgentNutrientValidationIssue,
   type AgentNutrientValidationResult,
   type AgentNutritionGoalValidationInput,
   type AgentPrescriptionValidationInput,
   type AgentPrescriptionValidationResult,
+  type AgentProtocolPeriodValidationInput,
+  type AgentProtocolSkipValidationInput,
   type AgentRoutineCadenceValidationInput,
   type AgentRoutineCadenceValidationResult,
+  type AgentScheduleAmountForValidation,
   type AgentSettingsValidationInput,
   type AgentSettingsValidationIssue,
   type AgentSettingsValidationResult,
   type AgentTemplateGroupValidationInput,
   type AgentTemplateGroupValidationResult,
-  type AgentPredefinedSetValidationInput,
-  type AgentPredefinedSetValidationResult,
   type AgentSetValidationInput,
   type AgentSetValidationIssue,
   type AgentSetValidationResult,
   type DoseRoute,
-  type DoseUnit
+  type DoseUnit,
+  type UserProfileSectionName,
+  type UserProfileValidationIssue,
+  type UserProfileValidationResult
 } from "./agent-validation.js";
+export { localDateAtOffset } from "./timezone.js";
+export {
+  ProtocolPlanCodecError,
+  applyingScheduleVersion,
+  compareScheduleVersions,
+  dayStatuses,
+  decodeProtocolPeriod,
+  decodeScheduleRule,
+  dueUnfilled,
+  encodeProtocolPeriod,
+  encodeScheduleRule,
+  planDays,
+  type DayStatus,
+  type DayStatusFill,
+  type DayStatusValue,
+  type DueUnfilledDose,
+  type LocalDate,
+  type LocalTime,
+  type NotPlannedReason,
+  type PlanAmount,
+  type PlanDay,
+  type PlanDayState,
+  type PlanDose,
+  type PlanMember,
+  type PlanProtocol,
+  type PlanScheduleVersion,
+  type PlanSkip,
+  type PlannedDose,
+  type ProtocolCycle,
+  type ProtocolPause,
+  type ProtocolPeriod,
+  type ScheduleRule,
+  type ScheduleRuleDays
+} from "./protocol-plan.js";
 export {
   createApp,
   DEFAULT_SERVER_VERSION,
@@ -1171,6 +1354,8 @@ export {
   INTEGRATION_DATA_CLASS_CONSENTS_SYNC_ENTITY,
   LOGGED_SETS_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
+  pushPurposesInTransaction,
   SYNC_PROTOCOL_VERSION,
   SyncPulledChangeSchema,
   SyncPullRequestSchema,
@@ -1419,6 +1604,15 @@ export async function createMigratedServerApp({
   const agentNutritionReadStore = createDrizzleAgentNutritionReadStore(
     database.db
   );
+  const agentFoodHistoryReadStore = createDrizzleAgentFoodHistoryReadStore(
+    database.db
+  );
+  const agentMealHistoryReadStore = createDrizzleAgentMealHistoryReadStore(
+    database.db
+  );
+  const agentMealTypesReadStore = createDrizzleAgentMealTypesReadStore(
+    database.db
+  );
   const agentCrossDomainReadStore = createDrizzleAgentCrossDomainReadStore(
     database.db
   );
@@ -1441,7 +1635,13 @@ export async function createMigratedServerApp({
     database.db
   );
   const agentSettingsStore = createDrizzleAgentSettingsStore(database.db);
+  const agentProfileStore = createDrizzleAgentProfileStore(database.db);
   const agentPlanReadStore = createDrizzleAgentPlanReadStore(database.db);
+  const agentProgressReadStore = createDrizzleAgentProgressReadStore({
+    db: database.db,
+    settingsStore: agentSettingsStore,
+    catalogStore: agentCatalogStore
+  });
   const agentPlanTreeBatchWriteStore =
     createDrizzleAgentPlanTreeBatchWriteStore(database.db);
   const agentPlanMaterializeStore =
@@ -1484,9 +1684,14 @@ export async function createMigratedServerApp({
     agentActivityStore,
     agentProtocolsStore,
     agentNutritionReadStore,
+    agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
+    agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    profileStore: agentProfileStore,
     agentPlanReadStore,
+    agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
     agentPlanMaterializeStore,
     agentPlanCaptureStore,
@@ -1504,6 +1709,9 @@ export async function createMigratedServerApp({
     agentCatalogStore,
     agentReadStore,
     agentNutritionReadStore,
+    agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
+    agentMealTypesReadStore,
     agentCrossDomainReadStore,
     agentWorkoutBatchWriteStore,
     agentExerciseCatalogBatchWriteStore,
@@ -1514,7 +1722,9 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    agentProfileStore,
     agentPlanReadStore,
+    agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
     agentPlanMaterializeStore,
     agentPlanCaptureStore,
@@ -1549,7 +1759,7 @@ export async function createMigratedServerApp({
 }
 
 export async function startServer() {
-  const release = process.env.npm_package_version ?? DEFAULT_SERVER_VERSION;
+  const release = SERVER_VERSION;
   const logger = createPrivacyLogger(pino());
   const crashReporter = createSentryCrashReporterFromEnv(process.env, {
     release
@@ -1656,7 +1866,7 @@ if (isMainModule) {
   startServer().catch((error) => {
     const startupLogger = createPrivacyLogger(pino());
     const startupCrashReporter = createSentryCrashReporterFromEnv(process.env, {
-      release: process.env.npm_package_version ?? DEFAULT_SERVER_VERSION
+      release: SERVER_VERSION
     });
     startupCrashReporter?.captureException(error, {
       correlationId: "server-startup",

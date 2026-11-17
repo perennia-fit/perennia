@@ -1,21 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show BooleanExpressionOperators, OrderingTerm, Value, driftRuntimeOptions;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/sync/models/sync_status.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
+import 'package:perennia/features/sync/services/sync_cycle_runner.dart';
 
 void main() {
+  // Erase loads the bundled Platform Library seed from assets.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final warnAboutMultipleDatabases =
       driftRuntimeOptions.dontWarnAboutMultipleDatabases;
   late AppDatabase database;
@@ -35,6 +43,715 @@ void main() {
 
   tearDown(() async {
     await database.close();
+  });
+
+  // docs/designs/compound-purposes.md, D1 to D3 and CUJ 6.
+  group('Compound Purposes sync', () {
+    test('a seeded device pushes its Purposes before its Compounds', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(pushes: pushes),
+      );
+
+      final result = await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final entities = pushes.map((body) => body['entity']).toList();
+      expect(
+        entities.indexOf(AppDatabase.purposesTable),
+        lessThan(entities.indexOf(AppDatabase.compoundsTable)),
+      );
+      final purposes = pushes
+          .firstWhere((body) => body['entity'] == AppDatabase.purposesTable);
+      final pushed =
+          (purposes['changes']! as List<Object?>).cast<Map<String, Object?>>();
+      expect(pushed, hasLength(starterPurposes.length));
+      expect(
+        (pushed.first['payload']! as Map<String, Object?>).keys,
+        unorderedEquals(<String>[
+          'id',
+          'name',
+          'sort_order',
+          'updated_at',
+          'deleted_at',
+        ]),
+      );
+      expect(result.pushedCount, 12);
+      final synced = await _purposeRow(database, _cognitionId);
+      expect(synced.syncPreviouslySynced, isTrue);
+      expect(synced.syncDeviceId, 'device-a');
+      expect(await repository.hasPendingChanges(), isFalse);
+    });
+
+    test('a full resync pushes Purposes before Compounds too', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final entities = <Object?>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            if (request.url.path == '/sync/push') {
+              entities.add(body['entity']);
+              final changes = (body['changes']! as List<Object?>)
+                  .cast<Map<String, Object?>>();
+              return http.Response(
+                jsonEncode(<String, Object?>{
+                  'protocolVersion': syncProtocolVersion,
+                  'accepted': changes
+                      .map((change) => change['id']! as String)
+                      .toList(growable: false),
+                  'serverClock': '2026-11-01T00:00:01.000Z',
+                  'applied': const <Object?>[],
+                }),
+                200,
+                headers: const {'content-type': 'application/json'},
+              );
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': body['mode'] != 'snapshot',
+                'nextCursor': 'snapshot-cursor',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.fullResyncRequired, isTrue);
+      expect(
+        entities.indexOf(AppDatabase.purposesTable),
+        lessThan(entities.indexOf(AppDatabase.compoundsTable)),
+      );
+    });
+
+    test('a pull applies a Purpose, with its Activity Log entry', () async {
+      final updatedAt = DateTime.utc(2026, 11, 1, 8).toIso8601String();
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _purposePullChange(
+          id: 'purpose-user-1',
+          name: 'Joints',
+          sortOrder: 6,
+          updatedAt: updatedAt,
+          deviceId: 'device-a',
+        ),
+      );
+
+      final row = await _purposeRow(database, 'purpose-user-1');
+      expect(row.name, 'Joints');
+      expect(row.sortOrder, 6);
+      expect(row.syncDeviceId, 'device-a');
+      expect(row.syncPreviouslySynced, isTrue);
+      final log = await (database.select(database.activityLog)
+            ..where((entry) => entry.entityId.equals('purpose-user-1')))
+          .getSingle();
+      expect(log.entityTable, AppDatabase.purposesTable);
+      expect(log.actor, 'manual');
+    });
+
+    test('an older Purpose from a pull loses to the local rename', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      await repositories.protocols.purposes
+          .rename(_cognitionId, name: 'Memory');
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _purposePullChange(
+          id: _cognitionId,
+          name: 'Cognition',
+          sortOrder: 4,
+          updatedAt: compoundSeedTimestamp.toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'otc_seed',
+        ),
+      );
+
+      expect((await _purposeRow(database, _cognitionId)).name, 'Memory');
+    });
+
+    test('a Compound payload with no purpose_ids keeps the local list',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final before = await _compoundRow(database, _creatineId);
+      expect(before.purposeIds, jsonEncode(<String>[_performanceId]));
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          before,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'manual',
+          changes: const <String, Object?>{
+            'name': 'Creatine monohydrate',
+            'purpose_ids': _absent,
+          },
+        ),
+      );
+
+      final after = await _compoundRow(database, _creatineId);
+      expect(after.name, 'Creatine monohydrate');
+      expect(after.purposeIds, before.purposeIds);
+    });
+
+    test('a new Compound whose payload has no purpose_ids starts with none',
+        () async {
+      // An Agent-created Compound with no `purposeIds` has no such key.
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final row = await _compoundRow(database, _creatineId);
+      await database.customStatement(
+        'DELETE FROM compounds WHERE id = ?',
+        <Object?>[_creatineId],
+      );
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          row,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'agent',
+          changes: const <String, Object?>{'purpose_ids': _absent},
+        ),
+      );
+
+      expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+    });
+
+    test('a Compound payload with an explicit empty list clears the local one',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final before = await _compoundRow(database, _creatineId);
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          before,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'manual',
+          changes: const <String, Object?>{'purpose_ids': '[]'},
+        ),
+      );
+
+      expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+    });
+
+    test(
+        "a full pull of this device's own unchanged seed rows doesn't touch "
+        'them, so the backfill still tags them', () async {
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-a',
+      );
+      final rowsBefore = await database.select(database.compounds).get();
+      final logBefore = await database.select(database.activityLog).get();
+      expect(rowsBefore, isNotEmpty);
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[
+            for (final row in rowsBefore)
+              _compoundPullChange(
+                row,
+                updatedAt: row.updatedAt.toUtc().toIso8601String(),
+                deviceId: 'device-a',
+                actor: 'otc_seed',
+                changes: const <String, Object?>{'purpose_ids': _absent},
+              ),
+          ],
+        ),
+      );
+
+      final pull = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      // A last-writer-wins tie against this device's own write: nothing moves,
+      // and the row gets no entry that would make it read as touched.
+      expect(pull.appliedCount, 0);
+      expect(await database.select(database.compounds).get(), rowsBefore);
+      expect(await database.select(database.activityLog).get(), logBefore);
+
+      await repository.backfillSeedPurposes();
+
+      final tagged = await _compoundRow(database, _creatineId);
+      expect(tagged.purposeIds, jsonEncode(<String>[_performanceId]));
+      final entries = await (database.select(database.activityLog)
+            ..where((entry) => entry.entityId.equals(_creatineId)))
+          .get();
+      expect(
+        entries.map((entry) => entry.actor),
+        unorderedEquals(<String>['otc_seed', 'otc_purpose_seed']),
+      );
+    });
+
+    test('a Sync Run with nothing else to do pushes the backfill it wrote',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-a',
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(pushes: pushes),
+      );
+      expect(await repository.hasPendingChanges(), isFalse);
+
+      final result = await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+      ).run(session: _session(), deviceId: 'device-a');
+
+      expect(result.pushedCount, seedCompoundPurposeIds.length);
+      final pushedCompounds = pushes
+          .where((body) => body['entity'] == AppDatabase.compoundsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .toList();
+      final creatine =
+          pushedCompounds.singleWhere((change) => change['id'] == _creatineId);
+      expect(
+        (creatine['payload']! as Map<String, Object?>)['purpose_ids'],
+        jsonEncode(<String>[_performanceId]),
+      );
+      expect(creatine['actor'], 'otc_purpose_seed');
+      expect(await repository.hasPendingChanges(), isFalse);
+    });
+
+    test(
+        'a full pull restores the tags an older build dropped from a row it '
+        'applied, and the next edit pushes them', () async {
+      // One account, upgraded a device at a time. Device A's backfill reached
+      // device B while B was still on the older build, which stored the version
+      // but had no column for the tags.
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-b',
+      );
+      final seeded = await _compoundRow(database, _creatineId);
+      final taggedAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+      Map<String, Object?> backfill(Object? purposeIds) => _compoundPullChange(
+            seeded,
+            updatedAt: taggedAt.toIso8601String(),
+            deviceId: 'device-a',
+            actor: 'otc_purpose_seed',
+            changes: <String, Object?>{'purpose_ids': purposeIds},
+          );
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: backfill(_absent),
+      );
+      final dropped = await _compoundRow(database, _creatineId);
+      expect(dropped.purposeIds, '[]');
+      expect(dropped.syncDeviceId, 'device-a');
+      expect(dropped.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+
+      Future<List<ActivityLogRow>> creatineLog() =>
+          (database.select(database.activityLog)
+                ..where((entry) => entry.entityId.equals(_creatineId)))
+              .get();
+      final logBefore = await creatineLog();
+
+      // B upgrades: the `from < 66` step clears the cursor, so the first Sync
+      // Run pulls in full.
+      await database.customStatement(
+        'UPDATE sync_states SET pull_cursor = NULL',
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[backfill(tags)],
+        ),
+      );
+      final runner = RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+      );
+      List<Map<String, Object?>> pushedCreatine() => pushes
+          .where((body) => body['entity'] == AppDatabase.compoundsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .where((change) => change['id'] == _creatineId)
+          .toList();
+
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      // Only the tags moved: the version stands, nothing new is logged or
+      // pushed, and the backfill has nothing left to do for this row.
+      final restored = await _compoundRow(database, _creatineId);
+      expect(restored.purposeIds, tags);
+      expect(restored.syncDeviceId, 'device-a');
+      expect(restored.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+      expect(await creatineLog(), logBefore);
+      expect(pushedCreatine(), isEmpty);
+
+      await repositories.protocols.setFavorite(_creatineId, isFavorite: true);
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      final pushed = pushedCreatine().single;
+      expect(
+        (pushed['payload']! as Map<String, Object?>)['purpose_ids'],
+        tags,
+      );
+    });
+
+    group('a pull that loses last-writer-wins restores no tags', () {
+      final localAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+
+      Future<CompoundRow> pullAgainst({
+        required String localPurposeIds,
+        required DateTime incomingAt,
+        required String incomingDeviceId,
+      }) async {
+        final repositories = TrainingRepositories(database);
+        await _seedAsSyncedUpgradedDevice(
+          repositories,
+          database,
+          deviceId: 'device-b',
+        );
+        await (database.update(database.compounds)
+              ..where((row) => row.id.equals(_creatineId)))
+            .write(
+          CompoundsCompanion(
+            purposeIds: Value<String>(localPurposeIds),
+            updatedAt: Value<DateTime>(localAt),
+          ),
+        );
+        final local = await _compoundRow(database, _creatineId);
+        await _pullChangeInto(
+          database,
+          localDeviceId: 'device-b',
+          change: _compoundPullChange(
+            local,
+            updatedAt: incomingAt.toIso8601String(),
+            deviceId: incomingDeviceId,
+            actor: 'manual',
+            changes: <String, Object?>{'purpose_ids': tags},
+          ),
+        );
+        return _compoundRow(database, _creatineId);
+      }
+
+      test('an older version', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt.subtract(const Duration(hours: 1)),
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same stamp from another device', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt,
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same version over a row that holds a list', () async {
+        final other = jsonEncode(<String>[_cognitionId]);
+        final row = await pullAgainst(
+          localPurposeIds: other,
+          incomingAt: localAt,
+          incomingDeviceId: 'device-b',
+        );
+        expect(row.purposeIds, other);
+      });
+    });
+
+    for (final upgraded in <bool>[false, true]) {
+      test(
+          'CUJ 6: a removed seed tag stays removed on a '
+          "${upgraded ? 'device upgrading from 65' : 'fresh device'}",
+          () async {
+        final repositories = TrainingRepositories(database);
+        if (upgraded) {
+          await _seedAsSyncedUpgradedDevice(
+            repositories,
+            database,
+            deviceId: 'device-b',
+          );
+        } else {
+          await repositories.protocols.ensureOtcLibrarySeeded();
+        }
+        final local = await _compoundRow(database, _creatineId);
+        final editedAt = DateTime.utc(2026, 11, 1, 8).toIso8601String();
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          // The server holds device A's newer rows, so it applies nothing
+          // pushed by this device.
+          apiClientFactory: _acceptingSyncApi(
+            pushes: <Map<String, Object?>>[],
+            applyPushes: false,
+            pullChanges: <Map<String, Object?>>[
+              _purposePullChange(
+                id: _cognitionId,
+                name: 'Memory',
+                sortOrder: 4,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+              ),
+              _compoundPullChange(
+                local,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+                actor: 'manual',
+                changes: const <String, Object?>{'purpose_ids': '[]'},
+              ),
+            ],
+          ),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(purposes.map((purpose) => purpose.name), contains('Memory'));
+        expect(
+          purposes.map((purpose) => purpose.name),
+          isNot(contains('Cognition')),
+        );
+      });
+    }
+
+    group('a device that backfilled with no account, then signs in', () {
+      // Before any edit below, as a schema-65 device stamped its seed.
+      final seededAt =
+          DateTime.now().toUtc().subtract(const Duration(days: 30));
+
+      Future<TrainingRepositories> backfilledSignedOut() async {
+        final repositories = TrainingRepositories(database);
+        await _seedAsNeverSyncedUpgradedDevice(
+          repositories,
+          database,
+          seededAt: seededAt,
+        );
+        await repositories.protocols.backfillSeedPurposes(
+          onlyNeverSynced: true,
+        );
+        return repositories;
+      }
+
+      test(
+          "CUJ 6: loses to another device's removal and rename, on both "
+          'devices', () async {
+        final repositories = await backfilledSignedOut();
+        final local = await _compoundRow(database, _creatineId);
+        expect(local.purposeIds, jsonEncode(<String>[_performanceId]));
+        final editedAt = DateTime.now()
+            .toUtc()
+            .subtract(const Duration(hours: 1))
+            .toIso8601String();
+        final server = <String, Map<String, Object?>>{
+          _creatineId: _compoundPullChange(
+            local,
+            updatedAt: editedAt,
+            deviceId: 'device-a',
+            actor: 'manual',
+            changes: const <String, Object?>{
+              'name': 'Creatine monohydrate',
+              'purpose_ids': '[]',
+            },
+          ),
+        };
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _lwwCompoundServer(
+            server,
+            otherPullChanges: <Map<String, Object?>>[
+              _purposePullChange(
+                id: _cognitionId,
+                name: 'Memory',
+                sortOrder: 4,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+              ),
+            ],
+          ),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        // Device A's next pull reads this row, so its edit stands there too.
+        final held = server[_creatineId]!;
+        expect(held['deviceId'], 'device-a');
+        expect(held['updatedAt'], editedAt);
+        final payload = held['payload']! as Map<String, Object?>;
+        expect(payload['purpose_ids'], '[]');
+        expect(payload['name'], 'Creatine monohydrate');
+
+        final after = await _compoundRow(database, _creatineId);
+        expect(after.purposeIds, '[]');
+        expect(after.name, 'Creatine monohydrate');
+        expect(after.syncDeviceId, 'device-a');
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(purposes.map((purpose) => purpose.name), contains('Memory'));
+      });
+
+      test('an account with no edit to the row still receives the tags',
+          () async {
+        final repositories = await backfilledSignedOut();
+        final server = <String, Map<String, Object?>>{};
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _lwwCompoundServer(server),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        expect(server.keys, unorderedEquals(seedCompoundPurposeIds.keys));
+        final held = server[_creatineId]!['payload']! as Map<String, Object?>;
+        expect(held['purpose_ids'], jsonEncode(<String>[_performanceId]));
+        final after = await _compoundRow(database, _creatineId);
+        expect(after.purposeIds, jsonEncode(<String>[_performanceId]));
+        expect(after.syncDeviceId, 'device-b');
+      });
+
+      test('the tags go up one second after the seed entry they amend',
+          () async {
+        // The server drops a tie on (stamp, device), so a stamp left unchanged
+        // would lose to this device's pending `otc_seed` entry.
+        final repositories = await backfilledSignedOut();
+        final pushes = <Map<String, Object?>>[];
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _acceptingSyncApi(pushes: pushes),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        final creatine = pushes
+            .where((body) => body['entity'] == AppDatabase.compoundsTable)
+            .expand((body) => body['changes']! as List<Object?>)
+            .cast<Map<String, Object?>>()
+            .where((change) => change['id'] == _creatineId)
+            .toList();
+        expect(
+          creatine.map((change) => change['actor']),
+          <String>['otc_seed', 'otc_purpose_seed'],
+        );
+        final seed = DateTime.parse(creatine.first['updatedAt']! as String);
+        final tags = DateTime.parse(creatine.last['updatedAt']! as String);
+        expect(tags.difference(seed), const Duration(seconds: 1));
+      });
+    });
+
+    test('a snapshot leaves never-synced seeded Purposes alone', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      // Nothing to push first, so the rows reach the snapshot never synced.
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+      final before = await database.select(database.purposes).get();
+      final repository = _snapshotRepository(database, const <Object?>[]);
+
+      await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(await database.select(database.purposes).get(), before);
+    });
+
+    test(
+        'a snapshot tombstones a synced Purpose it no longer holds, and keeps '
+        'one it does', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      await database.customStatement(
+        "UPDATE purposes SET sync_device_id = 'device-a', "
+        'sync_previously_synced = 1',
+      );
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+      final stamp = compoundSeedTimestamp.toIso8601String();
+      final repository = _snapshotRepository(database, <Object?>[
+        for (final starter in starterPurposes)
+          if (starter.id != _cognitionId)
+            _purposePullChange(
+              id: starter.id,
+              name: starter.name,
+              sortOrder: starter.sortOrder,
+              updatedAt: stamp,
+              deviceId: 'device-a',
+              actor: 'otc_seed',
+            ),
+      ]);
+
+      await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect((await _purposeRow(database, _cognitionId)).deletedAt, isNotNull);
+      expect((await _purposeRow(database, _performanceId)).deletedAt, isNull);
+    });
   });
 
   test('pending-change watch ignores local-only Activity Log entities',
@@ -129,7 +846,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[setId],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[
@@ -159,7 +876,7 @@ void main() {
     expect(requests.single.url.toString(), 'https://sync.example/sync/push');
     expect(requests.single.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'deviceId': 'device-a',
       'entity': AppDatabase.loggedSetsTable,
       'changes': <Object?>[
@@ -212,15 +929,15 @@ void main() {
     final updatedAt = DateTime.utc(2026, 6, 27, 8);
     final repositories = TrainingRepositories(database);
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: 'Snack',
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
         startedAt: updatedAt,
-        timezone: 'UTC',
-        localDate: const NutritionDayDate(year: 2026, month: 6, day: 27),
+        mealTypeName: 'Snack',
       ),
       actor: 'tester',
     );
     final result = await repositories.nutrition.logFoodEntrySnapshot(
+      target: ExistingMealTarget(mealId),
       entry: FoodEntrySnapshotDraft(
         mealId: mealId,
         foodId: '3017620422003',
@@ -239,21 +956,6 @@ void main() {
       ),
       actor: 'tester',
     );
-    await database.into(database.openFoodFactsCache).insert(
-          OpenFoodFactsCacheCompanion.insert(
-            lookupKey: 'barcode:3017620422003',
-            foodId: '3017620422003',
-            name: 'Original branded bar',
-            nutrientValuesJson: _offNutrientsPer100().toJsonString(),
-            isLiquid: const Value<bool>(false),
-            servingLabel: const Value<String?>('serving'),
-            servingSize: const Value<double?>(45),
-            packageSize: const Value<double?>(60),
-            fetchedAt: updatedAt,
-            lastAccessedAt: updatedAt,
-          ),
-        );
-
     final pushRequests = <http.Request>[];
     final pushRepository = SyncRepository(
       database: database,
@@ -265,7 +967,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .map((change) =>
                       (change! as Map<String, Object?>)['id']! as String)
@@ -307,10 +1009,6 @@ void main() {
       pushedBodies.map((body) => body['entity']),
       <String>[AppDatabase.mealsTable, AppDatabase.foodEntriesTable],
     );
-    expect(
-      pushedBodies.map((body) => body['entity']),
-      isNot(contains(AppDatabase.openFoodFactsCacheTable)),
-    );
     expect(foodPayload['food_source'], FoodSource.openFoodFacts.name);
     expect(foodPayload['food_id'], '3017620422003');
     expect(foodPayload['name'], 'Original branded bar');
@@ -326,7 +1024,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-off-1',
               'serverClock': '2026-06-27T08:00:02.000Z',
               'changes': <Object?>[
@@ -375,8 +1073,6 @@ void main() {
     expect(pulledEntry.resolvedNutrients[NutrientId.energy].value, 112.5);
     expect(storedEntry.syncDeviceId, 'device-a');
     expect(storedEntry.syncPreviouslySynced, isTrue);
-    expect(await targetDatabase.select(targetDatabase.openFoodFactsCache).get(),
-        isEmpty);
     expect(await targetDatabase.select(targetDatabase.foods).get(), isEmpty);
     expect(await targetDatabase.select(targetDatabase.metrics).get(), isEmpty);
     expect(await targetDatabase.select(targetDatabase.metricReadings).get(),
@@ -537,7 +1233,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[setId],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[],
@@ -590,7 +1286,7 @@ void main() {
           expect(changes.length, lessThanOrEqualTo(100));
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -633,7 +1329,7 @@ void main() {
           if (requests.length == 1) {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'nextCursor': 'cursor-1',
                 'serverClock': '2026-06-22T08:00:01.000Z',
                 'changes': <Object?>[
@@ -654,7 +1350,7 @@ void main() {
 
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:00:02.000Z',
               'changes': <Object?>[],
@@ -684,7 +1380,7 @@ void main() {
     expect(requests.first.url.toString(), 'https://sync.example/sync/pull');
     expect(requests.first.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.first.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
     });
@@ -699,10 +1395,513 @@ void main() {
     expect(secondResult.serverClock, '2026-06-22T08:00:02.000Z');
     expect(requests, hasLength(2));
     expect(jsonDecode(requests.last.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': 'cursor-1',
       'limit': 100,
     });
+  });
+
+  test('skips an unknown entity type and still advances the cursor', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const secondSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c012';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final requests = <http.Request>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-unknown-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: firstSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '5',
+                        deviceId: 'device-b',
+                      ),
+                      <String, Object?>{
+                        'entity': 'entity_from_a_newer_server',
+                        'id': 'future-row-1',
+                        'deviceId': 'device-b',
+                        'payload': <String, Object?>{'secret': 'not logged'},
+                        'updatedAt': updatedAt.toIso8601String(),
+                        'deletedAt': null,
+                      },
+                      _pulledChange(
+                        id: secondSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '8',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 2);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect((await _loggedSet(database, secondSetId)).repsEntered, '8');
+    expect(await _storedPullCursor(database), 'cursor-unknown-1');
+
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 0);
+    expect(requests, hasLength(2));
+    expect(jsonDecode(requests.last.body)['cursor'], 'cursor-unknown-1');
+  });
+
+  test(
+      'quarantines a known-type change that fails to apply and still '
+      'advances the cursor', () async {
+    final logs = _captureDebugPrint();
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    const secondSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c012';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final brokenChange = <String, Object?>{
+      ..._pulledChange(
+        id: brokenSetId,
+        updatedAt: updatedAt,
+        repsEntered: '6',
+        deviceId: 'device-b',
+      ),
+      'payload': <String, Object?>{
+        ..._loggedSetPayload(brokenSetId, updatedAt, repsEntered: '6'),
+        'comment': 'private-protocol-note',
+      },
+      // Parses as an envelope, fails DateTime.parse while applying.
+      'updatedAt': 'not-a-timestamp',
+    };
+    final requests = <http.Request>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-broken-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: firstSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '5',
+                        deviceId: 'device-b',
+                      ),
+                      brokenChange,
+                      _pulledChange(
+                        id: secondSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '8',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 2);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect((await _loggedSet(database, secondSetId)).repsEntered, '8');
+    expect(
+      await (database.select(database.loggedSets)
+            ..where((row) => row.id.equals(brokenSetId)))
+          .getSingleOrNull(),
+      isNull,
+    );
+    expect(await _storedPullCursor(database), 'cursor-broken-1');
+    final held = await _quarantinedChanges(database);
+    expect(held, hasLength(1));
+    expect(held.single.entityTable, AppDatabase.loggedSetsTable);
+    expect(held.single.entityId, brokenSetId);
+    expect(held.single.failureKind, 'format');
+    final heldChange =
+        jsonDecode(held.single.changeJson) as Map<String, Object?>;
+    expect(heldChange['payload'], brokenChange['payload']);
+    expect(heldChange['updatedAt'], 'not-a-timestamp');
+    expect(
+      (await SyncStatusRepository(database).loadStatus())
+          .quarantinedChangeCount,
+      1,
+    );
+    expect(logs, isNotEmpty);
+    expect(logs.join('\n'), isNot(contains('private-protocol-note')));
+    expect(logs.join('\n'), isNot(contains('not-a-timestamp')));
+
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 0);
+    expect(requests, hasLength(2));
+    expect(jsonDecode(requests.last.body)['cursor'], 'cursor-broken-1');
+    expect(await _quarantinedChanges(database), hasLength(1));
+  });
+
+  test('quarantines a malformed change envelope and still advances the cursor',
+      () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final missingDeviceId = _pulledChange(
+      id: brokenSetId,
+      updatedAt: updatedAt,
+      repsEntered: '6',
+      deviceId: 'device-b',
+    )..remove('deviceId');
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-envelope-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[
+                missingDeviceId,
+                'not-an-object',
+                _pulledChange(
+                  id: firstSetId,
+                  updatedAt: updatedAt,
+                  repsEntered: '5',
+                  deviceId: 'device-b',
+                ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+      limit: 3,
+    );
+
+    expect(result.appliedCount, 1);
+    // Malformed entries still filled the page, so there may be more.
+    expect(result.hasMore, isTrue);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect(await _storedPullCursor(database), 'cursor-envelope-1');
+    final held = await _quarantinedChanges(database);
+    expect(
+      held.map((row) => (row.entityTable, row.entityId, row.failureKind)),
+      <(String?, String?, String)>[
+        (AppDatabase.loggedSetsTable, brokenSetId, 'envelope'),
+        (null, null, 'envelope'),
+      ],
+    );
+    expect(jsonDecode(held.first.changeJson), missingDeviceId);
+    expect(jsonDecode(held.last.changeJson), 'not-an-object');
+  });
+
+  test('a later valid version of a quarantined row supersedes it', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': cursor == null ? 'cursor-1' : 'cursor-2',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[
+                if (cursor == null)
+                  <String, Object?>{
+                    ..._pulledChange(
+                      id: setId,
+                      updatedAt: updatedAt,
+                      repsEntered: '6',
+                      deviceId: 'device-b',
+                    ),
+                    'updatedAt': 'not-a-timestamp',
+                  }
+                else
+                  _pulledChange(
+                    id: setId,
+                    updatedAt: updatedAt.add(const Duration(minutes: 1)),
+                    repsEntered: '7',
+                    deviceId: 'device-b',
+                  ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    expect(await _quarantinedChanges(database), hasLength(1));
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '7');
+    expect(await _quarantinedChanges(database), isEmpty);
+    expect(await _storedPullCursor(database), 'cursor-2');
+  });
+
+  test('retries a quarantined change at the end of the next pull', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    // Held by an earlier build that could not apply it; this one can.
+    await database.into(database.quarantinedSyncChanges).insert(
+          QuarantinedSyncChangesCompanion.insert(
+            entityTable: const Value<String?>(AppDatabase.loggedSetsTable),
+            entityId: const Value<String?>(setId),
+            changeJson: jsonEncode(
+              _pulledChange(
+                id: setId,
+                updatedAt: updatedAt,
+                repsEntered: '6',
+                deviceId: 'device-b',
+              ),
+            ),
+            failureKind: 'format',
+            quarantinedAt: updatedAt,
+          ),
+        );
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '6');
+    expect(await _quarantinedChanges(database), isEmpty);
+  });
+
+  test('holds a change whose parent row is missing until the parent exists',
+      () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: setId,
+                        updatedAt: updatedAt,
+                        repsEntered: '6',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    // The Logged Set's Workout and Exercise (Drift FKs) are not here yet.
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 0);
+    expect(await _storedPullCursor(database), 'cursor-1');
+    expect(
+      (await _quarantinedChanges(database))
+          .map((row) => (row.entityId, row.failureKind)),
+      <(String?, String)>[(setId, 'constraint')],
+    );
+    // Its savepoint rolled back: nothing of the failed apply is left behind.
+    expect(
+      await (database.select(database.activityLog)
+            ..where((row) => row.entityId.equals(setId)))
+          .get(),
+      isEmpty,
+    );
+
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '6');
+    expect(await _quarantinedChanges(database), isEmpty);
+  });
+
+  test(
+      'full re-sync keeps local rows when a snapshot entry is unidentifiable '
+      'and drops quarantined changes it did not resend', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 8);
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c001';
+    const absentSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c002';
+    const staleHeldSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c003';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    for (final id in <String>[brokenSetId, absentSetId]) {
+      await _insertLoggedSet(
+        database,
+        id: id,
+        updatedAt: updatedAt,
+        repsEntered: '4',
+        syncDeviceId: 'device-b',
+        syncPreviouslySynced: true,
+      );
+    }
+    await database.into(database.quarantinedSyncChanges).insert(
+          QuarantinedSyncChangesCompanion.insert(
+            entityTable: const Value<String?>(AppDatabase.loggedSetsTable),
+            entityId: const Value<String?>(staleHeldSetId),
+            changeJson: jsonEncode('held-by-an-earlier-pull'),
+            failureKind: 'envelope',
+            quarantinedAt: updatedAt,
+          ),
+        );
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (body['mode'] != 'snapshot') {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': true,
+                'nextCursor': null,
+                'serverClock': '2026-06-22T09:00:00.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'snapshot-cursor-1',
+              'serverClock': '2026-06-22T09:00:02.000Z',
+              'changes': body['cursor'] == null
+                  ? <Object?>[
+                      <String, Object?>{
+                        ..._pulledChange(
+                          id: brokenSetId,
+                          updatedAt: updatedAt,
+                          repsEntered: '9',
+                          deviceId: 'device-b',
+                        ),
+                        'updatedAt': 'not-a-timestamp',
+                      },
+                      42,
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.fullResyncRequired, isTrue);
+    expect(await _storedPullCursor(database), 'snapshot-cursor-1');
+    expect((await _loggedSet(database, brokenSetId)).deletedAt, isNull);
+    // The unidentifiable entry could have been this row, so the snapshot
+    // does not prove it deleted.
+    expect((await _loggedSet(database, absentSetId)).deletedAt, isNull);
+    expect(
+      (await _quarantinedChanges(database))
+          .map((row) => (row.entityId, row.failureKind)),
+      <(String?, String)>[(null, 'envelope'), (brokenSetId, 'format')],
+    );
   });
 
   test('pulls Metric definitions before Metric Readings', () async {
@@ -716,7 +1915,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-metrics-1',
               'serverClock': '2026-06-25T07:00:01.000Z',
               'changes': <Object?>[
@@ -877,7 +2076,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-imported-set-1',
               'serverClock': '2026-07-01T07:30:17.000Z',
               'changes': <Object?>[
@@ -944,7 +2143,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-consent-1',
               'serverClock': '2026-06-25T10:00:01.000Z',
               'changes': <Object?>[
@@ -987,7 +2186,7 @@ void main() {
     expect(syncEntries, hasLength(1));
     expect(syncEntries.single.syncAcknowledgedAt, isNotNull);
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
     });
@@ -1023,7 +2222,7 @@ void main() {
           final change = changes.single! as Map<String, Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[consentId],
               'serverClock': '2026-06-25T10:00:01.000Z',
               'applied': <Object?>[
@@ -1090,7 +2289,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:00:01.000Z',
               'changes': <Object?>[
@@ -1126,7 +2325,8 @@ void main() {
     expect(pulledSet.syncDeviceId, 'device-b');
   });
 
-  test('settings erase produces a logged set tombstone that pushes', () async {
+  test('settings erase pushes a tombstone for every erased synced row',
+      () async {
     final updatedAt = DateTime.utc(2026, 6, 22, 8);
     const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c001';
     await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
@@ -1140,32 +2340,40 @@ void main() {
     );
     await TrainingRepositories(database).eraseAllData();
     final erasedSet = await _loggedSet(database, setId);
-    final requests = <http.Request>[];
+    final pushedIdsByEntity = <String, Set<String>>{};
     final repository = SyncRepository(
       database: database,
       apiClientFactory: (baseUrl) => PerenniaApiClient(
         baseUrl: baseUrl,
         httpClient: MockClient((request) async {
-          requests.add(request);
           final body = jsonDecode(request.body) as Map<String, Object?>;
-          final changes = body['changes']! as List<Object?>;
-          final change = changes.single! as Map<String, Object?>;
-          final deletedAt = change['deletedAt']! as String;
-          expect(change['id'], setId);
-          expect(deletedAt, isNotEmpty);
-          expect((change['payload']! as Map<String, Object?>)['deleted_at'],
-              deletedAt);
+          final changes =
+              (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+          for (final change in changes) {
+            final deletedAt = change['deletedAt'] as String?;
+            expect(deletedAt, isNotNull, reason: '${body['entity']}');
+            expect(
+              (change['payload']! as Map<String, Object?>)['deleted_at'],
+              deletedAt,
+            );
+            pushedIdsByEntity
+                .putIfAbsent(body['entity']! as String, () => <String>{})
+                .add(change['id']! as String);
+          }
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
-              'accepted': <String>[setId],
+              'protocolVersion': syncProtocolVersion,
+              'accepted': <String>[
+                for (final change in changes) change['id']! as String,
+              ],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[
-                <String, Object?>{
-                  'id': setId,
-                  'updatedAt': change['updatedAt'],
-                  'deviceId': 'device-a',
-                },
+                for (final change in changes)
+                  <String, Object?>{
+                    'id': change['id'],
+                    'updatedAt': change['updatedAt'],
+                    'deviceId': 'device-a',
+                  },
               ],
             }),
             200,
@@ -1175,19 +2383,21 @@ void main() {
       ),
     );
 
-    final result = await repository.pushPendingLoggedSets(
+    await repository.pushPendingLoggedSets(
       session: _session(),
       deviceId: 'device-a',
     );
     final pendingRows = await (database.select(database.activityLog)
-          ..where((row) => row.entityId.equals(setId))
           ..where((row) => row.syncAcknowledgedAt.isNull()))
         .get();
 
     expect(erasedSet.deletedAt, isNotNull);
     expect(erasedSet.syncPreviouslySynced, isTrue);
-    expect(result.pushedCount, 1);
-    expect(requests, hasLength(1));
+    expect(pushedIdsByEntity, <String, Set<String>>{
+      AppDatabase.exercisesTable: <String>{'exercise-1'},
+      AppDatabase.workoutSessionsTable: <String>{'workout-1'},
+      AppDatabase.loggedSetsTable: <String>{setId},
+    });
     expect(pendingRows, isEmpty);
   });
 
@@ -1220,7 +2430,7 @@ void main() {
           if (request.url.path == '/sync/pull') {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'nextCursor': 'cursor-1',
                 'serverClock': '2026-06-22T09:00:01.000Z',
                 'changes': <Object?>[
@@ -1323,13 +2533,13 @@ void main() {
 
           if (request.url.path == '/sync/pull' && requests.length == 1) {
             expect(body, <String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'cursor': '2000-01-01T00:00:00.000Z|expired-row',
               'limit': 100,
             });
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': true,
                 'nextCursor': '2000-01-01T00:00:00.000Z|expired-row',
                 'serverClock': '2026-06-22T09:00:00.000Z',
@@ -1347,7 +2557,7 @@ void main() {
                 (changes.single! as Map<String, Object?>)['id'], pendingSetId);
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': <String>[pendingSetId],
                 'serverClock': '2026-06-22T09:00:01.000Z',
                 'applied': <Object?>[
@@ -1368,7 +2578,7 @@ void main() {
               body['cursor'] == null) {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': false,
                 'nextCursor': 'snapshot-cursor-1',
                 'serverClock': '2026-06-22T09:00:02.000Z',
@@ -1397,7 +2607,7 @@ void main() {
               body['cursor'] == 'snapshot-cursor-1') {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': false,
                 'nextCursor': 'snapshot-cursor-1',
                 'serverClock': '2026-06-22T09:00:03.000Z',
@@ -1492,7 +2702,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:01:01.000Z',
               'changes': <Object?>[
@@ -1571,7 +2781,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-24T05:00:01.000Z',
               'changes': <Object?>[
@@ -1677,7 +2887,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-24T05:00:01.000Z',
               'changes': <Object?>[
@@ -1764,7 +2974,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -1824,7 +3034,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-dose-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -1907,7 +3117,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-dose-tombstone',
               'serverClock': '2026-06-30T09:00:01.000Z',
               'changes': <Object?>[
@@ -1983,7 +3193,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-lww',
               'serverClock': '2026-06-30T12:00:01.000Z',
               'changes': <Object?>[
@@ -2023,6 +3233,309 @@ void main() {
   });
 
   test(
+      'pushes a Skip after the Doses and then its removal, and a second '
+      'device pulls both onto its Protocol Day (D8)', () async {
+    final repositories = TrainingRepositories(database);
+    const localDate = ProtocolDayDate(year: 2026, month: 6, day: 30);
+    final compound = await repositories.protocols.createCompound(
+      CompoundDraft(
+        name: 'Creatine',
+        defaultUnit: DoseUnit.gram,
+        defaultRoute: DoseRoute.oral,
+      ),
+    );
+    final protocol = await repositories.protocols.createProtocol(
+      ProtocolDraft(
+        name: 'Daily',
+        startLocalDate: localDate,
+        compoundIds: <String>[compound.compoundId],
+      ),
+      today: localDate,
+    );
+    await repositories.protocols.skipPlannedDose(
+      ProtocolSkipDraft(
+        protocolId: protocol.protocolId,
+        compoundId: compound.compoundId,
+        localDate: localDate,
+        plannedLocalTime: '21:00',
+      ),
+      today: localDate,
+    );
+    final skipId =
+        (await database.select(database.protocolSkips).get()).single.id;
+
+    final pushRequests = <http.Request>[];
+    final pushRepository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          pushRequests.add(request);
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          final changes =
+              (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'accepted': changes
+                  .map((change) => change['id']! as String)
+                  .toList(growable: false),
+              'serverClock': '2026-06-30T08:00:01.000Z',
+              'applied': changes
+                  .map(
+                    (change) => <String, Object?>{
+                      'id': change['id'],
+                      'updatedAt': change['updatedAt'],
+                      'deviceId': 'device-a',
+                    },
+                  )
+                  .toList(growable: false),
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+    List<Map<String, Object?>> bodies() => pushRequests
+        .map((request) => jsonDecode(request.body) as Map<String, Object?>)
+        .toList(growable: false);
+
+    await pushRepository.pushPendingLoggedSets(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    final entities = bodies().map((body) => body['entity']).toList();
+    expect(entities, contains(AppDatabase.protocolSkipsTable));
+    expect(
+      entities.indexOf(AppDatabase.protocolSkipsTable),
+      greaterThan(entities.indexOf(AppDatabase.compoundsTable)),
+    );
+    final skipBody = bodies().singleWhere(
+        (body) => body['entity'] == AppDatabase.protocolSkipsTable);
+    final pushedSkip = (skipBody['changes']! as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .single;
+    expect(pushedSkip['id'], skipId);
+    expect(pushedSkip['payload'], <String, Object?>{
+      'id': skipId,
+      'protocol_id': protocol.protocolId,
+      'compound_id': compound.compoundId,
+      'local_date': '2026-06-30',
+      'planned_local_time': '21:00',
+      'updated_at': pushedSkip['updatedAt'],
+      'deleted_at': null,
+    });
+    final storedSkip =
+        await database.select(database.protocolSkips).getSingle();
+    expect(storedSkip.syncPreviouslySynced, isTrue);
+    expect(storedSkip.syncDeviceId, 'device-a');
+
+    // Undo skip pushes the tombstone, and nothing else is pending. Stored
+    // stamps have whole seconds, so the pause keeps the removal's after the
+    // Skip's, as a user's later tap would; a tie would lose LWW.
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await repositories.protocols.unskipPlannedDose(skipId);
+    pushRequests.clear();
+    await pushRepository.pushPendingLoggedSets(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    expect(
+      bodies().map((body) => body['entity']),
+      <String>[AppDatabase.protocolSkipsTable],
+    );
+    final pushedRemoval = (bodies().single['changes']! as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .single;
+    expect(pushedRemoval['deletedAt'], isNotNull);
+
+    // A second device, with no Protocol or Compound rows, pulls the Skip and
+    // then its removal: both are soft references.
+    final targetDatabase = AppDatabase.inMemory();
+    addTearDown(targetDatabase.close);
+    var page = 0;
+    final targetRepository = SyncRepository(
+      database: targetDatabase,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((_) async {
+          page += 1;
+          final change = page == 1 ? pushedSkip : pushedRemoval;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-skip-$page',
+              'serverClock': '2026-06-30T08:00:0$page.000Z',
+              'changes': <Object?>[
+                _pulledChangeFromPush(
+                  entity: AppDatabase.protocolSkipsTable,
+                  deviceId: 'device-a',
+                  change: change,
+                ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+    final targetRepositories = TrainingRepositories(targetDatabase);
+
+    final first = await targetRepository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-b',
+    );
+    expect(first.appliedCount, 1);
+    final pulledDay = await targetRepositories.protocols.protocolDay(localDate);
+    expect(pulledDay.skips.single.id, skipId);
+    expect(pulledDay.skips.single.plannedLocalTime, '21:00');
+    final pulledRow =
+        await targetDatabase.select(targetDatabase.protocolSkips).getSingle();
+    expect(pulledRow.syncDeviceId, 'device-a');
+    expect(pulledRow.syncPreviouslySynced, isTrue);
+    expect(
+      (await targetRepositories.activityLog.listEntries())
+          .map((entry) => entry.entityTable),
+      contains(AppDatabase.protocolSkipsTable),
+    );
+
+    final second = await targetRepository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-b',
+    );
+    expect(second.appliedCount, 1);
+    expect(
+      (await targetRepositories.protocols.protocolDay(localDate)).skips,
+      isEmpty,
+    );
+  });
+
+  test(
+      'a full re-sync tombstones a previously synced Skip the snapshot no '
+      'longer has, and keeps a local-only one (D8)', () async {
+    final localUpdatedAt = DateTime.utc(2026, 6, 22, 8);
+    final snapshotUpdatedAt = DateTime.utc(2026, 6, 22, 9);
+    const keptId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d001';
+    const missingId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d002';
+    const localOnlyId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d003';
+    Future<void> insertSkip(String id, {required bool previouslySynced}) {
+      return database.into(database.protocolSkips).insert(
+            ProtocolSkipsCompanion.insert(
+              id: id,
+              protocolId: 'protocol-1',
+              compoundId: 'compound-1',
+              localDate: '2026-06-21',
+              plannedLocalTime: const Value<String?>('09:00'),
+              syncDeviceId: const Value<String?>('device-b'),
+              syncPreviouslySynced: Value<bool>(previouslySynced),
+              updatedAt: localUpdatedAt,
+            ),
+          );
+    }
+
+    await insertSkip(keptId, previouslySynced: true);
+    await insertSkip(missingId, previouslySynced: true);
+    await insertSkip(localOnlyId, previouslySynced: false);
+    await database.into(database.syncStates).insert(
+          SyncStatesCompanion.insert(
+            id: syncStateId,
+            pullCursor: const Value<String?>(
+              '2000-01-01T00:00:00.000Z|expired-row',
+            ),
+            updatedAt: localUpdatedAt,
+          ),
+        );
+
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/pull' && body['mode'] == null) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': true,
+                'nextCursor': '2000-01-01T00:00:00.000Z|expired-row',
+                'serverClock': '2026-06-22T09:00:00.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/sync/pull' &&
+              body['mode'] == 'snapshot' &&
+              body['cursor'] == null) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': false,
+                'nextCursor': 'snapshot-cursor-1',
+                'serverClock': '2026-06-22T09:00:02.000Z',
+                'changes': <Object?>[
+                  <String, Object?>{
+                    'entity': AppDatabase.protocolSkipsTable,
+                    'id': keptId,
+                    'deviceId': 'device-b',
+                    'payload': <String, Object?>{
+                      'id': keptId,
+                      'protocol_id': 'protocol-1',
+                      'compound_id': 'compound-1',
+                      'local_date': '2026-06-21',
+                      'planned_local_time': '09:00',
+                      'updated_at': snapshotUpdatedAt.toIso8601String(),
+                      'deleted_at': null,
+                    },
+                    'updatedAt': snapshotUpdatedAt.toIso8601String(),
+                    'deletedAt': null,
+                  },
+                ],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/sync/pull' &&
+              body['mode'] == 'snapshot' &&
+              body['cursor'] == 'snapshot-cursor-1') {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': false,
+                'nextCursor': 'snapshot-cursor-1',
+                'serverClock': '2026-06-22T09:00:03.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          fail('Unexpected sync request: ${request.url.path} ${request.body}');
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    Future<ProtocolSkipRow> row(String id) =>
+        (database.select(database.protocolSkips)
+              ..where((row) => row.id.equals(id)))
+            .getSingle();
+
+    expect(result.fullResyncRequired, isTrue);
+    expect((await row(keptId)).deletedAt, isNull);
+    expect((await row(keptId)).updatedAt.toUtc(), snapshotUpdatedAt);
+    expect((await row(missingId)).deletedAt, isNotNull);
+    expect((await row(localOnlyId)).deletedAt, isNull);
+  });
+
+  test(
       'round-trips a Protocol and its member Schedule as LWW rows with '
       'provenance', () async {
     final repositories = TrainingRepositories(database);
@@ -2036,14 +3549,17 @@ void main() {
     final created = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[compound.compoundId],
         schedulesByCompoundId: <String, ScheduleDraft?>{
-          compound.compoundId: const ScheduleDraft(
+          compound.compoundId: ScheduleDraft(
+            rule: TimedScheduleRule(
+              days: const DailyScheduleDays(),
+              times: const <String>['09:00'],
+            ),
             doseAmountValue: 5,
             doseAmountEntered: '5',
             doseUnit: DoseUnit.gram,
-            frequency: ScheduleFrequency.onceDaily,
             route: DoseRoute.oral,
           ),
         },
@@ -2064,7 +3580,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2131,8 +3647,22 @@ void main() {
     final protocolPayload = pushedProtocol['payload']! as Map<String, Object?>;
     final schedulePayload = pushedSchedule['payload']! as Map<String, Object?>;
     expect(protocolPayload['name'], 'Lean bulk');
+    expect(protocolPayload['start_local_date'], '2026-07-01');
+    expect(protocolPayload['end_local_date'], isNull);
+    expect(protocolPayload['period'], isNull);
+    expect(protocolPayload['reminders_enabled'], isFalse);
     expect(schedulePayload['dose_amount_entered'], '5');
-    expect(schedulePayload['frequency'], ScheduleFrequency.onceDaily.name);
+    expect(schedulePayload['effective_from'], '2026-07-01');
+    expect(
+      jsonDecode(schedulePayload['rule']! as String),
+      <String, Object?>{
+        'v': 1,
+        'kind': 'timed',
+        'days': <String, Object?>{'kind': 'daily'},
+        'times': <Object?>['09:00'],
+      },
+    );
+    expect(schedulePayload, isNot(contains('frequency')));
 
     // Second device pulls the Compound, the Protocol, its member, its target
     // outcome, and its Schedule — a Drift FK chain (Protocol ->
@@ -2146,7 +3676,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-protocol-1',
               'serverClock': '2026-07-01T00:00:02.000Z',
               'changes': <Object?>[
@@ -2202,9 +3732,17 @@ void main() {
     expect(pulledProtocol.members, hasLength(1));
     final pulledMember = pulledProtocol.members.single;
     expect(pulledMember.compoundId, compound.compoundId);
-    expect(pulledMember.schedule, isNotNull);
-    expect(pulledMember.schedule!.doseAmountEntered, '5');
-    expect(pulledMember.schedule!.frequency, ScheduleFrequency.onceDaily);
+    final pulledVersion = pulledMember.currentVersion;
+    expect(pulledVersion, isNotNull);
+    expect(pulledVersion!.doseAmountEntered, '5');
+    expect(
+      pulledVersion.effectiveFrom,
+      const ProtocolDayDate(year: 2026, month: 7, day: 1),
+    );
+    expect(
+      (pulledVersion.rule as TimedScheduleRule).times,
+      <String>['09:00'],
+    );
     expect(pulledProtocol.targetOutcomes, hasLength(1));
     expect(
       pulledProtocol.targetOutcomes.single.kind,
@@ -2228,7 +3766,7 @@ void main() {
     final created = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[compound.compoundId],
       ),
     );
@@ -2263,7 +3801,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-protocol-tombstone',
               'serverClock': '2026-07-01T09:00:01.000Z',
               'changes': <Object?>[
@@ -2274,8 +3812,11 @@ void main() {
                   'payload': <String, Object?>{
                     'id': created.protocolId,
                     'name': 'Lean bulk',
-                    'start_date': '2026-07-01T00:00:00.000Z',
-                    'end_date': null,
+                    'start_local_date': '2026-07-01',
+                    'end_local_date': null,
+                    'period': null,
+                    'reminders_enabled': false,
+                    'archived_on': '2026-07-01',
                     'updated_at': deletedAt.toIso8601String(),
                     'deleted_at': deletedAt.toIso8601String(),
                   },
@@ -2304,6 +3845,7 @@ void main() {
 
     expect(result.appliedCount, 1);
     expect(pulledProtocol.deletedAt?.toUtc(), deletedAt);
+    expect(pulledProtocol.archivedOn, '2026-07-01');
     expect(pulledProtocol.syncDeviceId, 'device-b');
     // No cascade: the tagged Dose keeps its tag and remains intact.
     expect(doseRow.deletedAt, isNull);
@@ -2339,7 +3881,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2402,7 +3944,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-catalog-1',
               'serverClock': '2026-07-01T00:00:02.000Z',
               'changes': <Object?>[
@@ -2483,7 +4025,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-exercise-tombstone',
               'serverClock': '2026-07-01T01:00:01.000Z',
               'changes': <Object?>[
@@ -2580,7 +4122,7 @@ void main() {
           pushRequests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[],
               'serverClock': '2026-07-01T00:00:01.000Z',
               'applied': <Object?>[],
@@ -2647,7 +4189,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2697,7 +4239,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-goal-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -2797,7 +4339,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-goal-2',
               'serverClock': '2026-06-30T08:00:03.000Z',
               'changes': <Object?>[
@@ -2859,7 +4401,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2923,7 +4465,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-settings-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -3001,7 +4543,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-settings-lww',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -3080,7 +4622,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3151,7 +4693,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-meal-type-1',
               'serverClock': '2026-07-04T08:00:02.000Z',
               'changes': <Object?>[
@@ -3250,7 +4792,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-meal-type-2',
               'serverClock': '2026-07-04T08:00:03.000Z',
               'changes': <Object?>[
@@ -3295,11 +4837,10 @@ void main() {
       const MealTypeDraft(name: 'Second Breakfast', sortOrder: 4),
     );
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: mealTypeId,
-        startedAt: DateTime.utc(2026, 7, 4, 8),
-        timezone: 'Australia/Brisbane',
-        localDate: const NutritionDayDate(year: 2026, month: 7, day: 4),
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 7, 4, 8),
+        mealTypeName: mealTypeId,
       ),
     );
     final foodId = await repositories.nutrition.createUserFood(
@@ -3330,7 +4871,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3388,7 +4929,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-entry-1',
               'serverClock': '2026-07-04T08:00:02.000Z',
               'changes': <Object?>[
@@ -3484,7 +5025,7 @@ void main() {
             }
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': changes.map((change) => change['id']).toList(),
                 'serverClock': '2026-07-22T10:00:00.000Z',
                 'applied': changes
@@ -3664,7 +5205,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'plan-tree-cursor',
               'serverClock': '2026-07-22T10:00:00.000Z',
               'changes': pushedChanges.reversed.toList(),
@@ -3774,7 +5315,7 @@ void main() {
             httpClient: MockClient(
               (_) async => http.Response(
                 jsonEncode(<String, Object?>{
-                  'protocolVersion': 1,
+                  'protocolVersion': syncProtocolVersion,
                   'nextCursor': 'tie-cursor',
                   'serverClock': '2026-07-22T10:00:00.000Z',
                   'changes': changes,
@@ -3820,6 +5361,1303 @@ void main() {
     expect(
         await pullNames(<Map<String, Object?>>[deviceB, deviceA]), 'Device B');
   });
+  group('Meal time keys (docs/designs/meal-logging.md §10)', () {
+    // A Meal image as an app or server from before schema 65 writes it: no
+    // `timezone_offset_minutes`, no `time_precision`.
+    Map<String, Object?> olderMealImage(
+      String id, {
+      required DateTime updatedAt,
+      String mealType = 'Lunch',
+      String startedAt = '2026-06-26T02:00:00.000Z',
+      Object? localDate = '2026-06-26',
+    }) {
+      return <String, Object?>{
+        'id': id,
+        'meal_type': mealType,
+        'started_at': startedAt,
+        'timezone': 'AEST',
+        if (localDate != null) 'local_date': localDate,
+        'ended_at': null,
+        'updated_at': updatedAt.toIso8601String(),
+        'deleted_at': null,
+      };
+    }
+
+    Map<String, Object?> mealChange(
+      Map<String, Object?> payload, {
+      String batchId = 'remote-meal-batch',
+    }) {
+      return <String, Object?>{
+        'entity': AppDatabase.mealsTable,
+        'id': payload['id'],
+        'deviceId': 'device-old',
+        'payload': payload,
+        'updatedAt': payload['updated_at'],
+        'deletedAt': null,
+        'activityLogId': 'remote-log-${payload['id']}',
+        'actor': 'agent',
+        'batchId': batchId,
+        'beforeImage': null,
+        'afterImage': payload,
+        'occurredAt': payload['updated_at'],
+      };
+    }
+
+    Future<int> pullMeals(List<Map<String, Object?>> changes) async {
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-meals',
+                'serverClock': '2026-06-26T08:00:00.000Z',
+                'changes': changes,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+      return result.appliedCount;
+    }
+
+    Future<MealRow> storedMeal(String id) {
+      return (database.select(database.meals)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    test('an older image inserts a Meal with the column defaults', () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d001';
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+        ),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(applied, 1);
+      expect(meal.mealType, 'Lunch');
+      expect(meal.localDate, '2026-06-26');
+      expect(meal.timezoneOffsetMinutes, isNull);
+      expect(meal.timePrecision, 'instant');
+    });
+
+    test('an older image updates a Meal and leaves both columns as stored',
+        () async {
+      // An app write can't choose its offset (it is the device zone's), so
+      // the stored Meal is seeded as a row: +10:00 and `date` precision.
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d005';
+      await database.into(database.meals).insert(
+            MealsCompanion.insert(
+              id: mealId,
+              mealType: 'Breakfast',
+              startedAt: DateTime.utc(2026, 6, 25, 14),
+              timezone: 'AEST',
+              localDate: const Value<String>('2026-06-26'),
+              timezoneOffsetMinutes: const Value<int?>(600),
+              timePrecision: const Value<String>('date'),
+              updatedAt: DateTime.utc(2026, 6, 25, 14),
+            ),
+          );
+      final newer = DateTime.now().toUtc().add(const Duration(days: 1));
+
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(
+            mealId,
+            updatedAt: newer,
+            mealType: 'Brunch',
+            startedAt: '2026-06-25T14:00:00.000Z',
+            localDate: '2026-06-26',
+          ),
+        ),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(applied, 1);
+      expect(meal.mealType, 'Brunch');
+      expect(meal.timezoneOffsetMinutes, 600);
+      expect(meal.timePrecision, 'date');
+    });
+
+    test('a pulled image with both keys stores them', () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d002';
+      await pullMeals(<Map<String, Object?>>[
+        mealChange(<String, Object?>{
+          ...olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+          'timezone_offset_minutes': -300,
+          'time_precision': 'date',
+        }),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(meal.timezoneOffsetMinutes, -300);
+      expect(meal.timePrecision, 'date');
+    });
+
+    test('a malformed or missing local date is re-derived, not thrown',
+        () async {
+      const malformedId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d003';
+      const missingId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d004';
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(<String, Object?>{
+          ...olderMealImage(
+            malformedId,
+            updatedAt: DateTime.utc(2026, 6, 26, 3),
+            startedAt: '2026-06-26T22:00:00.000Z',
+            localDate: '2026-02-30',
+          ),
+          'timezone_offset_minutes': 600,
+        }),
+        mealChange(
+          olderMealImage(
+            missingId,
+            updatedAt: DateTime.utc(2026, 6, 26, 3),
+            startedAt: '2026-06-26T02:00:00.000Z',
+            localDate: null,
+          ),
+        ),
+      ]);
+
+      expect(applied, 2);
+      // 22:00 UTC at +10:00 is the next day.
+      expect((await storedMeal(malformedId)).localDate, '2026-06-27');
+      // A null offset reads in the device zone.
+      expect(
+        (await storedMeal(missingId)).localDate,
+        NutritionDayDate.fromDateTime(DateTime.utc(2026, 6, 26, 2))
+            .storageValue,
+      );
+    });
+
+    test('push images carry the offset and the time precision', () async {
+      final repositories = TrainingRepositories(database);
+      final startedAt = DateTime(2026, 6, 26, 12, 30);
+      final mealId = await repositories.nutrition.createMeal(
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: startedAt,
+          mealTypeName: 'Lunch',
+        ),
+      );
+      final pushRequests = <http.Request>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            pushRequests.add(request);
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': '2026-06-26T08:00:01.000Z',
+                'applied': changes
+                    .map(
+                      (change) => <String, Object?>{
+                        'id': change['id'],
+                        'updatedAt': change['updatedAt'],
+                        'deviceId': 'device-a',
+                      },
+                    )
+                    .toList(growable: false),
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final pushedMeal = pushRequests
+          .map((request) => jsonDecode(request.body) as Map<String, Object?>)
+          .where((body) => body['entity'] == AppDatabase.mealsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .singleWhere((change) => change['id'] == mealId);
+      final offset = startedAt.timeZoneOffset.inMinutes;
+      for (final image in <Object?>[
+        pushedMeal['payload'],
+        pushedMeal['afterImage'],
+      ]) {
+        final map = image! as Map<String, Object?>;
+        expect(map['timezone_offset_minutes'], offset);
+        expect(map['time_precision'], 'instant');
+      }
+    });
+
+    test('undo of a Batch whose Meal images predate the keys is not stale',
+        () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d005';
+      const batchId = 'older-meal-batch';
+      await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+          batchId: batchId,
+        ),
+      ]);
+      final feedRepository =
+          ActivityFeedRepository(TrainingRepositories(database));
+
+      final undo = await feedRepository.undoBatch(batchId);
+
+      expect(undo.conflicts, isEmpty);
+      expect(undo.undoBatchId, isNotNull);
+      expect((await storedMeal(mealId)).deletedAt, isNotNull);
+    });
+
+    test(
+        'undo of the Batch that created a Meal is refused once a pulled food '
+        'joined it (meal-logging.md §7)', () async {
+      final repositories = TrainingRepositories(database);
+      final meal = PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 12, 30),
+        mealTypeName: 'Lunch',
+      );
+      final first = await repositories.nutrition.logQuickEntry(
+        target: NewMealTarget(meal),
+        entry: QuickFoodEntryDraft(
+          name: 'Soup',
+          nutrients: _offNutrientsPer100(),
+        ),
+      );
+      final localEntry = (await repositories.activityLog.listEntries())
+          .singleWhere(
+            (entry) =>
+                entry.batchId == first.batchId &&
+                entry.entityTable == AppDatabase.foodEntriesTable,
+          )
+          .afterImage!;
+      const pulledEntryId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d0f1';
+      final pulledAt = DateTime.now().toUtc().add(const Duration(minutes: 1));
+      final pulledEntry = <String, Object?>{
+        ...localEntry,
+        'id': pulledEntryId,
+        'position': 1,
+        'name': 'Bread',
+        'updated_at': pulledAt.toIso8601String(),
+      };
+
+      final applied = await pullMeals(<Map<String, Object?>>[
+        <String, Object?>{
+          'entity': AppDatabase.foodEntriesTable,
+          'id': pulledEntryId,
+          'deviceId': 'device-b',
+          'payload': pulledEntry,
+          'updatedAt': pulledEntry['updated_at'],
+          'deletedAt': null,
+          'activityLogId': 'remote-log-$pulledEntryId',
+          'actor': 'app',
+          'batchId': 'remote-food-batch',
+          'beforeImage': null,
+          'afterImage': pulledEntry,
+          'occurredAt': pulledEntry['updated_at'],
+        },
+      ]);
+      expect(applied, 1);
+
+      final undo =
+          await ActivityFeedRepository(repositories).undoBatch(first.batchId);
+
+      expect(undo.undoBatchId, isNull);
+      expect(undo.appliedEntries, isEmpty);
+      expect(
+        undo.conflicts.single.reason,
+        ActivityLogUndoConflictReason.dependent,
+      );
+      expect(undo.conflicts.single.entityId, meal.id);
+      expect((await storedMeal(meal.id)).deletedAt, isNull);
+      expect(
+        (await repositories.nutrition.listActiveEntriesForMeal(meal.id))
+            .map((entry) => entry.id),
+        <String>[first.foodEntryId, pulledEntryId],
+      );
+    });
+  });
+
+  // docs/designs/platform-library-updates.md: "Hide, do not delete", "Keep in
+  // place" and "Timestamps make devices agree".
+  group('Retired Exercises across sync', () {
+    late AppDatabase other;
+
+    setUp(() {
+      other = AppDatabase.inMemory();
+    });
+
+    tearDown(() async {
+      await other.close();
+    });
+
+    test('a pulled Set on a hidden id applies, and the next launch keeps it',
+        () async {
+      await _launchLibrary(database, _updatedLibrary);
+      final updatedAt = DateTime.utc(2026, 2, 1, 8);
+      await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _pulledChange(
+          id: 'late-set',
+          updatedAt: updatedAt,
+          repsEntered: '8',
+          deviceId: 'device-a',
+          afterImage: <String, Object?>{
+            ..._loggedSetPayload('late-set', updatedAt, repsEntered: '8'),
+            'exercise_id': _plankExerciseId,
+          },
+        ),
+      );
+
+      expect(
+        (await _loggedSet(database, 'late-set')).exerciseId,
+        _plankExerciseId,
+      );
+      expect(await _quarantinedChanges(database), isEmpty);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _launchLibrary(database, _updatedLibrary);
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test(
+        'a pulled Template entry on a hidden id applies, and the next launch '
+        'keeps it', () async {
+      await _launchLibrary(database, _updatedLibrary);
+      final updatedAt = DateTime.utc(2026, 2, 1, 8);
+      await database.into(database.workoutTemplates).insert(
+            WorkoutTemplatesCompanion.insert(
+              id: 'late-template',
+              name: 'Core',
+              updatedAt: updatedAt,
+            ),
+          );
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: <String, Object?>{
+          'entity': AppDatabase.templateExercisesTable,
+          'id': 'late-entry',
+          'deviceId': 'device-a',
+          'payload': <String, Object?>{
+            'id': 'late-entry',
+            'workout_template_id': 'late-template',
+            'exercise_id': _plankExerciseId,
+            'position': 0,
+            'note': null,
+            'updated_at': updatedAt.toIso8601String(),
+            'deleted_at': null,
+          },
+          'updatedAt': updatedAt.toIso8601String(),
+          'deletedAt': null,
+        },
+      );
+
+      final entry = await (database.select(database.templateExercises)
+            ..where((row) => row.id.equals('late-entry')))
+          .getSingle();
+      expect(entry.exerciseId, _plankExerciseId);
+      expect(await _quarantinedChanges(database), isEmpty);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _launchLibrary(database, _updatedLibrary);
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test('a pulled kept row applies over a hidden one', () async {
+      await _keepPlankOn(other);
+      final kept = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+      await _launchLibrary(database, _updatedLibrary);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-a',
+          change: kept,
+        ),
+      );
+
+      final pulled = await _exerciseRow(database, _plankExerciseId);
+      _expectKeptPlank(pulled);
+      expect(pulled.syncDeviceId, 'device-a');
+
+      // Later launches leave it alone: it is a User Library row now.
+      final entriesBefore = await database.select(database.activityLog).get();
+      await _launchLibrary(database, _updatedLibrary);
+      expect(await _exerciseRow(database, _plankExerciseId), pulled);
+      expect(await database.select(database.activityLog).get(), entriesBefore);
+    });
+
+    test(
+        "a Sync Run seeds first, so a favorite's later stamp does not beat the "
+        'pulled kept row', () async {
+      await _keepPlankOn(other);
+      final kept = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+      final installed = await _launchLibrary(database, _updatedLibrary);
+      await installed.exercises.setFavorite(_plankExerciseId, isFavorite: true);
+      final favorited = await _exerciseRow(database, _plankExerciseId);
+      expect(favorited.updatedAt.toUtc().isAfter(_plankRetiredAt), isTrue);
+
+      final nextLaunch = TrainingRepositories(
+        database,
+        platformSeedSource: _LibrarySource(_updatedLibrary),
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[
+            _pulledChangeFromPush(
+              entity: AppDatabase.exercisesTable,
+              deviceId: 'device-a',
+              change: kept,
+            ),
+          ],
+        ),
+      );
+
+      await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: repository.statusRepository,
+        ensureLibrarySeeded: nextLaunch.catalog.ensurePlatformLibrarySeeded,
+      ).run(session: _session(), deviceId: 'device-b');
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test("a device's automatic keep loses to a later pulled rename (CUJ 8)",
+        () async {
+      // Device A updates first, and the user renames the kept exercise there.
+      final deviceA = await _keepPlankOn(other);
+      await deviceA.exercises.rename(_plankExerciseId, name: 'Forearm Hold');
+      final renamedRow = await _exerciseRow(other, _plankExerciseId);
+      expect(renamedRow.updatedAt.toUtc().isAfter(_plankRetiredAt), isTrue);
+      final renamed = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+
+      // Device B updates later. Its automatic keep goes out first and the
+      // server drops it, then the rename comes back in the same Sync Run.
+      await _logPlankOnOlderLibrary(database);
+      final nextLaunch = TrainingRepositories(
+        database,
+        platformSeedSource: _LibrarySource(_updatedLibrary),
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          applyPushes: false,
+          pullChanges: <Map<String, Object?>>[
+            _pulledChangeFromPush(
+              entity: AppDatabase.exercisesTable,
+              deviceId: 'device-a',
+              change: renamed,
+            ),
+          ],
+        ),
+      );
+
+      await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: repository.statusRepository,
+        ensureLibrarySeeded: nextLaunch.catalog.ensurePlatformLibrarySeeded,
+      ).run(session: _session(), deviceId: 'device-b');
+
+      final automaticKeep = _lastExerciseChange(
+        _exerciseChangesIn(pushes),
+        _plankExerciseId,
+      );
+      expect(
+        (automaticKeep['payload']! as Map<String, Object?>)['name'],
+        'Plank',
+      );
+      final deviceBRow = await _exerciseRow(database, _plankExerciseId);
+      expect(deviceBRow.name, 'Forearm Hold');
+      expect(deviceBRow.libraryOrigin, ExerciseLibraryOrigin.user.name);
+      expect(deviceBRow.syncDeviceId, 'device-a');
+      expect(deviceBRow.updatedAt, renamedRow.updatedAt);
+      expect(await repository.hasPendingChanges(), isFalse);
+
+      // Were device A to pull device B's automatic keep, it would lose there.
+      await _pullChangeInto(
+        other,
+        localDeviceId: 'device-a',
+        change: _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-b',
+          change: automaticKeep,
+        ),
+      );
+      expect(
+        (await _exerciseRow(other, _plankExerciseId)).name,
+        'Forearm Hold',
+      );
+    });
+
+    for (final firstPull in <String>['device-a', 'device-b']) {
+      test(
+          "two devices' kept rows at one stamp converge by the device-id "
+          'tie-break, with $firstPull pulling first', () async {
+        // Only `isFavorite` can differ between two kept rows, which is what
+        // shows here whose row won.
+        await _logPlankOnOlderLibrary(other);
+        await (other.update(other.exercises)
+              ..where((row) => row.id.equals(_plankExerciseId)))
+            .write(const ExercisesCompanion(isFavorite: Value<bool>(true)));
+        await _launchLibrary(other, _updatedLibrary);
+        await _keepPlankOn(database);
+        expect(
+          (await _exerciseRow(other, _plankExerciseId)).updatedAt,
+          (await _exerciseRow(database, _plankExerciseId)).updatedAt,
+        );
+
+        final fromA = _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-a',
+          change: _lastExerciseChange(
+            await _pushExerciseChanges(other, deviceId: 'device-a'),
+            _plankExerciseId,
+          ),
+        );
+        final fromB = _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-b',
+          change: _lastExerciseChange(
+            await _pushExerciseChanges(database, deviceId: 'device-b'),
+            _plankExerciseId,
+          ),
+        );
+
+        Future<void> pullIntoA() => _pullChangeInto(
+              other,
+              localDeviceId: 'device-a',
+              change: fromB,
+            );
+        Future<void> pullIntoB() => _pullChangeInto(
+              database,
+              localDeviceId: 'device-b',
+              change: fromA,
+            );
+        if (firstPull == 'device-a') {
+          await pullIntoA();
+          await pullIntoB();
+        } else {
+          await pullIntoB();
+          await pullIntoA();
+        }
+
+        final deviceARow = await _exerciseRow(other, _plankExerciseId);
+        final deviceBRow = await _exerciseRow(database, _plankExerciseId);
+        _expectKeptPlank(deviceARow);
+        _expectKeptPlank(deviceBRow);
+        // 'device-b' sorts later, so its row, with no favorite, wins on both.
+        expect(deviceARow.isFavorite, isFalse);
+        expect(deviceBRow.isFavorite, isFalse);
+        expect(deviceARow.syncDeviceId, 'device-b');
+        expect(deviceBRow.syncDeviceId, 'device-b');
+      });
+    }
+
+    test('the kept row pushes, and a hidden row does not', () async {
+      await _keepPlankOn(database);
+      _expectHiddenRow(await _exerciseRow(database, _sideBendExerciseId));
+
+      final changes =
+          await _pushExerciseChanges(database, deviceId: 'device-a');
+
+      // Only the kept image goes out: not the entries the row queued while it
+      // was a Platform row, not the hidden row, not the live Platform row.
+      expect(changes.map((change) => change['id']), <String>[_plankExerciseId]);
+      final payload = changes.single['payload']! as Map<String, Object?>;
+      expect(payload['library_origin'], ExerciseLibraryOrigin.user.name);
+      expect(payload['name'], 'Plank');
+      expect(payload['deleted_at'], isNull);
+      expect(
+        DateTime.parse(payload['updated_at']! as String).toUtc(),
+        _plankRetiredAt,
+      );
+
+      // The guard acknowledges the entries of every Platform row, so none is
+      // retried, and the accepted push acknowledges the kept row's.
+      final pendingExerciseEntries =
+          await (database.select(database.activityLog)
+                ..where(
+                  (row) =>
+                      row.entityTable.equals(AppDatabase.exercisesTable) &
+                      row.syncAcknowledgedAt.isNull(),
+                ))
+              .get();
+      expect(pendingExerciseEntries, isEmpty);
+      final hiddenEntries = await (database.select(database.activityLog)
+            ..where((row) => row.entityId.equals(_sideBendExerciseId)))
+          .get();
+      expect(hiddenEntries, isNotEmpty);
+    });
+  });
+
+  group('User Profile sections', () {
+    http.Response accepted(Map<String, Object?> body) {
+      final changes =
+          (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'protocolVersion': syncProtocolVersion,
+          'accepted': changes
+              .map((change) => change['id']! as String)
+              .toList(growable: false),
+          'serverClock': '2026-11-01T00:00:01.000Z',
+          'applied': changes
+              .map(
+                (change) => <String, Object?>{
+                  'id': change['id'],
+                  'updatedAt': change['updatedAt'],
+                  'deviceId': 'device-a',
+                },
+              )
+              .toList(growable: false),
+        }),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    Map<String, Object?> pulledChange({
+      required String id,
+      String entity = AppDatabase.userProfileSectionsTable,
+      Map<String, Object?> payload = const <String, Object?>{
+        'section': 'general_notes',
+        'values': <String, Object?>{'text': 'pulled'},
+      },
+      String updatedAt = '2026-11-01T00:00:00.000Z',
+      String? deletedAt,
+    }) {
+      return <String, Object?>{
+        'entity': entity,
+        'id': id,
+        'deviceId': 'device-b',
+        'payload': payload,
+        'updatedAt': updatedAt,
+        'deletedAt': deletedAt,
+      };
+    }
+
+    SyncRepository pullRepository(List<Object?> changes) {
+      return SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-1',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': changes,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<UserProfileSectionRow> sectionRow(String id) {
+      return (database.select(database.userProfileSections)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    test(
+        'pending changes push after nutrition goals in the wire shape, and are '
+        'acknowledged', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.nutrition.saveNutritionGoal(
+        NutritionGoalTarget(
+          nutrient: NutrientId.energy,
+          value: 2200,
+          entered: '2200',
+        ),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.aboutYou,
+        <String, Object?>{
+          'height': <String, Object?>{'value': 66, 'unit': 'in'},
+        },
+      );
+      expect(await SyncRepository(database: database).hasPendingChanges(), true);
+
+      final bodies = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            bodies.add(body);
+            return accepted(body);
+          }),
+        ),
+      );
+
+      final result = await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final entities = bodies.map((body) => body['entity']).toList();
+      expect(
+        entities.indexOf(AppDatabase.userProfileSectionsTable),
+        greaterThan(entities.indexOf(AppDatabase.nutritionGoalsTable)),
+      );
+      final row =
+          await database.select(database.userProfileSections).getSingle();
+      expect(result.acceptedEntityIds, contains(row.id));
+      final push = bodies.singleWhere(
+        (body) => body['entity'] == AppDatabase.userProfileSectionsTable,
+      );
+      final change = (push['changes']! as List<Object?>).single!
+          as Map<String, Object?>;
+      expect(change['payload'], <String, Object?>{
+        'id': row.id,
+        'section': 'about_you',
+        'values': <String, Object?>{
+          'sex': null,
+          'birth_year': null,
+          'height': <String, Object?>{'value': 66, 'unit': 'in'},
+        },
+        'updated_at': change['updatedAt'],
+        'deleted_at': null,
+      });
+
+      expect(row.syncPreviouslySynced, isTrue);
+      expect(row.syncDeviceId, 'device-a');
+      final entry = await (database.select(database.activityLog)
+            ..where(
+              (log) => log.entityTable.equals(
+                AppDatabase.userProfileSectionsTable,
+              ),
+            ))
+          .getSingle();
+      expect(entry.syncAcknowledgedAt, isNotNull);
+      expect(await SyncRepository(database: database).hasPendingChanges(), false);
+    });
+
+    test(
+        'a full resync from pullLoggedSetChanges pushes them after nutrition '
+        'goals too', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.nutrition.saveNutritionGoal(
+        NutritionGoalTarget(
+          nutrient: NutrientId.energy,
+          value: 2200,
+          entered: '2200',
+        ),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        <String, Object?>{'text': 'Notes'},
+      );
+
+      final pushedEntities = <Object?>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            if (body.containsKey('changes')) {
+              pushedEntities.add(body['entity']);
+              return accepted(body);
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': body['mode'] != 'snapshot',
+                'nextCursor': 'snapshot-cursor',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.fullResyncRequired, isTrue);
+      expect(
+        pushedEntities.indexOf(AppDatabase.userProfileSectionsTable),
+        greaterThan(pushedEntities.indexOf(AppDatabase.nutritionGoalsTable)),
+      );
+    });
+
+    test('a pulled row is applied and reads as the section', () async {
+      final repository = pullRepository(<Object?>[
+        pulledChange(id: 'pulled-notes'),
+      ]);
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.appliedCount, 1);
+      expect(result.userSettingsApplied, isFalse);
+      final row = await sectionRow('pulled-notes');
+      expect(row.syncPreviouslySynced, isTrue);
+      expect(row.syncDeviceId, 'device-b');
+      final profile =
+          await TrainingRepositories(database).userProfile.watch().first;
+      expect(profile.generalNotesText, 'pulled');
+    });
+
+    test('an older pulled version of a row loses to the local one', () async {
+      await pullRepository(<Object?>[
+        pulledChange(id: 'shared', updatedAt: '2026-11-02T00:00:00.000Z'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      final result = await pullRepository(<Object?>[
+        pulledChange(
+          id: 'shared',
+          payload: const <String, Object?>{
+            'section': 'general_notes',
+            'values': <String, Object?>{'text': 'older'},
+          },
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      expect(result.appliedCount, 0);
+      expect(jsonDecode((await sectionRow('shared')).valuesJson), {
+        'text': 'pulled',
+      });
+    });
+
+    test('a pulled tombstone leaves the section as no row', () async {
+      await pullRepository(<Object?>[
+        pulledChange(id: 'shared'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      await pullRepository(<Object?>[
+        pulledChange(
+          id: 'shared',
+          updatedAt: '2026-11-02T00:00:00.000Z',
+          deletedAt: '2026-11-02T00:00:00.000Z',
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      final profile =
+          await TrainingRepositories(database).userProfile.watch().first;
+      expect(profile.generalNotes, isNull);
+    });
+
+    test('a malformed pulled row is quarantined and the rest applies',
+        () async {
+      final repository = pullRepository(<Object?>[
+        pulledChange(
+          id: 'malformed',
+          payload: const <String, Object?>{
+            'section': 'general_notes',
+            'values': 'not an object',
+          },
+        ),
+        pulledChange(id: 'well-formed'),
+      ]);
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.appliedCount, 1);
+      final held = await _quarantinedChanges(database);
+      expect(held.single.entityId, 'malformed');
+      expect(held.single.failureKind, 'format');
+      expect(
+        (await database.select(database.userProfileSections).get())
+            .map((row) => row.id),
+        <String>['well-formed'],
+      );
+    });
+
+    test('a full re-sync tombstones a synced row missing from the snapshot',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await pullRepository(<Object?>[
+        pulledChange(id: 'kept'),
+        pulledChange(
+          id: 'dropped',
+          payload: const <String, Object?>{
+            'section': 'training_goals',
+            'values': <String, Object?>{'goals': <String>['strength']},
+          },
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+      // A section this device wrote and never pushed has to survive.
+      await repositories.userProfile.saveSection(
+        UserProfileSection.trainingSetup,
+        <String, Object?>{'days_per_week': 4},
+      );
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+
+      await _snapshotRepository(database, <Object?>[
+        pulledChange(id: 'kept'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      expect((await sectionRow('kept')).deletedAt, isNull);
+      expect((await sectionRow('dropped')).deletedAt, isNotNull);
+      final profile = await repositories.userProfile.watch().first;
+      expect(profile.generalNotesText, 'pulled');
+      expect(profile.goals, isNull);
+      expect(profile.daysPerWeek, 4);
+    });
+  });
+}
+
+/// A Sync API that asks for a full resync and then serves [snapshot].
+SyncRepository _snapshotRepository(
+  AppDatabase database,
+  List<Object?> snapshot,
+) {
+  return SyncRepository(
+    database: database,
+    apiClientFactory: (baseUrl) => PerenniaApiClient(
+      baseUrl: baseUrl,
+      httpClient: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'protocolVersion': syncProtocolVersion,
+            'fullResyncRequired': body['mode'] != 'snapshot',
+            'nextCursor': 'snapshot-cursor',
+            'serverClock': '2026-11-01T00:00:02.000Z',
+            'changes': body['mode'] == 'snapshot' && body['cursor'] == null
+                ? snapshot
+                : const <Object?>[],
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    ),
+  );
+}
+
+const _creatineId = '019200ff-0000-7000-8000-000000000001';
+const _cognitionId = '019200ff-0000-7000-8000-000000000105';
+const _performanceId = '019200ff-0000-7000-8000-000000000103';
+
+/// A device on schema 65 that has already synced: the six seed Compounds are
+/// untagged, last written and pushed by this device, and each has only its
+/// `otc_seed` Activity Log entry, acknowledged.
+Future<void> _seedAsSyncedUpgradedDevice(
+  TrainingRepositories repositories,
+  AppDatabase database, {
+  required String deviceId,
+}) async {
+  await repositories.protocols.ensureOtcLibrarySeeded();
+  await database.customStatement(
+    "UPDATE compounds SET purpose_ids = '[]', updated_at = 1000, "
+    "sync_device_id = '$deviceId', sync_previously_synced = 1",
+  );
+  await database.customStatement(
+    "UPDATE purposes SET sync_device_id = '$deviceId', "
+    'sync_previously_synced = 1',
+  );
+  await database.customStatement(
+    'UPDATE activity_log SET sync_acknowledged_at = 1000',
+  );
+}
+
+/// A device on schema 65 with no account: the six seed Compounds are untagged,
+/// stamped when it seeded, never synced, and each has only its pending
+/// `otc_seed` entry, whose image has no `purpose_ids` key.
+Future<void> _seedAsNeverSyncedUpgradedDevice(
+  TrainingRepositories repositories,
+  AppDatabase database, {
+  required DateTime seededAt,
+}) async {
+  await repositories.protocols.ensureOtcLibrarySeeded();
+  // Drift stores a DateTime as whole seconds.
+  final seconds = seededAt.millisecondsSinceEpoch ~/ 1000;
+  final image = DateTime.fromMillisecondsSinceEpoch(
+    seconds * 1000,
+    isUtc: true,
+  ).toIso8601String();
+  await database.customStatement(
+    "UPDATE compounds SET purpose_ids = '[]', updated_at = $seconds",
+  );
+  await database.customStatement(
+    'UPDATE activity_log SET occurred_at = $seconds, after_image = '
+    "json_set(json_remove(after_image, '\$.purpose_ids'), "
+    "'\$.updated_at', '$image') "
+    "WHERE entity_table = '${AppDatabase.compoundsTable}'",
+  );
+}
+
+/// A Sync API that holds Compound rows in [rows] and applies the server's rule
+/// to each pushed one: it wins only on (stamp, device), and a payload with no
+/// `purpose_ids` key keeps the stored list. A pull serves [rows] and
+/// [otherPullChanges] once. Pushes of every other entity are accepted and not
+/// applied.
+PerenniaApiClient Function(Uri) _lwwCompoundServer(
+  Map<String, Map<String, Object?>> rows, {
+  List<Map<String, Object?>> otherPullChanges = const <Map<String, Object?>>[],
+}) {
+  bool wins(Map<String, Object?> incoming, Map<String, Object?> held) {
+    final byStamp = DateTime.parse(incoming['updatedAt']! as String)
+        .compareTo(DateTime.parse(held['updatedAt']! as String));
+    if (byStamp != 0) {
+      return byStamp > 0;
+    }
+    return (incoming['deviceId']! as String)
+            .compareTo(held['deviceId']! as String) >
+        0;
+  }
+
+  return (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/push') {
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            final applied = <Map<String, Object?>>[];
+            if (body['entity'] == AppDatabase.compoundsTable) {
+              for (final change in changes) {
+                final id = change['id']! as String;
+                final incoming = <String, Object?>{
+                  ...change,
+                  'entity': AppDatabase.compoundsTable,
+                  'deviceId': body['deviceId'],
+                };
+                final held = rows[id];
+                if (held != null && !wins(incoming, held)) {
+                  continue;
+                }
+                final payload = <String, Object?>{
+                  ...change['payload']! as Map<String, Object?>,
+                };
+                final heldPayload = held?['payload'] as Map<String, Object?>?;
+                if (!payload.containsKey('purpose_ids') &&
+                    heldPayload != null &&
+                    heldPayload.containsKey('purpose_ids')) {
+                  payload['purpose_ids'] = heldPayload['purpose_ids'];
+                }
+                rows[id] = <String, Object?>{...incoming, 'payload': payload};
+                applied.add(<String, Object?>{
+                  'id': id,
+                  'updatedAt': change['updatedAt'],
+                  'deviceId': body['deviceId'],
+                });
+              }
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': DateTime.now().toUtc().toIso8601String(),
+                'applied': applied,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': DateTime.now().toUtc().toIso8601String(),
+              'changes': body['cursor'] == null
+                  ? <Object?>[...otherPullChanges, ...rows.values]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+}
+
+/// A Sync API that accepts every push and serves [pullChanges] once. Bodies of
+/// the pushes land in [pushes].
+PerenniaApiClient Function(Uri) _acceptingSyncApi({
+  required List<Map<String, Object?>> pushes,
+  List<Map<String, Object?>> pullChanges = const <Map<String, Object?>>[],
+  bool applyPushes = true,
+}) {
+  return (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/push') {
+            pushes.add(body);
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': '2026-11-01T00:00:01.000Z',
+                'applied': applyPushes
+                    ? changes
+                        .map(
+                          (change) => <String, Object?>{
+                            'id': change['id'],
+                            'updatedAt': change['updatedAt'],
+                            'deviceId': body['deviceId'],
+                          },
+                        )
+                        .toList(growable: false)
+                    : const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-11-01T00:00:02.000Z',
+              'changes': body['cursor'] == null ? pullChanges : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+}
+
+Map<String, Object?> _purposePullChange({
+  required String id,
+  required String name,
+  required int sortOrder,
+  required String updatedAt,
+  required String deviceId,
+  String actor = 'manual',
+}) {
+  final payload = <String, Object?>{
+    'id': id,
+    'name': name,
+    'sort_order': sortOrder,
+    'updated_at': updatedAt,
+    'deleted_at': null,
+  };
+  return <String, Object?>{
+    'entity': AppDatabase.purposesTable,
+    'id': id,
+    'deviceId': deviceId,
+    'payload': payload,
+    'updatedAt': updatedAt,
+    'deletedAt': null,
+    'activityLogId': 'activity-$id-$updatedAt',
+    'actor': actor,
+    'batchId': 'batch-$id-$updatedAt',
+    'beforeImage': null,
+    'afterImage': payload,
+    'occurredAt': updatedAt,
+  };
+}
+
+/// [row] as another device's pull would carry it, with [changes] over its
+/// image. A key mapped to [_absent] is left out, as an older app's push does.
+Map<String, Object?> _compoundPullChange(
+  CompoundRow row, {
+  required String updatedAt,
+  required String deviceId,
+  required String actor,
+  String activityLogId = '',
+  Map<String, Object?> changes = const <String, Object?>{},
+}) {
+  final payload = <String, Object?>{
+    'id': row.id,
+    'name': row.name,
+    'default_unit': row.defaultUnit,
+    'default_route': row.defaultRoute,
+    'strength': row.strength,
+    'is_favorite': row.isFavorite,
+    'purpose_ids': row.purposeIds,
+    'updated_at': updatedAt,
+    'deleted_at': null,
+    ...changes,
+  }..removeWhere((_, value) => identical(value, _absent));
+  final logId =
+      activityLogId.isEmpty ? 'activity-${row.id}-$actor' : activityLogId;
+  return <String, Object?>{
+    'entity': AppDatabase.compoundsTable,
+    'id': row.id,
+    'deviceId': deviceId,
+    'payload': payload,
+    'updatedAt': updatedAt,
+    'deletedAt': null,
+    'activityLogId': logId,
+    'actor': actor,
+    'batchId': 'batch-${row.id}-$actor',
+    'beforeImage': null,
+    'afterImage': payload,
+    'occurredAt': updatedAt,
+  };
+}
+
+const Object _absent = Object();
+
+Future<CompoundRow> _compoundRow(AppDatabase database, String id) {
+  return (database.select(database.compounds)
+        ..where((row) => row.id.equals(id)))
+      .getSingle();
+}
+
+Future<PurposeRow> _purposeRow(AppDatabase database, String id) {
+  return (database.select(database.purposes)..where((row) => row.id.equals(id)))
+      .getSingle();
 }
 
 Future<void> _insertActivityLogEntry(
@@ -3988,7 +6826,7 @@ Future<void> _pullChangeInto(
       httpClient: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'nextCursor': 'cursor-1',
             'serverClock': '2026-06-22T08:00:01.000Z',
             'changes': <Object?>[change],
@@ -4265,6 +7103,27 @@ Future<LoggedSetRow> _loggedSet(AppDatabase database, String id) {
       .getSingle();
 }
 
+Future<List<QuarantinedSyncChangeRow>> _quarantinedChanges(
+  AppDatabase database,
+) {
+  return (database.select(database.quarantinedSyncChanges)
+        ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+      .get();
+}
+
+/// Records what `debugPrint` is asked to print for the rest of the test.
+List<String> _captureDebugPrint() {
+  final logs = <String>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) {
+    if (message != null) {
+      logs.add(message);
+    }
+  };
+  addTearDown(() => debugPrint = original);
+  return logs;
+}
+
 Future<String?> _storedPullCursor(AppDatabase database) async {
   final row = await (database.select(database.syncStates)
         ..where((state) => state.id.equals(syncStateId)))
@@ -4318,4 +7177,194 @@ NutrientVector _offNutrientsPer100() {
       unit: NutrientUnit.gram,
     ),
   );
+}
+
+const _coreCategoryId = '01910000-0000-7000-8000-000000000002';
+const _fullPlankExerciseId = '01910000-0000-7000-8000-000000000102';
+const _plankExerciseId = '01910000-0000-7000-8000-000000000201';
+const _sideBendExerciseId = '01910000-0000-7000-8000-000000000202';
+
+final _libraryStamp = DateTime.utc(2026, 1, 1);
+
+/// Earlier than any clock a test runs under, so a user's edit stamps later.
+final _plankRetiredAt = DateTime.utc(2026, 1, 5);
+
+final _olderLibrary = PlatformExerciseSeed(
+  categories: _libraryCategories,
+  exercises: <SeedExercise>[
+    _fullPlankInLibrary,
+    SeedExercise(
+      id: _plankExerciseId,
+      name: 'Plank (old name)',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: 'An older note.',
+      updatedAt: _libraryStamp,
+    ),
+    SeedExercise(
+      id: _sideBendExerciseId,
+      name: 'Side Bend',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: null,
+      updatedAt: _libraryStamp,
+    ),
+  ],
+);
+
+/// The same library after it merged `Plank` and removed `Side Bend`.
+final _updatedLibrary = PlatformExerciseSeed(
+  categories: _libraryCategories,
+  exercises: <SeedExercise>[_fullPlankInLibrary],
+  retired: <SeedRetiredExercise>[
+    SeedRetiredExercise(
+      id: _plankExerciseId,
+      name: 'Plank',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      equipment: const <ExerciseEquipment>[ExerciseEquipment.gymMat],
+      notes: 'Hold it.',
+      updatedAt: _libraryStamp,
+      retiredAt: _plankRetiredAt,
+    ),
+    SeedRetiredExercise(
+      id: _sideBendExerciseId,
+      name: 'Side Bend',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: null,
+      updatedAt: _libraryStamp,
+      retiredAt: _plankRetiredAt,
+    ),
+  ],
+);
+
+final _libraryCategories = <SeedExerciseCategory>[
+  SeedExerciseCategory(
+    id: _coreCategoryId,
+    name: 'Core',
+    sortOrder: 0,
+    colorHex: '#1F9D55',
+    updatedAt: _libraryStamp,
+  ),
+];
+
+final _fullPlankInLibrary = SeedExercise(
+  id: _fullPlankExerciseId,
+  name: 'Full Plank',
+  dimensions: const <DimensionId>[DimensionId.reps],
+  categoryId: _coreCategoryId,
+  notes: null,
+  updatedAt: _libraryStamp,
+);
+
+class _LibrarySource implements PlatformExerciseSeedSource {
+  const _LibrarySource(this.seed);
+
+  final PlatformExerciseSeed seed;
+
+  @override
+  Future<PlatformExerciseSeed> load() async => seed;
+}
+
+/// One launch: the pass is memoized per instance, so a rerun needs a new one.
+Future<TrainingRepositories> _launchLibrary(
+  AppDatabase database,
+  PlatformExerciseSeed seed,
+) async {
+  final repositories = TrainingRepositories(
+    database,
+    platformSeedSource: _LibrarySource(seed),
+  );
+  await repositories.catalog.ensurePlatformLibrarySeeded();
+  return repositories;
+}
+
+/// A device on the older library that logged a Set against `Plank`.
+Future<void> _logPlankOnOlderLibrary(AppDatabase database) async {
+  final repositories = await _launchLibrary(database, _olderLibrary);
+  final workoutId = await repositories.workoutSessions.create(
+    WorkoutSessionDraft(
+      startedAt: DateTime.utc(2026, 1, 2, 8),
+      timezone: 'UTC',
+    ),
+  );
+  await repositories.workoutExercises.create(
+    WorkoutExerciseDraft(workoutId: workoutId, exerciseId: _plankExerciseId),
+  );
+  await repositories.sets.create(
+    LoggedSetDraft(
+      workoutId: workoutId,
+      exerciseId: _plankExerciseId,
+      position: 0,
+      values: _repsSet('10'),
+      isCompleted: true,
+    ),
+  );
+}
+
+/// [_logPlankOnOlderLibrary], then the launch on the updated library.
+Future<TrainingRepositories> _keepPlankOn(AppDatabase database) async {
+  await _logPlankOnOlderLibrary(database);
+  final repositories = await _launchLibrary(database, _updatedLibrary);
+  _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+  return repositories;
+}
+
+void _expectKeptPlank(ExerciseRow row) {
+  expect(row.libraryOrigin, ExerciseLibraryOrigin.user.name);
+  expect(row.deletedAt, isNull);
+  expect(row.name, 'Plank');
+  expect(row.categoryId, _coreCategoryId);
+  expect(row.equipmentIds, '["gymMat"]');
+  expect(row.notes, 'Hold it.');
+  expect(row.updatedAt.toUtc(), _plankRetiredAt);
+}
+
+void _expectHiddenPlank(ExerciseRow row) {
+  _expectHiddenRow(row);
+  expect(row.name, 'Plank');
+}
+
+void _expectHiddenRow(ExerciseRow row) {
+  expect(row.libraryOrigin, ExerciseLibraryOrigin.platform.name);
+  expect(row.deletedAt?.toUtc(), _plankRetiredAt);
+  expect(row.updatedAt.toUtc(), _libraryStamp);
+}
+
+Future<ExerciseRow> _exerciseRow(AppDatabase database, String id) {
+  return (database.select(database.exercises)
+        ..where((row) => row.id.equals(id)))
+      .getSingle();
+}
+
+/// Pushes everything pending on [database] to a server that accepts it, and
+/// returns the Exercise changes it sent.
+Future<List<Map<String, Object?>>> _pushExerciseChanges(
+  AppDatabase database, {
+  required String deviceId,
+}) async {
+  final pushes = <Map<String, Object?>>[];
+  await SyncRepository(
+    database: database,
+    apiClientFactory: _acceptingSyncApi(pushes: pushes),
+  ).pushPendingLoggedSets(session: _session(), deviceId: deviceId);
+  return _exerciseChangesIn(pushes);
+}
+
+List<Map<String, Object?>> _exerciseChangesIn(
+  List<Map<String, Object?>> pushes,
+) {
+  return <Map<String, Object?>>[
+    for (final body in pushes)
+      if (body['entity'] == AppDatabase.exercisesTable)
+        ...(body['changes']! as List<Object?>).cast<Map<String, Object?>>(),
+  ];
+}
+
+Map<String, Object?> _lastExerciseChange(
+  List<Map<String, Object?>> changes,
+  String id,
+) {
+  return changes.lastWhere((change) => change['id'] == id);
 }

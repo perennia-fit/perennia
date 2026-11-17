@@ -32,11 +32,11 @@ import {
   normalizeMetricReading,
   type MetricReadingNormalizationInput
 } from "./metric-reading-normalization.js";
+import { owlMetricSchemaForImportKey } from "./metric-catalog.js";
 import {
-  normalizeMetricLookupKey,
-  owlMetricSchemaForImportKey,
-  type PerenniaMetricSchema
-} from "./metric-catalog.js";
+  findActiveBodyCompositionMetric,
+  lockMetricIdentity
+} from "./metric-identity.js";
 import { encodeCanonicalSeriesBlob } from "./monitoring-series.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
@@ -1473,8 +1473,9 @@ async function resolveImportedMetricId(
 ) {
   const catalogSchema = owlMetricSchemaForImportKey(reading.metricKey);
   if (catalogSchema?.metricGroup === "bodyComposition") {
-    const existing = await findExistingBodyCompositionMetric(transaction, {
-      metricSchema: catalogSchema,
+    await lockMetricIdentity(transaction, userId);
+    const existing = await findActiveBodyCompositionMetric(transaction, {
+      name: catalogSchema.displayName,
       unit: normalized.unit,
       userId
     });
@@ -1577,41 +1578,6 @@ async function resolveImportedMetricId(
       .where(and(eq(schema.metrics.userId, userId), eq(schema.metrics.id, metricId)));
   }
   return metricId;
-}
-
-async function findExistingBodyCompositionMetric(
-  transaction: CanonicalImportMutationDatabase,
-  {
-    metricSchema,
-    unit,
-    userId
-  }: {
-    metricSchema: PerenniaMetricSchema;
-    unit: string;
-    userId: string;
-  }
-) {
-  const rows = await transaction
-    .select()
-    .from(schema.metrics)
-    .where(
-      and(
-        eq(schema.metrics.userId, userId),
-        eq(schema.metrics.metricGroup, "bodyComposition"),
-        eq(schema.metrics.valueShape, "scalar"),
-        isNull(schema.metrics.deletedAt)
-      )
-    )
-    .orderBy(asc(schema.metrics.sortOrder), asc(schema.metrics.id));
-
-  const normalizedName = normalizeMetricLookupKey(metricSchema.displayName);
-  return (
-    rows.find(
-      (row) =>
-        row.unit === unit &&
-        normalizeMetricLookupKey(row.name) === normalizedName
-    ) ?? null
-  );
 }
 
 async function nextMetricSortOrder(

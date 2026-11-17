@@ -12,6 +12,8 @@
 /// allowed" middle for a theme name or a plate increment.
 library;
 
+import 'account_settings.dart';
+
 /// Bounds and closed enum registries for account-level Settings. Mirrors the
 /// TypeScript `SETTINGS_VALIDATION_LIMITS` exactly; the golden vector's
 /// `limits` block must agree with both.
@@ -125,6 +127,38 @@ SettingsValidationResult validateSettingsFields(
     errors: List<SettingsValidationIssue>.unmodifiable(errors),
     warnings: const <SettingsValidationIssue>[],
   );
+}
+
+/// Validates a whole [AccountSettings] value, in the canonical field order the
+/// golden vectors use. This is what every local write of the synced Settings
+/// singleton goes through.
+SettingsValidationResult validateAccountSettings(AccountSettings settings) {
+  return validateSettingsFields(<SettingsFieldValue>[
+    SettingsFieldValue.enumMember(
+      field: 'themePreference',
+      allowed: SettingsValidationLimits.themePreferences,
+      value: settings.themePreference,
+    ),
+    SettingsFieldValue.enumMember(
+      field: 'unitSystem',
+      allowed: SettingsValidationLimits.unitSystems,
+      value: settings.unitSystem,
+    ),
+    SettingsFieldValue.enumMember(
+      field: 'weekStartDay',
+      allowed: SettingsValidationLimits.weekStartDays,
+      value: settings.weekStartDay,
+    ),
+    SettingsFieldValue.number(
+      field: 'defaultWeightIncrement',
+      value: settings.defaultWeightIncrement,
+    ),
+    SettingsFieldValue.enumMember(
+      field: 'homeScreenDisplay',
+      allowed: SettingsValidationLimits.homeScreenDisplays,
+      value: settings.homeScreenDisplay,
+    ),
+  ]);
 }
 
 void _validateEnumMembership(

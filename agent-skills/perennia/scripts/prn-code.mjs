@@ -204,6 +204,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async batchWriteAgentPurposes(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/protocols/purposes/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
   async batchWriteAgentDoses(body, options = {}) {
     return this.request({
       method: "POST",
@@ -274,10 +284,40 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async batchWriteAgentProtocolSkips(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/protocols/skips/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
+  async deleteAgentProtocols(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/protocols/delete",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
   async batchWriteAgentSettings(body, options = {}) {
     return this.request({
       method: "POST",
       path: "/agent/settings/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentProfile(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/profile/batch-write",
       expectedStatus: 200,
       body,
       signal: options.signal
@@ -469,7 +509,17 @@ export class PortableOwlAgentClient {
       method: "GET",
       path: "/agent/protocols/compounds",
       expectedStatus: 200,
-      query: pick(input, ["search", "includeArchived", "limit", "cursor", "fields"]),
+      query: pick(input, ["search", "includeArchived", "purpose", "limit", "cursor", "fields"]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentPurposes(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/purposes",
+      expectedStatus: 200,
+      query: pick(input, ["includeArchived"]),
       signal: options.signal
     });
   }
@@ -502,12 +552,32 @@ export class PortableOwlAgentClient {
       query: pick(input, [
         "search",
         "category",
+        "focus",
         "favorite",
         "activeOnly",
         "limit",
         "cursor",
         "fields"
       ]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentFocuses(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/focuses",
+      expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
+  async listAgentFoodHistory(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/foods/history",
+      expectedStatus: 200,
+      query: pick(input, ["limit"]),
       signal: options.signal
     });
   }
@@ -543,12 +613,31 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentMealHistory(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/meals/history",
+      expectedStatus: 200,
+      query: pick(input, ["limit"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentMeals(input = {}, options = {}) {
     return this.request({
       method: "GET",
       path: "/agent/meals",
       expectedStatus: 200,
       query: pick(input, ["from", "to", "limit", "cursor", "fields"]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentMealTypes(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
       signal: options.signal
     });
   }
@@ -566,6 +655,7 @@ export class PortableOwlAgentClient {
         "provenance",
         "source",
         "includeArchived",
+        "includeTrend",
         "limit",
         "cursor",
         "fields"
@@ -602,6 +692,33 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentProtocolDayStatuses(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/day-statuses",
+      expectedStatus: 200,
+      query: pick(input, [
+        "fromLocalDate",
+        "toLocalDate",
+        "compoundId",
+        "protocolId",
+        "today",
+        "detail"
+      ]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolPlannedDays(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/planned-days",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate", "compoundId", "protocolId"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentProtocols(input = {}, options = {}) {
     return this.request({
       method: "GET",
@@ -624,6 +741,26 @@ export class PortableOwlAgentClient {
         "cursor",
         "fields"
       ]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentTrainingDays(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/progress/training-days",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate", "today"]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentNewBests(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/progress/new-bests",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate"]),
       signal: options.signal
     });
   }
@@ -667,6 +804,15 @@ export class PortableOwlAgentClient {
         "from",
         "to"
       ]),
+      signal: options.signal
+    });
+  }
+
+  async readAgentProfile(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/profile",
+      expectedStatus: 200,
       signal: options.signal
     });
   }
@@ -904,6 +1050,7 @@ Usage:
 
 Environment:
   PRN_BASE_URL               API base URL, default ${DEFAULT_BASE_URL}
+                             (Official Service: https://api.perennia.fit)
   PRN_AGENT_API_KEY          Agent API key used as the bearer token
   PRN_AGENT_CLIENT_MODULE    Optional generated client module specifier
 

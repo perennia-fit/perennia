@@ -1,0 +1,197 @@
+{
+  "name": "m38-meal-history",
+  "domain": "meal-history",
+  "schemaVersion": 1,
+  "schema": "m38-meal-history.schema.json",
+  "cases": [
+    {
+      "name": "only-active-timed-meals-in-the-window-with-two-or-more-distinct-foods-qualify",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 20,
+        "meals": [
+          {"id": "m-one-food", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-same-food-twice", "startedAt": "2026-10-29T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-with-quick-entry", "startedAt": "2026-10-28T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-plain", "startedAt": "2026-10-27T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-date-precision", "startedAt": "2026-10-26T00:00:00.000Z", "timePrecision": "date", "deletedAt": null},
+          {"id": "m-archived", "startedAt": "2026-10-25T08:00:00.000Z", "timePrecision": "instant", "deletedAt": "2026-10-25T09:00:00.000Z"},
+          {"id": "m-archived-food", "startedAt": "2026-10-24T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-legacy-entry", "startedAt": "2026-10-23T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-90-days", "startedAt": "2026-08-03T12:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-91-days", "startedAt": "2026-08-02T12:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-one-food-e0", "mealId": "m-one-food", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-same-food-twice-e0", "mealId": "m-same-food-twice", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-same-food-twice-e1", "mealId": "m-same-food-twice", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-with-quick-entry-e0", "mealId": "m-with-quick-entry", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-with-quick-entry-e1", "mealId": "m-with-quick-entry", "kind": "quickEntry", "position": 1, "foodSource": null, "foodId": null, "isLiquid": null, "name": "Coffee", "portion": null, "deletedAt": null},
+          {"id": "m-with-quick-entry-e2", "mealId": "m-with-quick-entry", "kind": "food", "position": 2, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-plain-e0", "mealId": "m-plain", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-plain-e1", "mealId": "m-plain", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-plain-e2", "mealId": "m-plain", "kind": "food", "position": 2, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": "2026-10-27T09:00:00.000Z"},
+          {"id": "m-date-precision-e0", "mealId": "m-date-precision", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-date-precision-e1", "mealId": "m-date-precision", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-archived-e0", "mealId": "m-archived", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": "2026-10-25T09:00:00.000Z"},
+          {"id": "m-archived-e1", "mealId": "m-archived", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": "2026-10-25T09:00:00.000Z"},
+          {"id": "m-archived-food-e0", "mealId": "m-archived-food", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-archived-food-e1", "mealId": "m-archived-food", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-old-bar", "isLiquid": false, "name": "Old protein bar", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-archived-food-e2", "mealId": "m-archived-food", "kind": "food", "position": 2, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-legacy-entry-e0", "mealId": "m-legacy-entry", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-legacy-entry-e1", "mealId": "m-legacy-entry", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-toast", "isLiquid": null, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-90-days-e0", "mealId": "m-90-days", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-90-days-e1", "mealId": "m-90-days", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-91-days-e0", "mealId": "m-91-days", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-91-days-e1", "mealId": "m-91-days", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": ["food-old-bar"]
+      },
+      "expected": [
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge"}], "count": 2, "lastMealId": "m-with-quick-entry", "lastStartedAt": "2026-10-28T08:00:00.000Z"},
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana, raw"}], "count": 1, "lastMealId": "m-archived-food", "lastStartedAt": "2026-10-24T08:00:00.000Z"},
+        {"foods": [{"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana, raw"}, {"foodSource": "user", "foodId": "food-toast", "name": "Toast"}], "count": 1, "lastMealId": "m-90-days", "lastStartedAt": "2026-08-03T12:00:00.000Z"}
+      ]
+    },
+    {
+      "name": "the-same-foods-with-different-portions-are-one-meal",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 20,
+        "meals": [
+          {"id": "m-small", "startedAt": "2026-10-20T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-large", "startedAt": "2026-10-21T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-small-e0", "mealId": "m-small", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 200, "entered": "200", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-small-e1", "mealId": "m-small", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 100, "entered": "100", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-large-e0", "mealId": "m-large", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 1, "entered": "1", "unit": "serving"}, "deletedAt": null},
+          {"id": "m-large-e1", "mealId": "m-large", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 350, "entered": "350", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-large-e2", "mealId": "m-large", "kind": "food", "position": 2, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": null, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge"}], "count": 2, "lastMealId": "m-large", "lastStartedAt": "2026-10-21T08:00:00.000Z"}
+      ]
+    },
+    {
+      "name": "foods-are-in-the-canonical-strings-ordinal-byte-order",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 20,
+        "meals": [
+          {"id": "m-mixed", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-mixed-e0", "mealId": "m-mixed", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-9", "isLiquid": false, "name": "Granola", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-mixed-e1", "mealId": "m-mixed", "kind": "food", "position": 1, "foodSource": "user", "foodId": "apple", "isLiquid": false, "name": "Apple", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-mixed-e2", "mealId": "m-mixed", "kind": "food", "position": 2, "foodSource": "user", "foodId": "food-10", "isLiquid": false, "name": "Yogurt", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-mixed-e3", "mealId": "m-mixed", "kind": "food", "position": 3, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-mixed-e4", "mealId": "m-mixed", "kind": "food", "position": 4, "foodSource": "user", "foodId": "Zucchini-bread", "isLiquid": false, "name": "Zucchini bread", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-mixed-e5", "mealId": "m-mixed", "kind": "food", "position": 5, "foodSource": "openFoodFacts", "foodId": "0001", "isLiquid": false, "name": "Peanut butter", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "0001", "name": "Peanut butter"}, {"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana, raw"}, {"foodSource": "user", "foodId": "Zucchini-bread", "name": "Zucchini bread"}, {"foodSource": "user", "foodId": "apple", "name": "Apple"}, {"foodSource": "user", "foodId": "food-10", "name": "Yogurt"}, {"foodSource": "user", "foodId": "food-9", "name": "Granola"}], "count": 1, "lastMealId": "m-mixed", "lastStartedAt": "2026-10-30T08:00:00.000Z"}
+      ]
+    },
+    {
+      "name": "count-first-then-the-latest-start-then-the-canonical-string",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 20,
+        "meals": [
+          {"id": "m-often-1", "startedAt": "2026-10-01T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-often-2", "startedAt": "2026-10-02T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-recent", "startedAt": "2026-10-31T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-tie-usda", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-tie-off", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-tie-apple", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-tie-zucchini", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-often-1-e0", "mealId": "m-often-1", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-10", "isLiquid": false, "name": "Yogurt", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-often-1-e1", "mealId": "m-often-1", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-9", "isLiquid": false, "name": "Granola", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-often-2-e0", "mealId": "m-often-2", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-9", "isLiquid": false, "name": "Granola", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-often-2-e1", "mealId": "m-often-2", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-10", "isLiquid": false, "name": "Yogurt", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-recent-e0", "mealId": "m-recent", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-recent-e1", "mealId": "m-recent", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-usda-e0", "mealId": "m-tie-usda", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-usda-e1", "mealId": "m-tie-usda", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-off-e0", "mealId": "m-tie-off", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-tie-off-e1", "mealId": "m-tie-off", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-apple-e0", "mealId": "m-tie-apple", "kind": "food", "position": 0, "foodSource": "user", "foodId": "apple", "isLiquid": false, "name": "Apple", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-apple-e1", "mealId": "m-tie-apple", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-zucchini-e0", "mealId": "m-tie-zucchini", "kind": "food", "position": 0, "foodSource": "user", "foodId": "Zucchini-bread", "isLiquid": false, "name": "Zucchini bread", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-tie-zucchini-e1", "mealId": "m-tie-zucchini", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foods": [{"foodSource": "user", "foodId": "food-10", "name": "Yogurt"}, {"foodSource": "user", "foodId": "food-9", "name": "Granola"}], "count": 2, "lastMealId": "m-often-2", "lastStartedAt": "2026-10-02T08:00:00.000Z"},
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "user", "foodId": "food-toast", "name": "Toast"}], "count": 1, "lastMealId": "m-recent", "lastStartedAt": "2026-10-31T08:00:00.000Z"},
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge"}], "count": 1, "lastMealId": "m-tie-off", "lastStartedAt": "2026-10-30T08:00:00.000Z"},
+        {"foods": [{"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana, raw"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge"}], "count": 1, "lastMealId": "m-tie-usda", "lastStartedAt": "2026-10-30T08:00:00.000Z"},
+        {"foods": [{"foodSource": "user", "foodId": "Zucchini-bread", "name": "Zucchini bread"}, {"foodSource": "user", "foodId": "food-toast", "name": "Toast"}], "count": 1, "lastMealId": "m-tie-zucchini", "lastStartedAt": "2026-10-30T08:00:00.000Z"},
+        {"foods": [{"foodSource": "user", "foodId": "apple", "name": "Apple"}, {"foodSource": "user", "foodId": "food-toast", "name": "Toast"}], "count": 1, "lastMealId": "m-tie-apple", "lastStartedAt": "2026-10-30T08:00:00.000Z"}
+      ]
+    },
+    {
+      "name": "limit-caps-the-items",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 2,
+        "meals": [
+          {"id": "m-first", "startedAt": "2026-10-31T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-second", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-third", "startedAt": "2026-10-29T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-first-e0", "mealId": "m-first", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-first-e1", "mealId": "m-first", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-second-e0", "mealId": "m-second", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana, raw", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-second-e1", "mealId": "m-second", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-toast", "isLiquid": false, "name": "Toast", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-third-e0", "mealId": "m-third", "kind": "food", "position": 0, "foodSource": "user", "foodId": "apple", "isLiquid": false, "name": "Apple", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-third-e1", "mealId": "m-third", "kind": "food", "position": 1, "foodSource": "user", "foodId": "Zucchini-bread", "isLiquid": false, "name": "Zucchini bread", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge"}], "count": 1, "lastMealId": "m-first", "lastStartedAt": "2026-10-31T08:00:00.000Z"},
+        {"foods": [{"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana, raw"}, {"foodSource": "user", "foodId": "food-toast", "name": "Toast"}], "count": 1, "lastMealId": "m-second", "lastStartedAt": "2026-10-30T08:00:00.000Z"}
+      ]
+    },
+    {
+      "name": "names-come-from-the-most-recent-meal-with-that-identity",
+      "input": {
+        "now": "2026-11-01T12:00:00.000Z",
+        "limit": 20,
+        "meals": [
+          {"id": "m-old", "startedAt": "2026-10-20T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-latest-a", "startedAt": "2026-10-28T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-latest-b", "startedAt": "2026-10-28T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null},
+          {"id": "m-other-identity", "startedAt": "2026-10-30T08:00:00.000Z", "timePrecision": "instant", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "m-old-e0", "mealId": "m-old", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge (old name)", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-old-e1", "mealId": "m-old", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk (old name)", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-latest-a-e0", "mealId": "m-latest-a", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge (meal a)", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-latest-a-e1", "mealId": "m-latest-a", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk (meal a)", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-latest-b-e0", "mealId": "m-latest-b", "kind": "food", "position": 0, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat drink", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-latest-b-e1", "mealId": "m-latest-b", "kind": "food", "position": 1, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge oats", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-latest-b-e2", "mealId": "m-latest-b", "kind": "food", "position": 2, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge (second bowl)", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-other-identity-e0", "mealId": "m-other-identity", "kind": "food", "position": 0, "foodSource": "user", "foodId": "food-porridge", "isLiquid": false, "name": "Porridge (other meal)", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null},
+          {"id": "m-other-identity-e1", "mealId": "m-other-identity", "kind": "food", "position": 1, "foodSource": "openFoodFacts", "foodId": "7394376616037", "isLiquid": true, "name": "Oat milk (other meal)", "portion": {"value": 250, "entered": "250", "unit": "milliliter"}, "deletedAt": null},
+          {"id": "m-other-identity-e2", "mealId": "m-other-identity", "kind": "food", "position": 2, "foodSource": "usda", "foodId": "usda-fdc-173944", "isLiquid": false, "name": "Banana", "portion": {"value": 100, "entered": "100", "unit": "gram"}, "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat drink"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge oats"}], "count": 3, "lastMealId": "m-latest-b", "lastStartedAt": "2026-10-28T08:00:00.000Z"},
+        {"foods": [{"foodSource": "openFoodFacts", "foodId": "7394376616037", "name": "Oat milk (other meal)"}, {"foodSource": "usda", "foodId": "usda-fdc-173944", "name": "Banana"}, {"foodSource": "user", "foodId": "food-porridge", "name": "Porridge (other meal)"}], "count": 1, "lastMealId": "m-other-identity", "lastStartedAt": "2026-10-30T08:00:00.000Z"}
+      ]
+    }
+  ]
+}

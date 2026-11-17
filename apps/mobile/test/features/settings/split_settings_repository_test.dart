@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/settings/settings_validation.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 
 void main() {
@@ -54,6 +55,46 @@ void main() {
       expect(rowsAfterSecond, hasLength(1));
     });
 
+    test('a legacy out-of-range increment migrates as the default', () async {
+      // Settings files written before validation could carry any positive
+      // increment; migrating one must not fail load.
+      final legacy = AppSettings.fromJson(const <String, Object?>{
+        'defaultWeightIncrement': 150,
+      });
+      final migrating = SplitSettingsRepository(
+        deviceStore: InMemorySettingsRepository(legacy),
+        accountSettings: repositories.accountSettings,
+      );
+
+      final loaded = await migrating.load();
+
+      expect(loaded.defaultWeightIncrement, 2.5);
+      final row = (await database.select(database.userSettings).get()).single;
+      expect(row.defaultWeightIncrement, 2.5);
+    });
+
+    test('a rejected save leaves both halves untouched', () async {
+      final deviceStore = InMemorySettingsRepository();
+      final rejecting = SplitSettingsRepository(
+        deviceStore: deviceStore,
+        accountSettings: repositories.accountSettings,
+      );
+      await rejecting.load();
+
+      await expectLater(
+        rejecting.save(
+          const AppSettings(defaultWeightIncrement: 150, keepScreenOn: true),
+        ),
+        throwsA(isA<SettingsValidationException>()),
+      );
+
+      final stored = await deviceStore.load();
+      expect(stored.defaultWeightIncrement, 2.5);
+      expect(stored.keepScreenOn, isFalse);
+      final row = (await database.select(database.userSettings).get()).single;
+      expect(row.defaultWeightIncrement, 2.5);
+    });
+
     test('save splits account fields to the row and device fields to the JSON',
         () async {
       // Initialize (migrates defaults into the row).
@@ -79,6 +120,28 @@ void main() {
       expect(reloaded.weekStartDay, WeekStartDay.sunday);
       expect(reloaded.keepScreenOn, isTrue);
       expect(reloaded.crashReportingEnabled, isTrue);
+    });
+
+    test('online food lookups stay in the device file, never the synced row',
+        () async {
+      final deviceStore = InMemorySettingsRepository();
+      final split = SplitSettingsRepository(
+        deviceStore: deviceStore,
+        accountSettings: repositories.accountSettings,
+      );
+      await split.load();
+
+      await split.save(const AppSettings(onlineFoodLookups: false));
+
+      expect((await deviceStore.load()).onlineFoodLookups, isFalse);
+      expect((await split.load()).onlineFoodLookups, isFalse);
+      final row = (await database.select(database.userSettings).get()).single;
+      expect(row.toJson().keys, isNot(contains('onlineFoodLookups')));
+      expect(
+        AppSettings.defaults.toAccountSettings(),
+        const AppSettings(onlineFoodLookups: false).toAccountSettings(),
+        reason: 'the account half does not carry the setting',
+      );
     });
 
     test('the synced row is the source of truth for account fields on load',

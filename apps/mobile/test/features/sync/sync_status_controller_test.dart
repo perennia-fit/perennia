@@ -95,9 +95,31 @@ void main() {
       database,
       platformSeedSource: const _StarterSeedSource(),
     );
-    final result = await repositories.logDefaultWeightRepsSet(
-      now: DateTime.utc(2026, 6, 22, 8),
-      timezone: 'UTC',
+    await repositories.catalog.ensurePlatformLibrarySeeded();
+    final exercise = (await repositories.exercises.listActive()).single;
+    final result = await repositories.logWorkoutWithSet(
+      WorkoutSessionDraft(
+        startedAt: DateTime.utc(2026, 6, 22, 8),
+        timezone: 'UTC',
+      ),
+      LoggedSetDraft(
+        exerciseId: exercise.id,
+        position: 0,
+        values: LoggedSet.fromValues(
+          const <SetDimensionValue>[
+            SetDimensionValue(
+              dimension: DimensionId.load,
+              entered: '100',
+              unit: TrainingUnit.kilogram,
+            ),
+            SetDimensionValue(
+              dimension: DimensionId.reps,
+              entered: '5',
+              unit: TrainingUnit.repetition,
+            ),
+          ],
+        ),
+      ),
     );
     final sets = await repositories.sets.listActiveForWorkout(
       result.workoutSessionId,
@@ -170,7 +192,7 @@ class _StarterSeedSource implements PlatformExerciseSeedSource {
       exercises: <SeedExercise>[
         SeedExercise(
           id: '01910000-0000-7000-8000-000000000101',
-          name: TrainingRepositories.starterWeightRepsExerciseName,
+          name: 'Barbell Squat',
           dimensions: <DimensionId>[DimensionId.load, DimensionId.reps],
           categoryId: null,
           notes: null,
