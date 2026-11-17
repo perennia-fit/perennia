@@ -327,18 +327,17 @@ class RepositoryHomeRepository implements HomeRepository {
   }
 
   @override
-  Future<String?> finishWorkout(String workoutId) async {
-    await _repositories.workoutSessions.updateEndedAt(
-      workoutId,
-      endedAt: _now().toUtc(),
-    );
-    final timer =
-        await _repositories.restTimers.getCurrentForWorkout(workoutId);
-    if (timer == null || timer.status != RestTimerStatus.running) {
-      return null;
-    }
-    await _repositories.restTimers.cancel(timer.id);
-    return timer.id;
+  Future<String?> finishWorkout(String workoutId) {
+    // One transaction: the app dying between the two writes must not leave
+    // an ended Workout with its rest still running (and its "Get ready"
+    // notification still due).
+    return _repositories.database.transaction(() async {
+      await _repositories.workoutSessions.updateEndedAt(
+        workoutId,
+        endedAt: _now().toUtc(),
+      );
+      return _repositories.restTimers.cancelRunningForWorkout(workoutId);
+    });
   }
 
   @override

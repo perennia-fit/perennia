@@ -5145,6 +5145,48 @@ void main() {
     });
 
     _testTrainingScreen(
+        'a Workout that ended while the screen was open is not finished '
+        'again', (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpFinishHost(tester, repositories, bench);
+      await _waitForFinder(tester, finishButton);
+
+      // Ended elsewhere (auto-finish, an agent, sync) after the screen
+      // loaded its Workout.
+      final endedAt = (await tester.runAsync(() async {
+        final workout =
+            await repositories.workoutSessions.getById(bench.workoutId);
+        final endedAt = workout!.startedAt.add(const Duration(hours: 1));
+        await repositories.workoutSessions.updateEndedAt(
+          bench.workoutId,
+          endedAt: endedAt,
+        );
+        return endedAt;
+      }))!;
+
+      await tester.tap(finishButton);
+      await _settle(tester);
+
+      // The fresh read hid Finish Workout and finished nothing.
+      expect(finishButton, findsNothing);
+      expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+      expect(trainingScreens(), 1);
+      final workout = await tester.runAsync(
+        () => repositories.workoutSessions.getById(bench.workoutId),
+      );
+      expect(workout!.endedAt, endedAt);
+      await _disposeFinishHost(tester);
+    });
+
+    _testTrainingScreen(
         'Finish Workout ends the Workout, shows the Finish summary, and lands '
         'on the screen that opened the Workout', (tester) async {
       final bench = (await tester.runAsync(

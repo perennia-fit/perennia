@@ -729,7 +729,10 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         screen's Finish flow (Template divergence read,
         `HomeController.finishWorkout`, the
         [Finish summary](workout-feedback.md#5-finish-summary)), ignores a
-        second tap while the first runs, and when the summary closes leaves
+        second tap while the first runs, and first reads the Workout again:
+        one that ended since the screen opened (auto-finish, an agent,
+        another device) is not finished a second time, and the button goes.
+        When the summary closes it leaves
         for the screen that opened the Workout: it pops itself, then any
         Training Screen of this Workout and this Workout's Workout screen
         directly below (the Workout screen's route is named
@@ -737,8 +740,10 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         A Training Screen a rest notification opened over another screen
         returns to that screen.
     *   Finishing a Workout, here or on the Workout screen, stops its running
-        rest: `HomeRepository.finishWorkout` sets `endedAt`, cancels the
-        Workout's running rest timer, and returns that timer's id, and the
+        rest: `HomeRepository.finishWorkout` sets `endedAt` and cancels the
+        Workout's running rest timer in one transaction
+        (`RestTimerRepository.cancelRunningForWorkout`), and returns that
+        timer's id, and the
         Finish flow cancels its background schedule. A finished Workout has
         no next Set to rest for, and the notification's tap would open a
         Training Screen of it.

@@ -10652,6 +10652,32 @@ class RestTimerRepository {
     });
   }
 
+  /// Cancels the Workout's current rest timer when it is still running
+  /// (one that already ended is left as it is), and returns its id so the
+  /// caller can cancel the timer's background schedule, which lives outside
+  /// the database. Null when no rest runs. Read and write share one
+  /// transaction, so a caller that wraps this with another write (Finish
+  /// Workout's `endedAt`) commits both or neither.
+  Future<String?> cancelRunningForWorkout(
+    String workoutId, {
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final rows = await _currentForWorkoutQuery(workoutId).get();
+      if (rows.isEmpty || rows.first.status != RestTimerStatus.running.name) {
+        return null;
+      }
+      await _writeCanceled(rows.first, context);
+      return rows.first.id;
+    });
+  }
+
   Future<void> markAlertFired(
     String id, {
     String actor = 'app',

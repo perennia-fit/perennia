@@ -1228,6 +1228,33 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         timerExerciseRouteName(workoutExerciseId),
     };
     try {
+      // `state.workout` is read once, when the exercise opens. The Workout
+      // can end while this screen is up (auto-finish on resume, an agent,
+      // another device through sync), and finishing it again would move its
+      // finish time and open a second Finish summary. So read it fresh: if
+      // it has ended, take the new Workout into the state, which hides
+      // Finish Workout, and stop there.
+      final workout = await ref
+          .read(trainingRepositoriesProvider)
+          .workoutSessions
+          .getById(workoutId);
+      if (!mounted) {
+        return;
+      }
+      if (workout == null || workout.endedAt != null) {
+        if (workout != null && identical(_state, state)) {
+          setState(() {
+            _state = _TrainingExerciseState(
+              workoutExercise: state.workoutExercise,
+              exercise: state.exercise,
+              priorSet: state.priorSet,
+              workout: workout,
+              rememberedRest: state.rememberedRest,
+            );
+          });
+        }
+        return;
+      }
       await runFinishWorkoutFlow(
         context,
         ref,
@@ -1489,7 +1516,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     required Duration rest,
     required bool soundEnabled,
   }) async {
-    if (state.workout.endedAt != null) {
+    // A freestyle Set with the rest Off neither starts a rest nor can finish
+    // the plan, so it needs no read of the Workout's Sets.
+    if (state.workout.endedAt != null ||
+        (!loggedAPlannedSet && rest <= Duration.zero)) {
       return null;
     }
     // Read after the write, since the Sets stream may not have re-emitted
@@ -1603,14 +1633,12 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     TimerBackgroundScheduler scheduler,
     String workoutId,
   ) async {
-    final running = await repositories.restTimers.getCurrentForWorkout(
-      workoutId,
-    );
-    if (running == null || running.status != RestTimerStatus.running) {
+    final stoppedId =
+        await repositories.restTimers.cancelRunningForWorkout(workoutId);
+    if (stoppedId == null) {
       return;
     }
-    await repositories.restTimers.cancel(running.id);
-    await scheduler.cancel(running.id);
+    await scheduler.cancel(stoppedId);
     _notifyRestTimerChanged();
   }
 
