@@ -806,11 +806,7 @@ Future<void> _showAccountAndAppSheet(BuildContext context) {
 
       void signInAgain() {
         Navigator.of(sheetContext).pop();
-        navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => const SignInScreen(signInAgain: true),
-          ),
-        );
+        navigator.push(SignInScreen.signInAgainRoute());
       }
 
       return [
@@ -850,11 +846,12 @@ class _AccountStatusTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final authState = ref.watch(authControllerProvider);
-    final sessionExpired = _watchSessionExpired(ref);
+    final syncExpired = ref.watch(syncStatusControllerProvider).value?.kind ==
+        SyncStatusKind.authExpired;
     return authState.when(
       data: (state) {
         final session = state.session;
-        if (session != null && sessionExpired) {
+        if (session != null && syncExpired) {
           return ListTile(
             key: HomeScreen.accountAndAppSignInKey,
             leading: Icon(

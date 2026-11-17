@@ -42,11 +42,7 @@ class SyncSettingsScreen extends ConsumerWidget {
           status: syncStatus,
           onSignInAgain: () {
             unawaited(
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SignInScreen(signInAgain: true),
-                ),
-              ),
+              Navigator.of(context).push(SignInScreen.signInAgainRoute()),
             );
           },
           onSyncNow: authState.session == null ||

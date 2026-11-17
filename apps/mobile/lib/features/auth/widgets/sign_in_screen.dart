@@ -23,6 +23,11 @@ class SignInScreen extends ConsumerStatefulWidget {
   /// callers whose own button already said "Sign in again".
   final bool signInAgain;
 
+  /// The route every "Sign in again" button pushes.
+  static Route<void> signInAgainRoute() => MaterialPageRoute<void>(
+        builder: (_) => const SignInScreen(signInAgain: true),
+      );
+
   static const routeName = '/sign-in';
   static const serverUrlFieldKey = Key('auth.serverUrl');
   static const authModeKey = Key('auth.mode');
