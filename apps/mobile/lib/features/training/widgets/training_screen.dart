@@ -212,8 +212,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   bool _formDirty = false;
   bool _logInFlight = false;
 
+  /// The Log set that runs (while [_logInFlight]), which Finish Workout
+  /// waits for (see [_finishWorkout]).
+  Future<void>? _logSetRunning;
+
   /// Set while Finish Workout runs, so a double tap finishes once and opens
-  /// one Finish summary.
+  /// one Finish summary, and a Log set tap meanwhile is ignored (see
+  /// [_logSet]).
   bool _finishInFlight = false;
 
   /// The Workout Exercise the form was last loaded for; a different one is
@@ -1215,6 +1220,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// Workout screen directly below, and stops at the first other route (or
   /// the first route of all): it never pops past the screen the lifter came
   /// from.
+  ///
+  /// Finish and Log set never overlap. A Finish tap while Log set runs
+  /// waits for it, then finishes: Log set starts its rest after several
+  /// awaits, so a Finish landing in between would end the Workout first and
+  /// leave that rest, and its "Get ready" notification, running on it.
+  /// Finishing after it stops that rest as it stops any other. Freestyle
+  /// Sets make the overlap easy to hit: Finish Workout already shows while
+  /// the lifter logs them. A Log set tap while Finish runs is ignored (see
+  /// [_logSet]).
   Future<void> _finishWorkout(_TrainingExerciseState state) async {
     if (_finishInFlight) {
       return;
@@ -1228,6 +1242,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         timerExerciseRouteName(workoutExerciseId),
     };
     try {
+      final logSetRunning = _logSetRunning;
+      if (logSetRunning != null) {
+        try {
+          await logSetRunning;
+        } on Object {
+          // Log set reports its own failure; the Workout still finishes.
+        }
+        if (!mounted) {
+          return;
+        }
+      }
       // `state.workout` is read once, when the exercise opens. The Workout
       // can end while this screen is up (auto-finish on resume, an agent,
       // another device through sync), and finishing it again would move its
@@ -1343,8 +1368,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// until the write returns: the Sets stream re-emits as soon as the write
   /// commits, so a second tap while the rest starts would otherwise log
   /// this member's next Set instead of being absorbed.
+  ///
+  /// A tap while Finish Workout runs is ignored: the lifter asked to finish
+  /// first, and a Set written during Finish's awaits would land in the
+  /// Workout being finished, after its Template divergence was read.
   Future<void> _logSet(_TrainingExerciseState state) async {
     if (_logInFlight ||
+        _finishInFlight ||
         _selectedSetId != null ||
         state.workoutExercise.id != _activeWorkoutExerciseId) {
       return;
@@ -1357,10 +1387,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
 
     _logInFlight = true;
+    final running = _logSetInFlight(state, settings, values);
+    _logSetRunning = running;
     try {
-      await _logSetInFlight(state, settings, values);
+      await running;
     } finally {
       _logInFlight = false;
+      _logSetRunning = null;
     }
   }
 
@@ -1520,6 +1553,16 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     // the plan, so it needs no read of the Workout's Sets.
     if (state.workout.endedAt != null ||
         (!loggedAPlannedSet && rest <= Duration.zero)) {
+      return null;
+    }
+    // `state.workout` is the Workout as the exercise opened. It may have
+    // ended since (auto-finish on resume, an agent, another device, this
+    // screen's own Finish when the summary closed over another route), and
+    // nothing else stops a rest from starting on an ended Workout.
+    final workout = await repositories.workoutSessions.getById(
+      state.workoutExercise.workoutId,
+    );
+    if (workout == null || workout.endedAt != null) {
       return null;
     }
     // Read after the write, since the Sets stream may not have re-emitted
