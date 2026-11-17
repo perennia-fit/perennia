@@ -18,6 +18,10 @@ import type { RequestLogger } from "../app.js";
 import type { ServerDatabase } from "../db/client.js";
 import * as schema from "../db/schema.js";
 import {
+  SESSION_EXPIRES_IN_SECONDS,
+  SESSION_UPDATE_AGE_SECONDS
+} from "./session.js";
+import {
   buildAuthEmailMessage,
   type AuthEmailSender
 } from "./email.js";
@@ -162,6 +166,12 @@ function baseAuthOptions({
     secret,
     socialProviders,
     trustedOrigins: trustedOrigins ?? [baseUrl],
+    // Shared with verifySessionToken, which renews sessions on sync and Agent
+    // API requests the same way Better Auth's getSession does.
+    session: {
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+      updateAge: SESSION_UPDATE_AGE_SECONDS
+    },
     account: {
       accountLinking: {
         enabled: true,

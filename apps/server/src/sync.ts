@@ -3,6 +3,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { and, asc, eq, gt, gte, inArray, isNull, or } from "drizzle-orm";
 
 import { ACCOUNT_DELETION_LOCAL_ONLY_MESSAGE } from "./account-deletion.js";
+import { verifySessionToken } from "./auth/session.js";
 import { USER_PROFILE_SECTION_NAMES } from "./agent-validation.js";
 import { CanonicalImportConsentDataClassSchema } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
@@ -3825,21 +3826,8 @@ async function recordPushedActivityLog(
 
 export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
   return {
-    async verifyBearerToken(token) {
-      const rows = await db
-        .select({ userId: schema.session.userId })
-        .from(schema.session)
-        .innerJoin(schema.user, eq(schema.user.id, schema.session.userId))
-        .where(
-          and(
-            eq(schema.session.token, token),
-            gt(schema.session.expiresAt, new Date()),
-            isNull(schema.user.deletionRequestedAt)
-          )
-        )
-        .limit(1);
-
-      return rows[0] ?? null;
+    verifyBearerToken(token) {
+      return verifySessionToken(db, token);
     },
     async explainUnauthorizedBearerToken(token) {
       const rows = await db

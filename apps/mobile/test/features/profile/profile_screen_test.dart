@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/profile/equipment_presets.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/profile/user_profile_validation.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
@@ -413,17 +414,13 @@ void main() {
           TrainingGoalsFields.noneKey,
         ],
         UserProfileSection.experience: <Key>[
-          for (final focus in _focuses())
-            for (final level in <ExperienceLevel?>[
-              ...ExperienceLevel.values,
-              null,
-            ])
-              ExperienceFields.levelKey(focus.id, level),
+          for (final focus in _focuses()) ExperienceFields.focusKey(focus.id),
           ExperienceFields.noneKey,
         ],
         UserProfileSection.trainingSetup: <Key>[
+          for (final preset in EquipmentPreset.values)
+            TrainingSetupFields.presetKey(preset),
           TrainingSetupFields.equipmentKey('skiErg'),
-          TrainingSetupFields.equipmentNoneKey,
           TrainingSetupFields.daysDecreaseKey,
           TrainingSetupFields.daysIncreaseKey,
           TrainingSetupFields.sessionMinutesKey,
@@ -841,7 +838,9 @@ void main() {
       await openEditor(tester, UserProfileSection.trainingSetup);
       await tapInEditor(
         tester,
-        find.byKey(TrainingSetupFields.equipmentNoneKey),
+        find.byKey(
+          TrainingSetupFields.presetKey(EquipmentPreset.bodyweightOnly),
+        ),
       );
       await tapSave(tester);
 
@@ -906,7 +905,12 @@ void main() {
       await pumpScreen(tester);
       await openEditor(tester, UserProfileSection.experience);
 
-      await tester.tap(
+      await tapInEditor(
+        tester,
+        find.byKey(ExperienceFields.focusKey('focus-strength')),
+      );
+      await tapInEditor(
+        tester,
         find.byKey(
           ExperienceFields.levelKey(
             'focus-strength',
@@ -914,8 +918,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
-      expect(find.text('One to three years.'), findsOneWidget);
+      expect(find.text('Intermediate: One to three years.'), findsOneWidget);
       await tapSave(tester);
 
       expect(
@@ -931,7 +934,7 @@ void main() {
       await disposeScreen(tester);
     });
 
-    testWidgets('Not set removes one entry and leaves the hidden one', (
+    testWidgets('unpicking a Focus removes its entry, not the hidden one', (
       tester,
     ) async {
       await seed(tester, UserProfileSection.experience, <String, Object?>{
@@ -943,10 +946,10 @@ void main() {
       await pumpScreen(tester);
       await openEditor(tester, UserProfileSection.experience);
 
-      await tester.tap(
-        find.byKey(ExperienceFields.levelKey('focus-running', null)),
+      await tapInEditor(
+        tester,
+        find.byKey(ExperienceFields.focusKey('focus-running')),
       );
-      await tester.pump();
       await tapSave(tester);
 
       expect(
@@ -973,7 +976,7 @@ void main() {
       await disposeScreen(tester);
     });
 
-    testWidgets('Not set on the last entry clears the list, not to None', (
+    testWidgets('unpicking the last Focus clears the list, not to None', (
       tester,
     ) async {
       await seed(tester, UserProfileSection.experience, <String, Object?>{
@@ -984,15 +987,151 @@ void main() {
       await pumpScreen(tester);
       await openEditor(tester, UserProfileSection.experience);
 
-      await tester.tap(
-        find.byKey(ExperienceFields.levelKey('focus-running', null)),
+      await tapInEditor(
+        tester,
+        find.byKey(ExperienceFields.focusKey('focus-running')),
       );
-      await tester.pump();
       await tapSave(tester);
 
       expect(
         (await stored(tester, UserProfileSection.experience))!['levels'],
         isNull,
+      );
+      await disposeScreen(tester);
+    });
+
+    testWidgets('levels show only once a Focus is picked', (tester) async {
+      await pumpScreen(tester);
+      await openEditor(tester, UserProfileSection.experience);
+
+      final beginner = find.byKey(
+        ExperienceFields.levelKey('focus-running', ExperienceLevel.beginner),
+      );
+      expect(beginner, findsNothing);
+      await tapInEditor(
+        tester,
+        find.byKey(ExperienceFields.focusKey('focus-running')),
+      );
+      expect(beginner, findsOneWidget);
+      expect(find.text('Pick a level'), findsOneWidget);
+      await disposeScreen(tester);
+    });
+
+    testWidgets('a picked Focus without a level blocks Save', (tester) async {
+      await pumpScreen(tester);
+      await openEditor(tester, UserProfileSection.experience);
+      final running = _focuses().firstWhere(
+        (focus) => focus.id == 'focus-running',
+      );
+
+      await tapInEditor(
+        tester,
+        find.byKey(ExperienceFields.focusKey(running.id)),
+      );
+      await tapSave(tester);
+
+      expect(find.byKey(ProfileEditorKeys.errors), findsOneWidget);
+      expect(
+        find.text('Pick a level for ${running.name}, or unselect it.'),
+        findsOneWidget,
+      );
+      expect(await stored(tester, UserProfileSection.experience), isNull);
+
+      await tapInEditor(
+        tester,
+        find.byKey(
+          ExperienceFields.levelKey(running.id, ExperienceLevel.advanced),
+        ),
+      );
+      expect(find.byKey(ProfileEditorKeys.errors), findsNothing);
+      await tapSave(tester);
+
+      expect(
+        (await stored(tester, UserProfileSection.experience))!['levels'],
+        <Object?>[
+          <String, Object?>{'focus_id': running.id, 'level': 'advanced'},
+        ],
+      );
+      await disposeScreen(tester);
+    });
+  });
+
+  group('Training setup presets', () {
+    testWidgets('Gym fills the list, and the matching preset shows selected', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await openEditor(tester, UserProfileSection.trainingSetup);
+      final gym = find.byKey(
+        TrainingSetupFields.presetKey(EquipmentPreset.gym),
+      );
+      expect(tester.widget<ChoiceChip>(gym).selected, isFalse);
+
+      await tapInEditor(tester, gym);
+      expect(tester.widget<ChoiceChip>(gym).selected, isTrue);
+
+      // Removing one item leaves the list custom, so no preset reads selected.
+      await tapInEditor(
+        tester,
+        find.byKey(TrainingSetupFields.equipmentKey('barbell')),
+      );
+      expect(tester.widget<ChoiceChip>(gym).selected, isFalse);
+      await tapSave(tester);
+
+      expect(
+        ((await stored(tester, UserProfileSection.trainingSetup))!['equipment']
+                as List<Object?>)
+            .toSet(),
+        EquipmentPreset.gym.equipment.difference({'barbell'}),
+      );
+      await disposeScreen(tester);
+    });
+
+    testWidgets('the Profile editor starts from what is stored, not a preset', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await openEditor(tester, UserProfileSection.trainingSetup);
+      for (final preset in EquipmentPreset.values) {
+        expect(
+          tester
+              .widget<ChoiceChip>(
+                find.byKey(TrainingSetupFields.presetKey(preset)),
+              )
+              .selected,
+          isFalse,
+        );
+      }
+      expect(
+        tester
+            .widget<FilterChip>(
+              find.byKey(TrainingSetupFields.equipmentKey('barbell')),
+            )
+            .selected,
+        isFalse,
+      );
+      await disposeScreen(tester);
+    });
+
+    testWidgets('an empty stored list reads as Bodyweight only', (
+      tester,
+    ) async {
+      await seed(tester, UserProfileSection.trainingSetup, <String, Object?>{
+        'equipment': <String>[],
+      });
+      await pumpScreen(tester);
+
+      expect(find.textContaining('Bodyweight only'), findsOneWidget);
+      await openEditor(tester, UserProfileSection.trainingSetup);
+      expect(
+        tester
+            .widget<ChoiceChip>(
+              find.byKey(
+                TrainingSetupFields.presetKey(EquipmentPreset.bodyweightOnly),
+              ),
+            )
+            .selected,
+        isTrue,
       );
       await disposeScreen(tester);
     });

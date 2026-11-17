@@ -273,8 +273,10 @@ rectangles with `md` corners, never FABs.
   `text-secondary-dark` color tokens. It is plain text: no icon, no card, no action,
   and it can't be dismissed.
 - **Onboarding screen:** **Skip all** as a text button in the primary text color at
-  the end of the app bar, and a back arrow at its start after the first screen. The
-  screen title in the `h2` type at the top of the scrolling body. A bottom action row
+  the end of the app bar, a back arrow at its start after the first screen, and "Step
+  n of 3" as the app bar title in the `label` type and secondary text color. The
+  screen title in the `h2` type at the top of the scrolling body, then one lead line in
+  the `body` type and secondary text color saying what the answers are used for. A bottom action row
   outside the scroll, always in thumb reach: **Skip this** and **Next** side by side
   at equal width, both in `button-save`, with **Next** reading **Done** on the last
   screen. The footer disclosure line closes the scrolling content; pinned, it would

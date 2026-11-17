@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/profile/equipment_presets.dart';
 import '../../../domain/profile/user_profile.dart';
 import '../../../domain/profile/user_profile_validation.dart';
+import '../../../domain/training/focus_color.dart';
 import '../../../domain/training/training_dimensions.dart';
 import '../../../domain/training/training_records.dart';
 import '../../../l10n/l10n.dart';
@@ -83,6 +85,23 @@ String profileEquipmentLabel(String id) {
   return id;
 }
 
+String _equipmentPresetLabel(AppLocalizations l10n, EquipmentPreset preset) {
+  return switch (preset) {
+    EquipmentPreset.gym => l10n.profileEquipmentPresetGym,
+    EquipmentPreset.home => l10n.profileEquipmentPresetHome,
+    EquipmentPreset.bodyweightOnly => l10n.profileEquipmentPresetBodyweightOnly,
+  };
+}
+
+String _equipmentGroupLabel(AppLocalizations l10n, EquipmentGroup group) {
+  return switch (group) {
+    EquipmentGroup.freeWeights => l10n.profileEquipmentGroupFreeWeights,
+    EquipmentGroup.racksAndMachines => l10n.profileEquipmentGroupRacksMachines,
+    EquipmentGroup.conditioning => l10n.profileEquipmentGroupConditioning,
+    EquipmentGroup.accessories => l10n.profileEquipmentGroupAccessories,
+  };
+}
+
 /// [height] in the user's unit system. Conversion happens on read only, so this
 /// never touches what is stored.
 String formatProfileHeight(
@@ -155,6 +174,17 @@ String profileValidationMessage(
   return issue.message;
 }
 
+/// One error line per picked Focus that has no level yet. Not a validation
+/// rule: such a Focus never reaches the stored values, so only the UI asks.
+List<String> experienceMissingLevelMessages(
+  AppLocalizations l10n,
+  List<String> focusNames,
+) {
+  return [
+    for (final name in focusNames) l10n.profileExperienceMissingLevel(name),
+  ];
+}
+
 /// Asks the user to confirm soft warnings. True means **Save anyway**; anything
 /// else returns to the field. Shaped like `BodyTrackerScreen`'s dialog for an
 /// improbable reading.
@@ -222,12 +252,20 @@ class _ProfileEditorSheet extends ConsumerStatefulWidget {
 
 class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
   Map<String, Object?> _changes = const <String, Object?>{};
+  List<String> _incompleteFocuses = const <String>[];
   List<String> _errors = const <String>[];
   bool _saving = false;
 
   void _onChanged(Map<String, Object?> changes) {
     setState(() {
       _changes = changes;
+      _errors = const <String>[];
+    });
+  }
+
+  void _onIncompleteChanged(List<String> focusNames) {
+    setState(() {
+      _incompleteFocuses = focusNames;
       _errors = const <String>[];
     });
   }
@@ -249,6 +287,13 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
   /// **Edit**.
   Future<bool> _trySave() async {
     final l10n = context.l10n;
+    if (_incompleteFocuses.isNotEmpty) {
+      setState(() => _errors = experienceMissingLevelMessages(
+            l10n,
+            _incompleteFocuses,
+          ));
+      return false;
+    }
     final controller = ref.read(profileControllerProvider.notifier);
     final check = await controller.save(widget.section, _changes);
     if (!mounted) {
@@ -312,6 +357,7 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
                     UserProfileSection.experience => ExperienceFields(
                         initial: profile.experience,
                         onChanged: _onChanged,
+                        onIncompleteChanged: _onIncompleteChanged,
                       ),
                     UserProfileSection.trainingSetup => TrainingSetupFields(
                         initial: profile.trainingSetup,
@@ -684,23 +730,47 @@ class _TrainingGoalsFieldsState extends State<TrainingGoalsFields> {
   }
 }
 
-/// Experience's fields, shared with onboarding: one level selector per active
-/// Focus. A save replaces the whole list, so entries for Focuses not shown here
-/// (archived, or not on this device yet) are carried along. Only **None** drops
-/// them.
+/// What a starter Focus covers, or null for a Focus the user added. Keyed by
+/// the seeded id, so a renamed starter Focus keeps its description.
+String? focusDescription(AppLocalizations l10n, String focusId) {
+  return switch (focusId) {
+    starterFocusWeightsId => l10n.profileFocusDescriptionWeights,
+    starterFocusEnduranceId => l10n.profileFocusDescriptionEndurance,
+    starterFocusFunctionalId => l10n.profileFocusDescriptionFunctional,
+    starterFocusCalisthenicsId => l10n.profileFocusDescriptionCalisthenics,
+    starterFocusMobilityId => l10n.profileFocusDescriptionMobility,
+    _ => null,
+  };
+}
+
+/// Experience's fields, shared with onboarding. The user first picks the
+/// Focuses they train, each with what it covers, then a level for each one
+/// picked. Nobody is asked to rate a Focus they never said they do, and no
+/// level is guessed for them: a picked Focus without a level is reported
+/// through [onIncompleteChanged], and the host refuses to save until it has
+/// one or is unpicked.
+///
+/// A save replaces the whole list, so entries for Focuses not shown here
+/// (archived, or not on this device yet) are carried along. Only **New to all
+/// of these** drops them.
 class ExperienceFields extends ConsumerStatefulWidget {
   const ExperienceFields({
     super.key,
     required this.initial,
     required this.onChanged,
+    required this.onIncompleteChanged,
   });
 
-  static Key levelKey(String focusId, ExperienceLevel? level) =>
-      Key('profile.experience.$focusId.${level?.wireName ?? 'unset'}');
+  static Key focusKey(String focusId) => Key('profile.experience.$focusId');
+  static Key levelKey(String focusId, ExperienceLevel level) =>
+      Key('profile.experience.$focusId.${level.wireName}');
   static const noneKey = Key('profile.experience.none');
 
   final ExperienceValues? initial;
   final ValueChanged<Map<String, Object?>> onChanged;
+
+  /// The names of picked Focuses that have no level yet, in display order.
+  final ValueChanged<List<String>> onIncompleteChanged;
 
   @override
   ConsumerState<ExperienceFields> createState() => _ExperienceFieldsState();
@@ -711,9 +781,12 @@ class _ExperienceFieldsState extends ConsumerState<ExperienceFields> {
     for (final entry in widget.initial?.levels ?? const <ExperienceEntry>[])
       entry.focusId: entry.level,
   };
+
+  /// Focuses picked without a level yet. They save nothing until they get one.
+  final Set<String> _pickedWithoutLevel = <String>{};
   late bool _none = widget.initial?.levels?.isEmpty ?? false;
 
-  void _report() {
+  void _report(List<FocusRecord> focuses) {
     final entries = _levels.entries.map(
       (entry) => ExperienceEntry(focusId: entry.key, level: entry.value),
     );
@@ -722,54 +795,81 @@ class _ExperienceFieldsState extends ConsumerState<ExperienceFields> {
       if (!_sameSelection(current, widget.initial?.levels))
         'levels': current?.map((entry) => entry.toJson()).toList(),
     });
+    widget.onIncompleteChanged([
+      for (final focus in focuses)
+        if (_pickedWithoutLevel.contains(focus.id)) focus.name,
+    ]);
+  }
+
+  void _update(List<FocusRecord> focuses, VoidCallback change) {
+    setState(change);
+    _report(focuses);
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final textStyles = context.textStyles;
+    final secondary = textStyles.caption.copyWith(
+      color: context.colors.textSecondary,
+    );
     final focuses =
         ref.watch(activeFocusesProvider).value ?? const <FocusRecord>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final focus in focuses) ...[
-          _FocusLevelRow(
-            focus: focus,
-            level: _none ? null : _levels[focus.id],
-            onChanged: (level) {
-              setState(() {
-                if (level == null) {
-                  _levels.remove(focus.id);
-                } else {
-                  _levels[focus.id] = level;
-                }
-                _none = false;
-              });
-              _report();
-            },
+        Text(l10n.profileExperienceQuestion, style: textStyles.body),
+        const SizedBox(height: AppDimens.dense),
+        for (final level in ExperienceLevel.values)
+          Text(
+            l10n.profileFieldValue(
+              experienceLevelLabel(l10n, level),
+              _experienceLevelMeaning(l10n, level),
+            ),
+            style: secondary,
           ),
-          const SizedBox(height: AppDimens.dense),
-        ],
+        const SizedBox(height: AppDimens.dense),
+        for (final focus in focuses)
+          _FocusExperienceRow(
+            focus: focus,
+            description: focusDescription(l10n, focus.id),
+            picked: !_none &&
+                (_levels.containsKey(focus.id) ||
+                    _pickedWithoutLevel.contains(focus.id)),
+            level: _none ? null : _levels[focus.id],
+            onPicked: (picked) => _update(focuses, () {
+              _none = false;
+              _levels.remove(focus.id);
+              if (picked) {
+                _pickedWithoutLevel.add(focus.id);
+              } else {
+                _pickedWithoutLevel.remove(focus.id);
+              }
+            }),
+            onLevel: (level) => _update(focuses, () {
+              _levels[focus.id] = level;
+              _pickedWithoutLevel.remove(focus.id);
+            }),
+          ),
+        const SizedBox(height: AppDimens.dense),
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: FilterChip(
             key: ExperienceFields.noneKey,
-            label: Text(l10n.profileNone),
+            label: Text(l10n.profileExperienceNone),
             selected: _none,
-            onSelected: (selected) {
-              setState(() {
-                _none = selected;
-                if (selected) {
-                  // The hidden entries stay in the map, so turning **None**
-                  // back off before saving loses nothing. While it is on, the
-                  // save writes `[]` whatever the map holds.
-                  for (final focus in focuses) {
-                    _levels.remove(focus.id);
-                  }
+            onSelected: (selected) => _update(focuses, () {
+              _none = selected;
+              if (selected) {
+                // The hidden entries stay in the map, so turning this back
+                // off before saving loses nothing. While it is on, the save
+                // writes `[]` whatever the map holds.
+                for (final focus in focuses) {
+                  _levels.remove(focus.id);
                 }
-              });
-              _report();
-            },
+                _pickedWithoutLevel.clear();
+              }
+            }),
           ),
         ),
       ],
@@ -777,72 +877,114 @@ class _ExperienceFieldsState extends ConsumerState<ExperienceFields> {
   }
 }
 
-class _FocusLevelRow extends StatelessWidget {
-  const _FocusLevelRow({
+/// One Focus: a checkbox row with what the Focus covers, and once it is
+/// picked, its level choices.
+class _FocusExperienceRow extends StatelessWidget {
+  const _FocusExperienceRow({
     required this.focus,
+    required this.description,
+    required this.picked,
     required this.level,
-    required this.onChanged,
+    required this.onPicked,
+    required this.onLevel,
   });
 
   final FocusRecord focus;
+  final String? description;
+  final bool picked;
   final ExperienceLevel? level;
-  final ValueChanged<ExperienceLevel?> onChanged;
+  final ValueChanged<bool> onPicked;
+  final ValueChanged<ExperienceLevel> onLevel;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final level = this.level;
-    return Semantics(
-      container: true,
-      label: focus.name,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(focus.name, style: context.textStyles.label),
-          Wrap(
-            spacing: AppDimens.dense,
-            children: [
-              for (final option in <ExperienceLevel?>[
-                ...ExperienceLevel.values,
-                null,
-              ])
-                ChoiceChip(
-                  key: ExperienceFields.levelKey(focus.id, option),
-                  label: Text(
-                    option == null
-                        ? l10n.profileNotSet
-                        : experienceLevelLabel(l10n, option),
-                  ),
-                  selected: option == level,
-                  onSelected: (_) => onChanged(option),
-                ),
-            ],
+    final textStyles = context.textStyles;
+    final colors = context.colors;
+    final description = this.description;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CheckboxListTile(
+          key: ExperienceFields.focusKey(focus.id),
+          value: picked,
+          onChanged: (value) => onPicked(value ?? false),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            focus.name,
+            style: textStyles.body.copyWith(fontWeight: FontWeight.w600),
           ),
-          if (level != null)
-            Text(
-              _experienceLevelMeaning(l10n, level),
-              style: context.textStyles.caption.copyWith(
-                color: context.colors.textSecondary,
+          subtitle: description == null
+              ? null
+              : Text(
+                  description,
+                  style: textStyles.caption.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+        ),
+        if (picked)
+          Padding(
+            // Full width, so the three levels fit on one line on a phone.
+            padding: const EdgeInsets.only(bottom: AppDimens.dense),
+            child: Semantics(
+              container: true,
+              label: focus.name,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: AppDimens.dense,
+                    children: [
+                      for (final option in ExperienceLevel.values)
+                        ChoiceChip(
+                          key: ExperienceFields.levelKey(focus.id, option),
+                          label: Text(experienceLevelLabel(l10n, option)),
+                          selected: option == level,
+                          onSelected: (_) => onLevel(option),
+                        ),
+                    ],
+                  ),
+                  if (level == null)
+                    Text(
+                      l10n.profileExperiencePickLevel,
+                      style: textStyles.caption.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                ],
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
 
-/// Training setup's fields, shared with onboarding. **None** is the only way to
-/// say "bodyweight only", so the registry's `bodyweight` isn't offered, and ids
-/// outside what is offered stay as extra selected chips.
+/// Training setup's fields, shared with onboarding.
+///
+/// Equipment starts from a preset (**Gym**, **Home**, **Bodyweight only**) and
+/// is then edited item by item, in groups. **Bodyweight only** is the only way
+/// to say "no equipment", which saves `[]`, so the registry's `bodyweight`
+/// isn't offered. Unpicking every item is *unset*. Ids outside what is offered
+/// stay as extra selected chips under **Other**.
+///
+/// With [startingPreset], an unset equipment list starts from that preset and
+/// is reported as a change at once, so the host saves it unless the user
+/// skips. Onboarding passes **Gym**; the Profile editor passes nothing and
+/// shows what is stored.
 class TrainingSetupFields extends StatefulWidget {
   const TrainingSetupFields({
     super.key,
     required this.initial,
     required this.onChanged,
+    this.startingPreset,
   });
 
   static Key equipmentKey(String id) => Key('profile.equipment.$id');
-  static const equipmentNoneKey = Key('profile.equipment.none');
+  static Key presetKey(EquipmentPreset preset) =>
+      Key('profile.equipment.preset.${preset.name}');
   static const daysValueKey = Key('profile.days.value');
   static const daysDecreaseKey = Key('profile.days.decrease');
   static const daysIncreaseKey = Key('profile.days.increase');
@@ -850,28 +992,47 @@ class TrainingSetupFields extends StatefulWidget {
 
   final TrainingSetupValues? initial;
   final ValueChanged<Map<String, Object?>> onChanged;
+  final EquipmentPreset? startingPreset;
 
   @override
   State<TrainingSetupFields> createState() => _TrainingSetupFieldsState();
 }
 
 class _TrainingSetupFieldsState extends State<TrainingSetupFields> {
-  late final Set<String> _equipment = {...?widget.initial?.equipment};
-  late bool _none = widget.initial?.equipment?.isEmpty ?? false;
+  late final EquipmentPreset? _started = widget.initial?.equipment == null
+      ? widget.startingPreset
+      : null;
+  late final Set<String> _equipment = {
+    ...?widget.initial?.equipment,
+    ...?_started?.equipment,
+  };
+  late bool _bodyweightOnly = (widget.initial?.equipment?.isEmpty ?? false) ||
+      _started == EquipmentPreset.bodyweightOnly;
   late int? _days = widget.initial?.daysPerWeek;
   late final TextEditingController _minutes = TextEditingController(
     text: widget.initial?.sessionMinutes?.toString() ?? '',
   );
 
-  late final List<String> _offered = [
-    for (final equipment in ExerciseEquipment.known)
-      if (equipment != ExerciseEquipment.bodyweight) equipment.id,
+  /// Stored ids no group offers: unknown ids, and `bodyweight` from a row
+  /// written elsewhere.
+  late final List<String> _other = [
     ...?widget.initial?.equipment?.where(
-      (id) =>
-          id == ExerciseEquipment.bodyweight.id ||
-          !ExerciseEquipment.known.any((equipment) => equipment.id == id),
+      (id) => !equipmentGroups.values.any((ids) => ids.contains(id)),
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (_started != null) {
+      // The host can't take a change while it builds this widget.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _report();
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -881,7 +1042,7 @@ class _TrainingSetupFieldsState extends State<TrainingSetupFields> {
 
   void _report() {
     final initial = widget.initial;
-    final equipment = _selectionValue(_none, _equipment);
+    final equipment = _selectionValue(_bodyweightOnly, _equipment);
     final minutes = int.tryParse(_minutes.text);
     widget.onChanged(<String, Object?>{
       if (!_sameSelection(equipment, initial?.equipment))
@@ -896,10 +1057,38 @@ class _TrainingSetupFieldsState extends State<TrainingSetupFields> {
     _report();
   }
 
+  void _applyPreset(EquipmentPreset preset) {
+    setState(() {
+      _equipment
+        ..clear()
+        ..addAll(preset.equipment);
+      _bodyweightOnly = preset == EquipmentPreset.bodyweightOnly;
+    });
+    _report();
+  }
+
+  Widget _equipmentChip(String id) {
+    return FilterChip(
+      key: TrainingSetupFields.equipmentKey(id),
+      label: Text(profileEquipmentLabel(id)),
+      selected: _equipment.contains(id),
+      onSelected: (selected) {
+        setState(() {
+          selected ? _equipment.add(id) : _equipment.remove(id);
+          _bodyweightOnly = false;
+        });
+        _report();
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final textStyles = context.textStyles;
+    final groupStyle = textStyles.caption.copyWith(
+      color: context.colors.textSecondary,
+    );
     final days = _days;
     const minDays = UserProfileValidationLimits.daysPerWeekMin;
     const maxDays = UserProfileValidationLimits.daysPerWeekMax;
@@ -907,40 +1096,40 @@ class _TrainingSetupFieldsState extends State<TrainingSetupFields> {
       minimumSize: const Size.square(AppDimens.touchTarget),
       shape: const RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
     );
+    final matchingPreset = EquipmentPreset.matching(
+      _selectionValue(_bodyweightOnly, _equipment),
+    );
+    final groups = <(String, List<String>)>[
+      for (final MapEntry(key: group, value: ids) in equipmentGroups.entries)
+        (_equipmentGroupLabel(l10n, group), ids),
+      if (_other.isNotEmpty) (l10n.profileEquipmentGroupOther, _other),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n.profileFieldEquipment, style: textStyles.caption),
+        Text(l10n.profileEquipmentWhere, style: textStyles.caption),
         Wrap(
           spacing: AppDimens.dense,
           children: [
-            for (final id in _offered)
-              FilterChip(
-                key: TrainingSetupFields.equipmentKey(id),
-                label: Text(profileEquipmentLabel(id)),
-                selected: _equipment.contains(id),
-                onSelected: (selected) {
-                  setState(() {
-                    selected ? _equipment.add(id) : _equipment.remove(id);
-                    _none = false;
-                  });
-                  _report();
-                },
+            for (final preset in EquipmentPreset.values)
+              ChoiceChip(
+                key: TrainingSetupFields.presetKey(preset),
+                label: Text(_equipmentPresetLabel(l10n, preset)),
+                selected: preset == matchingPreset,
+                onSelected: (_) => _applyPreset(preset),
               ),
-            FilterChip(
-              key: TrainingSetupFields.equipmentNoneKey,
-              label: Text(l10n.profileNone),
-              selected: _none,
-              onSelected: (selected) {
-                setState(() {
-                  _none = selected;
-                  _equipment.clear();
-                });
-                _report();
-              },
-            ),
           ],
         ),
+        const SizedBox(height: AppDimens.base),
+        Text(l10n.profileFieldEquipment, style: textStyles.caption),
+        for (final (label, ids) in groups) ...[
+          const SizedBox(height: AppDimens.dense),
+          Semantics(header: true, child: Text(label, style: groupStyle)),
+          Wrap(
+            spacing: AppDimens.dense,
+            children: [for (final id in ids) _equipmentChip(id)],
+          ),
+        ],
         const SizedBox(height: AppDimens.base),
         Text(l10n.profileFieldDaysPerWeek, style: textStyles.caption),
         const SizedBox(height: AppDimens.dense),

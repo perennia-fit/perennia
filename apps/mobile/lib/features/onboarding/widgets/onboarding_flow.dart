@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/profile/equipment_presets.dart';
 import '../../../domain/profile/user_profile.dart';
 import '../../../domain/profile/user_profile_validation.dart';
 import '../../../l10n/l10n.dart';
@@ -19,6 +20,10 @@ import '../controllers/onboarding_controller.dart';
 /// The three first-open screens (Onboarding flow in
 /// docs/designs/user-profile.md). Every one can be left at once, and nothing
 /// here asks for an OS permission.
+///
+/// Each screen says where the user is ("Step 2 of 3") and, under its title,
+/// what the answers are used for, because a question with no reason reads as
+/// a form to get through.
 class OnboardingFlow extends ConsumerStatefulWidget {
   const OnboardingFlow({super.key, required this.onDone});
 
@@ -30,6 +35,8 @@ class OnboardingFlow extends ConsumerStatefulWidget {
   static const weekStartDayKey = Key('onboarding.weekStartDay');
   static const signInLinkKey = Key('onboarding.signIn');
   static const errorsKey = Key('onboarding.errors');
+  static const stepKey = Key('onboarding.step');
+  static const leadKey = Key('onboarding.lead');
 
   /// Called once, when the flow reaches `done`.
   final VoidCallback onDone;
@@ -44,6 +51,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// What the fields of the current screen report, cleared on every step change
   /// so a screen left behind can't be saved again.
   final _changes = <UserProfileSection, Map<String, Object?>>{};
+
+  /// Focuses picked on screen 2 without a level. **Next** waits for them.
+  List<String> _incompleteFocuses = const <String>[];
   UnitSystem? _pickedUnitSystem;
   WeekStartDay? _pickedWeekStartDay;
   List<String> _errors = const <String>[];
@@ -84,6 +94,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   Future<void> _next() async {
     final l10n = context.l10n;
+    if (_incompleteFocuses.isNotEmpty) {
+      setState(() => _errors = experienceMissingLevelMessages(
+            l10n,
+            _incompleteFocuses,
+          ));
+      _showErrors();
+      return;
+    }
     final changes = Map.of(_changes);
     final checks = await _controller.check(changes);
     if (!mounted) {
@@ -153,6 +171,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ref.listen(onboardingControllerProvider, (_, next) {
       setState(() {
         _changes.clear();
+        _incompleteFocuses = const <String>[];
         _pickedUnitSystem = null;
         _pickedWeekStartDay = null;
         _errors = const <String>[];
@@ -194,6 +213,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
+          title: step == OnboardingStep.done
+              ? null
+              : Text(
+                  l10n.onboardingStepOf(step.index + 1, _screenCount),
+                  key: OnboardingFlow.stepKey,
+                  style: context.textStyles.label.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
           leading: step == OnboardingStep.screen2 ||
                   step == OnboardingStep.screen3
               ? IconButton(
@@ -235,6 +263,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                             style: context.textStyles.h2,
                           ),
                         ),
+                        if (_lead(l10n, step) case final lead?) ...[
+                          const SizedBox(height: AppDimens.dense),
+                          Text(
+                            lead,
+                            key: OnboardingFlow.leadKey,
+                            style: context.textStyles.body.copyWith(
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: AppDimens.base),
                         ..._fields(state),
                         if (_errors.isNotEmpty) ...[
@@ -312,6 +350,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     };
   }
 
+  String? _lead(AppLocalizations l10n, OnboardingStep step) {
+    return switch (step) {
+      OnboardingStep.screen1 => l10n.onboardingLeadAboutYou,
+      OnboardingStep.screen2 => l10n.onboardingLeadGoalsExperience,
+      OnboardingStep.screen3 => l10n.onboardingLeadTrainingSetup,
+      OnboardingStep.done => null,
+    };
+  }
+
   List<Widget> _fields(OnboardingState state) {
     final l10n = context.l10n;
     final profile = state.profile;
@@ -359,24 +406,31 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         return [
           _Subheading(l10n.profileSectionTrainingGoals),
           const SizedBox(height: AppDimens.dense),
+          Text(l10n.onboardingGoalsQuestion, style: context.textStyles.body),
+          const SizedBox(height: AppDimens.dense),
           TrainingGoalsFields(
             initial: profile.trainingGoals,
             onChanged: (changes) =>
                 _onFieldsChanged(UserProfileSection.trainingGoals, changes),
           ),
-          const SizedBox(height: AppDimens.base),
+          const SizedBox(height: AppDimens.base * 2),
           _Subheading(l10n.profileSectionExperience),
           const SizedBox(height: AppDimens.dense),
           ExperienceFields(
             initial: profile.experience,
             onChanged: (changes) =>
                 _onFieldsChanged(UserProfileSection.experience, changes),
+            onIncompleteChanged: (focusNames) => setState(() {
+              _incompleteFocuses = focusNames;
+              _errors = const <String>[];
+            }),
           ),
         ];
       case OnboardingStep.screen3:
         return [
           TrainingSetupFields(
             initial: profile.trainingSetup,
+            startingPreset: EquipmentPreset.gym,
             onChanged: (changes) =>
                 _onFieldsChanged(UserProfileSection.trainingSetup, changes),
           ),
@@ -387,6 +441,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   }
 }
 
+/// The screens before `done`, for "Step n of 3".
+final _screenCount = OnboardingStep.values.length - 1;
+
 class _Subheading extends StatelessWidget {
   const _Subheading(this.text);
 
@@ -396,7 +453,10 @@ class _Subheading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       header: true,
-      child: Text(text, style: context.textStyles.label),
+      child: Text(
+        text,
+        style: context.textStyles.body.copyWith(fontWeight: FontWeight.w600),
+      ),
     );
   }
 }

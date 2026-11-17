@@ -6849,6 +6849,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Week starts'**
   String get onboardingWeekStartLabel;
+
+  /// App bar title on onboarding screens: where the user is in the flow.
+  ///
+  /// In en, this message translates to:
+  /// **'Step {step} of {total}'**
+  String onboardingStepOf(int step, int total);
+
+  /// Lead under the title of onboarding screen 1: what the screen is for.
+  ///
+  /// In en, this message translates to:
+  /// **'Perennia uses these to pick default reference ranges for your Metrics, and an agent you connect can read them. Every field is optional, and you can change them later in Account & app, Profile.'**
+  String get onboardingLeadAboutYou;
+
+  /// Lead under the title of onboarding screen 2: what the screen is for.
+  ///
+  /// In en, this message translates to:
+  /// **'Logging works the same whatever you pick. This tells an agent you connect what you are working toward and what you already train, so its suggestions fit you.'**
+  String get onboardingLeadGoalsExperience;
+
+  /// Lead under the title of onboarding screen 3: what the screen is for.
+  ///
+  /// In en, this message translates to:
+  /// **'What you can train with and how much time you usually have, so an agent suggests workouts you can actually do.'**
+  String get onboardingLeadTrainingSetup;
+
+  /// Question under the Training Goals subheading on onboarding screen 2.
+  ///
+  /// In en, this message translates to:
+  /// **'What are you training for? Pick any that apply.'**
+  String get onboardingGoalsQuestion;
+
+  /// Question at the top of the Experience fields, in onboarding and the Profile editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Which kinds of training do you do? Pick each one, then your level in it.'**
+  String get profileExperienceQuestion;
+
+  /// Prompt under a Focus the user selected but has not given a level yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a level'**
+  String get profileExperiencePickLevel;
+
+  /// Error when Next or Save is tapped while a selected Focus has no level.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a level for {focus}, or unselect it.'**
+  String profileExperienceMissingLevel(String focus);
+
+  /// Experience option that stores an empty list: the user has no experience in any Focus.
+  ///
+  /// In en, this message translates to:
+  /// **'New to all of these'**
+  String get profileExperienceNone;
+
+  /// What the starter Weights Focus covers, shown in the Experience fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Barbells, dumbbells and machines, for strength and muscle.'**
+  String get profileFocusDescriptionWeights;
+
+  /// What the starter Endurance Focus covers, shown in the Experience fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Running, cycling, rowing, swimming and other cardio, steady or in intervals.'**
+  String get profileFocusDescriptionEndurance;
+
+  /// What the starter Functional Focus covers, shown in the Experience fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Mixed strength and conditioning: CrossFit-style workouts, HYROX-style races, kettlebell flows.'**
+  String get profileFocusDescriptionFunctional;
+
+  /// What the starter Calisthenics Focus covers, shown in the Experience fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Bodyweight strength and skills: pull-ups, dips, push-ups, L-sits.'**
+  String get profileFocusDescriptionCalisthenics;
+
+  /// What the starter Mobility Focus covers, shown in the Experience fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Stretching, yoga and mobility flows.'**
+  String get profileFocusDescriptionMobility;
+
+  /// Label of the equipment preset chips in the Training setup fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Where do you train?'**
+  String get profileEquipmentWhere;
+
+  /// Equipment preset: a typical commercial gym.
+  ///
+  /// In en, this message translates to:
+  /// **'Gym'**
+  String get profileEquipmentPresetGym;
+
+  /// Equipment preset: a home setup.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get profileEquipmentPresetHome;
+
+  /// Equipment preset that stores an empty equipment list. Also how the Profile screen shows that list.
+  ///
+  /// In en, this message translates to:
+  /// **'Bodyweight only'**
+  String get profileEquipmentPresetBodyweightOnly;
+
+  /// Heading of an equipment chip group.
+  ///
+  /// In en, this message translates to:
+  /// **'Free weights'**
+  String get profileEquipmentGroupFreeWeights;
+
+  /// Heading of an equipment chip group.
+  ///
+  /// In en, this message translates to:
+  /// **'Racks, benches and machines'**
+  String get profileEquipmentGroupRacksMachines;
+
+  /// Heading of an equipment chip group.
+  ///
+  /// In en, this message translates to:
+  /// **'Conditioning'**
+  String get profileEquipmentGroupConditioning;
+
+  /// Heading of an equipment chip group.
+  ///
+  /// In en, this message translates to:
+  /// **'Accessories'**
+  String get profileEquipmentGroupAccessories;
+
+  /// Heading of the group that holds stored equipment ids outside the registry.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get profileEquipmentGroupOther;
 }
 
 class _AppLocalizationsDelegate

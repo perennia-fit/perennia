@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/profile/equipment_presets.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/auth/widgets/sign_in_screen.dart';
@@ -1290,6 +1291,159 @@ void main() {
       });
     });
 
+    group('guidance', () {
+      testWidgets('each screen says its step and what it is for', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+
+        expect(find.text('Step 1 of 3'), findsOneWidget);
+        expect(find.byKey(OnboardingFlow.leadKey), findsOneWidget);
+
+        await tapControl(tester, skipThisButton);
+        expect(find.text('Step 2 of 3'), findsOneWidget);
+        expect(
+          find.text('What are you training for? Pick any that apply.'),
+          findsOneWidget,
+        );
+
+        await tapControl(tester, skipThisButton);
+        expect(find.text('Step 3 of 3'), findsOneWidget);
+        expect(find.byKey(OnboardingFlow.leadKey), findsOneWidget);
+        await disposeApp(tester);
+      });
+    });
+
+    group('Experience', () {
+      testWidgets('a picked Focus without a level keeps the user on screen 2', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await tapControl(tester, skipThisButton);
+        expectScreen2();
+
+        await tapControl(
+          tester,
+          find.byKey(ExperienceFields.focusKey('focus-running')),
+        );
+        await tapControl(tester, nextButton);
+
+        expectScreen2();
+        expect(
+          find.text('Pick a level for Running, or unselect it.'),
+          findsOneWidget,
+        );
+        expect(await rows(tester), isEmpty);
+
+        await tapControl(
+          tester,
+          find.byKey(
+            ExperienceFields.levelKey(
+              'focus-running',
+              ExperienceLevel.intermediate,
+            ),
+          ),
+        );
+        expect(find.byKey(OnboardingFlow.errorsKey), findsNothing);
+        await tapControl(tester, nextButton);
+
+        final saved = await rows(tester);
+        expect(saved, hasLength(1));
+        expect(
+          jsonDecode(saved.single.valuesJson),
+          <String, Object?>{
+            'levels': <Object?>[
+              <String, Object?>{
+                'focus_id': 'focus-running',
+                'level': 'intermediate',
+              },
+            ],
+          },
+        );
+        await disposeApp(tester);
+      });
+
+      testWidgets('Skip this leaves a Focus without a level behind', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await tapControl(tester, skipThisButton);
+        await tapControl(
+          tester,
+          find.byKey(ExperienceFields.focusKey('focus-running')),
+        );
+
+        await tapControl(tester, skipThisButton);
+
+        expect(find.text('Step 3 of 3'), findsOneWidget);
+        expect(await rows(tester), isEmpty);
+        await disposeApp(tester);
+      });
+    });
+
+    group('Training setup', () {
+      Future<void> openScreen3(WidgetTester tester) async {
+        await pumpApp(tester);
+        await tapControl(tester, skipThisButton);
+        await tapControl(tester, skipThisButton);
+        expect(find.text('Step 3 of 3'), findsOneWidget);
+      }
+
+      testWidgets('starts from Gym, and Done saves it', (tester) async {
+        await openScreen3(tester);
+        expect(
+          tester
+              .widget<ChoiceChip>(
+                find.byKey(TrainingSetupFields.presetKey(EquipmentPreset.gym)),
+              )
+              .selected,
+          isTrue,
+        );
+
+        await tapControl(tester, nextButton);
+
+        expectToday();
+        final saved = await rows(tester);
+        expect(saved, hasLength(1));
+        expect(saved.single.section, UserProfileSection.trainingSetup.wireName);
+        final values = jsonDecode(saved.single.valuesJson) as Map;
+        expect(
+          (values['equipment'] as List<Object?>).toSet(),
+          EquipmentPreset.gym.equipment,
+        );
+        await disposeApp(tester);
+      });
+
+      testWidgets('Skip this saves nothing, even with Gym shown', (
+        tester,
+      ) async {
+        await openScreen3(tester);
+
+        await tapControl(tester, skipThisButton);
+
+        expectToday();
+        expect(await rows(tester), isEmpty);
+        await disposeApp(tester);
+      });
+
+      testWidgets('Bodyweight only saves an empty list', (tester) async {
+        await openScreen3(tester);
+
+        await tapControl(
+          tester,
+          find.byKey(
+            TrainingSetupFields.presetKey(EquipmentPreset.bodyweightOnly),
+          ),
+        );
+        await tapControl(tester, nextButton);
+
+        final values =
+            jsonDecode((await rows(tester)).single.valuesJson) as Map;
+        expect(values['equipment'], isEmpty);
+        await disposeApp(tester);
+      });
+    });
+
     group('saving', () {
       testWidgets('a pick left behind by Skip this is not saved', (
         tester,
@@ -1564,11 +1718,7 @@ void main() {
             find.byKey(TrainingGoalsFields.goalKey(goal)),
           find.byKey(TrainingGoalsFields.noneKey),
           for (final focus in focuses)
-            for (final level in <ExperienceLevel?>[
-              ...ExperienceLevel.values,
-              null,
-            ])
-              find.byKey(ExperienceFields.levelKey(focus.id, level)),
+            find.byKey(ExperienceFields.focusKey(focus.id)),
           find.byKey(ExperienceFields.noneKey),
           find.byType(ProfileDisclosureLine),
         ]);
@@ -1578,7 +1728,9 @@ void main() {
         await expectReachable([
           find.byKey(OnboardingFlow.backButtonKey),
           find.byKey(TrainingSetupFields.equipmentKey('skiErg')),
-          find.byKey(TrainingSetupFields.equipmentNoneKey),
+          find.byKey(
+            TrainingSetupFields.presetKey(EquipmentPreset.bodyweightOnly),
+          ),
           find.byKey(TrainingSetupFields.daysDecreaseKey),
           find.byKey(TrainingSetupFields.daysIncreaseKey),
           find.byKey(TrainingSetupFields.sessionMinutesKey),
