@@ -94,6 +94,176 @@ void main() {
     );
   });
 
+  test(
+      'a cycle that fails with a session replaced meanwhile drops its verdict '
+      'and runs again at once with the new session', () async {
+    var current = _session;
+    final staleCycle = Completer<SyncCycleResult>();
+    final usedTokens = <String>[];
+    var verdictsCleared = 0;
+    final coordinator = SyncCoordinator(
+      loadSession: () async => current,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) {
+        usedTokens.add(session.token);
+        return session.token == _session.token
+            ? staleCycle.future
+            : Future<SyncCycleResult>.value(
+                const SyncCycleResult(appliedCount: 0, pushedCount: 3),
+              );
+      },
+      clearReplacedSessionVerdict: () async {
+        verdictsCleared += 1;
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    final run = coordinator.synchronizeNow(SyncTrigger.periodic);
+    await _waitFor(() => usedTokens.length == 1);
+
+    // Sign in again lands while the old session's request is in flight,
+    // then that request is rejected.
+    current = _freshSession;
+    coordinator.requestSync(SyncTrigger.authChanged);
+    staleCycle.completeError(StateError('401 for the old session'));
+
+    final result = await run;
+    expect(usedTokens, <String>['session-token', 'fresh-token']);
+    expect(result.pushedCount, 3);
+    expect(verdictsCleared, 1);
+  });
+
+  test(
+      'a Sync now or nudge run with fixed credentials that the user replaces '
+      'meanwhile recovers with the new session', () async {
+    var current = _session;
+    final staleCycle = Completer<SyncCycleResult>();
+    final usedTokens = <String>[];
+    var verdictsCleared = 0;
+    final coordinator = SyncCoordinator(
+      loadSession: () async => current,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) {
+        usedTokens.add(session.token);
+        return session.token == _session.token
+            ? staleCycle.future
+            : Future<SyncCycleResult>.value(
+                const SyncCycleResult(appliedCount: 0, pushedCount: 2),
+              );
+      },
+      clearReplacedSessionVerdict: () async {
+        verdictsCleared += 1;
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    final run = coordinator.synchronizeNowWith(
+      trigger: SyncTrigger.manual,
+      session: _session,
+      deviceId: 'mobile:pixel-8',
+    );
+    await _waitFor(() => usedTokens.length == 1);
+
+    current = _freshSession;
+    coordinator.requestSync(SyncTrigger.authChanged);
+    staleCycle.completeError(StateError('401 for the old session'));
+
+    final result = await run;
+    expect(usedTokens, <String>['session-token', 'fresh-token']);
+    expect(result.pushedCount, 2);
+    expect(verdictsCleared, 1);
+  });
+
+  test(
+      'the follow-up to a fixed-credentials run uses the session that '
+      'replaced them', () async {
+    var current = _session;
+    final firstCycle = Completer<SyncCycleResult>();
+    final usedTokens = <String>[];
+    final coordinator = SyncCoordinator(
+      loadSession: () async => current,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) {
+        usedTokens.add(session.token);
+        return usedTokens.length == 1
+            ? firstCycle.future
+            : Future<SyncCycleResult>.value(
+                const SyncCycleResult(appliedCount: 1),
+              );
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    final run = coordinator.synchronizeNowWith(
+      trigger: SyncTrigger.serverNudge,
+      session: _session,
+      deviceId: 'mobile:pixel-8',
+    );
+    await _waitFor(() => usedTokens.length == 1);
+
+    current = _freshSession;
+    coordinator.requestSync(SyncTrigger.authChanged);
+    firstCycle.complete(const SyncCycleResult(appliedCount: 0));
+
+    await run;
+    expect(usedTokens, <String>['session-token', 'fresh-token']);
+  });
+
+  test(
+      'a Sync now that fails while the user signs out still fails, '
+      'with the old verdict dropped', () async {
+    AuthSession? current = _session;
+    final staleCycle = Completer<SyncCycleResult>();
+    var cycles = 0;
+    var verdictsCleared = 0;
+    final coordinator = SyncCoordinator(
+      loadSession: () async => current,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) {
+        cycles += 1;
+        return staleCycle.future;
+      },
+      clearReplacedSessionVerdict: () async {
+        verdictsCleared += 1;
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    final run = coordinator.synchronizeNowWith(
+      trigger: SyncTrigger.manual,
+      session: _session,
+      deviceId: 'mobile:pixel-8',
+    );
+    await _waitFor(() => cycles == 1);
+
+    current = null;
+    staleCycle.completeError(StateError('network down'));
+
+    await expectLater(run, throwsStateError);
+    expect(cycles, 1);
+    expect(verdictsCleared, 1);
+  });
+
+  test('a cycle that fails with the current session still fails', () async {
+    var verdictsCleared = 0;
+    final coordinator = SyncCoordinator(
+      loadSession: () async => _session,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) =>
+          Future<SyncCycleResult>.error(StateError('401')),
+      clearReplacedSessionVerdict: () async {
+        verdictsCleared += 1;
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    await expectLater(
+      coordinator.synchronizeNow(SyncTrigger.manual),
+      throwsStateError,
+    );
+    expect(verdictsCleared, 0);
+  });
+
   test('signed-out triggers do not attempt a Sync Run', () async {
     var runCount = 0;
     final coordinator = SyncCoordinator(
@@ -117,6 +287,15 @@ final _session = AuthSession(
   provider: AuthSessionProvider.email,
   serverUrl: Uri.parse('https://sync.example/'),
   token: 'session-token',
+  userEmail: 'sync@example.com',
+  userId: 'user-1',
+  userName: 'Sync User',
+);
+
+final _freshSession = AuthSession(
+  provider: AuthSessionProvider.email,
+  serverUrl: Uri.parse('https://sync.example/'),
+  token: 'fresh-token',
   userEmail: 'sync@example.com',
   userId: 'user-1',
   userName: 'Sync User',

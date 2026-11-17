@@ -180,13 +180,51 @@ class SyncStatusRepository {
     return row.read(count) ?? 0;
   }
 
+  /// Marks a Sync Run as started.
+  ///
+  /// An [SyncStatusKind.authExpired] verdict is held: a run that starts with
+  /// the rejected session is going to be rejected again, and showing
+  /// `syncing` in between would make every retry briefly look signed in,
+  /// pulling the Sign in again form out from under a user typing into it.
+  /// Only [recordSuccess] or [clearAuthExpired] (the session was replaced)
+  /// lift the verdict.
   Future<void> recordSyncing({DateTime? at}) {
     final timestamp = (at ?? _clock()).toUtc();
-    return _upsert(
-      SyncStatesCompanion.insert(
-        id: syncStateId,
-        syncStatus: Value<String>(SyncStatusKind.syncing.name),
-        updatedAt: timestamp,
+    return _database.transaction(() async {
+      final current = await _loadRow();
+      if (current?.syncStatus == SyncStatusKind.authExpired.name) {
+        return;
+      }
+      await _upsert(
+        SyncStatesCompanion.insert(
+          id: syncStateId,
+          syncStatus: Value<String>(SyncStatusKind.syncing.name),
+          updatedAt: timestamp,
+        ),
+      );
+    });
+  }
+
+  /// Drops an [SyncStatusKind.authExpired] verdict because the session it was
+  /// about is gone: the user signed in again, signed in as someone else, or
+  /// signed out. The new session has not been judged yet, so the status goes
+  /// back to idle until its first Sync Run records over it. Any other status
+  /// is left alone.
+  Future<void> clearAuthExpired({DateTime? at}) {
+    final timestamp = (at ?? _clock()).toUtc();
+    return (_database.update(_database.syncStates)
+          ..where(
+            (state) =>
+                state.id.equals(syncStateId) &
+                state.syncStatus.equals(SyncStatusKind.authExpired.name),
+          ))
+        .write(
+      SyncStatesCompanion(
+        syncStatus: Value<String>(SyncStatusKind.idle.name),
+        firstFailureAt: const Value<DateTime?>(null),
+        lastFailureAt: const Value<DateTime?>(null),
+        lastFailureMessage: const Value<String?>(null),
+        updatedAt: Value<DateTime>(timestamp),
       ),
     );
   }
@@ -233,21 +271,30 @@ class SyncStatusRepository {
     Object error, {
     required SyncStatusKind kind,
     DateTime? at,
-  }) async {
+  }) {
     final timestamp = (at ?? _clock()).toUtc();
-    final current = await _loadRow();
-    await _upsert(
-      SyncStatesCompanion.insert(
-        id: syncStateId,
-        syncStatus: Value<String>(kind.name),
-        firstFailureAt: Value<DateTime?>(
-          current?.firstFailureAt?.toUtc() ?? timestamp,
+    return _database.transaction(() async {
+      final current = await _loadRow();
+      // A network or server failure says nothing about whether the server
+      // would now accept the session, so it does not lift an authExpired
+      // verdict (see [recordSyncing]).
+      if (kind != SyncStatusKind.authExpired &&
+          current?.syncStatus == SyncStatusKind.authExpired.name) {
+        return;
+      }
+      await _upsert(
+        SyncStatesCompanion.insert(
+          id: syncStateId,
+          syncStatus: Value<String>(kind.name),
+          firstFailureAt: Value<DateTime?>(
+            current?.firstFailureAt?.toUtc() ?? timestamp,
+          ),
+          lastFailureAt: Value<DateTime?>(timestamp),
+          lastFailureMessage: Value<String?>(_failureMessage(error, kind)),
+          updatedAt: timestamp,
         ),
-        lastFailureAt: Value<DateTime?>(timestamp),
-        lastFailureMessage: Value<String?>(_failureMessage(error, kind)),
-        updatedAt: timestamp,
-      ),
-    );
+      );
+    });
   }
 
   Future<SyncStateRow?> _loadRow() {
@@ -1256,9 +1303,18 @@ class SyncRepository implements SyncCycleRepository {
         nextCursor: response.nextCursor,
         serverClock: response.serverClock,
         fullResyncRequired: false,
-        // A malformed entry still took a slot on the page.
+        // A malformed entry still took a slot on the page. The server fills a
+        // page with up to `limit` base rows and then adds the parents they
+        // reference, and the reply does not say how many were which. A page
+        // short of `limit` is certainly the last one. A page at or over
+        // `limit` may be the last one padded by parents, so it reports more
+        // and the next pull settles it: an empty page ends the loop, and
+        // SyncCycleRunner checks `hasMore` before its cursor-advance guard
+        // because that empty page repeats the cursor. With `== limit`, a page
+        // that carried parents ended the pull partway through a batch, and
+        // the rest waited for the next sync.
         hasMore:
-            response.changes.length + response.malformedChanges.length == limit,
+            response.changes.length + response.malformedChanges.length >= limit,
         userSettingsApplied: applied.userSettingsApplied,
       );
       if (manageStatus) {
@@ -5231,10 +5287,16 @@ class SyncPullResult {
   final String serverClock;
   final bool fullResyncRequired;
 
-  /// True when the remote pull window was full and another request is needed
-  /// to prove the replica is caught up. This is deliberately independent of
-  /// [appliedCount]: LWW losers and already-current rows still consume space
-  /// in the server page.
+  /// True when the page may not be the last one, so another request is needed
+  /// to prove the replica is caught up. It is set when the page held at least
+  /// `limit` entries, counting malformed ones. The server pads a page with the
+  /// parents its rows reference past `limit`, and the reply does not say how
+  /// many rows were padding, so a last page that parents filled also reports
+  /// true: the follow-up pull then comes back empty with the same cursor.
+  /// A false value is certain; a true value is not proof that rows remain, so
+  /// callers must accept an empty follow-up page whose cursor did not move.
+  /// This is deliberately independent of [appliedCount]: LWW losers and
+  /// already-current rows still consume space in the server page.
   final bool hasMore;
 
   /// True when this pull applied at least one account-level Settings
@@ -5536,7 +5598,7 @@ String _failureMessage(Object error, SyncStatusKind kind) {
   if (kind == SyncStatusKind.authExpired) {
     return _syncUnauthorizedMessage(error) ??
         'Session expired or account removed. '
-            'You are now in Local-only Mode; local data remains on this device.';
+            'Sign in again to resume sync; local data remains on this device.';
   }
   if (error is ApiException) {
     return 'Sync failed with HTTP ${error.statusCode}.';

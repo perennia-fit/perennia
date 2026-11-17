@@ -21,6 +21,7 @@ import 'package:perennia/features/profile/widgets/profile_section_editors.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
 
 void main() {
   setUpAll(() {
@@ -765,6 +766,11 @@ void main() {
             ),
             activeFocusesProvider.overrideWith(
               (ref) => Stream<List<FocusRecord>>.value(focuses),
+            ),
+            // The Account view reads sync status; keep it off the Drift
+            // stream so teardown leaves no timer pending.
+            syncStatusControllerProvider.overrideWith(
+              () => _IdleSyncStatusController(),
             ),
           ],
           child: MaterialApp(
@@ -1815,4 +1821,11 @@ class _ThrowingUserProfile extends Fake implements UserProfileRepository {
 
 class _ProfileStoreUnavailable implements Exception {
   const _ProfileStoreUnavailable();
+}
+
+class _IdleSyncStatusController extends SyncStatusController {
+  @override
+  Stream<SyncStatusState> build() => Stream<SyncStatusState>.value(
+        SyncStatusState.initial(DateTime.utc(2026, 11, 8)),
+      );
 }

@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/training/training_day.dart';
 import '../../nutrition/controllers/nutrition_day_controller.dart';
+import '../../training/services/timer_background_scheduler.dart';
 import '../repositories/home_repository.dart';
 
 enum HomeDomain {
@@ -218,18 +222,58 @@ class HomeController extends StreamNotifier<HomeState> {
         );
   }
 
-  /// Ends the Workout and stops its running rest; see
-  /// [HomeRepository.finishWorkout].
-  Future<String?> finishWorkout(String workoutId) {
-    return ref.read(homeRepositoryProvider).finishWorkout(workoutId);
+  /// Finishes the Workout, which also ends its running rest, then cancels
+  /// that rest's background schedule: a rest left scheduled after Finish
+  /// fires a notification after the user has left. Same order as the rest
+  /// strip's Stop: the row first, then the schedule.
+  ///
+  /// The schedule cancel is a platform-channel call, so it is not awaited and
+  /// a failure is only logged: Finish is a local write and never waits on, or
+  /// fails because of, the notification plugin. Both Finish entries (the
+  /// Workout screen and the Training Screen) go through here, by way of
+  /// `runFinishWorkoutFlow`, so the flow itself does not cancel the schedule.
+  ///
+  /// The scheduler is read before the write, so nothing that runs once the
+  /// Workout has ended can throw before the cancel is handed off.
+  Future<void> finishWorkout(String workoutId) async {
+    final scheduler = ref.read(timerBackgroundSchedulerProvider);
+    final endedRestId =
+        await ref.read(homeRepositoryProvider).finishWorkout(workoutId);
+    _cancelRestSchedule(scheduler, endedRestId);
   }
 
   Future<void> resumeWorkout(String workoutId) {
     return ref.read(homeRepositoryProvider).resumeWorkout(workoutId);
   }
 
-  Future<void> deleteWorkout(String workoutId) {
-    return ref.read(homeRepositoryProvider).deleteWorkout(workoutId);
+  /// Deleting the Workout cancels its running rest with it; this then
+  /// cancels that rest's background schedule, as [finishWorkout] does, so no
+  /// rest notification fires for a Workout that no longer exists. The
+  /// scheduler is read before the write, as in [finishWorkout].
+  Future<void> deleteWorkout(String workoutId) async {
+    final scheduler = ref.read(timerBackgroundSchedulerProvider);
+    final cancelledRestId =
+        await ref.read(homeRepositoryProvider).deleteWorkout(workoutId);
+    _cancelRestSchedule(scheduler, cancelledRestId);
+  }
+
+  /// The row has already ended; a schedule that outlives it only costs one
+  /// stray notification, never the write that ended the Workout. The failure
+  /// is logged rather than dropped, so a cancel that keeps failing on a
+  /// device leaves a trace. `Future.sync` turns a synchronous throw from the
+  /// scheduler into the same logged failure.
+  void _cancelRestSchedule(TimerBackgroundScheduler scheduler, String? restId) {
+    if (restId == null) {
+      return;
+    }
+    unawaited(
+      Future<void>.sync(() => scheduler.cancel(restId)).catchError(
+        (Object error) {
+          debugPrint('Cancelling the background schedule of rest $restId '
+              'failed: $error');
+        },
+      ),
+    );
   }
 
   Future<String> copyWorkout(String workoutId) {
