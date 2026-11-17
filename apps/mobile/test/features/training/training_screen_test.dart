@@ -5497,8 +5497,8 @@ void main() {
     });
 
     _testTrainingScreen(
-        'Finish Workout tapped while Log set still starts its rest is '
-        'ignored', (tester) async {
+        'Finish Workout tapped while Log set still starts its rest finishes '
+        'once the Set is logged, and stops that rest', (tester) async {
       final scheduler = _RecordingTimerBackgroundScheduler(
         TimerBackgroundPermissionStatus.granted,
       );
@@ -5532,19 +5532,92 @@ void main() {
       );
       await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await tester.tap(finishButton);
-      await _waitForSchedules(tester, scheduler, 1);
+      await _waitForFinder(tester, find.byKey(FinishSummarySheet.sheetKey));
       await _settle(tester);
 
-      expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+      final sets = (await tester.runAsync(() => _setsOf(repositories, bench)))!;
+      expect(sets, hasLength(2));
       final workout = await tester.runAsync(
         () => repositories.workoutSessions.getById(bench.workoutId),
       );
-      expect(workout!.endedAt, isNull);
+      expect(workout!.endedAt, isNotNull);
+      // The rest the Set started ran before Finish, which stopped it.
+      final restId = scheduler.schedules.single.timerId;
       final timer = await tester.runAsync(
-        () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+        () => repositories.restTimers.getById(restId),
       );
-      expect(timer?.status, RestTimerStatus.running);
-      expect(scheduler.cancels, isEmpty);
+      expect(timer!.status, RestTimerStatus.canceled);
+      expect(scheduler.cancels, contains(restId));
+
+      await _closeFinishSummary(
+        tester,
+        until: () => trainingScreens() == 0,
+      );
+      await _disposeFinishHost(tester);
+    });
+
+    _testTrainingScreen(
+        'Log set on a Workout that ended after the screen opened starts no '
+        'rest', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpFinishHost(
+        tester,
+        repositories,
+        bench,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _waitForFinder(tester, finishButton);
+
+      // The Workout ends elsewhere (auto-finish, an agent, sync) after the
+      // screen loaded it: the screen still holds it open.
+      await tester.runAsync(() async {
+        final workout =
+            await repositories.workoutSessions.getById(bench.workoutId);
+        await repositories.workoutSessions.updateEndedAt(
+          bench.workoutId,
+          endedAt: workout!.startedAt.add(const Duration(hours: 1)),
+        );
+      });
+      await _settle(tester);
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      for (var round = 0; round < 10; round += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+      await _settle(tester);
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, bench)))!;
+      expect(sets, hasLength(2));
+      expect(scheduler.schedules, isEmpty);
+      expect(
+        await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+        ),
+        isNull,
+      );
       await _disposeFinishHost(tester);
     });
 

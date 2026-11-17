@@ -661,7 +661,9 @@ Other writes reuse what exists, each under the batch id the screen passes:
     permission was reported when the rest started and is not reported again
     on each adjust. Stop cancels the schedule (as today).
 *   **Log set** starts the rest for the logged Set, unless the rest that runs
-    is zero, the Workout has ended, or the Set was the plan's last: a Planned
+    is zero, the Workout has ended (read again after the write: the Workout
+    the screen loaded may have ended since, by auto-finish, an agent, sync,
+    or this screen's own Finish), or the Set was the plan's last: a Planned
     Set (there was a Current Set) after whose write no Workout Exercise has a
     Planned Set left. Nothing comes next then, so a rest and its "Get ready"
     notification would only call the lifter back to a finished plan; the
@@ -729,11 +731,12 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         screen's Finish flow (Template divergence read,
         `HomeController.finishWorkout`, the
         [Finish summary](workout-feedback.md#5-finish-summary)), ignores a
-        second tap while the first runs, and never overlaps Log set: a tap
-        on either while the other runs is ignored, since Log set starts its
-        rest only after several awaits and would otherwise leave a running
-        rest on the Workout Finish just ended. It first reads the Workout
-        again:
+        second tap while the first runs, and never overlaps Log set: a
+        Finish tap while Log set runs waits for it, then finishes (stopping
+        the rest that Log set started), and a Log set tap while Finish runs
+        is ignored. Log set starts its rest only after several awaits, so
+        overlapping them would leave a running rest on the Workout Finish
+        just ended. It first reads the Workout again:
         one that ended since the screen opened (auto-finish, an agent,
         another device) is not finished a second time, and the button goes.
         When the summary closes it leaves
