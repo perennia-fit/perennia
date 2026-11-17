@@ -29,9 +29,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - Training setup offers Gym, Home and Bodyweight only presets and groups the
   equipment. Onboarding starts from Gym, so Done saves a typical gym list.
 - Server dependencies move to Better Auth 1.7 and pg-boss 12.38. Self-hosters:
-  the worker migrates the job-queue schema on its next start (schema 36 to 46,
-  added columns and background-built indexes only). The auth contract gains
-  Better Auth's optional sign-out and social sign-in fields.
+  whichever of the API server and the worker starts first migrates the job-queue
+  schema (schema 36 to 46, added columns and background-built indexes only), so
+  upgrade both together. The auth contract gains Better Auth's optional sign-out,
+  social sign-in and callback fields, and `/api/auth/link-social` now ignores
+  `idToken.scopes`; send `scopes` at the top level of the body instead.
 
 ### Fixed
 

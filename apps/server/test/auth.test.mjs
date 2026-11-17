@@ -305,13 +305,17 @@ test(
         assert.equal(body.user.email, email);
 
         const accountRows = await serverApp.database.sql`
-          select account."providerId", account."userId"
+          select account."providerId", account."accountId", account."userId"
           from account
           inner join "user" on "user".id = account."userId"
           where "user".email = ${email}
         `;
         assert.equal(accountRows.length, 1);
         assert.equal(accountRows[0].providerId, provider);
+        // The account is keyed by the provider's subject, the same value
+        // Better Auth 1.6 stored, so existing Google and Apple accounts still
+        // match after the upgrade instead of splitting into new ones.
+        assert.equal(accountRows[0].accountId, testSocialSubject(provider, email));
       }
     } finally {
       await serverApp.database.close();
@@ -539,14 +543,14 @@ function createTestSocialProviders() {
         const email = tokens.idToken.slice("google:".length);
         return {
           user: {
-            id: `google-${email}`,
+            id: testSocialSubject("google", email),
             email,
             name: "Google User",
             emailVerified: true
           },
           // Better Auth 1.7 keys the account by the provider profile's
           // `sub` claim, as the real id token decode supplies it.
-          data: { sub: `google-${email}` }
+          data: { sub: testSocialSubject("google", email) }
         };
       }
     },
@@ -560,18 +564,24 @@ function createTestSocialProviders() {
         const email = tokens.idToken.slice("apple:".length);
         return {
           user: {
-            id: `apple-${email}`,
+            id: testSocialSubject("apple", email),
             email,
             name: "Apple User",
             emailVerified: true
           },
           // Better Auth 1.7 keys the account by the provider profile's
           // `sub` claim, as the real id token decode supplies it.
-          data: { sub: `apple-${email}` }
+          data: { sub: testSocialSubject("apple", email) }
         };
       }
     }
   };
+}
+
+// One subject per test identity, used as both the profile's user id and its
+// `sub` claim, as a real Google or Apple id token carries one value for both.
+function testSocialSubject(provider, email) {
+  return `${provider}-${email}`;
 }
 
 async function completeOAuthSignIn(app, code) {
