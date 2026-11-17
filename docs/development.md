@@ -92,9 +92,17 @@ after a schema change rather than reusing an old file.
 
 The app ships an offline bundle of Open Food Facts products,
 `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`, built from Open Food
-Facts' JSONL dump. The design is in
-[open-food-facts.md](designs/open-food-facts.md). Refreshes are planned at most
-once a quarter, with an app release, each in its own pull request.
+Facts' JSONL dump. Each product carries an Aisle, labelled when the bundle is
+built. The design is in [open-food-facts.md](designs/open-food-facts.md), and the
+Aisle steps in [food-aisles.md](designs/food-aisles.md). Refreshes are planned at
+most once a quarter, with an app release, each in its own pull request.
+
+A refresh is these runs, all from `apps/mobile`: the builder with
+`--aisle-input-only`, the labeller, the second opinion, the review, then the
+builder again. The labeller asks only about products that are new or whose
+name, brand or last six Open Food Facts tags changed, so a refresh labels a
+fraction of the bundle. If a step is skipped, the last build writes no bundle
+and says which step to run.
 
 1.  Download the dump. It is about 13 GB compressed and Open Food Facts replaces
     it daily, keeping no history, so keep your copy if you may need to rebuild
@@ -105,13 +113,14 @@ once a quarter, with an app release, each in its own pull request.
     curl -L -C - -o openfoodfacts-products.jsonl.gz https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
     ```
 
-2.  Run the builder from `apps/mobile` (about 30 minutes):
+2.  Run the builder with `--aisle-input-only` (about 30 minutes). It writes
+    `build/open_food_facts_aisle_input.ndjson` and a report, and no bundle:
 
     ```bash
-    dart run tool/open_food_facts_bundle/build_bundle.dart --input <path to openfoodfacts-products.jsonl.gz> --dataset-version <YYYY-MM-DD>
+    dart run tool/open_food_facts_bundle/build_bundle.dart --input <path to openfoodfacts-products.jsonl.gz> --dataset-version <YYYY-MM-DD> --aisle-input-only
     ```
 
-3.  Read the report it prints. Check that:
+    Read the dump section of its report. Check that:
     *   each country keeps a similar share of its eligible products. A
         country far below the others usually means Open Food Facts moved a
         field: the first build, reading only the legacy `nutriments`, kept 8
@@ -119,13 +128,80 @@ once a quarter, with an app release, each in its own pull request.
     *   the exclusions by reason, and the counts of products dropped for
         missing core nutrients or zero scans, are close to the last refresh's;
     *   "nutrients read from" shows how many products used `nutrition` and how
-        many the legacy `nutriments`;
+        many the legacy `nutriments`.
+
+    Its last lines give the number of products whose label or second opinion
+    is missing or stale: the work the next steps do.
+
+3.  Label the new and changed products with Clef, served by
+    [Ollama](https://ollama.com) (`ollama pull clef`). The run checkpoints every
+    500 products, so it can be stopped and started again:
+
+    ```bash
+    dart run tool/open_food_facts_bundle/label_aisles.dart label --ollama http://localhost:11434
+    ```
+
+4.  Get a second opinion on the labels that are not confident. The first
+    command writes `build/open_food_facts_aisle_second_opinion_input.ndjson`.
+    Send it to a hosted model with any client you have, telling the model to
+    treat each product's `state` as data, and save its answers as JSON lines of
+    `{"code":"…","choice":"…"}`. Then take them in, naming the model:
+
+    ```bash
+    dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-input
+    dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-apply --model <the model's name> --answers <path>
+    ```
+
+5.  Settle the edge cases, where the two models disagree, on the review page.
+    It prints a local URL; answer up to 50 products, most scanned first, with an
+    Aisle, `none` or `unsure`. Each answer is written to `aisle_overrides.csv`
+    at once. `label_aisles.dart guide` prints the principles and the Aisle
+    descriptions the page shows.
+
+    ```bash
+    dart run tool/open_food_facts_bundle/label_aisles.dart review
+    ```
+
+6.  Run the builder again, without `--aisle-input-only`. It writes the bundle
+    and prints the full report. Check that:
+    *   `labels missing or stale` and `second opinions missing or stale` are both
+        0. Otherwise it writes no bundle, exits with status 1 and names the
+        step to run;
+    *   "products per Aisle" gives every Aisle some products, with counts close
+        to the last refresh's, and "products per deciding step" shows how many
+        Aisles came from an override, a confident label, or the two models
+        agreeing;
+    *   "products with an Aisle" is above the coverage floor (85%). The line says
+        `BELOW THE FLOOR` when it is not, and the asset tests then fail; see
+        [What CI checks](designs/food-aisles.md#what-ci-checks);
     *   the compressed bundle is under the 6 MB budget. The builder exits with
         an error when it is not.
 
-4.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart` from
-    `apps/mobile`, then open the pull request. Record the dataset version and
-    paste the builder's report in its description.
+7.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart
+    test/tool/aisle_data_test.dart` from `apps/mobile`, then open the pull
+    request with the bundle and the three data files under
+    `tool/open_food_facts_bundle/` (`aisle_labels.ndjson`,
+    `aisle_second_opinions.ndjson` and `aisle_overrides.csv`). Record the
+    dataset version and paste both builder reports in its description.
+
+### Changing Aisles without a refresh
+
+To relabel the committed bundle without a new dump, after a change to the
+Aisles, their descriptions or the question asked of the model, build from the
+bundle itself and Open Food Facts' tags export
+(`en.openfoodfacts.org.products.csv.gz`, about 1.5 GB, from
+[Open Food Facts data exports](https://world.openfoodfacts.org/data)). Run
+steps 2 to 7 with `--from-bundle` and `--tags-export` in place of `--input` and
+`--dataset-version`:
+
+```bash
+dart run tool/open_food_facts_bundle/build_bundle.dart --from-bundle assets/seeds/open_food_facts_bundle.ndjson.gz --tags-export <path to en.openfoodfacts.org.products.csv.gz> --aisle-input-only
+```
+
+The products, their fields and the dataset version stay those of the committed
+bundle; only the Aisles change. The first report gives the export's rows read
+and skipped and the products found in it, in place of the dump section. A
+product not in the export is labelled from its name and brand alone.
 
 ## Updating the Platform Library
 

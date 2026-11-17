@@ -77,3 +77,18 @@ List<List<String>> parseCsv(String input) {
 
   return rows;
 }
+
+/// One CSV cell as RFC 4180 writes it: quoted, with `"` doubled, when it holds
+/// a comma, a double quote, a CR or an LF; `null` is empty text. Row and line
+/// endings are the caller's, because the CSV export writes CRLF and the Food
+/// Aisle data files write LF.
+String escapeCsvField(String? value) {
+  final field = value ?? '';
+  if (!field.contains(',') &&
+      !field.contains('"') &&
+      !field.contains('\r') &&
+      !field.contains('\n')) {
+    return field;
+  }
+  return '"${field.replaceAll('"', '""')}"';
+}

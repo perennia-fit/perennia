@@ -97,10 +97,12 @@ jobs:
             js:
               - 'apps/server/**'
               # The server tests read the Open Food Facts bundle, and check
-              # the Nutrient ids and the bundle format against these Dart files.
+              # the Nutrient ids, the bundle format and the Food Aisle ids
+              # against these Dart files.
               - 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz'
               - 'apps/mobile/lib/domain/nutrition/nutrition.dart'
               - 'apps/mobile/lib/domain/nutrition/open_food_facts.dart'
+              - 'apps/mobile/lib/domain/nutrition/food_aisle.dart'
               - 'tools/generate-wger-platform-exercises.mjs'
               - 'tools/platform-exercise-cleanup.mjs'
               - 'packages/contract/**'

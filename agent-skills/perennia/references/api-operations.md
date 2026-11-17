@@ -502,11 +502,11 @@ before repeating it with `log-meal`. `limit` bounds it (default 20, at most
 50). It is computed on each call and never stored.
 
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
-Platform Food reference data the app ships, with `source`/`search`/`limit`.
-Nothing is fetched from an external service.
+Platform Food reference data the app ships, with
+`source`/`search`/`limit`/`aisle`. Nothing is fetched from an external service.
 
-- `source=usda` (the default) searches the bundled USDA dataset, a CC0
-  catalog of generic foods.
+- `source=usda` searches the bundled USDA dataset, a CC0 catalog of generic
+  foods. It is the default when `aisle` is not given.
 - `source=openFoodFacts` searches the Open Food Facts bundle: branded,
   packaged products from Australia, the United States, the United Kingdom,
   Canada and New Zealand. `search` takes a name or a barcode, as the app's
@@ -523,6 +523,25 @@ Nothing is fetched from an external service.
   `nutrients` with each unknown amount sent as `{ status: "unknown", unit }`,
   without `value` and `entered` (the write rejects `null` there), along with
   `name`, `isLiquid` and the serving and package sizes.
+- `aisle` limits the results to one Aisle, a consumer-facing group of Open
+  Food Facts products, as a shopper would find it in a supermarket. It implies
+  `source=openFoodFacts`, which is the default when `aisle` is given;
+  `source=usda` with `aisle` is rejected with 422
+  `agent_platform_search_invalid_request`, because USDA foods have no Aisle.
+  Without `search`, it lists the Aisle's foods, most scanned first, up to
+  `limit`. With `search`, it keeps the Aisle's name matches and any barcode
+  match, whatever its Aisle. Every food carries its `aisle`: an id below for
+  an Open Food Facts product that has one, and `null` for one that has none
+  and for every USDA food. The ids, with the labels the app shows:
+  `dairyEggs` (Dairy & eggs), `breadBakery` (Bread & bakery),
+  `breakfastCereals` (Breakfast cereals), `meatSeafood` (Meat & seafood),
+  `fruitVeg` (Fruit & vegetables), `pantry` (Pantry), `saucesSpreads`
+  (Sauces & spreads), `snacks` (Snacks), `sweetsDesserts` (Sweets &
+  desserts), `drinks` (Drinks), `alcohol` (Alcohol), `readyMeals` (Ready
+  meals), `proteinSupplements` (Protein & supplements), `babyFood` (Baby
+  food). For example,
+  `node scripts/prn-agent.mjs search-platform-foods --query aisle=snacks`
+  lists the most scanned Snacks.
 
 The response includes an `attribution` object. Surface its
 `attributionText` and licence wherever the result is shown; for Open Food

@@ -6,7 +6,10 @@
     recorded under [Agent surface](#agent-surface) and the corrected contract
     and CI notes; amended after the first bundle build: where nutrient values
     are read from; revised after Goldfish review 2026-10-26; first draft
-    2026-10-25; 2026-10-28 to record behaviour found by a drift report)
+    2026-10-25; 2026-10-28 to record behaviour found by a drift report;
+    2026-11-09 to point to [Food Aisles](food-aisles.md), which gives each
+    bundled product an Aisle: bundle format version 2, the builder's Aisle
+    steps, reference schema version 2, and the agent's `aisle` parameter)
 *   **Amended by:** [Meal Logging](meal-logging.md). The add-food picker now
     takes a Meal target (a saved Meal, or a new Meal written by the first
     pick) and is embedded in the Meal screen, which the Nutrition Day's
@@ -609,6 +612,10 @@ row, and its estimated values, as they are.
 
 ### Building the bundle
 
+[Food Aisles](food-aisles.md#the-builder) adds to the builder: it records each
+product's Open Food Facts tags, writes the aisle input, refuses to write a bundle
+while a product's label is missing or stale, and resolves each product's Aisle.
+
 `apps/mobile/tool/open_food_facts_bundle/build_bundle.dart` is a maintainer
 tool, run from `apps/mobile`:
 
@@ -669,6 +676,10 @@ bundle needs the maintainer's copy of that day's dump. The ODbL obligation is
 met by the committed bundle and the committed builder, not by the dump.
 
 ### The bundle file
+
+[Food Aisles](food-aisles.md#the-bundle-file-format-version-2) makes this format
+version 2, in which every product line ends with an `aisle` key, an Aisle id or
+`null`.
 
 `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz` is a gzip-compressed
 file of JSON lines: one header line, then one line per product, sorted by code.
@@ -751,6 +762,9 @@ quarter, with an app release. Git LFS and release-asset downloads were rejected
 (see [Alternative F](#alternative-f-store-the-bundle-outside-plain-git)).
 
 ### Installing the bundle on the device
+
+[Food Aisles](food-aisles.md#on-the-device) raises the reference database to
+schema version 2, with an `aisle` column, and gives `replaceBundle` six steps.
 
 The bundle does not go into the user's database (`AppDatabase`). It goes into a
 second Drift database, `FoodReferenceDatabase`, stored as `food_reference.sqlite`
@@ -839,6 +853,10 @@ user holds a cache worth keeping, and Food Entries and Your foods
 ([Unified Food Search](unified-food-search.md)) do not depend on it.
 
 ### One product, one row
+
+[Food Aisles](food-aisles.md#on-the-device) exempts the Aisle from the
+change-date rule below: a bundle install writes each bundled product's Aisle
+whatever the row's `modified_at`.
 
 The products table has one row per barcode, so the picker cannot show a product
 twice. Two separate rules govern a row:
@@ -1103,6 +1121,10 @@ The About screen's offline paragraph, which today says Open Food Facts lookups
 > scan stay on this device. Quick Entry stays available.
 
 ### Agent surface
+
+[Food Aisles](food-aisles.md#agent-surface) adds an optional `aisle` parameter,
+which defaults `source` to `openFoodFacts`, and a nullable `aisle` field on each
+food.
 
 The existing operation (operationId `searchAgentPlatformFoods`,
 `GET /agent/foods/platform-search`, command-map name `search-platform-foods`,

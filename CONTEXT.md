@@ -341,6 +341,13 @@ A read-only Food whose facts come from an external Food Source (USDA or Open Foo
 Facts), either shipped with the app or fetched from the source; the food-domain analog
 of the Platform Library. Customizing one forks a User Food.
 
+## Aisle
+A consumer-facing group of Platform Foods, named as a shopper would find it in a
+supermarket (Dairy & eggs, Snacks, Drinks), from a fixed list. Each bundled Open Food
+Facts product has at most one Aisle, labelled when the bundle is built. Aisles are
+reference data, not user data, and are not editable. Distinct from Category, which
+groups exercises.
+
 ## User Food
 A user's own created or customized Food, owned and editable by the user. The
 food-domain analog of the User Library.

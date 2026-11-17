@@ -107,10 +107,11 @@ function have(tool) {
 
 const JS_PATHS = [
   // The server tests read the Open Food Facts bundle, and check the Nutrient
-  // ids and the bundle format against the two Dart files.
+  // ids, the bundle format and the Food Aisle ids against the three Dart files.
   'apps/server/**', 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz',
   'apps/mobile/lib/domain/nutrition/nutrition.dart',
   'apps/mobile/lib/domain/nutrition/open_food_facts.dart',
+  'apps/mobile/lib/domain/nutrition/food_aisle.dart',
   'tools/generate-wger-platform-exercises.mjs',
   'tools/platform-exercise-cleanup.mjs',
   'packages/contract/**', 'packages/golden-vectors/**',

@@ -12,14 +12,65 @@ import { barcodeCandidates } from "./barcode-candidates.js";
  * Facts data it serves.
  *
  * The file is one header line, then one product line per product, sorted by
- * code (docs/designs/open-food-facts.md, "The bundle file"). The app's reader
+ * code (docs/designs/open-food-facts.md, "The bundle file", and
+ * docs/designs/food-aisles.md, "The bundle file, format version 2"). The app's reader
  * is decodeBundleProductLine in apps/mobile/lib/domain/nutrition/open_food_facts.dart;
  * this one reads the same lines, so a barcode's record here is the record an
  * app with the same dataset version decodes.
  */
 
 export const OPEN_FOOD_FACTS_BUNDLE_FORMAT = "perennia-open-food-facts-bundle";
-export const OPEN_FOOD_FACTS_BUNDLE_FORMAT_VERSION = 1;
+export const OPEN_FOOD_FACTS_BUNDLE_FORMAT_VERSION = 2;
+
+/**
+ * The Aisle ids, in the app's FoodAisle order
+ * (apps/mobile/lib/domain/nutrition/food_aisle.dart), which is the order the
+ * picker shows. A test reads the Dart enum and checks that this copy matches.
+ * See docs/designs/food-aisles.md, "The Aisles".
+ */
+export const FOOD_AISLES = [
+  "dairyEggs",
+  "breadBakery",
+  "breakfastCereals",
+  "meatSeafood",
+  "fruitVeg",
+  "pantry",
+  "saucesSpreads",
+  "snacks",
+  "sweetsDesserts",
+  "drinks",
+  "alcohol",
+  "readyMeals",
+  "proteinSupplements",
+  "babyFood"
+] as const;
+
+/** A consumer-facing group of Open Food Facts products. */
+export type FoodAisle = (typeof FOOD_AISLES)[number];
+
+/** Each Aisle's UI label, as FoodAisle.label in the app. */
+export const FOOD_AISLE_LABELS: Readonly<Record<FoodAisle, string>> = {
+  dairyEggs: "Dairy & eggs",
+  breadBakery: "Bread & bakery",
+  breakfastCereals: "Breakfast cereals",
+  meatSeafood: "Meat & seafood",
+  fruitVeg: "Fruit & vegetables",
+  pantry: "Pantry",
+  saucesSpreads: "Sauces & spreads",
+  snacks: "Snacks",
+  sweetsDesserts: "Sweets & desserts",
+  drinks: "Drinks",
+  alcohol: "Alcohol",
+  readyMeals: "Ready meals",
+  proteinSupplements: "Protein & supplements",
+  babyFood: "Baby food"
+};
+
+const FOOD_AISLE_IDS: ReadonlySet<string> = new Set(FOOD_AISLES);
+
+export function isFoodAisle(value: unknown): value is FoodAisle {
+  return typeof value === "string" && FOOD_AISLE_IDS.has(value);
+}
 
 /** Shown with every Open Food Facts food (the spec's Goal 7). */
 export const OPEN_FOOD_FACTS_DISCLAIMER =
@@ -62,6 +113,8 @@ export type BundleProduct = {
   /** The change date, in Unix seconds. */
   modifiedAt: number;
   scans: number;
+  /** The product's Aisle, or null when it has none. */
+  aisle: FoodAisle | null;
   /** The normalized words of the name and the brand, for name search. */
   words: readonly string[];
 };
@@ -153,23 +206,42 @@ export function setOpenFoodFactsBundleLoaderForTesting(
 }
 
 /**
- * Searches the bundle (docs/designs/open-food-facts.md, "Agent surface"):
- * the products whose codes match the query's barcode candidates come first,
- * in candidate order; then the products whose name or brand has, for every
- * query part (up to 8), a word starting with it, by `scans` descending then
- * `code`. Each product appears once, and `limit` applies last. An undefined
- * query, or one with no parts and no candidates, returns nothing: listing the
- * whole bundle is not supported.
+ * Searches the bundle (docs/designs/open-food-facts.md, "Agent surface", and
+ * docs/designs/food-aisles.md, "Agent surface"): the products whose codes
+ * match the query's barcode candidates come first, in candidate order; then
+ * the products whose name or brand has, for every query part (up to 8), a
+ * word starting with it, by `scans` descending then `code`. Each product
+ * appears once, and `limit` applies last.
+ *
+ * With `aisle`, the name matches are only that Aisle's; barcode matches are
+ * kept whatever their Aisle, because an exact code names one product. With
+ * `aisle` and an undefined query, it lists the Aisle's products by `scans`
+ * descending then `code`, up to `limit`. Without `aisle`, an undefined query,
+ * or one with no parts and no candidates, returns nothing: listing the whole
+ * bundle is not supported.
  *
  * The order can differ from the app's FTS5 search, which ranks by bm25.
  */
 export function searchBundle(
   bundle: OpenFoodFactsBundle,
   query: string | undefined,
-  limit: number
+  limit: number,
+  aisle?: FoodAisle
 ): BundleProduct[] {
   if (query === undefined) {
-    return [];
+    if (aisle === undefined) {
+      return [];
+    }
+    const listed: BundleProduct[] = [];
+    for (const product of bundle.products) {
+      if (listed.length >= limit) {
+        break;
+      }
+      if (product.aisle === aisle) {
+        listed.push(product);
+      }
+    }
+    return listed;
   }
   // The candidates are distinct codes, so these products are too.
   const found = barcodeCandidates(query).flatMap(
@@ -184,6 +256,7 @@ export function searchBundle(
       }
       if (
         !seen.has(product.code) &&
+        (aisle === undefined || product.aisle === aisle) &&
         parts.every((part) => product.words.some((word) => word.startsWith(part)))
       ) {
         found.push(product);
@@ -319,6 +392,7 @@ function parseProductLine(line: string, lineNumber: number): BundleProduct {
     nutrients: nutrientText,
     modifiedAt: requiredModifiedAt(json, lineNumber),
     scans: requiredInteger(json, "scans", lineNumber),
+    aisle: requiredAisle(json, lineNumber),
     words: [...normalizedWords(name), ...(brand === null ? [] : normalizedWords(brand))]
   };
 }
@@ -395,6 +469,24 @@ function requiredModifiedAt(json: JsonObject, lineNumber: number): number {
   const value = requiredInteger(json, "modifiedAt", lineNumber);
   if (value * 1000 > MAX_DATE_MILLISECONDS) {
     throw lineError(lineNumber, "modifiedAt");
+  }
+  return value;
+}
+
+/**
+ * The `aisle` key is required on every line, so the key order stays fixed;
+ * its value is null or an Aisle id. The app's decoder rejects the same lines.
+ */
+function requiredAisle(json: JsonObject, lineNumber: number): FoodAisle | null {
+  if (!Object.hasOwn(json, "aisle")) {
+    throw lineError(lineNumber, "aisle");
+  }
+  const value = json.aisle;
+  if (value === null) {
+    return null;
+  }
+  if (!isFoodAisle(value)) {
+    throw lineError(lineNumber, "aisle");
   }
   return value;
 }

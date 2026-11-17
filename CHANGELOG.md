@@ -9,6 +9,19 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can browse Open Food Facts foods by Aisle.** `searchAgentPlatformFoods`
+  (`GET /agent/foods/platform-search`) and its MCP tool
+  `agent_search_platform_foods` take an optional `aisle`, such as `snacks`, and
+  each food carries its `aisle`. With `aisle` and no `search`, it lists that
+  Aisle's foods, most scanned first. `aisle` makes Open Food Facts the default
+  source, and `source=usda` with `aisle` is rejected with 422
+  `agent_platform_search_invalid_request`, because USDA foods have no Aisle.
+- Each bundled Open Food Facts product now carries an Aisle, a consumer-facing
+  group such as Dairy & eggs or Snacks (bundle format 2). The device rebuilds its
+  food reference cache once after updating.
+
 ### Changed
 
 - **Exercise names follow one style.** 787 names change, such as "Bent Over

@@ -45,6 +45,7 @@ import '../../domain/training/training_progress.dart';
 import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
 import '../../domain/training/workout_share_summary.dart';
+import '../../features/nutrition/import/csv_parser.dart' show escapeCsvField;
 import '../app_version.dart';
 import '../infra/activity_log_writer.dart';
 import '../infra/id_factory.dart';

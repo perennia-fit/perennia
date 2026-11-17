@@ -5767,6 +5767,17 @@
             ],
             "minLength": 1,
             "description": "The product's Open Food Facts page, where its data can be checked and corrected; null for USDA."
+          },
+          "aisle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentPlatformFoodAisle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The food's Aisle, a consumer-facing group of Open Food Facts products; null when it has none, and always null for USDA."
           }
         },
         "required": [
@@ -5780,7 +5791,8 @@
           "packageSize",
           "brand",
           "sourceModifiedAt",
-          "productUrl"
+          "productUrl",
+          "aisle"
         ]
       },
       "AgentPlatformFoodSource": {
@@ -5789,6 +5801,26 @@
           "usda",
           "openFoodFacts"
         ]
+      },
+      "AgentPlatformFoodAisle": {
+        "type": "string",
+        "enum": [
+          "dairyEggs",
+          "breadBakery",
+          "breakfastCereals",
+          "meatSeafood",
+          "fruitVeg",
+          "pantry",
+          "saucesSpreads",
+          "snacks",
+          "sweetsDesserts",
+          "drinks",
+          "alcohol",
+          "readyMeals",
+          "proteinSupplements",
+          "babyFood"
+        ],
+        "description": "Aisle ids: `dairyEggs` (Dairy & eggs), `breadBakery` (Bread & bakery), `breakfastCereals` (Breakfast cereals), `meatSeafood` (Meat & seafood), `fruitVeg` (Fruit & vegetables), `pantry` (Pantry), `saucesSpreads` (Sauces & spreads), `snacks` (Snacks), `sweetsDesserts` (Sweets & desserts), `drinks` (Drinks), `alcohol` (Alcohol), `readyMeals` (Ready meals), `proteinSupplements` (Protein & supplements), `babyFood` (Baby food)."
       },
       "AgentPlatformFoodAttribution": {
         "type": "object",
@@ -5835,6 +5867,25 @@
           "disclaimer"
         ],
         "description": "Required attribution for the source dataset; show it, and the disclaimer when present, wherever the results are shown. Open Food Facts is ODbL, and the attribution text says where the licensed copy is; USDA is CC0/public domain, with courtesy attribution."
+      },
+      "AgentPlatformSearchInvalidRequestResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_platform_search_invalid_request"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
       },
       "AgentFoodBatchWriteResponse": {
         "type": "object",
@@ -20914,7 +20965,7 @@
           "Agent Catalog"
         ],
         "summary": "Search the bundled USDA and Open Food Facts Platform Food reference data.",
-        "description": "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, the default, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
+        "description": "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The default source is openFoodFacts when `aisle` is given, and usda otherwise. With `aisle`, results are limited to that Aisle, and omitting `search` lists the Aisle, most scanned first. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
         "security": [
           {
             "bearerAuth": []
@@ -20925,10 +20976,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods."
+              "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit it to list the bundled USDA catalog (`source=usda`) or an Aisle's Open Food Facts foods (with `aisle`); with `source=openFoodFacts` and no `aisle`, omitting it returns no foods."
             },
             "required": false,
-            "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods.",
+            "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit it to list the bundled USDA catalog (`source=usda`) or an Aisle's Open Food Facts foods (with `aisle`); with `source=openFoodFacts` and no `aisle`, omitting it returns no foods.",
             "name": "search",
             "in": "query"
           },
@@ -20939,13 +20990,29 @@
                   "$ref": "#/components/schemas/AgentPlatformFoodSource"
                 },
                 {
-                  "description": "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts."
+                  "description": "Platform Food source: usda, the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). The default is openFoodFacts when `aisle` is given, and usda otherwise. Both are offline; the server never calls Open Food Facts."
                 }
               ]
             },
             "required": false,
-            "description": "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts.",
+            "description": "Platform Food source: usda, the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). The default is openFoodFacts when `aisle` is given, and usda otherwise. Both are offline; the server never calls Open Food Facts.",
             "name": "source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/AgentPlatformFoodAisle"
+                },
+                {
+                  "description": "Only Open Food Facts foods in this Aisle, a consumer-facing group such as `snacks`. Implies `source=openFoodFacts`; `source=usda` with `aisle` is rejected with 422, because USDA foods have no Aisle. Without `search`, lists the Aisle's foods, most scanned first, up to `limit`."
+                }
+              ]
+            },
+            "required": false,
+            "description": "Only Open Food Facts foods in this Aisle, a consumer-facing group such as `snacks`. Implies `source=openFoodFacts`; `source=usda` with `aisle` is rejected with 422, because USDA foods have no Aisle. Without `search`, lists the Aisle's foods, most scanned first, up to `limit`.",
+            "name": "aisle",
             "in": "query"
           },
           {
@@ -20979,6 +21046,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`aisle` was given with `source=usda`; USDA foods have no Aisle.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPlatformSearchInvalidRequestResponse"
                 }
               }
             }

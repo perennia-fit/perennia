@@ -4,6 +4,7 @@ import { gunzipSync } from "node:zlib";
 import test from "node:test";
 
 import {
+  AgentPlatformSearchInvalidRequestError,
   listFoodsFromRows,
   prepareAgentFoodBatchWrite,
   searchAgentPlatformFoods,
@@ -630,7 +631,8 @@ test("searchAgentPlatformFoods({ limit: 20 }) still returns USDA, unchanged, wit
       packageSize: food.packageSize,
       brand: null,
       sourceModifiedAt: null,
-      productUrl: null
+      productUrl: null,
+      aisle: null
     }))
   );
   assert.deepEqual(result.attribution, {
@@ -686,6 +688,7 @@ function assertFoodMatchesLine(food, line) {
   assert.equal(food.packageSize, line.packageSize);
   assert.equal(food.sourceModifiedAt, new Date(line.modifiedAt * 1000).toISOString());
   assert.equal(food.productUrl, `https://world.openfoodfacts.org/product/${line.code}`);
+  assert.equal(food.aisle, line.aisle);
   for (const [id, entered] of Object.entries(line.nutrients)) {
     assert.deepEqual(food.nutrientsPer100[id], {
       status: "complete",
@@ -719,6 +722,116 @@ test("searchAgentPlatformFoods returns no Open Food Facts foods without a usable
     assert.deepEqual(result.foods, []);
     assert.equal(result.attribution.source, "openFoodFacts");
   }
+});
+
+// The bundle's name-search order: `scans` descending, then `code`.
+function byNameSearchOrder(a, b) {
+  return b.scans - a.scans || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+}
+
+test("searchAgentPlatformFoods with an Aisle and no search lists the Aisle, most scanned first", () => {
+  const { lines } = committedBundle();
+  const expected = lines
+    .filter((line) => line.aisle === "snacks")
+    .sort(byNameSearchOrder)
+    .slice(0, 20)
+    .map((line) => line.code);
+  assert.equal(expected.length, 20);
+
+  const result = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    aisle: "snacks",
+    limit: 20
+  });
+
+  assert.deepEqual(
+    result.foods.map((food) => food.id),
+    expected
+  );
+  assert.ok(result.foods.every((food) => food.aisle === "snacks"));
+  assert.equal(result.attribution.source, "openFoodFacts");
+});
+
+test("searchAgentPlatformFoods with an Aisle and no source uses Open Food Facts", () => {
+  const withSource = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    aisle: "drinks",
+    limit: 10
+  });
+  const withoutSource = searchAgentPlatformFoods({ aisle: "drinks", limit: 10 });
+
+  assert.equal(withoutSource.attribution.source, "openFoodFacts");
+  assert.ok(withoutSource.foods.length > 0);
+  assert.deepEqual(withoutSource, withSource);
+});
+
+test("searchAgentPlatformFoods with an Aisle and a search keeps the Aisle's name matches and any barcode match", () => {
+  const { lines } = committedBundle();
+  const nameMatches = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    search: "chocolate",
+    limit: 50
+  }).foods;
+  assert.ok(nameMatches.some((food) => food.aisle !== "sweetsDesserts"));
+
+  const inAisle = searchAgentPlatformFoods({
+    aisle: "sweetsDesserts",
+    search: "chocolate",
+    limit: 50
+  }).foods;
+  assert.ok(inAisle.length > 0);
+  assert.ok(inAisle.every((food) => food.aisle === "sweetsDesserts"));
+
+  // The Aisle filter applies before the limit: the first page of an Aisle's
+  // matches is full even when the unfiltered first page is mostly elsewhere.
+  const bounded = searchAgentPlatformFoods({
+    aisle: "sweetsDesserts",
+    search: "chocolate",
+    limit: 5
+  }).foods;
+  assert.deepEqual(
+    bounded.map((food) => food.id),
+    inAisle.slice(0, 5).map((food) => food.id)
+  );
+
+  // A barcode names one product, so its match is kept whatever its Aisle.
+  const other = lines.find((line) => line.aisle !== null && line.aisle !== "snacks");
+  const [food] = searchAgentPlatformFoods({
+    aisle: "snacks",
+    search: other.code,
+    limit: 20
+  }).foods;
+  assert.equal(food.id, other.code);
+  assert.equal(food.aisle, other.aisle);
+});
+
+test("searchAgentPlatformFoods rejects an Aisle with source=usda, because USDA foods have no Aisle", () => {
+  assert.throws(
+    () => searchAgentPlatformFoods({ source: "usda", aisle: "snacks", limit: 20 }),
+    (error) =>
+      error instanceof AgentPlatformSearchInvalidRequestError &&
+      error.message ===
+        "USDA foods have no Aisle; omit source or use source=openFoodFacts with aisle."
+  );
+});
+
+test("a Platform Food's aisle is the bundle's for Open Food Facts, null when it has none, and null for USDA", () => {
+  const { lines } = committedBundle();
+  const withAisle = lines.find((line) => line.aisle !== null);
+  const withoutAisle = lines.find((line) => line.aisle === null);
+  for (const line of [withAisle, withoutAisle]) {
+    const [food] = searchAgentPlatformFoods({
+      source: "openFoodFacts",
+      search: line.code,
+      limit: 1
+    }).foods;
+    assert.equal(food.id, line.code);
+    assert.equal(food.aisle, line.aisle);
+  }
+
+  const usda = searchAgentPlatformFoods({ source: "usda", limit: 50 });
+  assert.ok(usda.foods.length > 0);
+  assert.ok(usda.foods.every((food) => food.aisle === null));
 });
 
 test("an Open Food Facts food's nutrient vector has every Nutrient id, unknown where the bundle has none", () => {
