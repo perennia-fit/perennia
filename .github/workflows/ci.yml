@@ -7,6 +7,14 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  # Flutter is pinned, not "stable": a new stable re-resolves pubspec.lock
+  # under the pinned SDK packages and can break the toolchain with no change
+  # in this repository. Stable 3.50.0 did both (riverpod 3.3.2 -> 3.5.0, and
+  # `dart run melos` failing in cli_launcher). Move this pin in its own pull
+  # request, with the lockfile and any fixes the new version needs.
+  FLUTTER_VERSION: 3.47.9
+
 jobs:
   changes:
     name: Detect changed paths
@@ -193,6 +201,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Bootstrap Dart workspace
@@ -289,6 +298,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Install JS dependencies
