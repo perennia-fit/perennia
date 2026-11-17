@@ -5496,6 +5496,112 @@ void main() {
       await _waitForFinder(tester, finishButton);
     });
 
+    _testTrainingScreen(
+        'Finish Workout tapped while Log set still starts its rest is '
+        'ignored', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpFinishHost(
+        tester,
+        repositories,
+        bench,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _waitForFinder(tester, finishButton);
+
+      // A freestyle Set, then Finish before its rest has started: no real
+      // time passes between the taps, so Log set is still awaiting.
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await tester.tap(finishButton);
+      await _waitForSchedules(tester, scheduler, 1);
+      await _settle(tester);
+
+      expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+      final workout = await tester.runAsync(
+        () => repositories.workoutSessions.getById(bench.workoutId),
+      );
+      expect(workout!.endedAt, isNull);
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+      );
+      expect(timer?.status, RestTimerStatus.running);
+      expect(scheduler.cancels, isEmpty);
+      await _disposeFinishHost(tester);
+    });
+
+    _testTrainingScreen('Log set tapped while Finish Workout runs is ignored',
+        (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpFinishHost(
+        tester,
+        repositories,
+        bench,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _waitForFinder(tester, finishButton);
+      // Values Log set would log, were the tap not ignored.
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+
+      await tester.tap(finishButton);
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForFinder(tester, find.byKey(FinishSummarySheet.sheetKey));
+      await _settle(tester);
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, bench)))!;
+      expect(sets, hasLength(1));
+      expect(scheduler.schedules, isEmpty);
+      expect(
+        await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+        ),
+        isNull,
+      );
+
+      await _closeFinishSummary(
+        tester,
+        until: () => trainingScreens() == 0,
+      );
+      await _disposeFinishHost(tester);
+    });
+
     _testTrainingScreen('Finish Workout keeps its text at textScaler 2.0',
         (tester) async {
       final bench = (await tester.runAsync(

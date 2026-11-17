@@ -729,7 +729,11 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         screen's Finish flow (Template divergence read,
         `HomeController.finishWorkout`, the
         [Finish summary](workout-feedback.md#5-finish-summary)), ignores a
-        second tap while the first runs, and first reads the Workout again:
+        second tap while the first runs, and never overlaps Log set: a tap
+        on either while the other runs is ignored, since Log set starts its
+        rest only after several awaits and would otherwise leave a running
+        rest on the Workout Finish just ended. It first reads the Workout
+        again:
         one that ended since the screen opened (auto-finish, an agent,
         another device) is not finished a second time, and the button goes.
         When the summary closes it leaves

@@ -213,7 +213,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   bool _logInFlight = false;
 
   /// Set while Finish Workout runs, so a double tap finishes once and opens
-  /// one Finish summary.
+  /// one Finish summary, and a Log set tap meanwhile is ignored (see
+  /// [_finishWorkout]).
   bool _finishInFlight = false;
 
   /// The Workout Exercise the form was last loaded for; a different one is
@@ -1215,8 +1216,16 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// Workout screen directly below, and stops at the first other route (or
   /// the first route of all): it never pops past the screen the lifter came
   /// from.
+  ///
+  /// Finish and Log set never overlap: a tap on either while the other runs
+  /// is ignored. Log set reads `endedAt` from the Workout it loaded and
+  /// starts its rest after several awaits, and nothing stops a rest from
+  /// starting on an ended Workout; so a Finish landing in between would
+  /// leave a running rest, and its "Get ready" notification, on a finished
+  /// Workout. Freestyle Sets make that easy to hit: Finish Workout already
+  /// shows while the lifter logs them.
   Future<void> _finishWorkout(_TrainingExerciseState state) async {
-    if (_finishInFlight) {
+    if (_finishInFlight || _logInFlight) {
       return;
     }
     _finishInFlight = true;
@@ -1345,6 +1354,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// this member's next Set instead of being absorbed.
   Future<void> _logSet(_TrainingExerciseState state) async {
     if (_logInFlight ||
+        _finishInFlight ||
         _selectedSetId != null ||
         state.workoutExercise.id != _activeWorkoutExerciseId) {
       return;
