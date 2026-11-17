@@ -79,6 +79,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeManageAccountAndSync => 'Manage account and sync';
 
   @override
+  String get homeSignInExpired => 'Sign-in expired. Sign in again to sync.';
+
+  @override
+  String get homeAccountAndAppSignInExpiredTooltip =>
+      'Account & app: sign-in expired';
+
+  @override
   String get homeLogAction => 'Log';
 
   @override

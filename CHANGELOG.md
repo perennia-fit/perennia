@@ -48,6 +48,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   expired 7 days after sign-in however often it synced, and sync stopped with
   "Sign in required" until the user signed in again. Devices already showing
   that need one more sign-in.
+- **An expired sign-in no longer looks signed in.** When the server stops
+  accepting this phone's session, the Account screen says the sign-in expired
+  instead of "Signed in as", the Account & app button shows a small dot, and
+  both the Account and Sync screens offer **Sign in again**. Signing in again
+  keeps everything on the phone, including changes that have not synced yet,
+  and the next sync sends them.
 - **A sync pulls everything waiting on the server.** When a page of changes
   carried the parent rows its changes refer to, the app took it for the last
   page and stopped, so part of a batch waited for a later sync. An agent's

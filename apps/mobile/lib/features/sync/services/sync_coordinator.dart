@@ -20,6 +20,7 @@ typedef RunSyncCycle = Future<SyncCycleResult> Function({
   required String deviceId,
 });
 typedef RecordSyncCredentialFailure = Future<void> Function(Object error);
+typedef ClearReplacedSessionVerdict = Future<void> Function();
 
 final class SyncCycleResult {
   const SyncCycleResult({
@@ -58,15 +59,18 @@ final class SyncCoordinator {
     required LoadSyncDeviceId loadDeviceId,
     required RunSyncCycle runCycle,
     RecordSyncCredentialFailure? recordCredentialFailure,
+    ClearReplacedSessionVerdict? clearReplacedSessionVerdict,
   })  : _loadSession = loadSession,
         _loadDeviceId = loadDeviceId,
         _runCycle = runCycle,
-        _recordCredentialFailure = recordCredentialFailure;
+        _recordCredentialFailure = recordCredentialFailure,
+        _clearReplacedSessionVerdict = clearReplacedSessionVerdict;
 
   final LoadSyncSession _loadSession;
   final LoadSyncDeviceId _loadDeviceId;
   final RunSyncCycle _runCycle;
   final RecordSyncCredentialFailure? _recordCredentialFailure;
+  final ClearReplacedSessionVerdict? _clearReplacedSessionVerdict;
 
   Future<SyncCycleResult>? _activeRun;
   var _requestedGeneration = 0;
@@ -195,7 +199,7 @@ final class SyncCoordinator {
       return activeRun;
     }
 
-    final run = _runUntilSettled(credentials: credentials);
+    final run = _runUntilSettled(pinnedCredentials: credentials);
     _activeRun = run;
     unawaited(
       run.then<void>(
@@ -213,8 +217,9 @@ final class SyncCoordinator {
   }
 
   Future<SyncCycleResult> _runUntilSettled({
-    _SyncCredentials? credentials,
+    _SyncCredentials? pinnedCredentials,
   }) async {
+    var credentials = pinnedCredentials;
     var aggregate = SyncCycleResult.skipped;
     while (!_disposed) {
       final observedGeneration = _requestedGeneration;
@@ -230,12 +235,58 @@ final class SyncCoordinator {
         await _recordCredentialFailure?.call(error);
         rethrow;
       }
-      aggregate += await _runCycle(session: session, deviceId: deviceId);
+      try {
+        aggregate += await _runCycle(session: session, deviceId: deviceId);
+      } on Object {
+        // A cycle that failed with a session the user has since replaced
+        // (Sign in again while a retry, a Sync now or a nudge was in flight)
+        // says nothing about the new one: drop the verdict it recorded and
+        // run again at once with the current session, instead of failing
+        // into a backoff retry that can be minutes away. That includes runs
+        // started with fixed credentials: the session they were given is the
+        // replaced one, and the authChanged run the replacement asked for was
+        // folded into this run.
+        //
+        // A sign-out is not a replacement: there is nothing to run again, so
+        // the failure still reaches the caller instead of reading as a
+        // finished run.
+        final change = await _sessionChange(session);
+        if (change == _SessionChange.none) {
+          rethrow;
+        }
+        await _clearReplacedSessionVerdict?.call();
+        if (change == _SessionChange.signedOut) {
+          rethrow;
+        }
+        credentials = null;
+        continue;
+      }
       if (_requestedGeneration == observedGeneration) {
         return aggregate;
       }
+      // The follow-up run must not reuse fixed credentials the user has
+      // since replaced or signed out of.
+      if (credentials != null &&
+          await _sessionChange(session) != _SessionChange.none) {
+        credentials = null;
+      }
     }
     return aggregate;
+  }
+
+  Future<_SessionChange> _sessionChange(AuthSession used) async {
+    final AuthSession? current;
+    try {
+      current = await _loadSession();
+    } on Object {
+      return _SessionChange.none;
+    }
+    if (current == null) {
+      return _SessionChange.signedOut;
+    }
+    return current.token != used.token || current.serverUrl != used.serverUrl
+        ? _SessionChange.replaced
+        : _SessionChange.none;
   }
 
   void dispose() {
@@ -254,4 +305,16 @@ final class _SyncCredentials {
 
   final AuthSession session;
   final String deviceId;
+}
+
+/// How the stored session differs from the one a cycle ran with.
+enum _SessionChange {
+  /// Still the same session (or it could not be read).
+  none,
+
+  /// Another session took its place: Sign in again, or another account.
+  replaced,
+
+  /// No session at all: the user signed out.
+  signedOut,
 }

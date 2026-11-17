@@ -180,13 +180,51 @@ class SyncStatusRepository {
     return row.read(count) ?? 0;
   }
 
+  /// Marks a Sync Run as started.
+  ///
+  /// An [SyncStatusKind.authExpired] verdict is held: a run that starts with
+  /// the rejected session is going to be rejected again, and showing
+  /// `syncing` in between would make every retry briefly look signed in,
+  /// pulling the Sign in again form out from under a user typing into it.
+  /// Only [recordSuccess] or [clearAuthExpired] (the session was replaced)
+  /// lift the verdict.
   Future<void> recordSyncing({DateTime? at}) {
     final timestamp = (at ?? _clock()).toUtc();
-    return _upsert(
-      SyncStatesCompanion.insert(
-        id: syncStateId,
-        syncStatus: Value<String>(SyncStatusKind.syncing.name),
-        updatedAt: timestamp,
+    return _database.transaction(() async {
+      final current = await _loadRow();
+      if (current?.syncStatus == SyncStatusKind.authExpired.name) {
+        return;
+      }
+      await _upsert(
+        SyncStatesCompanion.insert(
+          id: syncStateId,
+          syncStatus: Value<String>(SyncStatusKind.syncing.name),
+          updatedAt: timestamp,
+        ),
+      );
+    });
+  }
+
+  /// Drops an [SyncStatusKind.authExpired] verdict because the session it was
+  /// about is gone: the user signed in again, signed in as someone else, or
+  /// signed out. The new session has not been judged yet, so the status goes
+  /// back to idle until its first Sync Run records over it. Any other status
+  /// is left alone.
+  Future<void> clearAuthExpired({DateTime? at}) {
+    final timestamp = (at ?? _clock()).toUtc();
+    return (_database.update(_database.syncStates)
+          ..where(
+            (state) =>
+                state.id.equals(syncStateId) &
+                state.syncStatus.equals(SyncStatusKind.authExpired.name),
+          ))
+        .write(
+      SyncStatesCompanion(
+        syncStatus: Value<String>(SyncStatusKind.idle.name),
+        firstFailureAt: const Value<DateTime?>(null),
+        lastFailureAt: const Value<DateTime?>(null),
+        lastFailureMessage: const Value<String?>(null),
+        updatedAt: Value<DateTime>(timestamp),
       ),
     );
   }
@@ -233,21 +271,30 @@ class SyncStatusRepository {
     Object error, {
     required SyncStatusKind kind,
     DateTime? at,
-  }) async {
+  }) {
     final timestamp = (at ?? _clock()).toUtc();
-    final current = await _loadRow();
-    await _upsert(
-      SyncStatesCompanion.insert(
-        id: syncStateId,
-        syncStatus: Value<String>(kind.name),
-        firstFailureAt: Value<DateTime?>(
-          current?.firstFailureAt?.toUtc() ?? timestamp,
+    return _database.transaction(() async {
+      final current = await _loadRow();
+      // A network or server failure says nothing about whether the server
+      // would now accept the session, so it does not lift an authExpired
+      // verdict (see [recordSyncing]).
+      if (kind != SyncStatusKind.authExpired &&
+          current?.syncStatus == SyncStatusKind.authExpired.name) {
+        return;
+      }
+      await _upsert(
+        SyncStatesCompanion.insert(
+          id: syncStateId,
+          syncStatus: Value<String>(kind.name),
+          firstFailureAt: Value<DateTime?>(
+            current?.firstFailureAt?.toUtc() ?? timestamp,
+          ),
+          lastFailureAt: Value<DateTime?>(timestamp),
+          lastFailureMessage: Value<String?>(_failureMessage(error, kind)),
+          updatedAt: timestamp,
         ),
-        lastFailureAt: Value<DateTime?>(timestamp),
-        lastFailureMessage: Value<String?>(_failureMessage(error, kind)),
-        updatedAt: timestamp,
-      ),
-    );
+      );
+    });
   }
 
   Future<SyncStateRow?> _loadRow() {
@@ -5551,7 +5598,7 @@ String _failureMessage(Object error, SyncStatusKind kind) {
   if (kind == SyncStatusKind.authExpired) {
     return _syncUnauthorizedMessage(error) ??
         'Session expired or account removed. '
-            'You are now in Local-only Mode; local data remains on this device.';
+            'Sign in again to resume sync; local data remains on this device.';
   }
   if (error is ApiException) {
     return 'Sync failed with HTTP ${error.statusCode}.';
