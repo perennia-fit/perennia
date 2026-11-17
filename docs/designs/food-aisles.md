@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-31 (first draft 2026-10-30; revised after review, and again for the definitions experiment)
+*   **Date:** 2026-10-31 (first draft 2026-10-30; revised after review, and again for the definitions experiment; amended 2026-11-07 to replace the person-labelled reference set with a second opinion and a small review)
 *   **Amended by:** [Meal Logging](meal-logging.md). The add-food picker now
     takes a Meal target (a saved Meal, or a new Meal written by the first
     pick) and is embedded in the Meal screen, which the Nutrition Day's
@@ -40,20 +40,32 @@ the device, on the server or in CI:
 
 1.  A local **decision model**, Clef, served by Ollama, picks one Aisle per
     product from its name, brand and Open Food Facts category tags. It returns
-    a confidence for its choice. Clef alone decides every product; there are
-    no hand-written tag rules.
+    a confidence for its choice. There are no hand-written tag rules.
 2.  The **Aisle definitions** are the one statement of what belongs where.
     Each Aisle's description is a complete, positive definition that names the
     boundary foods it owns (canned fish is named under Meat & seafood and
-    nowhere else). The same descriptions are Clef's criteria and the labelling
-    guide a person follows, so the model and the person work from one text.
-3.  A **reference set** of products labelled by a person measures the result.
-    Part of it is held out: the definitions are tuned on one part and checked
-    in CI on the other, and CI fails when the committed labels fall below the
-    bar.
+    nowhere else). The same descriptions are the question asked of both models
+    and the guide a person reads, so they all work from one text.
+3.  A **second opinion** covers what Clef is unsure of. Products with
+    confidence below 0.6, or that Clef answered `other`, get the same question
+    from a small hosted model of the Claude Haiku class. Where the two agree,
+    the product gets that Aisle.
+4.  **A person reviews a few edge cases**, the products where the two models
+    disagree: the 50 most scanned, on a local page that shows both answers.
+    The other edge cases have no Aisle and are still found by search.
 
-The model's outputs are committed, so a bundle build is reproducible from the
-dump and the committed files, with no model.
+No person measures the labels, and CI has no quality bar. CI checks the data
+files' formats and coverage counts. The evidence for the labels is the pilot
+and the definitions experiment below, and the plan for the mistakes that remain
+is a later way for users to report them (see [Non-Goals](#non-goals)).
+
+All the models' outputs are committed, so building the bundle needs no model.
+
+This pull request does not refresh the bundle. Labelling needs each product's
+Open Food Facts tags, which the bundle does not keep. They come from Open Food
+Facts' CSV export (1.5 GB), joined to the committed bundle by code, rather than
+from a new 13 GB dump. The bundle keeps its products and its dataset version,
+2026-10-26, and gains only the Aisle. A later refresh still starts from a dump.
 
 This spec amends [Open Food Facts Integration](open-food-facts.md) (the bundle
 file, the builder, the reference database, "One product, one row", and the
@@ -75,7 +87,11 @@ Terms used below:
     included, with the `en:` prefix kept. Open Food Facts writes every category
     it recognises as an `en:` id whatever the product's language. A tag it does
     not recognise keeps its own language prefix (such as `fr:`) and is ignored
-    everywhere in this spec.
+    everywhere in this spec. In the tags export they are read from
+    `categories_tags`.
+*   **Tags export**: Open Food Facts' CSV export,
+    `en.openfoodfacts.org.products.csv.gz`, 1.5 GB compressed on 2026-11-06.
+    Despite the name its columns are separated by tabs, one row per line.
 *   **Decision model**: a model that answers a fixed-choice question about a
     given state with a probability per option, rather than generating text.
     Clef is Cloudflare's decision model. The pilot ran it as Clef `latest`:
@@ -84,7 +100,14 @@ Terms used below:
     serves decision models at `POST /v1/systemone`; the request and response
     are shown in [The question asked of the model](#the-question-asked-of-the-model).
 *   **Label**: the decision model's answer for one product (its choice and
-    confidence), as committed in the labels file.
+    confidence), as committed in the labels file. A label is **confident** when
+    its choice is an Aisle id and its confidence is at least 0.6.
+*   **Second opinion**: the hosted model's answer for a product whose label is
+    not confident, as committed in the second opinions file. It is asked
+    without seeing Clef's answer, and gives a choice with no confidence.
+*   **Edge case**: a product whose label is not confident and whose second
+    opinion is a different choice. Both models answering `other` is not an edge
+    case: they agree that no Aisle fits.
 *   **Dump**, **builder**: as in
     [Open Food Facts Integration § Building the bundle](open-food-facts.md#building-the-bundle).
     **Bundle**, **device cache**: as in
@@ -102,8 +125,8 @@ products drawn at random from the bundle (seed 7), the taxonomy in
 24 GB consumer GPU, with Ollama 0.35.1. An AI assistant labelled each product
 blind from its name and brand, before reading any model output. A person did
 not label them, so the pilot's agreement figures are a check on the approach,
-not a measure of quality. The reference set in this spec is that measure. The
-pilot's scripts and data were not committed.
+not a measure of quality. No measure made by a person replaces them (see
+[Goal 3](#goals)). The pilot's scripts and data were not committed.
 
 **What was counted.** The AI labeller marked 25 of the 300 products "unsure":
 it could not place them from the name and brand alone (for example "NUTRI
@@ -226,21 +249,27 @@ dump. Open Food Facts' own groupings do not fit:
     most scanned first, and can be searched within.
 2.  **Aisles match what users expect.** The list has 14 Aisles, each named in
     everyday words. Every boundary is settled by one stated order of
-    principles (see [The Aisles](#the-aisles)), not case by case. A person's
-    labels on a held-out sample agree with the pipeline at the bar in
-    [Measuring the labels](#measuring-the-labels).
-3.  **Labels are measured.** A reference set labelled by a person gives
-    overall agreement and coverage, and each Aisle's precision, including the
-    precision of the products Browse shows first. CI fails if they fall below
-    the bar.
-4.  **Builds stay reproducible and offline.** The bundle is built from the
-    dump and committed files only. No model, network or GPU is needed to build
-    it from committed labels, to run CI, or to run the app. A refresh that
-    adds or changes products needs those products labelled first, which needs
-    the model and a GPU (see [Maintainer cost](#maintainer-cost)).
+    principles (see [The Aisles](#the-aisles)), not case by case.
+3.  **Automated, with little manual work.** Clef labels everything, a second
+    model checks what Clef is unsure of, and a person looks at no more than 50
+    products in a run. This costs a measure: no person checks the labels, so
+    this spec does not know how many are wrong for shoppers. The evidence is
+    what the [pilot](#the-pilot) and the
+    [definitions experiment](#the-definitions-experiment) found, on 300
+    products labelled by AI readers. Some labels will be wrong, as they would
+    be with a person's labelling, and a later spec lets users report them.
+4.  **Builds stay reproducible and offline.** The bundle is built from committed
+    files, and from a dump only when it is refreshed. No model, network or GPU
+    is needed to build it from committed labels, to run CI, or to run the app.
+    A refresh that adds or changes products needs those products labelled
+    first, which needs the models and a GPU (see
+    [Maintainer cost](#maintainer-cost)).
+
 5.  **A product with no clear Aisle has none.** A wrong Aisle is worse than
-    no Aisle: a product with no Aisle is still found by search. The confidence
-    threshold, not the model's `other` answer, is what leaves a product out.
+    no Aisle: a product with no Aisle is still found by search. A product is
+    left out when Clef is not confident and the second opinion does not agree,
+    unless a person gave it an Aisle.
+
 6.  **Agents get the same Aisles.** `searchAgentPlatformFoods` can list and
     search within an Aisle. It reads the same bundle and the same Aisles as
     the picker; as today, its typed-search order (scans) differs from the
@@ -258,18 +287,25 @@ dump. Open Food Facts' own groupings do not fit:
 *   **Sub-aisles or several Aisles per product.** One level, one Aisle.
 *   **User-editable Aisles.** Aisles are reference data, like the bundle. A
     user who disagrees with one can still search for the product.
+*   **A user asking for a wrong Aisle to be fixed.** Mistakes are expected, and
+    users reporting them is how they should be found, but that flow needs its
+    own spec (see [Future Improvements](#future-improvements)).
+*   **A person measuring the labels.** See
+    [Alternative S](#alternative-s-a-person-labelled-reference-set).
+
 *   **Ranking by anything but scans.** Within an Aisle, the order is the
     bundle's scan count, as in name search on the server. The effect on users
     in each launch country is reported by the builder and accepted for now
     (see [Risks](#risks)).
-*   **Running the model anywhere but a maintainer's machine.** Not on the
-    device, not on the server, not in CI.
+*   **Running the pipeline anywhere but from a maintainer's machine.** Not on
+    the device, not on the server, not in CI.
 *   **Paging past 50 products for agents.** An agent can search within an
     Aisle for more.
 
 ## Open Questions
 
-None is open. Both were decided by the author on 2026-10-31.
+None is open. The first two were decided by the author on 2026-10-31, and the
+third on 2026-11-07.
 
 1.  **Boundary foods. Resolved (2026-10-31).** An earlier draft settled five
     disputed boundaries one at a time, three of them with tag rules, and the
@@ -307,6 +343,12 @@ None is open. Both were decided by the author on 2026-10-31.
     to the bundle. No other decision model has been tried; a substitute would
     need its own pilot, its own confidence threshold derived from that pilot,
     and a comparison with [Alternative E](#alternative-e-a-generative-model-prompted-to-answer-in-json).
+3.  **The second opinion's model. Resolved (2026-11-07).** The first run uses
+    `claude-haiku-5-5`. Its answers are one word from a fixed list, committed
+    and published under the ODbL with the labels; the provider's terms give
+    the user its outputs, so no further check is needed. No other hosted
+    model has been tried. Changing the model discards its earlier answers, as a new Clef
+    digest discards earlier labels, and needs no other change.
 
 ## Critical User Journeys (CUJs)
 
@@ -345,8 +387,8 @@ None is open. Both were decided by the author on 2026-10-31.
 
 ### CUJ 4: A product has no Aisle
 
-*   **Given** a bundled product whose label was below the confidence
-    threshold, so its Aisle is empty,
+*   **Given** a bundled product whose label was not confident and whose second
+    opinion did not agree, so its Aisle is empty,
 *   **When** the user searches for it by name,
 *   **Then** it is found as before, and it appears in no Aisle.
 
@@ -372,28 +414,43 @@ None is open. Both were decided by the author on 2026-10-31.
 
 ### CUJ 7: A maintainer refreshes the bundle
 
-*   **Given** a new dump and the committed labels file,
+*   **Given** a new dump and the committed data files,
 *   **When** the maintainer runs the builder with `--aisle-input-only`, then
-    the labeller, then the builder,
+    the labeller, the second opinion and the review, then the builder,
 *   **Then** the labeller labels only the products that are new or whose name,
-    brand or last six Open Food Facts tags changed, and the second build
-    writes a bundle in which every product has a current label. Had the
-    maintainer skipped the labeller, the second build would have written no
-    bundle and named the products that need labels. CI checks that every
-    bundled product has a label made for the current question and that the
-    reference-set measures still meet the bar.
+    brand or last six Open Food Facts tags changed, the second opinion asks only
+    about those that are not confident, and the last build writes a bundle in
+    which every product has a current label. Had the maintainer skipped a step,
+    the build would have written no bundle and named the products still waiting.
+    CI checks that every bundled product has a label made for the current
+    question and that the coverage counts still hold.
 
 ### CUJ 8: A maintainer settles a boundary
 
 *   **Given** reviewers decide that canned fish belongs in Pantry after all,
 *   **When** the maintainer moves "canned fish" from the Meat & seafood
-    description to the Pantry description, checks the change on the dev set
-    with `label_aisles --dev-only` (about 3 minutes), relabels every product
-    (about 10 hours, because the question hash changed), relabels the affected
-    reference rows by hand, and rebuilds,
-*   **Then** the bundle's Aisles change, and CI re-measures the labels against
-    the reference set. The definitions remain the only place the boundary is
-    written; there is no rule to keep in step with them.
+    description to the Pantry description, relabels every product (about 10
+    hours, because the question hash changed), asks for the second opinions
+    again, reviews the edge cases and rebuilds,
+*   **Then** the bundle's Aisles change. The definitions remain the only place
+    the boundary is written; there is no rule to keep in step with them. An
+    override a person made earlier still wins for that product, and the
+    maintainer can edit its row in the diff.
+
+### CUJ 9: A maintainer reviews the edge cases
+
+*   **Given** every product has a current label and, where it needs one, a
+    current second opinion,
+*   **When** the maintainer runs `label_aisles.dart review` and opens the URL it
+    prints,
+*   **Then** a local page shows the 50 most scanned edge cases with no override
+    yet, one at a time, with the name, brand, tags, Clef's answer and confidence
+    and the second opinion's answer.
+*   **When** the maintainer taps an Aisle, `none` or `unsure`,
+*   **Then** the answer is written to `aisle_overrides.csv` at once and the next
+    product appears. Stopping part way loses nothing. Every edge case not
+    answered has no Aisle in the bundle, is still found by search, and is absent
+    from Browse.
 
 ## Technical Plan (Architecture)
 
@@ -406,10 +463,10 @@ Paths are relative to `apps/mobile/` unless they start with `apps/`,
 | :---- | :--- | :----- |
 | Domain (Dart) | `lib/domain/nutrition/food_aisle.dart` (new) | The `FoodAisle` enum and its UI labels |
 | Domain (Dart) | `lib/domain/nutrition/open_food_facts.dart` | Bundle format version 2, with `aisle` on each product line |
-| Maintainer tool | `tool/open_food_facts_bundle/aisle_pipeline.dart` (new) | The Aisle definitions, the model question and its hash, the two data files' formats, `resolveFoodAisle`, sampling and `measureAisleLabels`: pure functions, tested |
-| Maintainer tool | `tool/open_food_facts_bundle/build_bundle.dart` | Reads Open Food Facts tags, writes the labeller's input, refuses stale labels, assigns each product's Aisle |
-| Maintainer tool | `tool/open_food_facts_bundle/label_aisles.dart` (new) | Asks the decision model for labels; samples the reference set; prints the labelling guide |
-| Committed data | `tool/open_food_facts_bundle/aisle_labels.ndjson`, `aisle_reference.csv` (new) | The model's labels and the person-labelled reference set |
+| Maintainer tool | `tool/open_food_facts_bundle/aisle_pipeline.dart` (new) | The Aisle definitions, the model question and its hash, the three data files' formats, reading the tags export, `resolveFoodAisle` and choosing edge cases: pure functions, tested |
+| Maintainer tool | `tool/open_food_facts_bundle/build_bundle.dart` | Reads Open Food Facts tags, from a dump or from the tags export over the committed bundle; writes the labeller's input, refuses stale data, assigns each product's Aisle |
+| Maintainer tool | `tool/open_food_facts_bundle/label_aisles.dart` (new) | Asks the decision model for labels; writes and takes in the second opinions; serves the review page; prints the labelling guide |
+| Committed data | `tool/open_food_facts_bundle/aisle_labels.ndjson`, `aisle_second_opinions.ndjson`, `aisle_overrides.csv` (new) | The model's labels, the second opinions and a person's answers |
 | Shared Dart | `lib/features/nutrition/import/csv_parser.dart` | Gains the public `escapeCsvField`, moved from the CSV export |
 | Bundle | `assets/seeds/open_food_facts_bundle.ndjson.gz`, `assets/seeds/open_food_facts_bundle.LICENSE.md`, `THIRD_PARTY_DATA.md` (repository root) | Rebuilt at format version 2; the licence texts name the new files |
 | App data | `lib/data/local/food_reference_database.dart`, `lib/data/repositories/open_food_facts_repository.dart` | An `aisle` column and index; writing the Aisle on install; browse and search within an Aisle |
@@ -417,7 +474,7 @@ Paths are relative to `apps/mobile/` unless they start with `apps/`,
 | Server | `apps/server/src/open-food-facts-bundle.ts`, `agent-foods.ts`, `app.ts`, `agent-mcp.ts`, `index.ts` | Reads format version 2; the `aisle` parameter and field |
 | Agent skill | `agent-skills/perennia/scripts/prn-code.mjs`, `references/api-operations.md`, `SKILL.md` | Passes and documents `aisle` |
 | Contract | `packages/contract/openapi.json`, `packages/contract/src/agent-client.ts` | Regenerated |
-| Docs | `CONTEXT.md`, `docs/designs/open-food-facts.md`, `docs/development.md`, `docs/designs/SITEMAP.md` | The Aisle term; pointers to this spec; the three-run refresh |
+| Docs | `CONTEXT.md`, `docs/designs/open-food-facts.md`, `docs/development.md`, `docs/designs/SITEMAP.md` | The Aisle term; pointers to this spec; the refresh steps |
 | CI | `.github/workflows/ci.yml`, `tools/ci-local.mjs` | The `js` path filters gain `food_aisle.dart`, which a server test reads |
 | Tests | `test/performance/` and the tests in the [Detailed Implementation Plan](#detailed-implementation-plan) | New budgets and cases |
 
@@ -425,24 +482,27 @@ There is no change to `AppDatabase`, sync, backups, the portable archive,
 validation or analytics.
 
 ```text
- maintainer machine                                         repository / CI / app
- ──────────────────                                         ─────────────────────
- dump ──► build_bundle --aisle-input-only ──► build/open_food_facts_aisle_input.ndjson
-                                                    │
-                Ollama + Clef ◄── label_aisles ─────┴──► aisle_labels.ndjson ─┐ (committed)
-                                                         aisle_reference.csv ─┤
- dump ──► build_bundle ◄──────────────────────────────────────────────────────┘
-              │  (refuses to write a bundle if any label is missing or stale)
+ maintainer machine                                          repository / CI / app
+ ──────────────────                                          ─────────────────────
+ committed bundle + tags export, or a dump (a refresh)
+      └──► build_bundle --aisle-input-only ──► build/open_food_facts_aisle_input.ndjson
+                                                     │
+           Ollama + Clef ◄── label_aisles label ─────┼──► aisle_labels.ndjson ─────────┐
+       hosted model ◄── label_aisles second-opinion ─┼──► aisle_second_opinions.ndjson ┤ (committed)
+            a person ◄── label_aisles review ────────┴──► aisle_overrides.csv ─────────┤
+ committed bundle + tags export, or a dump                                             │
+      └──► build_bundle ◄──────────────────────────────────────────────────────────────┘
+              │  (refuses to write a bundle if anything is missing or stale)
               └──► open_food_facts_bundle.ndjson.gz (format 2) ──► app install, server loader
-                                                    CI: label coverage, question hash, measures
+                                                     CI: file formats, question hash, coverage counts
 ```
 
 ### The Aisles
 
 `FoodAisle` (in `lib/domain/nutrition/food_aisle.dart`) has these values, in
 this order, which is the order the picker shows. The id is the enum value's
-`name`. The same id is written in the bundle, the labels file and the
-reference set, and is used on the agent surface.
+`name`. The same id is written in the bundle and the data files, and is used on
+the agent surface.
 
 **The order of principles.** Supermarket sections are defined by different
 principles: who a product is for, how it is prepared, what it is made of, and
@@ -495,9 +555,8 @@ another Aisle ("goes to …" sentences are not used).
     [Alternative H](#alternative-h-storage-aisles-frozen-chilled)). Storage is
     not one of the principles, and the bundle does not record it.
 *   **The labelling guide.** `label_aisles guide` prints the order of
-    principles and this table as plain text. It is what a person follows when
-    filling in the reference set, so the person and the model read the same
-    definitions.
+    principles and this table as plain text. The review page shows the same
+    text, so the person and the models read the same definitions.
 *   **Words that name the food.** Labels use everyday words shared by the
     launch countries. Where usage differs, both words appear in the model's
     description ("lollies and candy", "chips, crisps"). UI labels avoid
@@ -585,14 +644,17 @@ timeout.
 `resolveFoodAisle` (in `aisle_pipeline.dart`) decides a bundled product's
 Aisle. The first of these steps that gives an answer wins:
 
-1.  **Reference.** If the product's code is in the reference set and a person
-    gave it an Aisle, that Aisle. If the person marked it `none`, no Aisle. A
-    row marked `unsure`, or not yet labelled, gives no answer at this step.
+1.  **Override.** If the product's code is in the overrides file and a person
+    gave it an Aisle, that Aisle. If the person answered `none`, no Aisle. A row
+    answered `unsure` gives no answer at this step.
 2.  **Label.** If the product has a current label (see
     [The builder](#the-builder)) whose choice is an Aisle id and whose
     confidence is at least `aisleConfidenceThreshold` (0.6), that Aisle.
-3.  Otherwise, no Aisle (`null`). This covers a label of `other` and a label
-    below the threshold.
+3.  **Agreement.** If the product has a current second opinion whose choice is
+    an Aisle id and equals the label's choice, that Aisle, whatever the label's
+    confidence.
+4.  Otherwise, no Aisle (`null`). This covers both models answering `other`, and
+    every edge case nobody gave an Aisle.
 
 There is no tag-rule step. In the
 [definitions experiment](#the-definitions-experiment), Clef alone matched the
@@ -611,14 +673,18 @@ cases (99.2%); products below it, in 26 of 36 (72%). Lowering the threshold to
 0.5 would keep 93% of products instead of 88% at 97.8% agreement; raising it
 to 0.7 would keep 79% for 0.4 percentage points more.
 
-The **prediction** for a product is `resolveFoodAisle` without the reference
-step. Sampling and measuring use the prediction, so the measures judge the
-pipeline, not the person's own answers.
+The 72% is why the products below the threshold are not simply kept, and why
+they are not simply dropped: about one in eight products is below it, and most
+of Clef's answers there were right. Requiring a second model to agree is meant
+to keep those without keeping the wrong ones. That has not been measured: no
+pilot ran the second opinion, so its share of agreement, and how often two
+models agree on a wrong Aisle, are unknown. The builder reports how many
+products each step decided.
 
 ### The committed data
 
-Both files are in `tool/open_food_facts_bundle/`. They are builder inputs and
-are not bundled into the app. Both are UTF-8 with LF line endings, and end
+The three files are in `tool/open_food_facts_bundle/`. They are builder inputs
+and are not bundled into the app. All are UTF-8 with LF line endings, and end
 with a newline.
 
 **`aisle_labels.ndjson`** is JSON lines: one header line, then one line per
@@ -654,49 +720,69 @@ labelled product, sorted by code.
     diff, and git stores refreshes as deltas. About 41,700 lines of about 97
     bytes is about 4 MB.
 
-**`aisle_reference.csv`** is the reference set, an RFC 4180 CSV file with a
+**`aisle_second_opinions.ndjson`** is JSON lines in the same form: one header
+line, then one line per product whose label is not confident, sorted by code.
+
+```text
+{"format":"perennia-open-food-facts-aisle-second-opinions","formatVersion":1,"questionHash":"<16 hex digits>","model":"claude-haiku-5-5"}
+{"code":"0818290014313","inputHash":"352594eedc0b9cad","choice":"dairyEggs"}
+```
+
+*   **A separate file.** The labels file keeps its format, and its header still
+    records only Clef's name and digest and the question hash. The second
+    opinions have their own header, because they come from another model.
+*   **The header.** `questionHash` is `aisleQuestionHash()` when the answers
+    were taken in, and `model` is the name given to `second-opinion-apply`. A
+    hosted model has no digest, so this name is all that is recorded of its
+    version. Every line in the file came from that model under that question.
+*   **Each product line.** `inputHash` is as in the labels file, and `choice` is
+    an Aisle id or `other`. There is no confidence.
+*   **Current and stale.** The same rule as for a label: a second opinion is
+    current when the header's `questionHash` equals `aisleQuestionHash()` and
+    the line's `inputHash` equals the product's current one.
+*   **Size.** About one label in eight is not confident, so about 5,000 lines of
+    about 75 bytes, about 0.4 MB.
+
+**`aisle_overrides.csv`** holds a person's answers, an RFC 4180 CSV file with a
 header row:
 
 ```text
-code,name,brand,categories,aisle,sampled_as,set
-0818290014313,Greek Yogurt Plain Nonfat,Chobani,en:dairies en:fermented-foods en:yogurts …,dairyEggs,aisle,test
+code,name,brand,categories,aisle
+0818290014313,Greek Yogurt Plain Nonfat,Chobani,en:dairies en:fermented-foods en:yogurts …,dairyEggs
 ```
 
 *   **The columns.**
-    *   `name` and `brand` are for the person labelling; nothing reads them.
-        A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage
+    *   `name` and `brand` are there so the diff can be read; nothing reads
+        them. A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage
         return is written with a leading `'`, so a spreadsheet does not run
         it as a formula.
-    *   `categories` is the product's Open Food Facts tags when the row was
-        sampled, `en:` kept, separated by single spaces. Like `name` and
-        `brand`, it is for the person labelling; nothing reads it.
-    *   `aisle` is filled in by a person from the name, brand and tags in the
-        row: an Aisle id; `none` when no Aisle fits; `unsure` when the person
-        cannot tell what the product is; or empty when not yet labelled.
-    *   `sampled_as` is `random`, `aisle` or `noAisle`, and `set` is `dev` or
-        `test` (see [The reference set](#the-reference-set)).
+    *   `categories` is the product's Open Food Facts tags when it was
+        answered, `en:` kept, separated by single spaces. Nothing reads it.
+    *   `aisle` is an Aisle id; `none` when no Aisle fits; or `unsure` when the
+        person cannot tell what the product is.
 *   **Quoting.** A cell containing a comma, a double quote, a CR or an LF is
     quoted, with `"` doubled, as `escapeCsvField` does. The file is parsed
     with the app's existing `parseCsv`.
-*   **Strict and lenient reads.** `parseAisleReference(csv, allowUnlabelled:)`
-    rejects an unknown column set, an unknown `aisle`, `sampled_as` or `set`
-    value, or a repeated code. With `allowUnlabelled: false` (CI) it also
-    rejects an empty `aisle`. The builder and `sample` read with
-    `allowUnlabelled: true`.
+*   **Reading.** `parseAisleOverrides(csv)` rejects an unknown column set, an
+    unknown or empty `aisle` value, or a repeated code.
 *   **Sorting.** The file is sorted by code.
+*   **Hand edits.** A maintainer may edit or add a row by hand, with the change
+    visible in the diff. The file may hold rows for products that are not edge
+    cases, and step 1 of [Deciding a product's Aisle](#deciding-a-products-aisle)
+    still applies to them.
 
-**Licence.** The labels and the reference set are derived from Open Food Facts
-data (product names, brands and tags). They are part of the derived database
-and are published under the ODbL with the bundle. The bundle's licence file and
-`THIRD_PARTY_DATA.md` list them, and the bundle header's `attributionText`
-names them as well.
+**Licence.** The three files are derived from Open Food Facts data (product
+names, brands and tags). They are part of the derived database and are published
+under the ODbL with the bundle. The bundle's licence file and
+`THIRD_PARTY_DATA.md` list them, and the bundle header's `attributionText` names
+them as well.
 
 #### Malformed files
 
-*   **The parsers.** `parseAisleInputLine`, `parseAisleLabels` and
-    `parseAisleReference` throw `FormatException`. Its message names the
-    1-based line number (counting a header line or header row) and what is
-    wrong.
+*   **The parsers.** `parseAisleInputLine`, `parseAisleLabels`,
+    `parseAisleSecondOpinions`, `parseAisleOverrides` and `parseAisleTagsHeader`
+    throw `FormatException`. Its message names the 1-based line number (counting
+    a header line or header row) and what is wrong.
 *   **The labels file.** Its first line must be a header whose `format` is
     `perennia-open-food-facts-aisle-labels` and whose `formatVersion` is 1,
     with `questionHash`, `model` and `modelDigest` as strings. Each later line
@@ -704,12 +790,18 @@ names them as well.
     `confidence`, a `choice` that is an Aisle id or `other`, and a
     `confidence` from 0 to 1. A code that appears twice is rejected. An empty
     text is no file (no header, no labels).
+*   **The second opinions file.** The same rules, with the `format` shown above,
+    `questionHash` and `model` in the header, and exactly the keys `code`,
+    `inputHash` and `choice` on each later line.
 *   **The aisle input.** Each line must have exactly the keys shown in
     [The builder](#the-builder), with those types.
-*   **A reference row whose code is not in the aisle input** is kept in the
-    file. It is not counted in the measures, and `sample` keeps it.
-*   **Exit status.** The builder, `label` and `sample` print the
-    `FormatException`'s message and exit with status 65.
+*   **An override row whose code is not in the aisle input** is kept in the
+    file and has no effect.
+*   **The tags export.** A header with no `code`, `categories_tags` or
+    `countries_tags` column is rejected. A row with too few cells is skipped and
+    counted in the builder's report.
+*   **Exit status.** The builder and the labeller print the `FormatException`'s
+    message and exit with status 65.
 
 ### The builder
 
@@ -719,24 +811,62 @@ names them as well.
 *   **Tags.** In step 2, each kept product also records its Open Food Facts
     tags: the entries of `categories_hierarchy` that start with `en:`, in
     order, prefix kept. A missing or non-list field records an empty list.
-*   **New options.** Two take a path relative to `apps/mobile`, with these
+*   **A second input: the committed bundle.** A dump is 13 GB, and Open Food
+    Facts keeps no older ones, so one can only produce a refreshed bundle.
+    `--from-bundle <path> --tags-export <path>` builds from an existing bundle
+    file instead, replacing `--input` and `--dataset-version`; giving one of
+    these pairs together with the other is a usage error (exit 64), as is giving
+    only half a pair.
+    *   It reads the bundle's header and lines in full before writing anything,
+        so `<path>` can be the file it then replaces. It accepts format version 1
+        or 2. A line with no `aisle` key (format version 1) has `"aisle":null`
+        added before `decodeBundleProductLine` reads it, the one place a missing
+        key is accepted; any `aisle` already on a line is ignored.
+    *   Steps 1 to 4 of the build are skipped. The products, their order, every
+        field but `aisle`, and the dataset version are those of the file read.
+        The content hash and sizes are worked out as today.
+    *   It reads the tags export's `code`, `categories_tags` and `countries_tags`
+        columns, by name, from the header row, and keeps the rows whose code is
+        a bundled product; a later row with the same code wins. The tags are the
+        entries of `categories_tags` (separated by commas) that start with
+        `en:`, in order, prefix kept, leaving out `en:null`, which is what the
+        export writes for a product with no categories. Countries are read the
+        same way from `countries_tags`, for the report.
+    *   A bundled product not in the export has no tags and is labelled from its
+        name and brand. Its report line says how many, and the
+        [pilot](#the-pilot) shows why this is acceptable: products without tags
+        agreed in 37 of 42 cases.
+    *   `categories_tags` and `categories_hierarchy` have not been compared. If
+        they differ for a product, the next refresh from a dump gives it a new
+        input hash, and it is labelled again at about 0.86 s. Nothing else
+        depends on them matching.
+    *   The tags are newer than the bundle's dataset version, because the export
+        is replaced daily. The bundle's own fields do not change, so this affects
+        only the question asked of the model.
+*   **A refresh still starts from a dump**, with `--input` and
+    `--dataset-version`, as today.
+*   **New options.** Three take a path relative to `apps/mobile`, with these
     defaults, in either the `--name value` or the `--name=value` form, as
     `--input` does today:
     *   `--aisle-labels`, default `tool/open_food_facts_bundle/aisle_labels.ndjson`;
-    *   `--aisle-reference`, default `tool/open_food_facts_bundle/aisle_reference.csv`.
+    *   `--aisle-second-opinions`, default `tool/open_food_facts_bundle/aisle_second_opinions.ndjson`;
+    *   `--aisle-overrides`, default `tool/open_food_facts_bundle/aisle_overrides.csv`.
 
-    The third, `--aisle-input-only`, is a flag. It takes no value: a bare
-    `--aisle-input-only` sets it, and `--aisle-input-only=<anything>` is a
-    usage error (exit 64). `_parseArguments` returns
-    `({String input, String datasetVersion, String aisleLabels, String aisleReference, bool aisleInputOnly})`.
-*   **Missing and malformed files.** A missing labels file reads as no
-    labels, and a missing reference file as no rows. A file that does not
-    parse (see [Malformed files](#malformed-files)) stops the builder with
-    the parser's message and exit status 65, which the builder already uses
-    for a dump it cannot decompress.
-*   **A new step after step 4** (the merge). For each merged product, it
-    writes one line to `build/open_food_facts_aisle_input.ndjson` (under
-    `apps/mobile`, already ignored by git), sorted by code:
+    `--from-bundle` and `--tags-export` have no default. `--aisle-input-only` is
+    a flag. It takes no value: a bare `--aisle-input-only` sets it, and
+    `--aisle-input-only=<anything>` is a usage error (exit 64).
+    `_parseArguments` returns
+    `({String? input, String? datasetVersion, String? fromBundle, String? tagsExport, String aisleLabels, String aisleSecondOpinions, String aisleOverrides, bool aisleInputOnly})`.
+*   **Missing and malformed files.** A missing data file reads as empty. A file
+    that does not parse (see [Malformed files](#malformed-files)) stops the
+    builder with the parser's message and exit status 65, which the builder
+    already uses for a dump it cannot decompress. A `--from-bundle` or
+    `--tags-export` file that does not exist exits with status 66, as `--input`
+    does.
+*   **The aisle input.** With either input, after the products are known (with a
+    dump, after step 4, the merge), it writes one line to
+    `build/open_food_facts_aisle_input.ndjson` (under `apps/mobile`, already
+    ignored by git) for each product, sorted by code:
 
     ```text
     {"code":"0818290014313","name":"Greek Yogurt Plain Nonfat","brand":"Chobani","categories":["en:dairies","en:fermented-foods","…"],"scans":412,"inputHash":"352594eedc0b9cad"}
@@ -748,47 +878,63 @@ names them as well.
     hash of its model state.
 *   **With `--aisle-input-only`**, it stops after writing the aisle input and
     the report, writes no bundle, and exits with status 0. This is the first
-    run of a refresh. Its report has only the dump section of today's report
-    (lines read, malformed and failed lines, products per country and the
-    exclusions), then the aisle input's path and product count, and the
-    number of products whose label is missing or stale. It has no header,
-    hash or size lines, because no bundle was built.
-*   **Otherwise, the labels must be current.** It reads the labels and finds
-    the bundled products with no label line or a stale label. If there are
-    any, it writes no bundle, ends its report with "N products need labels:
-    run label_aisles.dart label, then build again.", and exits with status 1.
+    run. Its report has the dump section of today's report (lines read,
+    malformed and failed lines, products per country and the exclusions), or
+    with `--from-bundle` the products read, the export's rows read and skipped,
+    the products found in it and the products with tags. Then come the aisle
+    input's path and product count, and the numbers of products whose label or
+    second opinion is missing or stale. It has no header, hash or size lines,
+    because no bundle was built.
+*   **Otherwise, the data must be current.** It finds the bundled products with
+    no label line or a stale label, and the products whose current label is not
+    confident and which have no current second opinion. If there are any, it
+    writes no bundle, ends its report with "N products need labels: run
+    label_aisles.dart label, then build again." or "N products need a second
+    opinion: run label_aisles.dart second-opinion-input, then build again.", and
+    exits with status 1. Edge cases nobody answered do not stop it: they have
+    no Aisle.
 *   **Otherwise, it resolves Aisles.** It calls `resolveFoodAisle` for each
     product and writes the result as the product line's `aisle`, then writes
     the bundle as today.
 *   **The report gains:**
-    *   products whose label is missing or stale (always printed);
-    *   when every label is current, and so only in a run that writes a
-        bundle:
-        *   products per Aisle, and per deciding step: reference (a reference
-            Aisle or a reference `none`), label, or none (no answer from
-            either);
-        *   the reference rows not yet labelled, and the `unsure` rows;
-        *   the [measures](#measuring-the-labels) for the dev set and for the
-            test set, with the test set's failures;
+    *   products whose label or second opinion is missing or stale (always
+        printed);
+    *   when everything is current, and so only in a run that writes a bundle:
+        *   products per Aisle, and per deciding step: override (an Aisle or
+            `none`), label, agreement, or none;
+        *   the share of products with an Aisle, against `aisleCoverageFloor`
+            (see [What CI checks](#what-ci-checks));
+        *   second opinions that agreed, that both answered `other`, and that
+            made an edge case;
+        *   edge cases answered by a person, and those left with no Aisle;
+        *   the `unsure` rows;
         *   for each Aisle, how many of its 100 most scanned products carry
             each launch country in `countries_tags`.
 
-A refresh is therefore three runs, as in CUJ 7: the builder with
-`--aisle-input-only` (about 30 minutes, as a build takes today), the labeller
-(only new and changed products), and the builder again.
+The agreement figures show how the run went. They are not a measure of whether
+the Aisles are right: two models can agree on a wrong one.
+
+A refresh is therefore the runs in CUJ 7: the builder with `--aisle-input-only`
+(about 30 minutes, as a build takes today), the labeller (only new and changed
+products), the second opinion, the review, and the builder again.
 
 ### The labeller
 
 `tool/open_food_facts_bundle/label_aisles.dart`, run from `apps/mobile` with
-`dart run`, has three commands. `label` and `sample` read
+`dart run`, has five commands. All but `guide` read
 `build/open_food_facts_aisle_input.ndjson` (exit 66 if it is missing) and use
-the default paths above for the two data files. `guide` reads nothing.
+the default paths above for the data files. `guide` reads nothing.
 
 ```text
 dart run tool/open_food_facts_bundle/label_aisles.dart label \
-  --ollama <base URL, for example http://localhost:11434> [--model clef] [--dev-only]
+  --ollama <base URL, for example http://localhost:11434> [--model clef]
 
-dart run tool/open_food_facts_bundle/label_aisles.dart sample --seed <integer>
+dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-input
+
+dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-apply \
+  --model <the model's name> --answers <path>
+
+dart run tool/open_food_facts_bundle/label_aisles.dart review
 
 dart run tool/open_food_facts_bundle/label_aisles.dart guide
 ```
@@ -825,188 +971,99 @@ A bad or missing option exits with status 64 and the usage text.
 *   **Prints progress:** products to label, products done, the time per
     product, and the estimated time left.
 *   **Ends with a report:** labels reused and labels made, unlabelled products,
-    the counts by `choice` and by confidence band (below 0.6, 0.6 to 0.9,
-    0.9 and above), and then the dev-set [measures](#measuring-the-labels).
-    The measures use `resolveAisleBundle` over the aisle input, the labels
-    file just written and the reference set; an unlabelled product has no
-    Aisle.
-*   **`--dev-only`** labels only the dev rows of the reference set and writes
-    nothing: no labels file and no checkpoint. It prints the dev measures.
-    For them, each dev row's newly made label replaces its committed label,
-    and every other product keeps its committed label, treated as current
-    whatever its question hash. Browse ranks are therefore those of the
-    committed labels, which is enough to compare one description change with
-    the last committed run.
-    At about 180 rows and 0.9 s each, this takes about 3 minutes. It is how a
-    maintainer tries a changed description before starting a 10-hour full
-    run.
+    and the counts by `choice` and by confidence band (below 0.6, 0.6 to 0.9,
+    0.9 and above).
 
-**`sample`** is described under [The reference set](#the-reference-set).
-
-The labeller never runs in CI and is not a dependency of the app. It uses
-`dart:io`'s `HttpClient`, and `package:cryptography`, which the builder
-already uses, for SHA-256, so it adds no package.
-
-### The reference set
-
-The reference set has two parts. The **dev set** is for tuning: the
-descriptions and the threshold are changed only on the evidence of dev
-measures. The
-**test set** is held out: CI checks the bar on it, and nobody tunes against it.
-
-**What is drawn**, with these counts as constants in `aisle_pipeline.dart`:
-
-| Set | Drawn as (`sampled_as`) | Rows | Purpose |
-| :-- | :-- | :-- | :-- |
-| test | `random`: any bundled product | 120 | Overall agreement and coverage |
-| test | `aisle`: for each Aisle, products predicted as it among its 100 most scanned (its **Browse rows**) | 15 per Aisle, 210 | Browse precision: what a user sees first |
-| test | `aisle`: for each Aisle, products predicted as it outside its Browse rows | 15 per Aisle, 210 | Precision across the Aisle |
-| dev | `random` | 100 | Tuning overall agreement and coverage |
-| dev | `aisle`: for each Aisle, products predicted as it | 5 per Aisle, 70 | Tuning each Aisle |
-| dev | `noAisle`: products predicted to have no Aisle | 10 | Tuning the threshold |
-
-That is 540 test rows and 180 dev rows, 720 in all, or about two hours for one
-person at about 10 seconds a row.
-
-*   **Why these counts.** 15 rows is the least that lets a 90% precision bar
-    allow one disagreement. 120 random test rows give about 105 rows with a
-    predicted Aisle, so the 95% agreement bar allows 5 disagreements. The dev
-    set is smaller because it only has to show whether a change helps.
-*   **What the counts can show.** These are checks against a clear
-    regression, not tight estimates: at 105 rows, a measured 95% has a
-    95% confidence interval of about ±4 percentage points, and passing 14 of
-    15 does not prove precision is at least 90%.
-*   **Browse rows.** X's **list** is the bundle's products whose resolved
-    Aisle is X, ordered by `scans` descending, then by `code` ascending, as
-    the picker orders an Aisle. A product P's **Browse rank** in X is 1 plus
-    the number of products in X's list, other than P, that come before P in
-    that order. P counts as in X for its own rank whatever its resolved Aisle,
-    because sampling and measuring ask where P would sit if X were right. P is
-    in X's Browse rows when its rank is at most `aisleBrowseLimit` (100).
-    `buildAisleRanking` sorts every Aisle's list once, and `browseRank` finds
-    P's place in it by binary search, so ranking all 41,700 products is not
-    quadratic. Sampling and measuring use the same two functions.
-
-**`sample --seed <integer>`** tops the set up to the counts above:
-
-1.  It refuses to sample when any product in the aisle input has no label or
-    a stale one, because predictions from stale labels would skew the draw.
-    It prints "N products need labels: run label_aisles.dart label, then
-    sample again." and exits with status 1, writing nothing.
-2.  It works out every product's prediction and Browse rank from the aisle
-    input, the labels and the reference rows already present.
-3.  For each cell of the table (set, drawn-as, Aisle where it has one), it
-    counts the rows already in the file that fall in that cell under the
-    current predictions, and draws the shortfall:
-    *   an `aisle` cell counts rows of any `sampled_as` in that set that are
-        predicted as the Aisle and in (or outside) its Browse rows;
-    *   the `noAisle` cell counts dev rows of any `sampled_as` that are
-        predicted to have no Aisle;
-    *   a `random` cell counts only rows whose `sampled_as` is `random`.
-
-    A cell that has fewer eligible products than its count takes all of
-    them.
-4.  It draws in this order: test `random`, dev `random`, then for each Aisle in
-    `FoodAisle` order its test Browse rows, test rows outside Browse, and dev
-    rows, then dev `noAisle`. Each draw is from the eligible products sorted by
-    code, minus every product already in the file or drawn earlier in the
-    run, shuffled with `Random(seed)` (one generator for the whole run), then
-    the first N taken. Drawing random rows first keeps them a uniform sample.
-5.  It appends the new rows with an empty `aisle`, re-sorts by code, and
-    writes the file (creating it with its header row if it is missing). A
-    person then fills in `aisle`, following the guide that `label_aisles
-    guide` prints. The file does not include the model's label, so it cannot
-    influence the person's answer.
-
-After a change moves predictions (a relabel), running
-`sample` again tops up any cell that lost rows. Rows are never removed.
-
-### Measuring the labels
-
-`measureAisleLabels` (in `aisle_pipeline.dart`) compares the pipeline with a
-person, using only committed data: the bundle's codes, scans and Aisles, the
-reference rows and the labels. The builder and the CI test call the same
-function with the same inputs.
-
-1.  **Which rows count.** Rows whose code is in the bundle and whose `aisle`
-    is filled in and is not `unsure`. Each set is measured on its own.
-2.  **What is compared.** Each row's prediction, from its label, is compared
-    with the person's `aisle`, where `none` means no Aisle.
-3.  **Overall**, over the `random` rows:
-    *   **agreement** is the share of rows with a predicted Aisle whose
-        predicted Aisle equals the person's;
-    *   **coverage** is the share of rows the person gave an Aisle that have
-        a predicted Aisle.
-4.  **Per Aisle X**, over every counted row predicted as X:
-    *   **Browse precision** is the share of those in X's Browse rows that the
-        person gave X;
-    *   **precision** is the same share for those outside X's Browse rows.
-5.  **Recall per Aisle** (the share of `random` rows the person gave X that
-    were predicted as X) is reported, not checked: 120 random rows give
-    fewer than 15 rows for most Aisles. Overall coverage checks recall in
-    aggregate.
-6.  **No rows.** A measure with no rows (`rows == 0`) is reported as "not
-    measured". It never divides by zero.
-
-The bar, on the test set, checked by a Dart test in CI. The three bars are
-constants in `aisle_pipeline.dart`:
-
-| Measure | Bar |
-| :------ | :-- |
-| Overall agreement | ≥ 95% (`aisleAgreementBar = 0.95`) |
-| Overall coverage | ≥ 85% (`aisleCoverageBar = 0.85`) |
-| Browse precision, each Aisle | ≥ 90% (`aislePrecisionBar = 0.90`) |
-| Precision, each Aisle | ≥ 90% (`aislePrecisionBar`) |
-| Rows per Aisle, for each of the two precision measures | ≥ the **required count**: 15, or the number of the Aisle's products in that part (Browse rows, or outside them) when it has fewer |
-
-How a measure is judged:
-
-*   A share is compared with its bar before rounding (`matched / rows <
-    bar` fails). Percentages are printed to one decimal place.
-*   Overall agreement or coverage with no rows is a failure.
-*   For each Aisle part, the row count is checked first. Fewer rows than the
-    required count is a failure, and that part's precision is not checked.
-    A required count of 0 (the Aisle has no products in that part) is not a
-    failure, and the precision is reported as "not measured".
-
-Failures are listed in this order: overall agreement, overall coverage, then
-for each Aisle in `FoodAisle` order its Browse row count, Browse precision,
-row count outside Browse and precision outside Browse. Each failure is one of
-these texts, and the tests check them exactly (`<id>` is the Aisle id, `n` is
-the number of rows):
+**`second-opinion-input`** writes
+`build/open_food_facts_aisle_second_opinion_input.ndjson` for the products
+whose current label is not confident and which have no current second opinion.
+It refuses with exit status 1, printing "N products need labels: run
+label_aisles.dart label, then try again.", when any product has no current
+label. The first line holds the question, and each later line one product:
 
 ```text
-overall agreement 93.3% is below 95.0% (n=105)
-overall agreement: not measured
-overall coverage 80.0% is below 85.0% (n=110)
-overall coverage: not measured
-too few rows for drinks in Browse: 12 of 15
-browse precision for snacks 86.7% is below 90.0% (n=15)
-too few rows for babyFood outside Browse: 3 of 9
-precision for snacks outside Browse 85.7% is below 90.0% (n=21)
+{"instructions":"<the instructions in The question asked of the model>","criteria":{"dairyEggs":"…","…":"…","other":null},"answer":"Reply with exactly one id from criteria, for each product."}
+{"code":"0818290014313","state":{"product":"Greek Yogurt Plain Nonfat","brand":"Chobani","open_food_facts_categories":["dairies","…"]}}
 ```
 
-These are the eight forms; one run lists only the failures it finds. In "too
-few rows", the second number is the required count.
+The question is the same one Clef was asked, built with `aisleModelState` and
+the same constants. Clef's answer is not in the file, so it cannot sway the
+second opinion. The labeller has no code that calls a hosted model and handles
+no API key: a maintainer sends this file to the model by whatever client they
+have (a short script against the provider's API, or a coding agent running on
+that model). Whichever is used, the result is an answers file of JSON lines,
+`{"code":"0818290014313","choice":"dairyEggs"}`, which may be in any order and
+may be several files joined. Product text is contributors' writing, so the
+client tells the model to treat `state` as data.
 
-*   **Where the bar comes from.** In the
-    [definitions experiment](#the-definitions-experiment), the committed
-    descriptions reached 99.2% agreement among the products kept at 0.6,
-    which were 88% of the products counted. The 95% bar leaves room for a
-    person's labels to differ from the AI readers', and 88% is a share of all
-    counted products, not coverage as defined here, so the coverage bar stays
-    at 85%. The 90% precision bars are a product decision: at most one
-    product in ten in an Aisle is in the wrong place.
-*   **When the bar is missed.** The pull request cannot merge while the CI
-    test fails. The maintainer changes descriptions, judging each
-    change on the dev measures (`--dev-only`, then the builder's report), and
-    relabels. If the test set still fails after the dev set passes, the
-    author decides one of these, each recorded in the pull request and, for
-    the last two, in this spec:
-    *   move the current test rows to dev (change `set`) and draw a fresh test
-        set with `sample` and a new seed;
-    *   merge an Aisle into another, which changes the question hash;
-    *   change a bar.
+**`second-opinion-apply`** takes the answers in.
+
+*   **Rejected.** A line that is not exactly `code` and `choice`, a `choice` that
+    is not an Aisle id or `other`, or a code that is not in the current second
+    opinion input, exits with status 65 and writes nothing.
+*   **Writes** the second opinions file through a temporary file and a rename,
+    with the current question hash and `--model` in its header. It keeps the
+    current lines already there when the header names the same model, adds the
+    answers, and drops codes whose label is now confident or that left the
+    aisle input. A file never holds answers from two models or two questions.
+*   **Reports** answers taken in and products still without one, and exits with
+    status 1 if any remain.
+
+**`review`** serves the review page.
+
+*   **Refuses** with exit status 1 and a message, as `second-opinion-input`
+    does, when any label or needed second opinion is missing or stale.
+*   **Chooses the rows.** `selectAisleEdgeCases` takes the edge cases with no row
+    in the overrides file, ordered by `scans` descending, then `code` ascending,
+    and keeps the first `aisleReviewLimit` (50). Most scanned first means a
+    person's time goes where most users look. With no rows it prints so and
+    exits with status 0.
+*   **Serves the page.** It binds to `127.0.0.1` on a port the system assigns,
+    and prints a URL whose path is a random token. Requests with any other path
+    get 404. The page comes from `aisleReviewPage`, a single self-contained
+    document with nothing loaded from elsewhere.
+*   **The page** shows one product at a time: name, brand, all its tags, Clef's
+    answer and confidence, the second opinion's answer, and how many remain. It
+    has one button for each Aisle, by its UI label, then `none` and `unsure`, and
+    the text of `guide` in a section that can be opened. Showing both models'
+    answers is deliberate: this is a tie-break, not a measure, and nothing is
+    labelled blind. It is a maintainer's tool, so [DESIGN.md](../../DESIGN.md)
+    does not apply to it.
+*   **Writes each answer at once.** The page posts `{code, aisle}` to the token
+    path. The tool adds the row and writes `aisle_overrides.csv` through a
+    temporary file and a rename, so stopping at any point loses at most the
+    answer in flight. It exits with status 0 after the last row. Running it again
+    shows the next edge cases, up to the limit, so a maintainer can choose to
+    review more.
+
+**`guide`** prints `aisleGuideText()` and exits with status 0.
+
+The labeller never runs in CI and is not a dependency of the app. It uses
+`dart:io`'s `HttpClient` and `HttpServer`, and `package:cryptography`, which the
+builder already uses, for SHA-256, so it adds no package.
+
+### What CI checks
+
+No check in CI judges whether a label is right. `test/tool/aisle_data_test.dart`
+checks that the committed data is well formed and complete, using only committed
+files. CI has no aisle input, so it cannot recompute input hashes; the builder
+has already refused stale data.
+
+*   The three data files parse.
+*   Each file's header has the current `aisleQuestionHash()`.
+*   Every code in the committed bundle has a label line.
+*   Every code whose label is not confident has a second opinion line.
+*   Each product's `aisle` in the bundle is what `resolveFoodAisle` gives from
+    the committed files, treating every line as current.
+*   **Coverage counts.** Every `FoodAisle` has at least one product, and at
+    least `aisleCoverageFloor` (0.85) of bundled products have an Aisle. This
+    catches a broken run, not a poor label. It is set just below the 88% that
+    the [definitions experiment](#the-definitions-experiment) kept on confidence
+    alone, before any product is added by agreement or by a person.
+
+If the floor is missed, the pull request cannot merge while the test fails. The
+maintainer finds out why from the builder's report, then fixes the run or, with
+the reason recorded in the pull request and here, changes the floor.
 
 ### The bundle file, format version 2
 
@@ -1014,7 +1071,8 @@ few rows", the second number is the required count.
 
 *   **Header.** Unchanged except `formatVersion`, and `attributionText`, which
     also names `apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson`,
-    `aisle_reference.csv` and `label_aisles.dart`.
+    `aisle_second_opinions.ndjson`, `aisle_overrides.csv` and
+    `label_aisles.dart`.
 *   **Product line.** It gains a last key, `aisle`, with an Aisle id or
     `null`. The key is required, so the key order stays fixed and the
     encoder's round-trip check (in `open_food_facts_mapping_test.dart` and
@@ -1134,10 +1192,9 @@ Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50, Food
     empty list.
 
 **The coverage guarantee.** Every `FoodAisle` has products in the committed
-bundle: the measures need at least 15 test rows per Aisle in its Browse rows,
-and the bundle asset test checks every Aisle directly. So the picker lists
-every Aisle once the bundle is ready, without asking the database which ones
-have products.
+bundle: [What CI checks](#what-ci-checks) and the bundle asset test both check
+every Aisle. So the picker lists every Aisle once the bundle is ready, without
+asking the database which ones have products.
 
 ### The picker
 
@@ -1371,7 +1428,7 @@ Open Food Facts products; null when it has none, and always null for USDA."
 | Sync is silent LWW (last writer wins). | Not touched. |
 | Validation is one shared two-tier module. | No rule or tier changes. Aisle ids are checked by the bundle decoders, which reject a malformed bundle as they do today. The agent's 422 is a request-shape check, not a validation rule. |
 | No behavioral analytics. | Opening or browsing an Aisle sends nothing and is recorded nowhere. |
-| Local-only Mode transmits nothing. | Aisles add no request. The labeller's requests go from a maintainer's machine to the maintainer's own Ollama server, with public Open Food Facts data only, never user data. |
+| Local-only Mode transmits nothing. | Aisles add no request from the app. The labeller's requests go from a maintainer's machine to the maintainer's own Ollama server, and the second opinion's from a maintainer's machine to a hosted model. Both carry public Open Food Facts data only, never user data. |
 
 ### Vocabulary
 
@@ -1392,8 +1449,6 @@ Open Food Facts products; null when it has none, and always null for USDA."
     TypeScript: a server test reads the Dart enum's source and compares it
     with `FOOD_AISLES` and `FOOD_AISLE_LABELS`, and each side's existing
     bundle test parses the committed bundle with its own decoder.
-    `measureAisleLabels` has one implementation, in Dart, covered by Dart unit
-    tests.
 
 ## Alternatives Considered
 
@@ -1447,17 +1502,21 @@ suggested).
 
 ### Alternative F: A hosted model API
 
-*   **Rejected:** the data is public, so privacy is not the concern. A full
-    run is about 41,700 short requests, a small cost on a hosted API. The
-    concern is pinning: a hosted model can change under the same name. A
-    local model's digest is recorded in the labels file, and rerunning it
-    costs only the maintainer's time.
+*   **Rejected for the labels:** the data is public, so privacy is not the
+    concern. A full run is about 41,700 short requests, a small cost on a hosted
+    API. The concern is pinning: a hosted model can change under the same name. A
+    local model's digest is recorded in the labels file, and rerunning it costs
+    only the maintainer's time.
+*   **Used for the second opinion.** Pinning matters less there: about one
+    product in eight is asked, the answers are committed so builds never repeat
+    the request, and a change of model only makes an answer differ on a later
+    refresh.
 
 ### Alternative G: Sub-aisles, or several Aisles per product
 
 *   **Rejected for now:** 14 Aisles of hundreds to thousands of products,
     each searchable, give a new user somewhere to start. A second level would
-    double the labelling and reference work before the first level has been
+    double the labelling work before the first level has been
     used.
 
 ### Alternative H: Storage aisles (Frozen, Chilled)
@@ -1489,12 +1548,13 @@ Typing could close the Aisle and run the All search instead.
     products a user fetches live. Those products are found by search, and a
     later bundle labels the common ones.
 
-### Alternative L: A reference set labelled by an AI model
+### Alternative L: Treat two models' agreement as a measure of quality
 
-*   **Rejected as the measure:** the pilot's reference labels were made this
-    way, and they were enough to compare approaches. "What users expect" is a
-    human judgement, and a person labelling without seeing the model's answer
-    does not share the model's errors.
+*   **Rejected:** the second opinion decides products Clef is unsure of, and its
+    agreement figures are reported, but they do not measure what users expect.
+    Two models reading the same descriptions can share an error. This spec
+    states that nothing measures it, rather than present a number that looks like
+    a measure.
 
 ### Alternative M: Write the order of principles into the instruction, or split the question
 
@@ -1546,17 +1606,33 @@ suggested 12 to 16).
     tobacco") and its lower levels too many for a first look. The 14 Aisles
     follow the main sections common to supermarkets in the launch countries.
     Fewer would mix kinds a shopper keeps apart (alcohol with drinks, baby
-    food with everything else); more would mean more labelling and
-    reference rows per Aisle before the first level has been used. Every Aisle
+    food with everything else); more would mean more labelling
+    before the first level has been used. Every Aisle
     had at least one product in the pilot's 300.
 
 ### Alternative R: A small classifier trained on the person's labels
 
 It would be deterministic and could run on a CPU, even in CI.
 
-*   **Rejected:** 720 labelled rows over 14 Aisles are too few to train on,
-    and they are the measure; training on them would leave nothing to measure
-    with.
+*   **Rejected:** at most 50 answers a run over 14 Aisles are far too few to
+    train on.
+
+### Alternative S: A person-labelled reference set
+
+An earlier version of this spec drew 720 products: 540 held out as a test set
+that CI checked against bars (95% overall agreement, 85% coverage and 90%
+precision per Aisle), and 180 as a dev set for tuning the descriptions. A person
+labelled each row without seeing the model's answer.
+
+*   **Rejected by the author (2026-11-07):** it is too much manual work, about two
+    hours for a first set and more for each top-up, and it would have to be
+    repeated in part as the bundle changed. Mistakes would remain with a person's
+    labelling too. Users can report them later, on the products people actually
+    log, which also finds what a sample of 720 in 41,700 would miss.
+*   **What this gives up.** Nothing now measures label quality, and a change that
+    makes the labels worse fails no test unless it also lowers coverage. Tuning
+    has no dev set either, so a description change is judged by reading its
+    effect in the pull request's diff of the labels file.
 
 ## Non-Functional Requirements
 
@@ -1579,8 +1655,9 @@ and rows in `test/performance/README.md`:
 
 *   **The bundle.** About 0.1 MB more when compressed.
 *   **The reference database.** The index adds about 1 MB on the device.
-*   **The repository.** `aisle_labels.ndjson` is about 4 MB of text, and a
-    refresh changes only new and changed lines.
+*   **The repository.** `aisle_labels.ndjson` is about 4 MB of text and
+    `aisle_second_opinions.ndjson` about 0.4 MB, and a refresh changes only new
+    and changed lines.
 
 ### Maintainer cost
 
@@ -1588,12 +1665,14 @@ and rows in `test/performance/README.md`:
     24 GB consumer GPU. It is needed when the question hash or the model
     changes.
 *   **A refresh** labels only new and changed products. Every refresh that
-    adds products needs a GPU for that step; a rebuild from committed labels
-    (for example after a reference row is relabelled) does not.
+    adds products needs a GPU for that step; a rebuild from committed files
+    (for example after a person's answer) does not.
 *   **A boundary change** is a description change, so it changes the question
-    hash and needs a full labelling run.
-*   **The first reference set** is 720 rows, about two hours for one person.
-*   **A description experiment** with `--dev-only` takes about 3 minutes.
+    hash and needs a full labelling run and all the second opinions again.
+*   **The tags export** is 1.5 GB against a dump's 13 GB, needed once for this
+    pull request. A refresh still needs a dump.
+*   **The second opinion** is about 5,000 short requests on a small hosted model.
+*   **The review** is at most 50 products, about ten minutes at 10 seconds each.
 
 ### Accessibility
 
@@ -1607,16 +1686,21 @@ and rows in `test/performance/README.md`:
 ### Security and privacy
 
 *   **Requests.** The labeller sends public Open Food Facts product data, and
-    nothing else, to the Ollama URL a maintainer gives it.
+    nothing else, to the Ollama URL a maintainer gives it. The second opinion
+    input holds the same public data, and a maintainer sends it to the hosted
+    model.
 *   **Access.** Ollama has no authentication. A maintainer runs it on
     `localhost`, or, when it runs on another machine, limits who can reach its
     port at the network layer.
+*   **The review page** listens only on `127.0.0.1`, under a random path, and
+    only while `review` runs, so another site in the same browser cannot post an
+    answer to it.
 *   **The URL.** It is passed on the command line and never committed.
-*   **Product text in the model.** Names and brands are written by Open Food
+*   **API keys.** The tools read none and store none.
+*   **Product text in the models.** Names and brands are written by Open Food
     Facts contributors and could contain wording meant to steer a label. Each
-    is cut to 200 runes. The worst result is a wrong Aisle, which the
-    precision measures catch in sample, and which a reference row corrects
-    for that product.
+    is cut to 200 runes. The worst result is a wrong Aisle, which an override
+    row corrects for that product once someone notices.
 
 ### Rollout and rollback
 
@@ -1641,15 +1725,16 @@ again.
 | Risk | Mitigation |
 | :--- | :--- |
 | The model is withdrawn or changed | Labels are committed, so builds never need it. A new model relabels everything and is recorded in the header |
-| Stale labels reach the bundle | The builder refuses to write a bundle with a missing or stale label. CI checks the question hash and that every bundled code has a label. A hand-made bundle that skipped the builder is the gap; the pull request's builder report shows the check passed |
+| Stale data reaches the bundle | The builder refuses to write a bundle with a missing or stale label or second opinion. CI checks the question hash and that every bundled code has a label. A hand-made bundle that skipped the builder is the gap; the pull request's builder report shows the check passed, and CI compares each product's Aisle with the committed files |
 | Refreshes depend on one maintainer's 24 GB GPU | A refresh labels only new and changed products. Without a GPU, the refresh waits and the app keeps its current bundle |
-| A boundary decision proves unpopular | One description change, tried on the dev set in about 3 minutes, then a full relabel of about 10 hours, measured in CI (CUJ 8) |
-| The descriptions read differently to a person than to Clef | The person labels from the same descriptions (`label_aisles guide`), and the dev and test measures show any gap. In the definitions experiment two independent readers agreed on 97.3% of products |
-| The reference set ages as the bundle changes | Only rows in the current bundle count; the per-Aisle row minimum fails CI before any Aisle drops below 15 counted rows, and `sample` tops the set up |
-| The reference set reflects one person's judgement | The descriptions are reviewed in the pull request; anyone can relabel a row with the change visible in the diff |
+| A boundary decision proves unpopular | One description change, then a full relabel of about 10 hours and the second opinions again (CUJ 8) |
+| Labels are wrong in ways nobody sees | Accepted, and the main cost of this design: no person measures them, so a bad Aisle stays until someone notices. The two experiments are the evidence, the threshold and the second opinion keep unsure products out, and a later spec lets users report mistakes. An override row fixes any one product |
+| Two models agree on a wrong Aisle | Not measured. They read the same descriptions, so they can share an error. The pilot's boundary foods are the likely place, and they are named in the descriptions |
+| The hosted model changes under the same name | Its answers are committed, so builds do not change. A later refresh may ask a changed model about new products; the header records only the name |
+| Few edge cases get a person's answer | Expected. The rest have no Aisle and are still found by search |
 | Ollama changes or removes `/v1/systemone` | The labeller stops with a clear error. Builds are unaffected |
 | An Aisle's top products come mostly from one launch country | Ranking is by global scans and product lines carry no country. The builder reports the country split of each Aisle's 100 most scanned products; if one country dominates, per-country ranking is a future change |
-| Product names in other languages (French names in Canadian products) | Not measured in the pilot. The test set's random rows include them in proportion, so a problem shows in overall agreement |
+| Product names in other languages (French names in Canadian products) | Not measured, and no later check would show it. The builder's report shows per-Aisle counts, and the edge cases a person sees include them in proportion to their scans |
 
 ## Additional Resources
 
@@ -1660,9 +1745,15 @@ again.
     including the product fields `categories_hierarchy` and `countries_tags`.
 *   [Ollama](https://ollama.com), which serves Clef; Clef's model page and
     licence are in Ollama's model library under the name `clef`.
+*   [Open Food Facts data exports](https://world.openfoodfacts.org/data), which
+    list the tags export and the dump.
 
 ## Future Improvements
 
+*   **Users report a wrong Aisle**, so that mistakes are found on the products
+    people log, and a maintainer can fix them with an override row. It needs its
+    own spec, including how a report reaches a maintainer, given that the app
+    records no behavioural analytics and works with no account.
 *   **Aisles for USDA Foods**, once the USDA seed is large enough to browse,
     labelled by the same pipeline from their descriptions.
 *   **Sub-aisles** within the largest Aisles, if user feedback says they are
@@ -1684,43 +1775,59 @@ repository-root files.
 
 #### Pull request 1: data, bundle and agent surface
 
-Built in this order. Steps 1 to 3 end with `pnpm ci:local mobile` green.
-Steps 4 and 5 end with `pnpm ci:local mobile golden contract js sync
+Built in this order. Steps 1 to 4 end with `pnpm ci:local mobile` green.
+Steps 5 and 6 end with `pnpm ci:local mobile golden contract js sync
 workflow_lint` green: those are the jobs that `apps/server/**` and
 `.github/workflows/ci.yml` trigger. The `js` and `sync` jobs need Docker.
+
+Steps 1 and 2 were built before the 2026-11-07 amendment, so they include the
+reference set, sampling and measuring that it removes. Step 3 starts by taking
+those out.
 
 1.  The Aisle enum, the CSV helper move and the pipeline library: items 1, 3
     and 4, with `test/tool/aisle_pipeline_test.dart` from item 17, which
     tests item 4.
 2.  The labeller, and the builder's Aisle input: item 6, and these parts of
-    item 5: recording tags, the three new options, writing the aisle input,
+    item 5: recording tags, the new options, writing the aisle input,
     `--aisle-input-only` and its report, refusing missing or stale labels,
     and every new report line. The builder still writes format version 1
     lines.
-3.  Run the pipeline and commit its data, item 7, in this order:
-    1.  The builder with `--aisle-input-only`, a full `label` run, and
-        `sample --seed 1`.
-    2.  A person labels every row, following `label_aisles guide`.
-    3.  Tuning, on the dev set only. Each description change is tried with
-        `label --dev-only`, judged on the dev measures it prints, and kept
-        or undone. Nobody looks at the test measures while tuning.
-    4.  When the dev measures pass the bar: a full `label` run (the question
-        hash has changed if any description did), `sample` again to top up
-        any cell that lost rows, and a person labels the new rows.
-    5.  The builder, which now writes a bundle (still format version 1, and
-        not committed until step 4) and prints the test measures. This is
-        the one look at the test set. If it fails, the author
-        follows [When the bar is missed](#measuring-the-labels).
-    6.  Every description changed in tuning is changed in
-        [The Aisles](#the-aisles) in the same pull request.
-4.  Format version 2 everywhere, in one commit: item 2, the rest of item 5
+3.  Bring the tools to this spec:
+    1.  **Remove what the amendment drops**, with its tests and report lines:
+        the `sample` command; `label --dev-only`; `sampleReference`;
+        `measureAisleLabels`, `AisleMeasures`, `AisleSetMeasures`, `AisleShare`
+        and `aisleSetMeasuresLines`; `buildAisleRanking`, `browseRank` and
+        `AisleRanking`; the reference row counts, `aisleMeasureMinimumRows` and
+        the three bar constants; `ReferenceDraw` and `ReferenceSet`, with the
+        `sampled_as` and `set` columns; and the dev measures in the labeller's
+        report. `aisleBrowseLimit` stays, because the picker uses it. None of
+        this changes `aisleQuestionHash()`, `aisleInputHash` or the labels file's
+        format, so labels already made stay current.
+    2.  **Rename reference to override:** `aisle_reference.csv` to
+        `aisle_overrides.csv`, `--aisle-reference` to `--aisle-overrides`, and the
+        `Reference` types and functions as in item 4. `allowUnlabelled` goes,
+        because a row exists only once it is answered.
+    3.  **Add:** the `--from-bundle` input, the second opinions, the review page
+        and the new resolve step, as in items 4 to 6, with their tests.
+4.  Run the pipeline and commit its data, item 7, in this order:
+    1.  Download the tags export. Run the builder with `--from-bundle
+        assets/seeds/open_food_facts_bundle.ndjson.gz --tags-export <path>
+        --aisle-input-only`, then a full `label` run.
+    2.  `second-opinion-input`, the answers from `claude-haiku-5-5`, and
+        `second-opinion-apply --model claude-haiku-5-5`.
+    3.  `review`: a person answers up to 50 edge cases.
+    4.  The builder, with the same `--from-bundle` and `--tags-export`, which now
+        writes a bundle (still format version 1, and not committed until step 5)
+        and prints the report. If the coverage floor is missed, the maintainer
+        follows [What CI checks](#what-ci-checks).
+5.  Format version 2 everywhere, in one commit: item 2, the rest of item 5
     (writing each product's resolved Aisle into its line, and the
     attribution text), items 8 to 12, the CI path filters in item 16, and
     the Dart tests in item 17 not already added, with
     `apps/server/test/open-food-facts-bundle.test.mjs` from item 17. The
     format change, the regenerated bundle and both decoders must land
     together, or the asset tests fail.
-5.  The agent parameter, the contract and the docs: items 13 to 16 (less the
+6.  The agent parameter, the contract and the docs: items 13 to 16 (less the
     CI path filters), with the other server tests in item 17.
 
 ##### 1. `lib/domain/nutrition/food_aisle.dart` (Create)
@@ -1778,6 +1885,11 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
 *   **Changes**, declared as below:
 
     ```dart
+    const aisleInputPath = 'build/open_food_facts_aisle_input.ndjson';
+    const aisleLabelsPath = 'tool/open_food_facts_bundle/aisle_labels.ndjson';
+    const aisleSecondOpinionsPath = 'tool/open_food_facts_bundle/aisle_second_opinions.ndjson';
+    const aisleOverridesPath = 'tool/open_food_facts_bundle/aisle_overrides.csv';
+    const aisleSecondOpinionInputPath = 'build/open_food_facts_aisle_second_opinion_input.ndjson';
     const aisleConfidenceThreshold = 0.6;
     // aisleBrowseLimit is imported from food_aisle.dart, not redefined.
     const aisleModelTextLimit = 200; // Unicode code points (runes), so a cut never splits a character
@@ -1786,25 +1898,20 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     const aisleModelDescriptions = <FoodAisle, String>{ /* the table in The Aisles */ };
     const aislePrinciples = <String>[ /* the five steps of the order of principles in The Aisles, one string each */ ];
 
-    const referenceTestRandomRows = 120;
-    const referenceTestRowsPerAislePart = 15; // Browse rows, and rows outside Browse
-    const referenceDevRandomRows = 100;
-    const referenceDevRowsPerAisle = 5;
-    const referenceDevNoAisleRows = 10;
-    const aisleMeasureMinimumRows = 15;
-    const aisleAgreementBar = 0.95;
-    const aisleCoverageBar = 0.85;
-    const aislePrecisionBar = 0.90;
+    const aisleReviewLimit = 50;
+    const aisleCoverageFloor = 0.85;
 
     Map<String, Object?> aisleModelState({required String name, String? brand, required List<String> categories}); // name and brand cut to their first 200 runes
     Map<String, Object?> aisleModelRequest({required String model, required Map<String, Object?> state});
     String aisleInputHash(Map<String, Object?> state);
     String aisleQuestionHashOf({required String instructions, required Map<FoodAisle, String> descriptions});
     String aisleQuestionHash(); // aisleQuestionHashOf with the two constants
+    AisleLabel? aisleLabelFromResponse(Object? response, {required String inputHash}); // null when the response has no usable answer; confidence rounded as the file rounds it
+    ({String name, String digest})? matchOllamaModel(Object? tags, String option); // `--model` against a GET /api/tags response
     String aisleGuideText(); // the order of principles, then each Aisle's id, UI label and description, then the `none` and `unsure` answers
 
     final class AisleInputLine { final String code; final String name; final String? brand; final List<String> categories; final int scans; final String inputHash; }
-    AisleInputLine parseAisleInputLine(String line);
+    AisleInputLine parseAisleInputLine(String line, {int lineNumber = 1}); // lineNumber is the line's number in its file, which a FormatException names
     String encodeAisleInputLine(AisleInputLine line);
 
     final class AisleLabelsHeader { final String questionHash; final String model; final String modelDigest; }
@@ -1813,90 +1920,86 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     AisleLabels parseAisleLabels(String text);
     String encodeAisleLabels(AisleLabels labels); // header line, then lines sorted by code, compact JSON, confidence rounded to 3 places
 
-    enum ReferenceAnswer { aisle, none, unsure, unlabelled }
-    enum ReferenceDraw { random, aisle, noAisle }
-    enum ReferenceSet { dev, test }
-    final class AisleReferenceRow {
+    final class AisleSecondOpinionsHeader { final String questionHash; final String model; }
+    typedef AisleSecondOpinion = ({String inputHash, FoodAisle? aisle}); // `aisle` holds the file's `choice`; null = `other`
+    final class AisleSecondOpinions { final AisleSecondOpinionsHeader? header; final Map<String, AisleSecondOpinion> byCode; } // header null = no file
+    AisleSecondOpinions parseAisleSecondOpinions(String text);
+    String encodeAisleSecondOpinions(AisleSecondOpinions opinions); // header line, then lines sorted by code, compact JSON
+
+    enum AisleOverrideAnswer { aisle, none, unsure }
+    final class AisleOverrideRow {
       final String code; final String name; final String brand; final List<String> categories;
-      final ReferenceAnswer answer; final FoodAisle? aisle; // set only when answer == aisle
-      final ReferenceDraw sampledAs; final ReferenceSet set;
+      final AisleOverrideAnswer answer; final FoodAisle? aisle; // set only when answer == aisle
     }
-    List<AisleReferenceRow> parseAisleReference(String csv, {required bool allowUnlabelled});
-    String encodeAisleReference(List<AisleReferenceRow> rows); // header row, sorted by code, escapeCsvField, formula cells prefixed with '
-    // parseAisleReference removes a leading ' when the character after it is one the encoder prefixes (=, +, -, @, tab, CR)
+    List<AisleOverrideRow> parseAisleOverrides(String csv);
+    String encodeAisleOverrides(List<AisleOverrideRow> rows); // header row, sorted by code, escapeCsvField, formula cells prefixed with '
+    // parseAisleOverrides removes a leading ' when the character after it is one the encoder prefixes (=, +, -, @, tab, CR)
+
+    final class AisleTagsColumns { final int code; final int categories; final int countries; }
+    AisleTagsColumns parseAisleTagsHeader(String line); // FormatException naming a missing column
+    ({String code, List<String> categories, List<String> countries})? parseAisleTagsRow(String line, AisleTagsColumns columns); // cells split on tabs, null for too few cells; `en:` entries only, in order, `en:null` left out
 
     bool isCurrentLabel(AisleLabel? label, AisleLabelsHeader? header, String inputHash);
+    bool isConfidentLabel(AisleLabel label); // an Aisle id, at or above aisleConfidenceThreshold
+    bool isCurrentSecondOpinion(AisleSecondOpinion? opinion, AisleSecondOpinionsHeader? header, String inputHash);
     FoodAisle? resolveFoodAisle({
-      required AisleLabel? currentLabel, // null when missing or stale
-      AisleReferenceRow? reference,       // null skips the reference step
+      required AisleLabel? currentLabel,                 // null when missing or stale
+      AisleSecondOpinion? currentSecondOpinion,          // null when missing or stale
+      AisleOverrideRow? override,                        // null skips the override step
     });
 
     typedef AisleBundleProduct = ({String code, int scans, FoodAisle? aisle}); // aisle = the resolved Aisle
     List<AisleBundleProduct> resolveAisleBundle({
       required List<AisleInputLine> input,
       required Map<String, AisleLabel> labels, // the labels the caller treats as current, by code
-      required List<AisleReferenceRow> reference,
-    }); // resolveFoodAisle for each input line; a code with no label has no label step
+      required Map<String, AisleSecondOpinion> secondOpinions, // the same
+      required List<AisleOverrideRow> overrides,
+    }); // resolveFoodAisle for each input line; a code with no label has no label or agreement step
 
-    final class AisleRanking { /* for each FoodAisle, its list sorted by scans descending, then code ascending */ }
-    AisleRanking buildAisleRanking(List<AisleBundleProduct> bundle);
-    int browseRank(AisleRanking ranking, FoodAisle aisle, {required String code, required int scans}); // as in The reference set: 1-based, the product counted as in `aisle`
+    List<AisleInputLine> secondOpinionsToAsk(List<AisleInputLine> input, AisleLabels labels, AisleSecondOpinions opinions); // current label not confident, no current second opinion
+    String encodeSecondOpinionInput(List<AisleInputLine> lines); // the question line, then one line per product
+    Map<String, FoodAisle?> parseSecondOpinionAnswers(String text, {required Set<String> asked}); // code to choice; FormatException for a bad line or a code not asked
+    AisleSecondOpinions mergeSecondOpinions({required List<AisleInputLine> input, required AisleLabels labels, required AisleSecondOpinions existing, required Map<String, FoodAisle?> answers, required AisleSecondOpinionsHeader header}); // keeps current lines from the same model; drops codes no longer needing one
+
+    final class AisleEdgeCase { final AisleInputLine line; final AisleLabel label; final AisleSecondOpinion secondOpinion; }
+    List<AisleEdgeCase> selectAisleEdgeCases({required List<AisleInputLine> input, required AisleLabels labels, required AisleSecondOpinions opinions, required List<AisleOverrideRow> overrides}); // no override row; scans descending, then code ascending; at most aisleReviewLimit
+    String aisleReviewPage(List<AisleEdgeCase> cases, {required String postPath}); // one self-contained HTML document
 
     Map<String, AisleLabel> reusableLabels(List<AisleInputLine> input, List<AisleLabels> sources, {required String questionHash, required String modelDigest}); // later sources win
     List<AisleInputLine> labelsToMake(List<AisleInputLine> input, Map<String, AisleLabel> reusable); // input lines with no reusable label
     AisleLabels mergeLabels({required List<AisleInputLine> input, required Map<String, AisleLabel> reused, required Map<String, AisleLabel> made, required AisleLabelsHeader header}); // drops codes not in input; a made label wins
-    List<AisleReferenceRow> sampleReference({
-      required List<AisleInputLine> input,
-      required Map<String, AisleLabel> labels, // current labels only; `sample` refuses to run otherwise
-      required List<AisleReferenceRow> existing,
-      required int seed,
-    }); // returns only the new rows
-
-    typedef AisleShare = ({int matched, int rows}); // rows == 0 means not measured
-    final class AisleSetMeasures {
-      final AisleShare agreement; final AisleShare coverage;
-      final Map<FoodAisle, AisleShare> browsePrecision; final Map<FoodAisle, AisleShare> precision;
-      final Map<FoodAisle, AisleShare> recall; // reported only
-      final int unsureRows; final int unlabelledRows;
-    }
-    final class AisleMeasures { final AisleSetMeasures dev; final AisleSetMeasures test; final List<String> failures; }
-    AisleMeasures measureAisleLabels({
-      required List<AisleBundleProduct> bundle,
-      required List<AisleReferenceRow> reference,
-      required AisleLabels labels,
-    });
     ```
 
     *   `aisleInputHash` and `aisleQuestionHashOf` use `DartSha256().hashSync`
         over `utf8.encode(jsonEncode(...))`, and write the first 16 lowercase
         hexadecimal digits (8 bytes).
-    *   `measureAisleLabels` treats every label as current: CI has no dump, so
-        it cannot recompute input hashes, and the builder has already refused
-        stale labels. `failures` lists only test-set failures, in the order
-        and text forms in [Measuring the labels](#measuring-the-labels).
+    *   `aisleReviewPage` escapes every product field as HTML text: product names
+        are contributors' writing.
 
 ##### 5. `tool/open_food_facts_bundle/build_bundle.dart` (Modify)
 
 *   **Scope:** maintainer tool.
 *   **Changes**, as in [The builder](#the-builder):
     *   Step 2 records each kept product's Open Food Facts tags.
-    *   `_parseArguments` accepts `--aisle-labels`, `--aisle-reference` and
-        `--aisle-input-only` as stated there, returns the five-field record,
-        and the usage text lists the three options.
+    *   `_parseArguments` accepts the options stated there, returns the
+        eight-field record, and the usage text lists them.
+    *   The `--from-bundle` and `--tags-export` input, which replaces steps 1
+        to 4 of the build.
     *   A new step writes `build/open_food_facts_aisle_input.ndjson`.
     *   With `--aisle-input-only`, it stops after writing the aisle input and
         its shorter report, writes no bundle, and exits with status 0. The
         shorter report is printed by a new `_Report` method, because
         `_Report.print` needs a bundle header and sizes.
-    *   Otherwise it refuses missing or stale labels (exit 1, no bundle).
-        Then it resolves each product's Aisle with `resolveAisleBundle` and,
-        from step 4 of the build order, passes it to
+    *   Otherwise it refuses missing or stale labels and second opinions (exit
+        1, no bundle). Then it resolves each product's Aisle with
+        `resolveAisleBundle` and, from step 5 of the build order, passes it to
         `encodeBundleProductLine`.
     *   A data file that does not parse exits with status 65.
     *   The report gains the lines listed in [The builder](#the-builder).
-    *   `_attributionText` gains the three file names:
+    *   `_attributionText` gains the four file names:
         `apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson`,
-        `aisle_reference.csv` and `label_aisles.dart`.
+        `aisle_second_opinions.ndjson`, `aisle_overrides.csv` and
+        `label_aisles.dart`.
 
 ##### 6. `tool/open_food_facts_bundle/label_aisles.dart` (Create)
 
@@ -1905,31 +2008,36 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     *   The `label` command, as in [The labeller](#the-labeller), with the
         failure table in
         [The question asked of the model](#the-question-asked-of-the-model).
-    *   The `sample` command, as in [The reference set](#the-reference-set).
+    *   The `second-opinion-input`, `second-opinion-apply` and `review` commands,
+        as in [The labeller](#the-labeller). `review`'s server is in this file,
+        and the page and the choice of rows in item 4.
     *   The `guide` command, which prints `aisleGuideText()` and exits with
         status 0.
     *   Exit statuses: 0 done, 1 incomplete or refused, 64 usage, 65 a data
         file that does not parse, 66 a missing aisle input, 69 the model or
         the endpoint unavailable.
 
-##### 7. `tool/open_food_facts_bundle/aisle_labels.ndjson` and `aisle_reference.csv` (Create)
+##### 7. `tool/open_food_facts_bundle/aisle_labels.ndjson`, `aisle_second_opinions.ndjson` and `aisle_overrides.csv` (Create)
 
-*   **Scope:** committed data, made by the pipeline in step 3.
+*   **Scope:** committed data, made by the pipeline in step 4.
 *   **Changes:** the labels file from a full `label` run over the aisle input
-    built from a dump downloaded for this pull request (Open Food Facts keeps
-    no older dumps, so pull request 1 is also a data refresh, checked as
-    `docs/development.md` describes); the reference set from
-    `sample --seed 1`, every row labelled by a person.
+    built from the committed bundle and the tags export; the second opinions
+    file from `second-opinion-apply`; the overrides file from `review`. This pull
+    request is not a data refresh: the bundle's products and dataset version
+    stay as they are.
 
 ##### 8. `assets/seeds/open_food_facts_bundle.ndjson.gz` (Regenerate)
 
 *   Built at format version 2 by `dart run tool/open_food_facts_bundle/build_bundle.dart`
-    from the same dump as item 7, with the committed labels.
+    with `--from-bundle` over the committed format version 1 bundle and the same
+    tags export as item 7, with the committed data files. Only the header's
+    version, attribution and hashes, and each product line's new `aisle`, change.
 
 ##### 9. `assets/seeds/open_food_facts_bundle.LICENSE.md` and `THIRD_PARTY_DATA.md` (repository root) (Modify)
 
-*   Both name the two data files as part of the ODbL derived database, and
-    the labeller as the method that made the labels file.
+*   Both name the three data files as part of the ODbL derived database, and
+    the labeller as the method that made the labels file. They also name the
+    second opinion and its model as the source of that file.
 
 ##### 10. `lib/data/local/food_reference_database.dart` and `lib/data/local/food_reference_database.g.dart` (Modify; the second generated by `dart run build_runner build`)
 
@@ -2021,12 +2129,13 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
 
     Its date line records the amendment.
 *   `docs/development.md`, the Open Food Facts refresh steps: a refresh
-    becomes the three runs of CUJ 7 (the builder with
-    `--aisle-input-only`, `label_aisles.dart label`, then the builder
-    again), with `sample` and `guide` for topping up the reference set, and
-    the new report lines to check: no missing or stale labels, the per-Aisle
-    counts, and the test measures with no failures.
-*   CI path filters, landing in step 4 of the build order: the `js` filter
+    becomes the runs of CUJ 7 (the builder with `--aisle-input-only`,
+    `label_aisles.dart label`, `second-opinion-input` and
+    `second-opinion-apply`, `review`, then the builder again), the new report
+    lines to check (no missing or stale labels or second opinions, the per-Aisle
+    counts, the coverage floor), and the `--from-bundle` input for changing Aisles
+    without a refresh.
+*   CI path filters, landing in step 5 of the build order: the `js` filter
     in `.github/workflows/ci.yml` and `JS_PATHS` in `tools/ci-local.mjs`
     each gain `apps/mobile/lib/domain/nutrition/food_aisle.dart`, and their
     comments name it with the other Dart files the server tests read. Both
@@ -2060,55 +2169,62 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
         missing or wrong header, a wrong `format` or `formatVersion`, a
         missing or extra key, an unknown `choice`, a confidence outside 0 to
         1, a repeated code.
-    *   **Reference CSV:** quoting of commas, quotes and line breaks; the `'`
+    *   **Second opinions:** `encodeAisleSecondOpinions(parseAisleSecondOpinions(text))`
+        returns `text`; each rejection in [Malformed files](#malformed-files).
+    *   **Overrides CSV:** quoting of commas, quotes and line breaks; the `'`
         prefix added to formula cells and removed again on parse; `unsure`
-        and `none`; an empty `aisle` rejected strictly and read as
-        `unlabelled` leniently; unknown values and repeated codes rejected.
-    *   **`isCurrentLabel`:** a matching hash and question; a changed input
-        hash; a changed question hash; no header.
-    *   **`resolveFoodAisle`:** a reference Aisle beats a confident label; a
-        reference `none` gives `null` even with a confident label; `unsure`
-        and unlabelled rows fall through to the label; the threshold boundary
-        (0.6 kept, 0.599 not); `other` gives `null`; no current label gives
-        `null`.
+        and `none`; an empty `aisle`, unknown values and repeated codes rejected.
+    *   **Tags export:** columns found by name in any order; a missing column
+        throws; tags split on commas, `en:` kept and others dropped, in order;
+        `en:null` left out, giving no tags; a row with too few cells gives `null`.
+    *   **`isCurrentLabel` and `isCurrentSecondOpinion`:** a matching hash and
+        question; a changed input hash; a changed question hash; no header.
+    *   **`isConfidentLabel`:** the threshold boundary (0.6 kept, 0.599 not);
+        `other` at high confidence is not confident.
+    *   **`resolveFoodAisle`:** an override Aisle beats a confident label; an
+        override `none` gives `null` even with a confident label; `unsure` falls
+        through to the label; a confident label beats a differing second opinion;
+        a low label with an equal second opinion gives that Aisle; a low label
+        with a different one gives `null`; `other` with an Aisle second opinion
+        gives `null`; both `other` gives `null`; no current label gives `null`.
     *   **`resolveAisleBundle`:** one product per input line, in input order;
-        a code with no label gets only the reference step.
+        a code with no label gets only the override step.
     *   **`reusableLabels`, `labelsToMake` and `mergeLabels`:** a label is
         reused only when its source's question hash and model digest match
         and its input hash is current; a checkpoint label wins over a
         committed one; a source with another model digest gives nothing;
         `labelsToMake` returns the lines with no reusable label; a made label
         wins in the merge; codes that left the input are dropped.
-    *   **`sampleReference`:** the same seed gives the same rows; random rows
-        are drawn first and are uniform over the input; top-up draws only
-        each cell's shortfall, counted as in
-        [The reference set](#the-reference-set) (including a `random` dev row
-        with no prediction counting toward the `noAisle` cell); existing
-        codes are skipped; a cell with fewer eligible products than its count
-        takes all of them.
-    *   **`buildAisleRanking` and `browseRank`:** rank 1 for the most scanned;
-        `scans` descending, then `code` ascending on a tie; a product whose
-        resolved Aisle is another Aisle is ranked as if it were in this one,
-        without moving the others' ranks.
-    *   **`measureAisleLabels`:** a small hand-built fixture with known
-        agreement, coverage, both precisions and recall; rows outside the
-        bundle and `unsure` rows not counted; a measure with `rows == 0`
-        reported as not measured; each of the eight failure texts exactly;
-        the failure order; a share just under a bar (189 of 199, 94.97%)
-        failing although it prints as 95.0%; a part with too few rows giving
-        only the "too few rows" failure.
+    *   **`secondOpinionsToAsk`:** only labels that are not confident, including
+        `other` at high confidence; a current second opinion is not asked again;
+        a stale one is.
+    *   **`encodeSecondOpinionInput`:** the first line holds the same instructions
+        and criteria as the Clef request; a product line holds the same state; no
+        line holds Clef's answer.
+    *   **`parseSecondOpinionAnswers` and `mergeSecondOpinions`:** an unknown
+        code or choice throws; existing current lines are kept for the same
+        model and dropped for another; codes whose label became confident are
+        dropped.
+    *   **`selectAisleEdgeCases`:** different choices are chosen, and two `other`
+        answers are not; a product with an override row is left out, `unsure`
+        included; `scans` descending, then `code` ascending on a tie; at most 50.
+    *   **`aisleReviewPage`:** contains each product's name, both answers and the
+        confidence; contains no `http://` or `https://` URL; a product name
+        holding `<script>` appears escaped.
     *   **Descriptions:** every `FoodAisle` has one; none contains the words
         "goes to" (a description names only its own foods).
     *   **`aisleGuideText`:** contains every principle and every description,
         in order, so the guide is built from the same constants as the
         model's criteria.
 *   `test/tool/aisle_data_test.dart` (Create, runs in the `mobile` CI job):
-    *   parses the two committed files, the reference set strictly;
+    *   parses the three committed files;
     *   checks that every code in the committed bundle has a label line;
-    *   checks that the labels header's `questionHash` equals
-        `aisleQuestionHash()`;
-    *   runs `measureAisleLabels` on the committed bundle and expects no
-        failures.
+    *   checks that both headers' `questionHash` equals `aisleQuestionHash()`;
+    *   checks that every code whose label is not confident has a second opinion;
+    *   checks that each product's `aisle` in the bundle equals `resolveFoodAisle`
+        over the committed files, treating every line as current;
+    *   checks that every `FoodAisle` has a product and that at least
+        `aisleCoverageFloor` of products have an Aisle.
 *   `test/domain/open_food_facts_mapping_test.dart` (Modify): the encoder with
     and without an Aisle; the round trip of both; rejection of a missing
     `aisle` key and of an unknown id. Existing tests that use the decoded
@@ -2164,7 +2280,7 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     the thresholds file gains the new constant, and the README a row for
     each read.
 *   Server tests (Modify):
-    *   `apps/server/test/open-food-facts-bundle.test.mjs` (step 4): the
+    *   `apps/server/test/open-food-facts-bundle.test.mjs` (step 5): the
         fixture helper `product()` gains `aisle = null` and writes it as the
         last key (`writeBundle` already writes the current format version);
         the format version 2 parse; rejection of a missing `aisle` key and of
@@ -2175,20 +2291,20 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
         `apps/mobile/lib/domain/nutrition/food_aisle.dart`, taking the text
         between `enum FoodAisle {` and the first `;` and matching
         `/(\w+)\('([^']+)'\)/g`, as the Nutrient test reads `NutrientId`;
-    *   `apps/server/test/agent-foods.test.mjs` (step 5): listing an Aisle
+    *   `apps/server/test/agent-foods.test.mjs` (step 6): listing an Aisle
         with no `search`, in order; search within an Aisle, with a barcode
         match from another Aisle kept; `aisle` with no `source` uses Open
         Food Facts; `aisle` with `source=usda` throws
         `AgentPlatformSearchInvalidRequestError`; the `aisle` field on both
         sources. The existing tests that read `result.foods` are unchanged,
         because the return type is kept;
-    *   `apps/server/test/agent-foods-routes.test.mjs` (step 5): the 422
+    *   `apps/server/test/agent-foods-routes.test.mjs` (step 6): the 422
         response and its body;
-    *   `apps/server/test/agent-mcp.test.mjs` (step 5): the existing
+    *   `apps/server/test/agent-mcp.test.mjs` (step 6): the existing
         "search-platform-foods returns the same Open Food Facts body as REST"
         test gains an `aisle` case and the 422 case, with REST and MCP
         giving the same body;
-    *   `apps/server/test/agent-skill.test.mjs` (step 5): `prn-code.mjs`
+    *   `apps/server/test/agent-skill.test.mjs` (step 6): `prn-code.mjs`
         passes `aisle`.
 
 #### Pull request 2: the picker
@@ -2281,25 +2397,36 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     kill-and-reopen-mid-workout case. The killed-install case in
     `food_reference_database_test.dart` (item 17) covers being killed during
     an install.
-*   **Checked by hand in step 3, and recorded in pull request 1's
+*   **Checked by hand in step 4, and recorded in pull request 1's
     description**, because these are command-line behaviours with no unit
     tests:
-    *   the builder refusing missing or stale labels (exit 1, no bundle, the
-        "N products need labels" line) and `--aisle-input-only` (exit 0, no
-        bundle, the shorter report);
+    *   the builder refusing missing or stale labels and second opinions (exit 1,
+        no bundle, the "N products need" line) and `--aisle-input-only` (exit 0,
+        no bundle, the shorter report);
+    *   `--from-bundle`: giving it with `--input` (exit 64); the bundle it writes
+        has the same products, in the same order, with the same fields but
+        `aisle`, as the file it read (compared with `gzip -dc` and a line diff
+        that ignores the key);
     *   the labeller against the real server: model matching through
         `/api/tags`, a stopped and resumed run reusing the checkpoint,
-        `--dev-only` writing no file, a wrong `--ollama` URL giving exit 69,
-        and stopping the server mid-run (each product retried twice, then
-        the stop after 10 unlabelled products in a row, exit 1);
-    *   `sample` refusing stale labels (exit 1).
+        a wrong `--ollama` URL giving exit 69, and stopping the server mid-run
+        (each product retried twice, then the stop after 10 unlabelled products
+        in a row, exit 1);
+    *   `second-opinion-input` refusing missing labels (exit 1), and
+        `second-opinion-apply` refusing a code it did not ask about (exit 65);
+    *   `review`: answering a product writes `aisle_overrides.csv` at once,
+        stopping and running it again shows the next product, and a request with
+        the wrong path gets 404.
 *   **Sync.** Not touched, so there is no sync simulation case.
 *   **Pull request 1's description includes:**
-    *   the builder's report: per-Aisle counts, counts per deciding step, no
-        missing or stale labels, the dev and test measures, and the country
-        split;
+    *   the builder's report: per-Aisle counts, counts per deciding step, the
+        share with an Aisle against the floor, second opinion and edge case
+        counts, no missing or stale data, and the country split;
     *   the labeller's report;
-    *   the labels header's model and digest.
+    *   the labels header's model and digest, and the second opinions header's
+        model;
+    *   a plain statement that no person measured the labels, and how many edge
+        cases a person answered.
 *   **On a device (pull request 2):** a debug build with a fresh install of
     the version 2 bundle. The Browse section lists all 14 Aisles. Opening Snacks and
     searching "salt" shows only products in the Snacks Aisle. Back returns to
