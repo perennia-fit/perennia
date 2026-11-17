@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
@@ -235,24 +233,9 @@ class HomeController extends StreamNotifier<HomeState> {
     if (cancelledRestId == null) {
       return;
     }
-    unawaited(
-      _cancelRestSchedule(
-        ref.read(timerBackgroundSchedulerProvider),
-        cancelledRestId,
-      ),
-    );
-  }
-
-  static Future<void> _cancelRestSchedule(
-    TimerBackgroundScheduler scheduler,
-    String timerId,
-  ) async {
-    try {
-      await scheduler.cancel(timerId);
-    } on Object {
-      // The row is already cancelled; a schedule that outlives it only
-      // costs one stray notification, never the Finish.
-    }
+    // The row is already cancelled; a schedule that outlives it only costs
+    // one stray notification, never the Finish.
+    ref.read(timerBackgroundSchedulerProvider).cancel(cancelledRestId).ignore();
   }
 
   Future<void> resumeWorkout(String workoutId) {
