@@ -533,47 +533,29 @@ function createTestOAuthPlugin(oauthProfiles) {
 
 function createTestSocialProviders() {
   return {
-    google: {
-      clientId: "test-google-client",
-      clientSecret: "test-google-secret",
-      async verifyIdToken(token) {
-        return token.startsWith("google:");
-      },
-      async getUserInfo(tokens) {
-        const email = tokens.idToken.slice("google:".length);
-        return {
-          user: {
-            id: testSocialSubject("google", email),
-            email,
-            name: "Google User",
-            emailVerified: true
-          },
-          // Better Auth 1.7 keys the account by the provider profile's
-          // `sub` claim, as the real id token decode supplies it.
-          data: { sub: testSocialSubject("google", email) }
-        };
-      }
+    google: createTestSocialProvider("google", "Google User"),
+    apple: createTestSocialProvider("apple", "Apple User")
+  };
+}
+
+// Accepts id tokens of the form `<provider>:<email>`.
+function createTestSocialProvider(provider, name) {
+  const tokenPrefix = `${provider}:`;
+  return {
+    clientId: `test-${provider}-client`,
+    clientSecret: `test-${provider}-secret`,
+    async verifyIdToken(token) {
+      return token.startsWith(tokenPrefix);
     },
-    apple: {
-      clientId: "test-apple-client",
-      clientSecret: "test-apple-secret",
-      async verifyIdToken(token) {
-        return token.startsWith("apple:");
-      },
-      async getUserInfo(tokens) {
-        const email = tokens.idToken.slice("apple:".length);
-        return {
-          user: {
-            id: testSocialSubject("apple", email),
-            email,
-            name: "Apple User",
-            emailVerified: true
-          },
-          // Better Auth 1.7 keys the account by the provider profile's
-          // `sub` claim, as the real id token decode supplies it.
-          data: { sub: testSocialSubject("apple", email) }
-        };
-      }
+    async getUserInfo(tokens) {
+      const email = tokens.idToken.slice(tokenPrefix.length);
+      const subject = testSocialSubject(provider, email);
+      return {
+        user: { id: subject, email, name, emailVerified: true },
+        // Better Auth 1.7 keys the account by the provider profile's `sub`
+        // claim, as the real id token decode supplies it.
+        data: { sub: subject }
+      };
     }
   };
 }
