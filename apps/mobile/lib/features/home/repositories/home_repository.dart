@@ -63,7 +63,11 @@ abstract interface class HomeRepository {
     required DateTime endedAt,
   });
 
-  Future<void> finishWorkout(String workoutId);
+  /// Ends the Workout now and stops its running rest, if one runs: a
+  /// finished Workout has no next Set to rest for. Returns the id of the
+  /// rest timer it stopped (null when none ran), so the caller can cancel
+  /// that timer's background schedule, which lives outside the database.
+  Future<String?> finishWorkout(String workoutId);
 
   Future<void> resumeWorkout(String workoutId);
 
@@ -165,7 +169,7 @@ class StubHomeRepository implements HomeRepository {
   }) async {}
 
   @override
-  Future<void> finishWorkout(String workoutId) async {}
+  Future<String?> finishWorkout(String workoutId) async => null;
 
   @override
   Future<void> resumeWorkout(String workoutId) async {}
@@ -323,11 +327,18 @@ class RepositoryHomeRepository implements HomeRepository {
   }
 
   @override
-  Future<void> finishWorkout(String workoutId) {
-    return _repositories.workoutSessions.updateEndedAt(
+  Future<String?> finishWorkout(String workoutId) async {
+    await _repositories.workoutSessions.updateEndedAt(
       workoutId,
       endedAt: _now().toUtc(),
     );
+    final timer =
+        await _repositories.restTimers.getCurrentForWorkout(workoutId);
+    if (timer == null || timer.status != RestTimerStatus.running) {
+      return null;
+    }
+    await _repositories.restTimers.cancel(timer.id);
+    return timer.id;
   }
 
   @override

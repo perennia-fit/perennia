@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../template_divergence/repositories/template_divergence_feature_repository.dart';
+import '../../training/services/timer_background_scheduler.dart';
 import '../controllers/home_controller.dart';
 import 'finish_summary_sheet.dart';
 
@@ -33,6 +34,7 @@ Future<void> runFinishWorkoutFlow(
   // opener, and closing it would pop the opener too.
   final route = ModalRoute.of(context);
   final controller = ref.read(homeControllerProvider.notifier);
+  final scheduler = ref.read(timerBackgroundSchedulerProvider);
   // Read (not watch): only touched when Finish is actually tapped, so
   // widget tests that never tap Finish never instantiate the real
   // Drift-backed repository behind this provider.
@@ -46,7 +48,10 @@ Future<void> runFinishWorkoutFlow(
   final divergenceSummary =
       await divergenceRepository.summaryForWorkout(workoutId);
 
-  await controller.finishWorkout(workoutId);
+  final stoppedTimerId = await controller.finishWorkout(workoutId);
+  if (stoppedTimerId != null) {
+    await scheduler.cancel(stoppedTimerId);
+  }
   if (!context.mounted || route?.isActive != true) {
     return;
   }

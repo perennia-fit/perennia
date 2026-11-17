@@ -665,10 +665,15 @@ Other writes reuse what exists, each under the batch id the screen passes:
     Set (there was a Current Set) after whose write no Workout Exercise has a
     Planned Set left. Nothing comes next then, so a rest and its "Get ready"
     notification would only call the lifter back to a finished plan; the
-    screen offers **Finish Workout** instead. A Set logged with no Current
-    Set (a freestyle Workout, which has no plan, or a Set after the plan)
-    still starts its rest, and a timer already running is left as it is, as
-    for a plan's zero rest. Otherwise it calls `startForSet(set, defaultDuration:
+    screen offers **Finish Workout** instead. For the same reason a rest
+    still running from an earlier Set (the plan's last Set was logged before
+    it ended) is stopped and its background schedule cancelled, as logging a
+    Set mid-plan replaces it: its "Get ready" would name a Set already done.
+    Undo of that Log set does not bring the stopped rest back. A Set logged
+    with no Current Set (a freestyle Workout, which has no plan, or a Set
+    after the plan) still starts its rest. The Workout's Sets are read once,
+    after the write, for both this check and the notification texts.
+    Otherwise it calls `startForSet(set, defaultDuration:
     <the rest that runs>, alertVolume: <the strip's current volume>)` under
     its **own** batch id, never the Log set's: the timer row is written again
     later (prepare cue, end alert, adjust, Stop), which would make the Log
@@ -731,6 +736,12 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         `/workout/<workoutId>` for this), stopping at the first other route.
         A Training Screen a rest notification opened over another screen
         returns to that screen.
+    *   Finishing a Workout, here or on the Workout screen, stops its running
+        rest: `HomeRepository.finishWorkout` sets `endedAt`, cancels the
+        Workout's running rest timer, and returns that timer's id, and the
+        Finish flow cancels its background schedule. A finished Workout has
+        no next Set to rest for, and the notification's tap would open a
+        Training Screen of it.
 
 DESIGN.md's Save and Clear buttons are replaced by Log set; there is no Clear.
 

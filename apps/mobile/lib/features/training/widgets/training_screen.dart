@@ -897,13 +897,21 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             loggedAPlannedSet: currentSet != null,
             autoSelectNextSet: settings.autoSelectNextSet,
           );
-    final nextExerciseId = selectedSet == null
-        ? _nextExerciseIdFor(workoutExerciseId, group)
+    // Next and Finish Workout share the slot, and both wait until this
+    // exercise and every member of its group have no Planned Set.
+    final groupDone =
+        selectedSet == null && !_groupHasPlannedSet(workoutExerciseId, group);
+    final nextExerciseId = groupDone
+        ? nextExerciseWithPlan(
+            exercises: _progressExercises(),
+            fromWorkoutExerciseId: workoutExerciseId,
+          )
         : null;
     final nextExerciseName =
         nextExerciseId == null ? null : _exerciseNameFor(nextExerciseId);
-    final offersFinishWorkout = selectedSet == null &&
-        _offersFinishWorkout(state, group, exerciseSets: exerciseSets);
+    final offersFinishWorkout = groupDone &&
+        nextExerciseId == null &&
+        _readyToFinish(state, exerciseSets: exerciseSets);
 
     final Widget actions;
     if (selectedSet != null) {
@@ -1170,50 +1178,31 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     );
   }
 
-  /// The Next button's target: only when this exercise (and every member
-  /// of its group) has no Planned Set.
-  String? _nextExerciseIdFor(
+  /// Whether this exercise, or any member of its [group], still has a
+  /// Planned Set: then neither Next nor Finish Workout is offered.
+  bool _groupHasPlannedSet(
     String workoutExerciseId,
     ExerciseGroupRecord? group,
   ) {
     final memberIds = group?.workoutExerciseIds ?? <String>[workoutExerciseId];
-    if (memberIds.any((id) => _countsFor(id).planned > 0)) {
-      return null;
-    }
-    return nextExerciseWithPlan(
-      exercises: _progressExercises(),
-      fromWorkoutExerciseId: workoutExerciseId,
-    );
+    return memberIds.any((id) => _countsFor(id).planned > 0);
   }
 
-  /// Whether Finish Workout takes the Next button's place: the Workout is
-  /// open, this exercise has a Performed Set (a freshly opened, empty one
-  /// offers no Finish), and neither this exercise, its group, nor any other
-  /// exercise has a Planned Set left, so there is no Next to offer.
+  /// Finish Workout takes the Next button's place when no exercise has a
+  /// Planned Set left (the caller checks that) and this is true: the
+  /// Workout is open and this exercise has a Performed Set (a freshly
+  /// opened, empty one offers no Finish).
   ///
   /// It waits for the Workout's exercises to load: until then
   /// [nextExerciseWithPlan] cannot find the open exercise and returns null,
   /// which would offer Finish for one frame on a Workout with a plan.
-  bool _offersFinishWorkout(
-    _TrainingExerciseState state,
-    ExerciseGroupRecord? group, {
+  bool _readyToFinish(
+    _TrainingExerciseState state, {
     required List<LoggedSetRecord> exerciseSets,
   }) {
-    final workoutExerciseId = state.workoutExercise.id;
-    if (state.workout.endedAt != null ||
-        !_workoutExercisesById.containsKey(workoutExerciseId) ||
-        !exerciseSets.any((set) => set.isCompleted)) {
-      return false;
-    }
-    final memberIds = group?.workoutExerciseIds ?? <String>[workoutExerciseId];
-    if (memberIds.any((id) => _countsFor(id).planned > 0)) {
-      return false;
-    }
-    return nextExerciseWithPlan(
-          exercises: _progressExercises(),
-          fromWorkoutExerciseId: workoutExerciseId,
-        ) ==
-        null;
+    return state.workout.endedAt == null &&
+        _workoutExercisesById.containsKey(state.workoutExercise.id) &&
+        exerciseSets.any((set) => set.isCompleted);
   }
 
   /// Finish Workout from the Training Screen: the Workout screen's flow
@@ -1484,7 +1473,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
 
   /// Starts the rest after a logged Set, unless the rest that runs is zero
   /// (Off, or a plan's zero), the Workout has ended, or the Set was the
-  /// plan's last (see [_finishedThePlan]). The timer is written
+  /// plan's last (see [_finishedThePlan], which also stops a rest still
+  /// running). The timer is written
   /// under its own batch, never the Log set's: the strip writes the timer
   /// row again later (the end, Stop), which would make the Log set's batch
   /// impossible to undo.
@@ -1499,11 +1489,27 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     required Duration rest,
     required bool soundEnabled,
   }) async {
-    if (rest <= Duration.zero || state.workout.endedAt != null) {
+    if (state.workout.endedAt != null) {
       return null;
     }
-    if (loggedAPlannedSet &&
-        await _finishedThePlan(repositories, state.workoutExercise.workoutId)) {
+    // Read after the write, since the Sets stream may not have re-emitted
+    // yet. Read once: the plan check and the notification texts both use it.
+    final workoutSets = await repositories.sets.listActiveForWorkout(
+      state.workoutExercise.workoutId,
+    );
+    final sets = <LoggedSetRecord>[
+      for (final set in workoutSets)
+        if (!_removingSetIds.contains(set.id)) set,
+    ];
+    if (loggedAPlannedSet && _finishedThePlan(sets)) {
+      await _stopRunningRest(
+        repositories,
+        scheduler,
+        state.workoutExercise.workoutId,
+      );
+      return null;
+    }
+    if (rest <= Duration.zero) {
       return null;
     }
     final loggedSet = await repositories.sets.getById(setId);
@@ -1530,15 +1536,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final timer = await repositories.restTimers.getById(timerId);
     if (timer != null) {
       final setsByExerciseId = <String, List<LoggedSetRecord>>{};
-      final sets = await repositories.sets.listActiveForWorkout(
-        state.workoutExercise.workoutId,
-      );
       for (final set in sets) {
-        if (!_removingSetIds.contains(set.id)) {
-          setsByExerciseId
-              .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
-              .add(set);
-        }
+        setsByExerciseId
+            .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
+            .add(set);
       }
       final texts = _restNotificationTexts(
         l10n,
@@ -1578,27 +1579,39 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
 
   /// Whether the Set just logged was the plan's last: the caller logged a
   /// Planned Set (there was a Current Set), and after the write no Workout
-  /// Exercise has a Planned Set left. Then no rest starts: nothing comes
-  /// next, so a countdown and its notifications ("Get ready: ...") would
-  /// only call the lifter back to a Workout that is done, and the screen
-  /// offers Finish Workout instead.
+  /// Exercise has a Planned Set left in [sets] (the Workout's Sets, without
+  /// those being swiped away). Then no rest starts: nothing comes next, so
+  /// a countdown and its notifications ("Get ready: ...") would only call
+  /// the lifter back to a Workout that is done, and the screen offers Finish
+  /// Workout instead. For the same reason a rest still running from an
+  /// earlier Set (the lifter logged this one before it ended) is stopped,
+  /// as logging a Set mid-plan replaces it; its "Get ready" would name a Set
+  /// already done. Undo of the Log set does not bring that rest back.
   ///
   /// Only a Planned Set counts. A Set logged with no Current Set (a
   /// freestyle Workout, which never has a plan, or a Set added after the
   /// plan ran out) still starts its rest as before: there, nothing says the
-  /// lifter is done. A timer already running for the Workout is left as it
-  /// is, as for a plan's zero rest in `RestTimerRepository.startForSet`.
-  ///
-  /// It reads the Sets after the write, since the Sets stream may not have
-  /// re-emitted yet, and skips Planned Sets being swiped away.
-  Future<bool> _finishedThePlan(
+  /// lifter is done.
+  bool _finishedThePlan(List<LoggedSetRecord> sets) {
+    return !sets.any(isPlannedSet);
+  }
+
+  /// Stops the Workout's running rest, if one runs, and cancels its
+  /// background schedule.
+  Future<void> _stopRunningRest(
     TrainingRepositories repositories,
+    TimerBackgroundScheduler scheduler,
     String workoutId,
   ) async {
-    final sets = await repositories.sets.listActiveForWorkout(workoutId);
-    return !sets.any(
-      (set) => isPlannedSet(set) && !_removingSetIds.contains(set.id),
+    final running = await repositories.restTimers.getCurrentForWorkout(
+      workoutId,
     );
+    if (running == null || running.status != RestTimerStatus.running) {
+      return;
+    }
+    await repositories.restTimers.cancel(running.id);
+    await scheduler.cancel(running.id);
+    _notifyRestTimerChanged();
   }
 
   /// Undo of Log set: reverses the Set and its carry-forward, then cancels
