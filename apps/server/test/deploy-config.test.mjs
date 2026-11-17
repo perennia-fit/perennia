@@ -16,7 +16,7 @@ test("server package exposes the production build used by the Docker image", asy
   assert.equal(packageJson.scripts.build, "tsc -p tsconfig.build.json");
   assert.equal(packageJson.scripts["start:worker"], "node --import tsx src/worker.ts");
   assert.match(packageJson.dependencies["@sentry/node"], /^\^?[0-9]+\./);
-  assert.equal(packageJson.dependencies["pg-boss"], "12.25.1");
+  assert.equal(packageJson.dependencies["pg-boss"], "12.38.1");
 });
 
 test("Docker image builds the server once and runs the compiled app", async () => {
