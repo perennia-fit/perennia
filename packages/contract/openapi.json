@@ -28249,6 +28249,7 @@
                         "enum": [
                           "apple",
                           "atlassian",
+                          "cloudflare",
                           "cognito",
                           "discord",
                           "facebook",
@@ -28355,6 +28356,16 @@
                   "loginHint": {
                     "type": "string",
                     "description": "The login hint to use for the authorization code request"
+                  },
+                  "additionalParams": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Extra query parameters to append to the provider authorization URL (e.g. Cognito identity_provider, Google hd)."
                   },
                   "additionalData": {
                     "type": "object",
@@ -28661,6 +28672,9 @@
                     "type": "string"
                   },
                   "user": {
+                    "type": "string"
+                  },
+                  "iss": {
                     "type": "string"
                   }
                 }
@@ -29066,11 +29080,25 @@
         ],
         "parameters": [],
         "requestBody": {
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                  "callbackURL": {
+                    "type": "string",
+                    "description": "The URL to redirect to after provider logout"
+                  },
+                  "disableRedirect": {
+                    "type": "boolean",
+                    "description": "Return the provider logout URL without redirecting"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "State to pass to the provider logout endpoint"
+                  }
+                }
               }
             }
           }
@@ -29085,6 +29113,14 @@
                   "properties": {
                     "success": {
                       "type": "boolean"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "Provider logout URL when RP-initiated logout is available"
+                    },
+                    "redirect": {
+                      "type": "boolean",
+                      "description": "Whether the client should redirect to the provider logout URL"
                     }
                   }
                 }
@@ -30397,6 +30433,7 @@
                         "enum": [
                           "apple",
                           "atlassian",
+                          "cloudflare",
                           "cognito",
                           "discord",
                           "facebook",
@@ -30451,12 +30488,6 @@
                       },
                       "refreshToken": {
                         "type": "string"
-                      },
-                      "scopes": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
                       }
                     },
                     "required": [
@@ -30480,6 +30511,20 @@
                   "disableRedirect": {
                     "type": "boolean",
                     "description": "Disable automatic redirection to the provider. Useful for handling the redirection yourself"
+                  },
+                  "loginHint": {
+                    "type": "string",
+                    "description": "The login hint to use for the authorization code request"
+                  },
+                  "additionalParams": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Extra query parameters to append to the provider authorization URL (e.g. Cognito identity_provider, Google hd)."
                   },
                   "additionalData": {
                     "type": "object",

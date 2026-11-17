@@ -5612,6 +5612,11 @@ void main() {
         await tester.runAsync(() => database!.close());
         database = null;
 
+        // The app stays dead for 30 s, so the reopened strip has to count
+        // from the stored deadline: a rest started again would show 1:30.
+        await tester.pump(const Duration(seconds: 30));
+        final reopenedAt = clock.now().toUtc();
+
         // Reopen the same file and rebuild the screen on Bench Press.
         database = AppDatabase.openFile(file);
         repositories = TrainingRepositories(database);
@@ -5641,14 +5646,23 @@ void main() {
           tester,
           find.byKey(TrainingScreen.restStripStopKey),
         );
-        // The screen starts and counts the rest on `clock`, the test's fake
-        // clock, so the expected value must use it too. The real clock runs
-        // ahead by however long setup took in real time (seeding the exercise
-        // library), which made this check fail on a slower run.
-        final left = resumed.deadlineAt.difference(clock.now().toUtc());
+        // Without its ticker the strip draws the rest at the moment it read
+        // `clock` (the test's fake clock), somewhere between the reopen and
+        // now, and rounds up as it does on a device. How much fake time that
+        // is depends on how many frames the waits above pumped while the
+        // database answered in real time, so the expected value is bounded
+        // by those two moments, not by a fixed slack: a slack let a run whose
+        // frames straddled a whole second fail.
+        final maxShownSeconds = ceilToSeconds(
+          resumed.deadlineAt.difference(reopenedAt),
+        ).inSeconds;
+        final minShownSeconds = ceilToSeconds(
+          resumed.deadlineAt.difference(clock.now().toUtc()),
+        ).inSeconds;
+        expect(maxShownSeconds, lessThanOrEqualTo(60));
         expect(
           _restStripSeconds(tester),
-          inInclusiveRange(left.inSeconds - 2, left.inSeconds + 1),
+          inInclusiveRange(minShownSeconds, maxShownSeconds),
         );
       } finally {
         await _disposeWidgetTree(tester);

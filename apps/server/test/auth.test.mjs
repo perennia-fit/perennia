@@ -305,13 +305,17 @@ test(
         assert.equal(body.user.email, email);
 
         const accountRows = await serverApp.database.sql`
-          select account."providerId", account."userId"
+          select account."providerId", account."accountId", account."userId"
           from account
           inner join "user" on "user".id = account."userId"
           where "user".email = ${email}
         `;
         assert.equal(accountRows.length, 1);
         assert.equal(accountRows[0].providerId, provider);
+        // The account is keyed by the provider's subject, the same value
+        // Better Auth 1.6 stored, so existing Google and Apple accounts still
+        // match after the upgrade instead of splitting into new ones.
+        assert.equal(accountRows[0].accountId, testSocialSubject(provider, email));
       }
     } finally {
       await serverApp.database.close();
@@ -341,6 +345,10 @@ test(
       }
     });
     const email = uniqueEmail("verified-oauth");
+    // Better Auth finds an OAuth account by provider subject before email,
+    // so a subject left by an earlier run on the same database would sign in
+    // that run's user instead of linking this one.
+    const subject = `google-verified-${randomUUID()}`;
 
     try {
       await createEmailUser(serverApp.app, emails, {
@@ -349,7 +357,7 @@ test(
       });
 
       oauthProfiles.set("verified-code", {
-        id: "google-verified-subject",
+        id: subject,
         email,
         name: "Verified OAuth User",
         emailVerified: true
@@ -380,7 +388,7 @@ test(
         ["credential", "google"]
       );
       assert.equal(accountRows[0].userId, accountRows[1].userId);
-      assert.equal(accountRows[1].accountId, "google-verified-subject");
+      assert.equal(accountRows[1].accountId, subject);
     } finally {
       await serverApp.database.close();
     }
@@ -417,7 +425,7 @@ test(
       });
 
       oauthProfiles.set("unverified-code", {
-        id: "google-unverified-subject",
+        id: `google-unverified-${randomUUID()}`,
         email,
         name: "Unverified OAuth User",
         emailVerified: true
@@ -535,12 +543,14 @@ function createTestSocialProviders() {
         const email = tokens.idToken.slice("google:".length);
         return {
           user: {
-            id: `google-${email}`,
+            id: testSocialSubject("google", email),
             email,
             name: "Google User",
             emailVerified: true
           },
-          data: {}
+          // Better Auth 1.7 keys the account by the provider profile's
+          // `sub` claim, as the real id token decode supplies it.
+          data: { sub: testSocialSubject("google", email) }
         };
       }
     },
@@ -554,21 +564,31 @@ function createTestSocialProviders() {
         const email = tokens.idToken.slice("apple:".length);
         return {
           user: {
-            id: `apple-${email}`,
+            id: testSocialSubject("apple", email),
             email,
             name: "Apple User",
             emailVerified: true
           },
-          data: {}
+          // Better Auth 1.7 keys the account by the provider profile's
+          // `sub` claim, as the real id token decode supplies it.
+          data: { sub: testSocialSubject("apple", email) }
         };
       }
     }
   };
 }
 
+// One subject per test identity, used as both the profile's user id and its
+// `sub` claim, as a real Google or Apple id token carries one value for both.
+function testSocialSubject(provider, email) {
+  return `${provider}-${email}`;
+}
+
 async function completeOAuthSignIn(app, code) {
-  const signInResponse = await postJson(app, "/api/auth/sign-in/oauth2", {
-    providerId: "google",
+  // Better Auth 1.7 registers genericOAuth providers as social providers, so
+  // the test provider signs in and calls back through the core social routes.
+  const signInResponse = await postJson(app, "/api/auth/sign-in/social", {
+    provider: "google",
     callbackURL: "http://localhost/signed-in",
     errorCallbackURL: "http://localhost/auth-error",
     disableRedirect: true
@@ -582,7 +602,7 @@ async function completeOAuthSignIn(app, code) {
   assert.notEqual(state, "");
 
   return app.request(
-    `/api/auth/oauth2/callback/google?code=${encodeURIComponent(
+    `/api/auth/callback/google?code=${encodeURIComponent(
       code
     )}&state=${encodeURIComponent(state)}`,
     {
