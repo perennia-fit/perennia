@@ -80,6 +80,43 @@ void main() {
     expect(settingsInvalidations, 0);
   });
 
+  test(
+      'ends the pull on an empty page after a page padded past the limit, '
+      'though the empty page repeats the cursor', () async {
+    // A last page that parent rows pushed to the limit reports more changes,
+    // so the run pulls once more. That pull comes back empty with the same
+    // cursor, and the run must end there rather than fail the cursor-advance
+    // guard.
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repository = _PagedPullSyncRepository(const [
+      SyncPullResult(
+        appliedCount: 3,
+        nextCursor: 'cursor-1',
+        serverClock: '2026-11-08T08:45:01.000Z',
+        fullResyncRequired: false,
+        hasMore: true,
+      ),
+      SyncPullResult(
+        appliedCount: 0,
+        nextCursor: 'cursor-1',
+        serverClock: '2026-11-08T08:45:02.000Z',
+        fullResyncRequired: false,
+        hasMore: false,
+      ),
+    ]);
+    final runner = RepositorySyncCycleRunner(
+      repository: repository,
+      statusRepository: SyncStatusRepository(database),
+    );
+
+    final result =
+        await runner.run(session: _session, deviceId: 'mobile:pixel-8');
+
+    expect(repository.pullCalls, 2);
+    expect(result.appliedCount, 3);
+  });
+
   // docs/designs/platform-library-updates.md: "Hide, do not delete".
   group('ensureLibrarySeeded', () {
     test('is awaited before the first push', () async {
@@ -315,6 +352,45 @@ final class _OneCycleSyncRepository implements SyncCycleRepository {
     bool manageStatus = true,
   }) async =>
       pullResult;
+
+  @override
+  Future<SyncPushResult> pushPendingIntegrationDataClassConsents({
+    required AuthSession session,
+    required String deviceId,
+    bool manageStatus = true,
+  }) async =>
+      _emptyPush;
+
+  @override
+  Future<SyncPushResult> pushPendingLoggedSets({
+    required AuthSession session,
+    required String deviceId,
+    bool manageStatus = true,
+  }) async =>
+      _emptyPush;
+}
+
+/// Answers each pull with the next of [pages], in order.
+final class _PagedPullSyncRepository implements SyncCycleRepository {
+  _PagedPullSyncRepository(this.pages);
+
+  final List<SyncPullResult> pages;
+  var pullCalls = 0;
+
+  @override
+  Future<void> backfillSeedPurposes() async {}
+
+  @override
+  Future<bool> hasPendingChanges() async => false;
+
+  @override
+  Future<SyncPullResult> pullLoggedSetChanges({
+    required AuthSession session,
+    required String deviceId,
+    int limit = 100,
+    bool manageStatus = true,
+  }) async =>
+      pages[pullCalls++];
 
   @override
   Future<SyncPushResult> pushPendingIntegrationDataClassConsents({

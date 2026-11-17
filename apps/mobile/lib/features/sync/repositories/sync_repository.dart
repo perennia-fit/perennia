@@ -1257,11 +1257,15 @@ class SyncRepository implements SyncCycleRepository {
         serverClock: response.serverClock,
         fullResyncRequired: false,
         // A malformed entry still took a slot on the page. The server fills a
-        // page with up to `limit` rows and then adds the parents they
-        // reference, so a full page can hold more than `limit` changes:
-        // anything short of `limit` is the last page, nothing else is. With
-        // `== limit`, a page that carried parents ended the pull partway
-        // through a batch, and the rest waited for the next sync.
+        // page with up to `limit` base rows and then adds the parents they
+        // reference, and the reply does not say how many were which. A page
+        // short of `limit` is certainly the last one. A page at or over
+        // `limit` may be the last one padded by parents, so it reports more
+        // and the next pull settles it: an empty page ends the loop, and
+        // SyncCycleRunner checks `hasMore` before its cursor-advance guard
+        // because that empty page repeats the cursor. With `== limit`, a page
+        // that carried parents ended the pull partway through a batch, and
+        // the rest waited for the next sync.
         hasMore:
             response.changes.length + response.malformedChanges.length >= limit,
         userSettingsApplied: applied.userSettingsApplied,

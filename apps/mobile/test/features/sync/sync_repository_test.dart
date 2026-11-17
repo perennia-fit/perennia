@@ -1640,12 +1640,14 @@ void main() {
   });
 
   test(
-      'reports more changes when parent rows push a page past the limit, '
+      'reports more changes when a page holds more than the limit, '
       'so the rest of a batch is pulled in the same sync', () async {
     // The server fills a page with up to `limit` rows and then adds the
     // parents they reference, so a full page can hold more than `limit`
     // changes. Reading that as the last page stopped the pull partway through
     // an agent's plan: its Workout Templates arrived, its Routine did not.
+    // Which rows are parents does not matter to the count, so this page is
+    // three Logged Sets against a limit of two.
     final updatedAt = DateTime.utc(2026, 11, 8, 8, 45);
     await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
     final repository = SyncRepository(
