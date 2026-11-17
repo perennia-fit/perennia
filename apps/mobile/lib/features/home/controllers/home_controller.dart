@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
@@ -225,25 +228,44 @@ class HomeController extends StreamNotifier<HomeState> {
   /// strip's Stop: the row first, then the schedule.
   ///
   /// The schedule cancel is a platform-channel call, so it is not awaited and
-  /// its errors are dropped: Finish is a local write and never waits on, or
+  /// a failure is only logged: Finish is a local write and never waits on, or
   /// fails because of, the notification plugin.
   Future<void> finishWorkout(String workoutId) async {
     final cancelledRestId =
         await ref.read(homeRepositoryProvider).finishWorkout(workoutId);
-    if (cancelledRestId == null) {
-      return;
-    }
-    // The row is already cancelled; a schedule that outlives it only costs
-    // one stray notification, never the Finish.
-    ref.read(timerBackgroundSchedulerProvider).cancel(cancelledRestId).ignore();
+    _cancelRestSchedule(cancelledRestId);
   }
 
   Future<void> resumeWorkout(String workoutId) {
     return ref.read(homeRepositoryProvider).resumeWorkout(workoutId);
   }
 
-  Future<void> deleteWorkout(String workoutId) {
-    return ref.read(homeRepositoryProvider).deleteWorkout(workoutId);
+  /// Deleting the Workout cancels its running rest with it; this then
+  /// cancels that rest's background schedule, as [finishWorkout] does, so no
+  /// rest notification fires for a Workout that no longer exists.
+  Future<void> deleteWorkout(String workoutId) async {
+    final cancelledRestId =
+        await ref.read(homeRepositoryProvider).deleteWorkout(workoutId);
+    _cancelRestSchedule(cancelledRestId);
+  }
+
+  /// The row is already cancelled; a schedule that outlives it only costs one
+  /// stray notification, never the write that ended the Workout. The failure
+  /// is logged rather than dropped, so a cancel that keeps failing on a
+  /// device leaves a trace.
+  void _cancelRestSchedule(String? restId) {
+    if (restId == null) {
+      return;
+    }
+    unawaited(
+      ref
+          .read(timerBackgroundSchedulerProvider)
+          .cancel(restId)
+          .catchError((Object error) {
+        debugPrint('Cancelling the background schedule of rest $restId '
+            'failed: $error');
+      }),
+    );
   }
 
   Future<String> copyWorkout(String workoutId) {

@@ -25,6 +25,7 @@
 // here means a green run there. When you change ci.yml, update this file too.
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -98,9 +99,34 @@ function have(tool) {
   return capture(`${tool} --version`).ok;
 }
 
+// ci.yml pins Flutter in FLUTTER_VERSION, because a newer stable can re-resolve
+// pubspec.lock and break the toolchain. This script runs the Flutter on PATH,
+// so it warns when that is not the pinned version: a run on a different
+// Flutter may not match hosted CI. A warning, not a failure, since a patch
+// release apart usually behaves the same.
+function checkFlutterVersion() {
+  const pinned = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8')
+    .match(/^\s*FLUTTER_VERSION:\s*['"]?([^\s'"]+)/m)?.[1];
+  if (!pinned) return;
+  const probe = capture('flutter --version --machine');
+  let local;
+  try {
+    local = JSON.parse(probe.out.slice(probe.out.indexOf('{'))).frameworkVersion;
+  } catch {
+    local = undefined;
+  }
+  if (local !== pinned) {
+    console.log(
+      `\n  ⚠ Flutter ${local ?? '(unknown)'} is on PATH, but ci.yml pins ${pinned} ` +
+        '(FLUTTER_VERSION). Results may differ from hosted CI.',
+    );
+  }
+}
+
 // ---- job definitions -------------------------------------------------------
 // Each job mirrors a job in ci.yml. `paths` are the dorny/paths-filter globs
-// for --changed. `db` marks jobs needing Postgres. `run` returns a result:
+// for --changed. `db` marks jobs needing Postgres; `flutter` marks jobs that
+// run Flutter, which checks the local version against ci.yml's pin. `run` returns a result:
 //   true  -> passed
 //   false -> failed
 //   'skip'-> nothing to do locally (e.g. tool missing)
@@ -160,6 +186,7 @@ const JOBS = {
 
   mobile: {
     title: 'Flutter analyze and test',
+    flutter: true,
     paths: ['apps/mobile/**', 'pubspec.yaml', 'pubspec.lock',
       '.github/workflows/ci.yml'],
     run: () =>
@@ -210,6 +237,7 @@ const JOBS = {
       'tsconfig.base.json', '.github/workflows/ci.yml',
     ],
     pnpm: true,
+    flutter: true,
     run: () =>
       run('flutter pub get') &&
       run('corepack pnpm --filter @perennia/server test:golden-vectors') &&
@@ -586,6 +614,9 @@ const results = {};
 let dbStarted = false;
 
 try {
+  if (selected.some((name) => JOBS[name].flutter)) {
+    checkFlutterVersion();
+  }
   if (selected.some((name) => JOBS[name].pnpm)) {
     console.log('\n▸ Installing JS dependencies (pnpm install --frozen-lockfile)…');
     if (!run('corepack pnpm install --frozen-lockfile')) {

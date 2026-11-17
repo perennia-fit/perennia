@@ -11,7 +11,7 @@ import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 
-/// Finish stops the Workout's running rest and cancels its background
+/// Finish and Delete stop the Workout's running rest and cancel its background
 /// schedule, so no rest notification fires after the user has left.
 void main() {
   final warnAboutMultipleDatabases =
@@ -24,6 +24,12 @@ void main() {
   late _RecordingScheduler scheduler;
   late HomeController controller;
   late String workoutId;
+
+  /// The rest starts 30 minutes in and runs 2 minutes, so it is still
+  /// counting down at 31 minutes.
+  final restStartedAt = startedAt.add(const Duration(minutes: 30));
+  final duringRest = startedAt.add(const Duration(minutes: 31));
+  late DateTime now;
 
   setUpAll(() {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -41,13 +47,14 @@ void main() {
       platformSeedSource: const _EmptySeedSource(),
     );
     scheduler = _RecordingScheduler();
+    now = duringRest;
     final container = ProviderContainer(
       overrides: [
         trainingRepositoriesProvider.overrideWithValue(repositories),
         homeRepositoryProvider.overrideWithValue(
           RepositoryHomeRepository(
             repositories,
-            now: () => startedAt.add(const Duration(hours: 1)),
+            now: () => now,
           ),
         ),
         timerBackgroundSchedulerProvider.overrideWithValue(scheduler),
@@ -102,7 +109,7 @@ void main() {
     final set = (await repositories.sets.getById(setId))!;
     return (await repositories.restTimers.startForSet(
       set,
-      now: startedAt.add(const Duration(minutes: 30)),
+      now: restStartedAt,
     ))!;
   }
 
@@ -141,6 +148,53 @@ void main() {
     await expectFinished();
     final timer = await repositories.restTimers.getById(timerId);
     expect(timer!.status, RestTimerStatus.expired);
+    expect(scheduler.cancelled, isEmpty);
+  });
+
+  test('records the finish and the cancel as one batch', () async {
+    final timerId = await startRestAfterASet();
+    final before = {
+      for (final entry in await repositories.activityLog.listEntries())
+        entry.id,
+    };
+
+    await controller.finishWorkout(workoutId);
+
+    final entries = (await repositories.activityLog.listEntries())
+        .where((entry) => !before.contains(entry.id))
+        .toList();
+    final workoutEntry =
+        entries.singleWhere((entry) => entry.entityId == workoutId);
+    final restEntry = entries.singleWhere((entry) => entry.entityId == timerId);
+    expect(restEntry.batchId, workoutEntry.batchId);
+  });
+
+  test('leaves a running rest whose deadline has passed alone', () async {
+    final timerId = await startRestAfterASet();
+    now = startedAt.add(const Duration(minutes: 40));
+
+    await controller.finishWorkout(workoutId);
+
+    await expectFinished();
+    final timer = await repositories.restTimers.getById(timerId);
+    expect(timer!.status, RestTimerStatus.running);
+    expect(timer.deletedAt, isNull);
+    expect(scheduler.cancelled, isEmpty);
+  });
+
+  test('delete cancels the running rest and its background schedule', () async {
+    final timerId = await startRestAfterASet();
+
+    await controller.deleteWorkout(workoutId);
+
+    final timer = await repositories.restTimers.getById(timerId);
+    expect(timer!.status, RestTimerStatus.canceled);
+    expect(scheduler.cancelled, <String>[timerId]);
+  });
+
+  test('delete with no running rest cancels no schedule', () async {
+    await controller.deleteWorkout(workoutId);
+
     expect(scheduler.cancelled, isEmpty);
   });
 

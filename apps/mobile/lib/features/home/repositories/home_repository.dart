@@ -70,7 +70,10 @@ abstract interface class HomeRepository {
 
   Future<void> resumeWorkout(String workoutId);
 
-  Future<void> deleteWorkout(String workoutId);
+  /// Deletes [workoutId], which cancels its rests. Returns the id of the rest
+  /// that was still running, so the caller can cancel its background
+  /// notifications too; null when none was.
+  Future<String?> deleteWorkout(String workoutId);
 
   Future<String> copyWorkout({
     required String workoutId,
@@ -174,7 +177,7 @@ class StubHomeRepository implements HomeRepository {
   Future<void> resumeWorkout(String workoutId) async {}
 
   @override
-  Future<void> deleteWorkout(String workoutId) async {}
+  Future<String?> deleteWorkout(String workoutId) async => null;
 
   @override
   Future<String> copyWorkout({
@@ -328,23 +331,48 @@ class RepositoryHomeRepository implements HomeRepository {
   /// Finish also cancels the Workout's running rest. A rest left running
   /// after Finish keeps its row live and its background schedule queued, so
   /// its notification fires after the user has left the Workout (and often
-  /// the app). An expired or cancelled rest is left as it is: its schedule
-  /// has already fired or been cancelled.
+  /// the app).
+  ///
+  /// Both writes share one batch: Finish is one user action, so the Activity
+  /// Log shows it once and undoes the end and the cancel together.
   @override
   Future<String?> finishWorkout(String workoutId) {
+    final now = _now().toUtc();
+    final batchId = _repositories.uuidGenerator.generate();
     return _repositories.database.transaction(() async {
       await _repositories.workoutSessions.updateEndedAt(
         workoutId,
-        endedAt: _now().toUtc(),
+        endedAt: now,
+        batchId: batchId,
       );
-      final rest =
-          await _repositories.restTimers.getCurrentForWorkout(workoutId);
-      if (rest == null || rest.status != RestTimerStatus.running) {
+      final rest = await _restStillRunning(workoutId, now);
+      if (rest == null) {
         return null;
       }
-      await _repositories.restTimers.cancel(rest.id);
+      await _repositories.restTimers.cancel(rest.id, batchId: batchId);
       return rest.id;
     });
+  }
+
+  /// The Workout's rest when it is still counting down at [now], or null.
+  ///
+  /// A row can say running after its deadline: only a visible rest strip
+  /// marks the end, so a rest that ran out while the app was in the
+  /// background keeps its running status. That rest finished, and its end
+  /// notification has already been posted, so it is left as it is rather
+  /// than rewritten as cancelled. An expired or cancelled rest is left alone
+  /// for the same reason.
+  Future<RestTimerRecord?> _restStillRunning(
+    String workoutId,
+    DateTime now,
+  ) async {
+    final rest = await _repositories.restTimers.getCurrentForWorkout(workoutId);
+    if (rest == null ||
+        rest.status != RestTimerStatus.running ||
+        rest.remainingAt(now) <= Duration.zero) {
+      return null;
+    }
+    return rest;
   }
 
   @override
@@ -355,9 +383,18 @@ class RepositoryHomeRepository implements HomeRepository {
     );
   }
 
+  /// Deleting the Workout cancels all its rests with it (the soft delete
+  /// cancels the Workout's children), so this returns the rest that was
+  /// still counting down, for the caller to cancel its background schedule
+  /// as Finish does.
   @override
-  Future<void> deleteWorkout(String workoutId) {
-    return _repositories.workoutSessions.softDelete(workoutId);
+  Future<String?> deleteWorkout(String workoutId) {
+    final now = _now().toUtc();
+    return _repositories.database.transaction(() async {
+      final rest = await _restStillRunning(workoutId, now);
+      await _repositories.workoutSessions.softDelete(workoutId);
+      return rest?.id;
+    });
   }
 
   @override
