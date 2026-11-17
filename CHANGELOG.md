@@ -43,6 +43,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   both the Account and Sync screens offer **Sign in again**. Signing in again
   keeps everything on the phone, including changes that have not synced yet,
   and the next sync sends them.
+- **A sync pulls everything waiting on the server.** When a page of changes
+  carried the parent rows its changes refer to, the app took it for the last
+  page and stopped, so part of a batch waited for a later sync. An agent's
+  plan could arrive as Workout Templates without the Routine, Prescriptions or
+  Groups that belong to them.
 
 ## [0.3.0] - 2026-11-07
 

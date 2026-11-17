@@ -1303,9 +1303,18 @@ class SyncRepository implements SyncCycleRepository {
         nextCursor: response.nextCursor,
         serverClock: response.serverClock,
         fullResyncRequired: false,
-        // A malformed entry still took a slot on the page.
+        // A malformed entry still took a slot on the page. The server fills a
+        // page with up to `limit` base rows and then adds the parents they
+        // reference, and the reply does not say how many were which. A page
+        // short of `limit` is certainly the last one. A page at or over
+        // `limit` may be the last one padded by parents, so it reports more
+        // and the next pull settles it: an empty page ends the loop, and
+        // SyncCycleRunner checks `hasMore` before its cursor-advance guard
+        // because that empty page repeats the cursor. With `== limit`, a page
+        // that carried parents ended the pull partway through a batch, and
+        // the rest waited for the next sync.
         hasMore:
-            response.changes.length + response.malformedChanges.length == limit,
+            response.changes.length + response.malformedChanges.length >= limit,
         userSettingsApplied: applied.userSettingsApplied,
       );
       if (manageStatus) {
@@ -5278,10 +5287,16 @@ class SyncPullResult {
   final String serverClock;
   final bool fullResyncRequired;
 
-  /// True when the remote pull window was full and another request is needed
-  /// to prove the replica is caught up. This is deliberately independent of
-  /// [appliedCount]: LWW losers and already-current rows still consume space
-  /// in the server page.
+  /// True when the page may not be the last one, so another request is needed
+  /// to prove the replica is caught up. It is set when the page held at least
+  /// `limit` entries, counting malformed ones. The server pads a page with the
+  /// parents its rows reference past `limit`, and the reply does not say how
+  /// many rows were padding, so a last page that parents filled also reports
+  /// true: the follow-up pull then comes back empty with the same cursor.
+  /// A false value is certain; a true value is not proof that rows remain, so
+  /// callers must accept an empty follow-up page whose cursor did not move.
+  /// This is deliberately independent of [appliedCount]: LWW losers and
+  /// already-current rows still consume space in the server page.
   final bool hasMore;
 
   /// True when this pull applied at least one account-level Settings
