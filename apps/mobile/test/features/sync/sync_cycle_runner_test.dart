@@ -37,8 +37,8 @@ void main() {
     addTearDown(database.close);
     var settingsInvalidations = 0;
     final runner = RepositorySyncCycleRunner(
-      repository: _OneCycleSyncRepository(
-        pullResult: const SyncPullResult(
+      repository: _PagedPullSyncRepository(const [
+        SyncPullResult(
           appliedCount: 1,
           nextCursor: null,
           serverClock: '2026-07-29T00:00:00.000Z',
@@ -46,7 +46,7 @@ void main() {
           hasMore: false,
           userSettingsApplied: true,
         ),
-      ),
+      ]),
       statusRepository: SyncStatusRepository(database),
       onUserSettingsApplied: () => settingsInvalidations += 1,
     );
@@ -62,15 +62,15 @@ void main() {
     addTearDown(database.close);
     var settingsInvalidations = 0;
     final runner = RepositorySyncCycleRunner(
-      repository: _OneCycleSyncRepository(
-        pullResult: const SyncPullResult(
+      repository: _PagedPullSyncRepository(const [
+        SyncPullResult(
           appliedCount: 1,
           nextCursor: null,
           serverClock: '2026-07-29T00:00:00.000Z',
           fullResyncRequired: false,
           hasMore: false,
         ),
-      ),
+      ]),
       statusRepository: SyncStatusRepository(database),
       onUserSettingsApplied: () => settingsInvalidations += 1,
     );
@@ -331,43 +331,6 @@ final class _NoProgressSyncRepository implements SyncCycleRepository {
     authoredPushCalls += 1;
     return _emptyPush;
   }
-}
-
-final class _OneCycleSyncRepository implements SyncCycleRepository {
-  _OneCycleSyncRepository({required this.pullResult});
-
-  final SyncPullResult pullResult;
-
-  @override
-  Future<void> backfillSeedPurposes() async {}
-
-  @override
-  Future<bool> hasPendingChanges() async => false;
-
-  @override
-  Future<SyncPullResult> pullLoggedSetChanges({
-    required AuthSession session,
-    required String deviceId,
-    int limit = 100,
-    bool manageStatus = true,
-  }) async =>
-      pullResult;
-
-  @override
-  Future<SyncPushResult> pushPendingIntegrationDataClassConsents({
-    required AuthSession session,
-    required String deviceId,
-    bool manageStatus = true,
-  }) async =>
-      _emptyPush;
-
-  @override
-  Future<SyncPushResult> pushPendingLoggedSets({
-    required AuthSession session,
-    required String deviceId,
-    bool manageStatus = true,
-  }) async =>
-      _emptyPush;
 }
 
 /// Answers each pull with the next of [pages], in order.

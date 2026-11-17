@@ -1692,6 +1692,79 @@ void main() {
     expect(await _storedPullCursor(database), 'cursor-with-parents-1');
   });
 
+  test(
+      'a Sync Run pulls past a page padded beyond the limit and ends on the '
+      'empty page that repeats the cursor', () async {
+    // The server's pages, as it builds them for a Sync Run's window of 100:
+    // the first and second each carry 100 base rows plus the parents they
+    // reference, and the third is empty and hands back the cursor it was
+    // given. Ending on the first page left the second waiting for a later
+    // sync; checking the cursor before `hasMore` failed the run on the third.
+    final updatedAt = DateTime.utc(2026, 11, 8, 8, 45);
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    String setId(int index) =>
+        '019a66b0-1108-7000-a627-${index.toRadixString(16).padLeft(12, '0')}';
+    List<Map<String, Object?>> page(int first, int count) => [
+          for (var index = first; index < first + count; index += 1)
+            _pulledChange(
+              id: setId(index),
+              updatedAt: updatedAt,
+              repsEntered: '5',
+              deviceId: 'device-b',
+            ),
+        ];
+    final pages = <String?, (List<Map<String, Object?>>, String)>{
+      null: (page(0, 101), 'cursor-1'),
+      'cursor-1': (page(101, 100), 'cursor-2'),
+      'cursor-2': (const <Map<String, Object?>>[], 'cursor-2'),
+    };
+    final pulledCursors = <String?>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/push') {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': const <Object?>[],
+                'serverClock': '2026-11-08T08:45:01.000Z',
+                'applied': const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          final cursor = body['cursor'] as String?;
+          pulledCursors.add(cursor);
+          final (changes, nextCursor) = pages[cursor]!;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': nextCursor,
+              'serverClock': '2026-11-08T08:45:02.000Z',
+              'changes': changes,
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await RepositorySyncCycleRunner(
+      repository: repository,
+      statusRepository: SyncStatusRepository(database),
+    ).run(session: _session(), deviceId: 'device-a');
+
+    expect(pulledCursors, <String?>[null, 'cursor-1', 'cursor-2']);
+    expect(result.appliedCount, 201);
+    expect(await database.select(database.loggedSets).get(), hasLength(201));
+    expect(await _storedPullCursor(database), 'cursor-2');
+  });
+
   test('a later valid version of a quarantined row supersedes it', () async {
     final updatedAt = DateTime.utc(2026, 6, 22, 9);
     const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';

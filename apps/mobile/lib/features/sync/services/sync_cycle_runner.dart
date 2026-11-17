@@ -76,6 +76,10 @@ final class RepositorySyncCycleRunner {
             serverClock: pull.serverClock,
           );
           passProgress += pull.appliedCount;
+          // Keep this check ahead of the cursor guard below. A page padded to
+          // the limit by parent rows reports `hasMore`, and the pull after it
+          // comes back empty with the same cursor: that empty page ends the
+          // window here instead of reading as a cursor that failed to advance.
           if (!pull.hasMore || pull.fullResyncRequired) {
             break;
           }
