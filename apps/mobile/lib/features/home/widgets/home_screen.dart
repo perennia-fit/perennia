@@ -142,9 +142,7 @@ class HomeScreen extends ConsumerWidget {
           return;
         }
         await Navigator.of(navigationContext).push(
-          MaterialPageRoute<void>(
-            builder: (_) => WorkoutScreen(workoutId: workoutId),
-          ),
+          buildWorkoutScreenRoute(workoutId),
         );
       } on Object {
         if (!navigationContext.mounted) {
@@ -218,9 +216,7 @@ class HomeScreen extends ConsumerWidget {
           return;
         }
         await navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => WorkoutScreen(workoutId: workoutId),
-          ),
+          buildWorkoutScreenRoute(workoutId),
         );
       } on Object {
         if (navigationContext.mounted) {
@@ -1036,9 +1032,7 @@ class _WorkoutSummaryTile extends ConsumerWidget {
         key: HomeScreen.openWorkoutButtonKey(workout.id),
         onTap: () {
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => WorkoutScreen(workoutId: workout.id),
-            ),
+            buildWorkoutScreenRoute(workout.id),
           );
         },
         child: ConstrainedBox(
