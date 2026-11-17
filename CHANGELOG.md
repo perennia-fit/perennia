@@ -40,6 +40,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   expired 7 days after sign-in however often it synced, and sync stopped with
   "Sign in required" until the user signed in again. Devices already showing
   that need one more sign-in.
+- **A sync pulls everything waiting on the server.** When a page of changes
+  carried the parent rows its changes refer to, the app took it for the last
+  page and stopped, so part of a batch waited for a later sync. An agent's
+  plan could arrive as Workout Templates without the Routine, Prescriptions or
+  Groups that belong to them.
 
 ## [0.3.0] - 2026-11-07
 
