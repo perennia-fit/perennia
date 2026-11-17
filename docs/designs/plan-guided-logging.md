@@ -661,7 +661,19 @@ Other writes reuse what exists, each under the batch id the screen passes:
     permission was reported when the rest started and is not reported again
     on each adjust. Stop cancels the schedule (as today).
 *   **Log set** starts the rest for the logged Set, unless the rest that runs
-    is zero or the Workout has ended, with `startForSet(set, defaultDuration:
+    is zero, the Workout has ended, or the Set was the plan's last: a Planned
+    Set (there was a Current Set) after whose write no Workout Exercise has a
+    Planned Set left. Nothing comes next then, so a rest and its "Get ready"
+    notification would only call the lifter back to a finished plan; the
+    screen offers **Finish Workout** instead. For the same reason a rest
+    still running from an earlier Set (the plan's last Set was logged before
+    it ended) is stopped and its background schedule cancelled, as logging a
+    Set mid-plan replaces it: its "Get ready" would name a Set already done.
+    Undo of that Log set does not bring the stopped rest back. A Set logged
+    with no Current Set (a freestyle Workout, which has no plan, or a Set
+    after the plan) still starts its rest. The Workout's Sets are read once,
+    after the write, for both this check and the notification texts.
+    Otherwise it calls `startForSet(set, defaultDuration:
     <the rest that runs>, alertVolume: <the strip's current volume>)` under
     its **own** batch id, never the Log set's: the timer row is written again
     later (prepare cue, end alert, adjust, Stop), which would make the Log
@@ -709,7 +721,32 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
     *   below, with nothing selected, when this Workout Exercise (and every
         member of its group, when grouped) has no Planned Set and
         `nextExerciseWithPlan` returns one: **Next: *name*** (outlined),
-        opening it.
+        opening it;
+    *   in the same place, when that Workout Exercise and its group have no
+        Planned Set, `nextExerciseWithPlan` returns none, the Workout is open,
+        and the exercise has a Performed Set (a freshly opened, empty one
+        offers nothing): **Finish Workout** (outlined). It runs the Workout
+        screen's Finish flow (Template divergence read,
+        `HomeController.finishWorkout`, the
+        [Finish summary](workout-feedback.md#5-finish-summary)), ignores a
+        second tap while the first runs, and first reads the Workout again:
+        one that ended since the screen opened (auto-finish, an agent,
+        another device) is not finished a second time, and the button goes.
+        When the summary closes it leaves
+        for the screen that opened the Workout: it pops itself, then any
+        Training Screen of this Workout and this Workout's Workout screen
+        directly below (the Workout screen's route is named
+        `/workout/<workoutId>` for this), stopping at the first other route.
+        A Training Screen a rest notification opened over another screen
+        returns to that screen.
+    *   Finishing a Workout, here or on the Workout screen, stops its running
+        rest: `HomeRepository.finishWorkout` sets `endedAt` and cancels the
+        Workout's running rest timer in one transaction
+        (`RestTimerRepository.cancelRunningForWorkout`), and returns that
+        timer's id, and the
+        Finish flow cancels its background schedule. A finished Workout has
+        no next Set to rest for, and the notification's tap would open a
+        Training Screen of it.
 
 DESIGN.md's Save and Clear buttons are replaced by Log set; there is no Clear.
 
@@ -1057,7 +1094,9 @@ the group's first card gives the progress without it.
 ### Alternative I: Auto-advance an ungrouped exercise when its plan is done
 
 A user adding a Set after the plan would have to come back. The Next button
-is one tap and never surprises.
+is one tap and never surprises. For the same reason the plan's last Set does
+not finish the Workout on its own: **Finish Workout** takes the Next button's
+place, one tap away.
 
 ## Non-Functional Requirements
 
