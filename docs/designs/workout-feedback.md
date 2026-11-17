@@ -778,15 +778,18 @@ background notifications, the same pair of calls as the rest strip's Stop, so
 no rest notification fires after the user has left. This holds for every
 Finish entry, the Workout screen's and the Training Screen's
 ([Plan-Guided Logging](plan-guided-logging.md)): both run one Finish flow
-through `HomeController.finishWorkout`, which cancels the schedule. The finish and the cancel
-are one Activity Log batch. A rest whose deadline has already passed is left
-as it is, even when its row still says running (only a visible rest strip
-marks the end): it finished, and its end notification has been posted.
+through `HomeController.finishWorkout`, which cancels the schedule. The finish and the rest's
+end are one Activity Log batch; undoing it brings the rest's row back but not
+its background schedule, so a revived rest is cued only by a visible rest
+strip. A row can still say running after its deadline (only a visible rest
+strip marks the end, so a rest that ran out in the background keeps that
+status). Finish marks such a rest expired, as the strip would have, rather
+than cancelled: it finished. It still cancels the rest's schedule, which
+removes its delivered "Rest over" notification (and, on Android, stops the
+end tone), whose tap would open a Training Screen of the finished Workout.
 Deleting the Workout cancels the background schedule of its running rest the
-same way. Delete also cancels the schedule of a rest past its deadline whose
-row still says running: the delete cancels that row anyway, and the schedule
-cancel removes its delivered end notification, which would otherwise outlive
-the Workout.
+same way, including a rest past its deadline; the delete cancels that row
+with the Workout's other children.
 
 *   **Layout.** The sheet is `isScrollControlled: true` with a maximum height
     of 90% of the screen and `showDragHandle: true`. Its body is a

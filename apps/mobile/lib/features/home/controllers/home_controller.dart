@@ -222,7 +222,7 @@ class HomeController extends StreamNotifier<HomeState> {
         );
   }
 
-  /// Finishes the Workout, which also cancels its running rest, then cancels
+  /// Finishes the Workout, which also ends its running rest, then cancels
   /// that rest's background schedule: a rest left scheduled after Finish
   /// fires a notification after the user has left. Same order as the rest
   /// strip's Stop: the row first, then the schedule.
@@ -232,10 +232,14 @@ class HomeController extends StreamNotifier<HomeState> {
   /// fails because of, the notification plugin. Both Finish entries (the
   /// Workout screen and the Training Screen) go through here, by way of
   /// `runFinishWorkoutFlow`, so the flow itself does not cancel the schedule.
+  ///
+  /// The scheduler is read before the write, so nothing that runs once the
+  /// Workout has ended can throw before the cancel is handed off.
   Future<void> finishWorkout(String workoutId) async {
-    final cancelledRestId =
+    final scheduler = ref.read(timerBackgroundSchedulerProvider);
+    final endedRestId =
         await ref.read(homeRepositoryProvider).finishWorkout(workoutId);
-    _cancelRestSchedule(cancelledRestId);
+    _cancelRestSchedule(scheduler, endedRestId);
   }
 
   Future<void> resumeWorkout(String workoutId) {
@@ -244,29 +248,31 @@ class HomeController extends StreamNotifier<HomeState> {
 
   /// Deleting the Workout cancels its running rest with it; this then
   /// cancels that rest's background schedule, as [finishWorkout] does, so no
-  /// rest notification fires for a Workout that no longer exists.
+  /// rest notification fires for a Workout that no longer exists. The
+  /// scheduler is read before the write, as in [finishWorkout].
   Future<void> deleteWorkout(String workoutId) async {
+    final scheduler = ref.read(timerBackgroundSchedulerProvider);
     final cancelledRestId =
         await ref.read(homeRepositoryProvider).deleteWorkout(workoutId);
-    _cancelRestSchedule(cancelledRestId);
+    _cancelRestSchedule(scheduler, cancelledRestId);
   }
 
-  /// The row is already cancelled; a schedule that outlives it only costs one
+  /// The row has already ended; a schedule that outlives it only costs one
   /// stray notification, never the write that ended the Workout. The failure
   /// is logged rather than dropped, so a cancel that keeps failing on a
-  /// device leaves a trace.
-  void _cancelRestSchedule(String? restId) {
+  /// device leaves a trace. `Future.sync` turns a synchronous throw from the
+  /// scheduler into the same logged failure.
+  void _cancelRestSchedule(TimerBackgroundScheduler scheduler, String? restId) {
     if (restId == null) {
       return;
     }
     unawaited(
-      ref
-          .read(timerBackgroundSchedulerProvider)
-          .cancel(restId)
-          .catchError((Object error) {
-        debugPrint('Cancelling the background schedule of rest $restId '
-            'failed: $error');
-      }),
+      Future<void>.sync(() => scheduler.cancel(restId)).catchError(
+        (Object error) {
+          debugPrint('Cancelling the background schedule of rest $restId '
+              'failed: $error');
+        },
+      ),
     );
   }
 

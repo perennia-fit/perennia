@@ -169,17 +169,35 @@ void main() {
     expect(restEntry.batchId, workoutEntry.batchId);
   });
 
-  test('leaves a running rest whose deadline has passed alone', () async {
+  test(
+      'marks a running rest past its deadline expired and cancels its '
+      'schedule', () async {
+    // The rest ran out in the background, so its row still says running and
+    // its "Rest over" notification was posted. Finish records the end the
+    // strip would have marked, not a cancel, and cancels the schedule, which
+    // removes that notification: its tap would open the finished Workout.
     final timerId = await startRestAfterASet();
     now = startedAt.add(const Duration(minutes: 40));
+    final before = {
+      for (final entry in await repositories.activityLog.listEntries())
+        entry.id,
+    };
 
     await controller.finishWorkout(workoutId);
 
     await expectFinished();
     final timer = await repositories.restTimers.getById(timerId);
-    expect(timer!.status, RestTimerStatus.running);
+    expect(timer!.status, RestTimerStatus.expired);
+    expect(timer.alertFiredAt, now);
     expect(timer.deletedAt, isNull);
-    expect(scheduler.cancelled, isEmpty);
+    expect(scheduler.cancelled, <String>[timerId]);
+    final entries = (await repositories.activityLog.listEntries())
+        .where((entry) => !before.contains(entry.id))
+        .toList();
+    expect(
+      entries.singleWhere((entry) => entry.entityId == timerId).batchId,
+      entries.singleWhere((entry) => entry.entityId == workoutId).batchId,
+    );
   });
 
   test('delete cancels the running rest and its background schedule', () async {
@@ -238,18 +256,34 @@ void main() {
     expect(timer!.status, RestTimerStatus.canceled);
     expect(scheduler.cancelled, <String>[timerId]);
   });
+
+  test('finishes when the scheduler throws synchronously', () async {
+    final timerId = await startRestAfterASet();
+    scheduler.throwSynchronously = true;
+
+    await controller.finishWorkout(workoutId);
+    await pumpEventQueue();
+
+    await expectFinished();
+    expect(scheduler.cancelled, <String>[timerId]);
+  });
 }
 
 class _RecordingScheduler implements TimerBackgroundScheduler {
   final cancelled = <String>[];
   var failCancel = false;
+  var throwSynchronously = false;
 
   @override
-  Future<void> cancel(String timerId) async {
+  Future<void> cancel(String timerId) {
     cancelled.add(timerId);
-    if (failCancel) {
+    if (throwSynchronously) {
       throw PlatformException(code: 'unavailable');
     }
+    if (failCancel) {
+      return Future<void>.error(PlatformException(code: 'unavailable'));
+    }
+    return Future<void>.value();
   }
 
   @override

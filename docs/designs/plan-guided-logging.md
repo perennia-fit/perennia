@@ -740,14 +740,15 @@ Top to bottom, inside the existing `TrainingScreen` (and `ExercisePage`):
         A Training Screen a rest notification opened over another screen
         returns to that screen.
     *   Finishing a Workout, here or on the Workout screen, stops its running
-        rest: `HomeRepository.finishWorkout` sets `endedAt` and cancels the
-        Workout's rest timer that is still counting down, in one transaction
-        and one Activity Log batch, and returns that timer's id;
+        rest: `HomeRepository.finishWorkout` sets `endedAt` and ends the
+        Workout's running rest timer, in one transaction and one Activity
+        Log batch, and returns that timer's id;
         `HomeController.finishWorkout` then cancels its background schedule
         without waiting on the notification plugin. A finished Workout has
         no next Set to rest for, and the notification's tap would open a
-        Training Screen of it. A rest past its deadline is left as it is;
-        [Workout Feedback](workout-feedback.md) has the full rule.
+        Training Screen of it. A rest past its deadline is marked expired
+        rather than cancelled; [Workout Feedback](workout-feedback.md) has
+        the full rule.
 
 DESIGN.md's Save and Clear buttons are replaced by Log set; there is no Clear.
 

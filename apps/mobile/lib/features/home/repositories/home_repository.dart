@@ -63,9 +63,10 @@ abstract interface class HomeRepository {
     required DateTime endedAt,
   });
 
-  /// Ends [workoutId] now and cancels its running rest, if it has one.
-  /// Returns the id of the rest it cancelled, so the caller can cancel that
-  /// rest's background notifications too; null when no rest was running.
+  /// Ends [workoutId] now and ends its running rest, if it has one: cancelled
+  /// while it still counts down, marked expired once its deadline has
+  /// passed. Returns that rest's id, so the caller can cancel its background
+  /// notifications too; null when no rest was running.
   Future<String?> finishWorkout(String workoutId);
 
   Future<void> resumeWorkout(String workoutId);
@@ -328,20 +329,28 @@ class RepositoryHomeRepository implements HomeRepository {
     );
   }
 
-  /// Finish also cancels the Workout's running rest. A rest left running
-  /// after Finish keeps its row live and its background schedule queued, so
-  /// its notification fires after the user has left the Workout (and often
-  /// the app).
+  /// Finish also ends the Workout's running rest. A rest left running after
+  /// Finish keeps its row live and its background schedule queued, so its
+  /// notification fires after the user has left the Workout (and often the
+  /// app).
   ///
-  /// Both writes share one batch: Finish is one user action, so the Activity
-  /// Log shows it once and undoes the end and the cancel together. They also
-  /// share one transaction: the app dying between the two writes must not
-  /// leave an ended Workout with its rest still running (and its "Get ready"
-  /// notification still due).
+  /// A rest still counting down is cancelled. A row can also say running
+  /// after its deadline: only a visible rest strip marks the end, so a rest
+  /// that ran out while the app was in the background keeps its running
+  /// status. That rest finished, so it is marked expired, as the strip would
+  /// have marked it, rather than rewritten as cancelled. Either way the id is
+  /// returned: the schedule cancel is what removes a delivered "Rest over"
+  /// notification (and, on Android, stops the end tone), whose tap would
+  /// otherwise open a Training Screen of the finished Workout. An expired or
+  /// cancelled rest is left alone; its schedule was cancelled when it ended.
   ///
-  /// This does not use [RestTimerRepository.cancelRunningForWorkout], which
-  /// cancels a running row whatever its deadline: Finish leaves a rest past
-  /// its deadline alone (see [_restStillRunning]).
+  /// All the writes share one batch: Finish is one user action, so the
+  /// Activity Log shows it once and undoes the end and the rest's end
+  /// together. Undoing it brings the rest's row back, not its background
+  /// schedule, which lives outside the database: a revived rest is cued only
+  /// by a visible rest strip. They also share one transaction: the app dying
+  /// between the writes must not leave an ended Workout with its rest still
+  /// running (and its "Get ready" notification still due).
   @override
   Future<String?> finishWorkout(String workoutId) {
     final now = _now().toUtc();
@@ -352,34 +361,22 @@ class RepositoryHomeRepository implements HomeRepository {
         endedAt: now,
         batchId: batchId,
       );
-      final rest = await _restStillRunning(workoutId, now);
-      if (rest == null) {
+      final rest =
+          await _repositories.restTimers.getCurrentForWorkout(workoutId);
+      if (rest == null || rest.status != RestTimerStatus.running) {
         return null;
       }
-      await _repositories.restTimers.cancel(rest.id, batchId: batchId);
+      if (rest.isExpiredAt(now)) {
+        await _repositories.restTimers.markAlertFired(
+          rest.id,
+          batchId: batchId,
+          now: now,
+        );
+      } else {
+        await _repositories.restTimers.cancel(rest.id, batchId: batchId);
+      }
       return rest.id;
     });
-  }
-
-  /// The Workout's rest when it is still counting down at [now], or null.
-  ///
-  /// A row can say running after its deadline: only a visible rest strip
-  /// marks the end, so a rest that ran out while the app was in the
-  /// background keeps its running status. That rest finished, and its end
-  /// notification has already been posted, so it is left as it is rather
-  /// than rewritten as cancelled. An expired or cancelled rest is left alone
-  /// for the same reason.
-  Future<RestTimerRecord?> _restStillRunning(
-    String workoutId,
-    DateTime now,
-  ) async {
-    final rest = await _repositories.restTimers.getCurrentForWorkout(workoutId);
-    if (rest == null ||
-        rest.status != RestTimerStatus.running ||
-        rest.isExpiredAt(now)) {
-      return null;
-    }
-    return rest;
   }
 
   @override
@@ -395,12 +392,11 @@ class RepositoryHomeRepository implements HomeRepository {
   /// running, for the caller to cancel its background schedule as Finish
   /// does.
   ///
-  /// Unlike Finish, this includes a rest whose deadline has passed: the
-  /// soft delete rewrites that row as cancelled anyway, and the schedule
-  /// cancel is what removes its delivered "Rest over" notification (and, on
-  /// Android, stops the end tone), which would otherwise outlive the Workout.
-  /// A rest already marked expired had its schedule cancelled when the strip
-  /// marked the end.
+  /// As with Finish, this includes a rest whose deadline has passed (the
+  /// soft delete rewrites that row as cancelled): the schedule cancel is what
+  /// removes its delivered "Rest over" notification (and, on Android, stops
+  /// the end tone), which would otherwise outlive the Workout. A rest already
+  /// marked expired had its schedule cancelled when the strip marked the end.
   @override
   Future<String?> deleteWorkout(String workoutId) {
     return _repositories.database.transaction(() async {
