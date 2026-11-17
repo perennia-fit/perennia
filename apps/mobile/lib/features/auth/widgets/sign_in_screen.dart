@@ -65,11 +65,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// The sign-in form is showing over an expired session.
   late bool _signingInAgain = widget.signInAgain;
 
-  /// The session this screen just signed in again with. Sync status still
-  /// reads [SyncStatusKind.authExpired] until the Sync Run that sign-in starts
-  /// records over it, and that verdict was about the old session, not this
-  /// one.
+  /// The session this screen just signed in again with, for the "Signed in
+  /// again" notice.
   String? _signedInAgainToken;
+
+  /// Set when Sign in again succeeds and cleared once the expired verdict is
+  /// seen to lift. The verdict is dropped when the session changes, but that
+  /// lands a moment after the new session does, and until then it is still
+  /// about the old session. A verdict recorded after that is about the new
+  /// session and shows.
+  bool _awaitingFreshVerdict = false;
+
+  /// An auth error the user has already backed out of (Cancel), so going
+  /// back into Sign in again does not show it as if it were new.
+  Object? _dismissedError;
 
   @override
   void dispose() {
@@ -86,14 +95,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final authState = authValue.value ?? AuthState.defaults;
     final session = authState.session;
     final isLoading = authValue.isLoading;
-    final resendEmailAddress = _resendVerificationEmailAddress(
-      authValue.error,
-    );
-    final syncKind = ref.watch(syncStatusControllerProvider).value?.kind;
-    final sessionExpired = session != null &&
-        syncKind == SyncStatusKind.authExpired &&
-        session.token != _signedInAgainToken;
-    final signingInAgain = sessionExpired && _signingInAgain;
+    final authError =
+        identical(authValue.error, _dismissedError) ? null : authValue.error;
+    final verdictExpired = ref.watch(sessionExpiredProvider);
+    ref.listen<bool>(sessionExpiredProvider, (_, next) {
+      if (!next && _awaitingFreshVerdict) {
+        setState(() => _awaitingFreshVerdict = false);
+      }
+    });
+    final sessionExpired = verdictExpired && !_awaitingFreshVerdict;
+    final signingInAgain = session != null && sessionExpired && _signingInAgain;
+    final resendEmailAddress =
+        signingInAgain ? null : _resendVerificationEmailAddress(authError);
 
     ref.listen<AsyncValue<AuthState>>(authControllerProvider, (previous, next) {
       final nextSession = next.value?.session;
@@ -105,6 +118,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       setState(() {
         _signingInAgain = false;
         _signedInAgainToken = nextSession.token;
+        _awaitingFreshVerdict = true;
         _passwordController.clear();
       });
     });
@@ -132,14 +146,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   if (signingInAgain)
                     ..._signInAgainHeader(
                       context: context,
-                      serverUrl: authState.serverUrl,
                       isLoading: isLoading,
                     ),
                   ..._signedOutContent(
                     context: context,
-                    authValue: authValue,
+                    authError: authError,
                     isLoading: isLoading,
                     resendEmailAddress: resendEmailAddress,
+                    signingInAgain: signingInAgain,
                   ),
                 ]
               : _signedInContent(
@@ -156,9 +170,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   List<Widget> _signedOutContent({
     required BuildContext context,
-    required AsyncValue<AuthState> authValue,
+    required Object? authError,
     required bool isLoading,
     required String? resendEmailAddress,
+    required bool signingInAgain,
   }) {
     return [
       TextField(
@@ -181,32 +196,36 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           );
         },
       ),
-      const SizedBox(height: AppDimens.base),
-      SegmentedButton<_AuthFormMode>(
-        key: SignInScreen.authModeKey,
-        segments: const [
-          ButtonSegment<_AuthFormMode>(
-            value: _AuthFormMode.signIn,
-            icon: Icon(Icons.login),
-            label: Text('Sign in'),
-          ),
-          ButtonSegment<_AuthFormMode>(
-            value: _AuthFormMode.signUp,
-            icon: Icon(Icons.person_add_alt),
-            label: Text('Sign up'),
-          ),
-        ],
-        selected: {_formMode},
-        onSelectionChanged: isLoading
-            ? null
-            : (selection) {
-                setState(() {
-                  _formMode = selection.single;
-                  _noticeText = null;
-                  _verificationEmailAddress = null;
-                });
-              },
-      ),
+      // Sign in again only signs in. Signing up, or asking for a
+      // verification email, would replace the expired session with none.
+      if (!signingInAgain) ...[
+        const SizedBox(height: AppDimens.base),
+        SegmentedButton<_AuthFormMode>(
+          key: SignInScreen.authModeKey,
+          segments: const [
+            ButtonSegment<_AuthFormMode>(
+              value: _AuthFormMode.signIn,
+              icon: Icon(Icons.login),
+              label: Text('Sign in'),
+            ),
+            ButtonSegment<_AuthFormMode>(
+              value: _AuthFormMode.signUp,
+              icon: Icon(Icons.person_add_alt),
+              label: Text('Sign up'),
+            ),
+          ],
+          selected: {_formMode},
+          onSelectionChanged: isLoading
+              ? null
+              : (selection) {
+                  setState(() {
+                    _formMode = selection.single;
+                    _noticeText = null;
+                    _verificationEmailAddress = null;
+                  });
+                },
+        ),
+      ],
       if (_formMode == _AuthFormMode.signUp) ...[
         const SizedBox(height: AppDimens.base),
         TextField(
@@ -304,10 +323,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           style: context.textStyles.body,
         ),
       ],
-      if (authValue.hasError) ...[
+      if (authError != null) ...[
         const SizedBox(height: AppDimens.base),
         Text(
-          _errorMessage(authValue.error!),
+          _errorMessage(authError),
           key: SignInScreen.errorTextKey,
           style: context.textStyles.body.copyWith(
             color: Theme.of(context).colorScheme.error,
@@ -364,7 +383,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           label: const Text('Sign in again'),
         ),
       ],
-      if (session.token == _signedInAgainToken) ...[
+      if (session.token == _signedInAgainToken && !sessionExpired) ...[
         const SizedBox(height: AppDimens.base),
         Text(
           'Signed in again. Changes on this phone are syncing.',
@@ -404,7 +423,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   List<Widget> _signInAgainHeader({
     required BuildContext context,
-    required Uri serverUrl,
     required bool isLoading,
   }) {
     return [
@@ -422,6 +440,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               : () => setState(() {
                     _signingInAgain = false;
                     _noticeText = null;
+                    _passwordController.clear();
+                    _dismissedError = ref.read(authControllerProvider).error;
                   }),
           child: const Text('Cancel'),
         ),
@@ -437,6 +457,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _noticeText = null;
       _verificationEmailAddress = null;
       _serverUrlEdited = false;
+      _dismissedError = ref.read(authControllerProvider).error;
     });
   }
 

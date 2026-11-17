@@ -86,6 +86,46 @@ void main() {
     expect(states.last.showsFailureBanner, isTrue);
   });
 
+  test(
+      'an authExpired verdict holds through retries with the same session '
+      'and lifts on success', () async {
+    await repository.recordAuthExpired(
+      const ApiException(statusCode: 401, body: 'unauthorized'),
+    );
+
+    // A retry starting, or failing for another reason, is no news about the
+    // session: the Sign in again form must not flicker away mid-typing.
+    await repository.recordSyncing();
+    expect((await repository.loadStatus()).kind, SyncStatusKind.authExpired);
+    await repository.recordFailure(Exception('offline'));
+    final held = await repository.loadStatus();
+    expect(held.kind, SyncStatusKind.authExpired);
+    expect(held.lastFailureMessage, contains('Sign in again'));
+    expect(held.lastFailureMessage, isNot(contains('Local-only Mode')));
+
+    await repository.recordSuccess();
+    expect((await repository.loadStatus()).kind, SyncStatusKind.synced);
+  });
+
+  test('clearAuthExpired drops only an authExpired verdict', () async {
+    await repository.recordFailure(Exception('offline'));
+    await repository.clearAuthExpired();
+    expect((await repository.loadStatus()).kind, SyncStatusKind.failed);
+
+    await repository.recordAuthExpired(
+      const ApiException(statusCode: 401, body: 'unauthorized'),
+    );
+    await repository.clearAuthExpired();
+    final cleared = await repository.loadStatus();
+    expect(cleared.kind, SyncStatusKind.idle);
+    expect(cleared.lastFailureMessage, isNull);
+    expect(cleared.showsFailureBanner, isFalse);
+
+    // The next session's runs record normally.
+    await repository.recordSyncing();
+    expect((await repository.loadStatus()).kind, SyncStatusKind.syncing);
+  });
+
   test('sync failure status does not block local writes', () async {
     await repository.recordAuthExpired(
       const ApiException(statusCode: 401, body: '{"code":"sync_unauthorized"}'),

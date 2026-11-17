@@ -40,11 +40,13 @@ class SyncSettingsScreen extends ConsumerWidget {
       children: [
         _SyncStatusTile(
           status: syncStatus,
-          onSignInAgain: () {
-            unawaited(
-              Navigator.of(context).push(SignInScreen.signInAgainRoute()),
-            );
-          },
+          onSignInAgain: ref.watch(sessionExpiredProvider)
+              ? () {
+                  unawaited(
+                    Navigator.of(context).push(SignInScreen.signInAgainRoute()),
+                  );
+                }
+              : null,
           onSyncNow: authState.session == null ||
                   syncDeviceId == null ||
                   syncStatus.kind == SyncStatusKind.syncing
@@ -73,7 +75,9 @@ class _SyncStatusTile extends StatelessWidget {
   });
 
   final SyncStatusState status;
-  final VoidCallback onSignInAgain;
+
+  /// Null unless a session is held that the server rejected.
+  final VoidCallback? onSignInAgain;
   final VoidCallback? onSyncNow;
 
   @override
@@ -87,7 +91,7 @@ class _SyncStatusTile extends StatelessWidget {
             _SyncFailureBanner(status: status),
             const SizedBox(height: AppDimens.dense),
           ],
-          if (status.kind == SyncStatusKind.authExpired) ...[
+          if (onSignInAgain case final onSignInAgain?) ...[
             // The banner says why sync stopped; this is the way back. It
             // keeps every local change, so it needs no confirmation.
             Align(

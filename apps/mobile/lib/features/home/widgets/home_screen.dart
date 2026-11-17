@@ -757,15 +757,6 @@ class _LibrarySectionHeader extends StatelessWidget {
   }
 }
 
-/// True when this device holds a session the server last rejected as
-/// unauthorized: it looks signed in, but nothing syncs until the user signs in
-/// again.
-bool _watchSessionExpired(WidgetRef ref) {
-  final session = ref.watch(authControllerProvider).value?.session;
-  final syncKind = ref.watch(syncStatusControllerProvider).value?.kind;
-  return session != null && syncKind == SyncStatusKind.authExpired;
-}
-
 class _AccountAndAppButton extends ConsumerWidget {
   const _AccountAndAppButton();
 
@@ -775,7 +766,7 @@ class _AccountAndAppButton extends ConsumerWidget {
     // A quiet dot, never a dialog: sync failures stay silent (AGENTS.md), but
     // an expired sign-in only heals when the user acts, so the root says so
     // where the way back already lives. The tooltip carries it in words.
-    final sessionExpired = _watchSessionExpired(ref);
+    final sessionExpired = ref.watch(sessionExpiredProvider);
     return IconButton(
       key: HomeScreen.accountAndAppButtonKey,
       tooltip: sessionExpired
@@ -846,12 +837,14 @@ class _AccountStatusTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final authState = ref.watch(authControllerProvider);
-    final syncExpired = ref.watch(syncStatusControllerProvider).value?.kind ==
-        SyncStatusKind.authExpired;
+    final sessionExpired = ref.watch(sessionExpiredProvider);
+    // skipError: a failed Sign in again attempt leaves the expired session in
+    // place behind the error, and this tile should still describe it.
     return authState.when(
+      skipError: true,
       data: (state) {
         final session = state.session;
-        if (session != null && syncExpired) {
+        if (session != null && sessionExpired) {
           return ListTile(
             key: HomeScreen.accountAndAppSignInKey,
             leading: Icon(

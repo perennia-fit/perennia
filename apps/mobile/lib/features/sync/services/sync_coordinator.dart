@@ -20,6 +20,7 @@ typedef RunSyncCycle = Future<SyncCycleResult> Function({
   required String deviceId,
 });
 typedef RecordSyncCredentialFailure = Future<void> Function(Object error);
+typedef ClearReplacedSessionVerdict = Future<void> Function();
 
 final class SyncCycleResult {
   const SyncCycleResult({
@@ -58,15 +59,18 @@ final class SyncCoordinator {
     required LoadSyncDeviceId loadDeviceId,
     required RunSyncCycle runCycle,
     RecordSyncCredentialFailure? recordCredentialFailure,
+    ClearReplacedSessionVerdict? clearReplacedSessionVerdict,
   })  : _loadSession = loadSession,
         _loadDeviceId = loadDeviceId,
         _runCycle = runCycle,
-        _recordCredentialFailure = recordCredentialFailure;
+        _recordCredentialFailure = recordCredentialFailure,
+        _clearReplacedSessionVerdict = clearReplacedSessionVerdict;
 
   final LoadSyncSession _loadSession;
   final LoadSyncDeviceId _loadDeviceId;
   final RunSyncCycle _runCycle;
   final RecordSyncCredentialFailure? _recordCredentialFailure;
+  final ClearReplacedSessionVerdict? _clearReplacedSessionVerdict;
 
   Future<SyncCycleResult>? _activeRun;
   var _requestedGeneration = 0;
@@ -230,12 +234,35 @@ final class SyncCoordinator {
         await _recordCredentialFailure?.call(error);
         rethrow;
       }
-      aggregate += await _runCycle(session: session, deviceId: deviceId);
+      try {
+        aggregate += await _runCycle(session: session, deviceId: deviceId);
+      } on Object {
+        // A cycle that failed with a session the user has since replaced
+        // (Sign in again while a retry was in flight) says nothing about the
+        // new one: drop the verdict it recorded and run again at once with
+        // the new session, instead of failing into a backoff retry that can
+        // be minutes away.
+        if (credentials != null || !await _sessionReplaced(session)) {
+          rethrow;
+        }
+        await _clearReplacedSessionVerdict?.call();
+        continue;
+      }
       if (_requestedGeneration == observedGeneration) {
         return aggregate;
       }
     }
     return aggregate;
+  }
+
+  Future<bool> _sessionReplaced(AuthSession used) async {
+    final AuthSession? current;
+    try {
+      current = await _loadSession();
+    } on Object {
+      return false;
+    }
+    return current?.token != used.token || current?.serverUrl != used.serverUrl;
   }
 
   void dispose() {

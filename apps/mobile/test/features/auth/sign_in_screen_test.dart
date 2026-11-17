@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -308,6 +310,125 @@ void main() {
       expect(repository.signOutAttempts, isEmpty);
       expect((await repository.load()).session?.token, 'expired-token');
     });
+
+    testWidgets('Sign in again only signs in: no Sign up, no resend', (
+      tester,
+    ) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatus: _authExpiredStatus(),
+          signInAgain: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Signing up or asking for a verification email would store no
+      // session in place of the expired one.
+      expect(find.byKey(SignInScreen.emailSignInButtonKey), findsOneWidget);
+      expect(find.byKey(SignInScreen.authModeKey), findsNothing);
+      expect(find.text('Sign up'), findsNothing);
+      expect(
+        find.byKey(SignInScreen.resendVerificationEmailButtonKey),
+        findsNothing,
+      );
+    });
+
+    testWidgets('Cancel clears the password and the error it backed out of', (
+      tester,
+    ) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatus: _authExpiredStatus(),
+          signInAgain: true,
+        ),
+      );
+      // Tall enough that the whole form is built, so findsNothing means
+      // the error is gone rather than scrolled out of the list.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(SignInScreen.emailFieldKey),
+        'not-an-email',
+      );
+      await tester.enterText(find.byKey(SignInScreen.passwordFieldKey), 'x');
+      await tester.ensureVisible(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.tap(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(SignInScreen.errorTextKey), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byKey(SignInScreen.cancelSignInAgainButtonKey),
+      );
+      await tester.tap(find.byKey(SignInScreen.cancelSignInAgainButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SignInScreen.signInAgainButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(SignInScreen.errorTextKey), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(SignInScreen.passwordFieldKey))
+            .controller
+            ?.text,
+        isEmpty,
+      );
+      expect(repository.signOutAttempts, isEmpty);
+    });
+
+    testWidgets(
+        'a verdict recorded after Sign in again is about the new session '
+        'and shows', (tester) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      final statuses = StreamController<SyncStatusState>();
+      addTearDown(statuses.close);
+      statuses.add(_authExpiredStatus());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatuses: statuses.stream,
+          signInAgain: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(SignInScreen.passwordFieldKey),
+        'secret',
+      );
+      await tester.ensureVisible(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.tap(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Signed in as lifter@example.com'), findsOneWidget);
+
+      // The session change drops the old verdict, then the new session's
+      // first Sync Run is rejected too.
+      statuses.add(
+        SyncStatusState(
+          kind: SyncStatusKind.idle,
+          observedAt: DateTime.utc(2026, 11, 8, 9, 1),
+        ),
+      );
+      await tester.pumpAndSettle();
+      statuses.add(_authExpiredStatus());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Sign-in expired for lifter@example.com'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Signed in again. Changes on this phone are syncing.'),
+        findsNothing,
+      );
+      expect(find.byKey(SignInScreen.signInAgainButtonKey), findsOneWidget);
+    });
   });
 }
 
@@ -339,22 +460,26 @@ class _AuthTestApp extends StatelessWidget {
   const _AuthTestApp({
     required this.repository,
     this.syncStatus,
+    this.syncStatuses,
     this.signInAgain = false,
   });
 
   final AuthRepository repository;
   final SyncStatusState? syncStatus;
+  final Stream<SyncStatusState>? syncStatuses;
   final bool signInAgain;
 
   @override
   Widget build(BuildContext context) {
-    final status =
-        syncStatus ?? SyncStatusState.initial(DateTime.utc(2026, 11, 8));
+    final statuses = syncStatuses ??
+        Stream<SyncStatusState>.value(
+          syncStatus ?? SyncStatusState.initial(DateTime.utc(2026, 11, 8)),
+        );
     return ProviderScope(
       overrides: [
         authRepositoryProvider.overrideWith((ref) => repository),
         syncStatusControllerProvider.overrideWith(
-          () => _StubSyncStatusController(status),
+          () => _StubSyncStatusController(statuses),
         ),
       ],
       child: MaterialApp(
@@ -366,10 +491,10 @@ class _AuthTestApp extends StatelessWidget {
 }
 
 class _StubSyncStatusController extends SyncStatusController {
-  _StubSyncStatusController(this.status);
+  _StubSyncStatusController(this.statuses);
 
-  final SyncStatusState status;
+  final Stream<SyncStatusState> statuses;
 
   @override
-  Stream<SyncStatusState> build() => Stream<SyncStatusState>.value(status);
+  Stream<SyncStatusState> build() => statuses;
 }

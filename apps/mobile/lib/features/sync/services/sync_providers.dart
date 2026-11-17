@@ -31,6 +31,7 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
     loadDeviceId: () => ref.read(syncDeviceIdProvider.future),
     runCycle: runner.run,
     recordCredentialFailure: repository.statusRepository.recordFailure,
+    clearReplacedSessionVerdict: repository.statusRepository.clearAuthExpired,
   );
 
   StreamSubscription<int>? pendingSubscription;
@@ -92,9 +93,19 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
     final previousSession = previous?.value?.session;
     final nextSession = next.value?.session;
     configureSignedInTriggers(nextSession);
-    if (nextSession != null &&
-        (previousSession?.token != nextSession.token ||
-            previousSession?.serverUrl != nextSession.serverUrl)) {
+    final sessionChanged = previousSession?.token != nextSession?.token ||
+        previousSession?.serverUrl != nextSession?.serverUrl;
+    if (!sessionChanged) {
+      return;
+    }
+    // An authExpired verdict belongs to the session it rejected. Once that
+    // session is replaced (Sign in again, another account) or gone (sign
+    // out), it must not make the new state look expired. The first load of
+    // the stored session is not a change: the verdict about it still holds.
+    if (previous?.hasValue ?? false) {
+      unawaited(repository.statusRepository.clearAuthExpired());
+    }
+    if (nextSession != null) {
       coordinator.requestSync(SyncTrigger.authChanged);
     }
   });
