@@ -210,11 +210,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// an Agent or a carry-forward reloads the Current Set's values only
   /// while this is false, so a stepped but unsaved value survives them.
   bool _formDirty = false;
-  bool _logInFlight = false;
 
-  /// The Log set that runs (while [_logInFlight]), which Finish Workout
-  /// waits for (see [_finishWorkout]).
+  /// The Log set that runs, which Finish Workout waits for (see
+  /// [_finishWorkout]).
   Future<void>? _logSetRunning;
+  bool get _logInFlight => _logSetRunning != null;
 
   /// Set while Finish Workout runs, so a double tap finishes once and opens
   /// one Finish summary, and a Log set tap meanwhile is ignored (see
@@ -1386,13 +1386,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       return;
     }
 
-    _logInFlight = true;
+    // `_logInFlight` derives from `_logSetRunning`. Nothing in the
+    // synchronous start of `_logSetInFlight` reads it, and no tap can land
+    // before its first await, so setting it once the Future exists covers
+    // the whole Log set.
     final running = _logSetInFlight(state, settings, values);
     _logSetRunning = running;
     try {
       await running;
     } finally {
-      _logInFlight = false;
       _logSetRunning = null;
     }
   }
