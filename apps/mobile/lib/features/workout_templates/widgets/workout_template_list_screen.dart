@@ -198,9 +198,7 @@ class _WorkoutTemplateListScreenState
         return;
       }
       await navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => WorkoutScreen(workoutId: workoutId),
-        ),
+        buildWorkoutScreenRoute(workoutId),
       );
     } on Object {
       if (mounted) {

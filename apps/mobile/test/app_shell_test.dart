@@ -2983,7 +2983,7 @@ abstract class _HomeRepositoryTestDefaults implements HomeRepository {
   }
 
   @override
-  Future<void> finishWorkout(String workoutId) async {}
+  Future<String?> finishWorkout(String workoutId) async => null;
 
   @override
   Future<void> resumeWorkout(String workoutId) async {}
@@ -3632,8 +3632,9 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   }) async {}
 
   @override
-  Future<void> finishWorkout(String workoutId) async {
+  Future<String?> finishWorkout(String workoutId) async {
     finishedWorkoutIds.add(workoutId);
+    return null;
   }
 
   @override

@@ -218,7 +218,9 @@ class HomeController extends StreamNotifier<HomeState> {
         );
   }
 
-  Future<void> finishWorkout(String workoutId) {
+  /// Ends the Workout and stops its running rest; see
+  /// [HomeRepository.finishWorkout].
+  Future<String?> finishWorkout(String workoutId) {
     return ref.read(homeRepositoryProvider).finishWorkout(workoutId);
   }
 
