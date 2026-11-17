@@ -474,6 +474,79 @@ void main() {
       expect(find.byKey(SignInScreen.signInAgainButtonKey), findsOneWidget);
     });
 
+    testWidgets(
+        'an error left from an earlier visit does not greet a new Sign in '
+        'again', (tester) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatus: _authExpiredStatus(),
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                SignInScreen.signInAgainRoute(),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(SignInScreen.emailFieldKey),
+        'not-an-email',
+      );
+      await tester.enterText(find.byKey(SignInScreen.passwordFieldKey), 'x');
+      await tester.tap(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(SignInScreen.errorTextKey), findsOneWidget);
+
+      // Leave with back, not Cancel, then come back through another
+      // Sign in again button.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(SignInScreen.emailSignInButtonKey), findsOneWidget);
+      expect(find.byKey(SignInScreen.errorTextKey), findsNothing);
+    });
+
+    testWidgets('submitting the server URL in Sign in again saves nothing', (
+      tester,
+    ) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatus: _authExpiredStatus(),
+          signInAgain: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(SignInScreen.serverUrlFieldKey),
+        'https://other.example/',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SignInScreen.cancelSignInAgainButtonKey));
+      await tester.pumpAndSettle();
+
+      final state = await repository.load();
+      expect(state.serverUrl.toString(), 'https://self.example/');
+      expect(state.session?.token, 'expired-token');
+      expect(find.text('https://self.example/'), findsOneWidget);
+    });
+
     testWidgets('a cleared email field is not refilled with the old address', (
       tester,
     ) async {
@@ -537,12 +610,16 @@ class _AuthTestApp extends StatelessWidget {
     this.syncStatus,
     this.syncStatuses,
     this.signInAgain = false,
+    this.home,
   });
 
   final AuthRepository repository;
   final SyncStatusState? syncStatus;
   final Stream<SyncStatusState>? syncStatuses;
   final bool signInAgain;
+
+  /// Replaces the SignInScreen home, for tests that push it themselves.
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -559,7 +636,7 @@ class _AuthTestApp extends StatelessWidget {
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
-        home: SignInScreen(signInAgain: signInAgain),
+        home: home ?? SignInScreen(signInAgain: signInAgain),
       ),
     );
   }

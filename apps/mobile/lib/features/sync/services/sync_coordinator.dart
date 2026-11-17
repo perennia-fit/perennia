@@ -246,11 +246,19 @@ final class SyncCoordinator {
         // started with fixed credentials: the session they were given is the
         // replaced one, and the authChanged run the replacement asked for was
         // folded into this run.
-        if (!await _sessionReplaced(session)) {
+        //
+        // A sign-out is not a replacement: there is nothing to run again, so
+        // the failure still reaches the caller instead of reading as a
+        // finished run.
+        final change = await _sessionChange(session);
+        if (change == _SessionChange.none) {
+          rethrow;
+        }
+        await _clearReplacedSessionVerdict?.call();
+        if (change == _SessionChange.signedOut) {
           rethrow;
         }
         credentials = null;
-        await _clearReplacedSessionVerdict?.call();
         continue;
       }
       if (_requestedGeneration == observedGeneration) {
@@ -258,21 +266,27 @@ final class SyncCoordinator {
       }
       // The follow-up run must not reuse fixed credentials the user has
       // since replaced or signed out of.
-      if (credentials != null && await _sessionReplaced(session)) {
+      if (credentials != null &&
+          await _sessionChange(session) != _SessionChange.none) {
         credentials = null;
       }
     }
     return aggregate;
   }
 
-  Future<bool> _sessionReplaced(AuthSession used) async {
+  Future<_SessionChange> _sessionChange(AuthSession used) async {
     final AuthSession? current;
     try {
       current = await _loadSession();
     } on Object {
-      return false;
+      return _SessionChange.none;
     }
-    return current?.token != used.token || current?.serverUrl != used.serverUrl;
+    if (current == null) {
+      return _SessionChange.signedOut;
+    }
+    return current.token != used.token || current.serverUrl != used.serverUrl
+        ? _SessionChange.replaced
+        : _SessionChange.none;
   }
 
   void dispose() {
@@ -291,4 +305,16 @@ final class _SyncCredentials {
 
   final AuthSession session;
   final String deviceId;
+}
+
+/// How the stored session differs from the one a cycle ran with.
+enum _SessionChange {
+  /// Still the same session (or it could not be read).
+  none,
+
+  /// Another session took its place: Sign in again, or another account.
+  replaced,
+
+  /// No session at all: the user signed out.
+  signedOut,
 }

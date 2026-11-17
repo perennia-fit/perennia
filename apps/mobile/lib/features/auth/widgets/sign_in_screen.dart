@@ -86,9 +86,21 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// clears it to type another address does not get the old one back.
   bool _emailPrefilled = false;
 
-  /// An auth error the user has already backed out of (Cancel), so going
-  /// back into Sign in again does not show it as if it were new.
+  /// An auth error the user has already backed out of (Cancel, or leaving
+  /// the screen), so going back into Sign in again does not show it as if it
+  /// were new.
   Object? _dismissedError;
+
+  @override
+  void initState() {
+    super.initState();
+    // The auth controller outlives this screen, so an error from an attempt
+    // made on an earlier visit would otherwise greet a fresh Sign in again
+    // form before the user has typed anything.
+    if (widget.signInAgain) {
+      _dismissedError = ref.read(authControllerProvider).error;
+    }
+  }
 
   @override
   void dispose() {
@@ -212,6 +224,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           _serverUrlEdited = true;
         },
         onSubmitted: (value) {
+          // Over an expired session, saving the URL would point the stored
+          // server away from the session's own before the user has signed
+          // in, and Cancel would not undo it. Signing in saves it instead.
+          if (signingInAgain) {
+            return;
+          }
           unawaited(
             ref.read(authControllerProvider.notifier).saveServerUrl(
                   value,

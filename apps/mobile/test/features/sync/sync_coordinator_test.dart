@@ -209,6 +209,41 @@ void main() {
     expect(usedTokens, <String>['session-token', 'fresh-token']);
   });
 
+  test(
+      'a Sync now that fails while the user signs out still fails, '
+      'with the old verdict dropped', () async {
+    AuthSession? current = _session;
+    final staleCycle = Completer<SyncCycleResult>();
+    var cycles = 0;
+    var verdictsCleared = 0;
+    final coordinator = SyncCoordinator(
+      loadSession: () async => current,
+      loadDeviceId: () async => 'mobile:pixel-8',
+      runCycle: ({required session, required deviceId}) {
+        cycles += 1;
+        return staleCycle.future;
+      },
+      clearReplacedSessionVerdict: () async {
+        verdictsCleared += 1;
+      },
+    );
+    addTearDown(coordinator.dispose);
+
+    final run = coordinator.synchronizeNowWith(
+      trigger: SyncTrigger.manual,
+      session: _session,
+      deviceId: 'mobile:pixel-8',
+    );
+    await _waitFor(() => cycles == 1);
+
+    current = null;
+    staleCycle.completeError(StateError('network down'));
+
+    await expectLater(run, throwsStateError);
+    expect(cycles, 1);
+    expect(verdictsCleared, 1);
+  });
+
   test('a cycle that fails with the current session still fails', () async {
     var verdictsCleared = 0;
     final coordinator = SyncCoordinator(
