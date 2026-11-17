@@ -775,7 +775,10 @@ the current route, so it can never pop the screen under it.
 
 Writing the finish also cancels the Workout's running rest and its scheduled
 background notifications, the same pair of calls as the rest strip's Stop, so
-no rest notification fires after the user has left. The finish and the cancel
+no rest notification fires after the user has left. This holds for every
+Finish entry, the Workout screen's and the Training Screen's
+([Plan-Guided Logging](plan-guided-logging.md)): both run one Finish flow
+through `HomeController.finishWorkout`, which cancels the schedule. The finish and the cancel
 are one Activity Log batch. A rest whose deadline has already passed is left
 as it is, even when its row still says running (only a visible rest strip
 marks the end): it finished, and its end notification has been posted.

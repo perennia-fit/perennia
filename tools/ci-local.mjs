@@ -99,41 +99,41 @@ function have(tool) {
   return capture(`${tool} --version`).ok;
 }
 
-// ci.yml pins Flutter in FLUTTER_VERSION, because a newer stable can re-resolve
-// pubspec.lock and break the toolchain. This script runs the Flutter on PATH,
-// so it warns when that is not the pinned version: a run on a different
-// Flutter may not match hosted CI. A warning, not a failure, since a patch
-// release apart usually behaves the same.
+// ci.yml pins Flutter with FLUTTER_VERSION (its `env:` block) for the jobs
+// that set Flutter up (mobile, golden). This script uses whatever Flutter is
+// on PATH, so it says when that differs from the pin: another version can
+// re-resolve pubspec.lock or break the toolchain where hosted CI does not.
+// A warning, not a failure, printed once per run.
+let flutterVersionChecked = false;
 function checkFlutterVersion() {
-  const pinned = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8')
-    .match(/^\s*FLUTTER_VERSION:\s*['"]?([^\s'"]+)/m)?.[1];
-  if (!pinned) return;
+  if (flutterVersionChecked) return true;
+  flutterVersionChecked = true;
+  let pinned;
+  try {
+    const ciYml = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8');
+    pinned = /^\s*FLUTTER_VERSION:\s*['"]?([^'"\s#]+)/m.exec(ciYml)?.[1];
+  } catch {
+    return true;
+  }
   const probe = capture('flutter --version --machine');
   let local;
   try {
     local = JSON.parse(probe.out.slice(probe.out.indexOf('{'))).frameworkVersion;
   } catch {
-    local = undefined;
+    return true;
   }
-  if (local === undefined) {
-    // No Flutter on PATH, or one that printed no version: say that, rather
-    // than reporting a missing tool as a version mismatch.
-    console.log(
-      `\n  ⚠ Could not read the Flutter version on PATH (is flutter installed?). ` +
-        `ci.yml pins ${pinned} (FLUTTER_VERSION).`,
-    );
-  } else if (local !== pinned) {
-    console.log(
-      `\n  ⚠ Flutter ${local} is on PATH, but ci.yml pins ${pinned} ` +
-        '(FLUTTER_VERSION). Results may differ from hosted CI.',
+  if (pinned && local && pinned !== local) {
+    console.warn(
+      `\n  ⚠ Flutter ${local} is on PATH; ci.yml pins ${pinned} (FLUTTER_VERSION).` +
+      `\n    Results can differ from hosted CI. Switch to ${pinned} to match it.`,
     );
   }
+  return true;
 }
 
 // ---- job definitions -------------------------------------------------------
 // Each job mirrors a job in ci.yml. `paths` are the dorny/paths-filter globs
-// for --changed. `db` marks jobs needing Postgres; `flutter` marks jobs that
-// run Flutter, which checks the local version against ci.yml's pin. `run` returns a result:
+// for --changed. `db` marks jobs needing Postgres. `run` returns a result:
 //   true  -> passed
 //   false -> failed
 //   'skip'-> nothing to do locally (e.g. tool missing)
@@ -193,10 +193,10 @@ const JOBS = {
 
   mobile: {
     title: 'Flutter analyze and test',
-    flutter: true,
     paths: ['apps/mobile/**', 'pubspec.yaml', 'pubspec.lock',
       '.github/workflows/ci.yml'],
     run: () =>
+      checkFlutterVersion() &&
       run('flutter pub get') &&
       run('dart run melos bootstrap') &&
       run('dart run build_runner build', { cwd: MOBILE }) &&
@@ -244,8 +244,8 @@ const JOBS = {
       'tsconfig.base.json', '.github/workflows/ci.yml',
     ],
     pnpm: true,
-    flutter: true,
     run: () =>
+      checkFlutterVersion() &&
       run('flutter pub get') &&
       run('corepack pnpm --filter @perennia/server test:golden-vectors') &&
       runDartGoldenRunners(),
@@ -621,9 +621,6 @@ const results = {};
 let dbStarted = false;
 
 try {
-  if (selected.some((name) => JOBS[name].flutter)) {
-    checkFlutterVersion();
-  }
   if (selected.some((name) => JOBS[name].pnpm)) {
     console.log('\n▸ Installing JS dependencies (pnpm install --frozen-lockfile)…');
     if (!run('corepack pnpm install --frozen-lockfile')) {

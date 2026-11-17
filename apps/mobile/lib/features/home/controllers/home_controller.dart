@@ -229,7 +229,9 @@ class HomeController extends StreamNotifier<HomeState> {
   ///
   /// The schedule cancel is a platform-channel call, so it is not awaited and
   /// a failure is only logged: Finish is a local write and never waits on, or
-  /// fails because of, the notification plugin.
+  /// fails because of, the notification plugin. Both Finish entries (the
+  /// Workout screen and the Training Screen) go through here, by way of
+  /// `runFinishWorkoutFlow`, so the flow itself does not cancel the schedule.
   Future<void> finishWorkout(String workoutId) async {
     final cancelledRestId =
         await ref.read(homeRepositoryProvider).finishWorkout(workoutId);

@@ -334,7 +334,14 @@ class RepositoryHomeRepository implements HomeRepository {
   /// the app).
   ///
   /// Both writes share one batch: Finish is one user action, so the Activity
-  /// Log shows it once and undoes the end and the cancel together.
+  /// Log shows it once and undoes the end and the cancel together. They also
+  /// share one transaction: the app dying between the two writes must not
+  /// leave an ended Workout with its rest still running (and its "Get ready"
+  /// notification still due).
+  ///
+  /// This does not use [RestTimerRepository.cancelRunningForWorkout], which
+  /// cancels a running row whatever its deadline: Finish leaves a rest past
+  /// its deadline alone (see [_restStillRunning]).
   @override
   Future<String?> finishWorkout(String workoutId) {
     final now = _now().toUtc();

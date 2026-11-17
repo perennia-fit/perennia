@@ -288,9 +288,7 @@ class _UpNextCardTileState extends ConsumerState<_UpNextCardTile> {
         return;
       }
       await navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => WorkoutScreen(workoutId: workoutId),
-        ),
+        buildWorkoutScreenRoute(workoutId),
       );
     } on Object {
       if (mounted) {

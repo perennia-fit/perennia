@@ -250,6 +250,32 @@ void main() {
       expect(afterArchive.templateName, 'Upper Body B');
     });
 
+    test(
+        'finishWorkout ends the Workout and stops its running rest, '
+        'returning the stopped timer', () async {
+      final started = await startTemplate('Upper F');
+      final timerId = await repositories.restTimers.start(
+        RestTimerDraft(
+          workoutId: started.workoutId,
+          duration: const Duration(seconds: 90),
+        ),
+      );
+
+      expect(await homeRepository.finishWorkout(started.workoutId), timerId);
+
+      final workout =
+          await repositories.workoutSessions.getById(started.workoutId);
+      expect(workout!.endedAt, isNotNull);
+      final timer = await repositories.restTimers.getById(timerId);
+      expect(timer!.status, RestTimerStatus.canceled);
+      expect(
+        await repositories.restTimers.getCurrentForWorkout(started.workoutId),
+        isNull,
+      );
+      // No rest runs any more, so there is nothing left to stop.
+      expect(await homeRepository.finishWorkout(started.workoutId), isNull);
+    });
+
     test('templateName is null for a Workout with no Template Link', () async {
       final started = await startTemplate('Upper B');
       final emptyWorkoutId = await homeRepository.startNewWorkout(trainingDay);
