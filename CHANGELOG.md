@@ -20,6 +20,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   which kinds of training you do, with what each covers, before asking your level.
 - Training setup offers Gym, Home and Bodyweight only presets and groups the
   equipment. Onboarding starts from Gym, so Done saves a typical gym list.
+- Server dependencies move to Better Auth 1.7 and pg-boss 12.38. Self-hosters:
+  the worker migrates the job-queue schema on its next start (schema 36 to 46,
+  added columns and background-built indexes only). The auth contract gains
+  Better Auth's optional sign-out and social sign-in fields.
 
 ### Fixed
 
