@@ -279,7 +279,7 @@ void main() {
       expect(find.text('Account'), findsOneWidget);
       expect(find.text('Signed in as lifter@example.com'), findsOneWidget);
       expect(
-        find.text('Signed in again. Changes on this phone are syncing.'),
+        find.text('Signed in again. Changes on this phone will sync.'),
         findsOneWidget,
       );
       expect(find.byKey(SignInScreen.signInAgainButtonKey), findsNothing);
@@ -424,10 +424,85 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Signed in again. Changes on this phone are syncing.'),
+        find.text('Signed in again. Changes on this phone will sync.'),
         findsNothing,
       );
       expect(find.byKey(SignInScreen.signInAgainButtonKey), findsOneWidget);
+    });
+
+    testWidgets(
+        'a new rejection shows even when the stream never passes through a '
+        'lifted verdict', (tester) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      final statuses = StreamController<SyncStatusState>();
+      addTearDown(statuses.close);
+      statuses.add(_authExpiredStatus());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatuses: statuses.stream,
+          signInAgain: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(SignInScreen.passwordFieldKey),
+        'secret',
+      );
+      await tester.ensureVisible(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.tap(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Signed in as lifter@example.com'), findsOneWidget);
+
+      // The clear and the new session's own rejection coalesce into one
+      // emission, or the clear failed: the status goes from one authExpired
+      // straight to another.
+      statuses.add(
+        SyncStatusState(
+          kind: SyncStatusKind.authExpired,
+          lastFailureAt: DateTime.utc(2026, 11, 8, 9, 2),
+          observedAt: DateTime.utc(2026, 11, 8, 9, 2),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Sign-in expired for lifter@example.com'),
+        findsOneWidget,
+      );
+      expect(find.byKey(SignInScreen.signInAgainButtonKey), findsOneWidget);
+    });
+
+    testWidgets('a cleared email field is not refilled with the old address', (
+      tester,
+    ) async {
+      final repository = InMemoryAuthRepository(_expiredAccount());
+      await tester.pumpWidget(
+        _AuthTestApp(
+          repository: repository,
+          syncStatus: _authExpiredStatus(),
+          signInAgain: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(SignInScreen.emailFieldKey), '');
+      await tester.enterText(
+        find.byKey(SignInScreen.passwordFieldKey),
+        'secret',
+      );
+      await tester.ensureVisible(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.tap(find.byKey(SignInScreen.emailSignInButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(SignInScreen.emailFieldKey))
+            .controller
+            ?.text,
+        isEmpty,
+      );
     });
   });
 }

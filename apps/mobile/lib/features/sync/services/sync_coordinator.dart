@@ -199,7 +199,7 @@ final class SyncCoordinator {
       return activeRun;
     }
 
-    final run = _runUntilSettled(credentials: credentials);
+    final run = _runUntilSettled(pinnedCredentials: credentials);
     _activeRun = run;
     unawaited(
       run.then<void>(
@@ -217,8 +217,9 @@ final class SyncCoordinator {
   }
 
   Future<SyncCycleResult> _runUntilSettled({
-    _SyncCredentials? credentials,
+    _SyncCredentials? pinnedCredentials,
   }) async {
+    var credentials = pinnedCredentials;
     var aggregate = SyncCycleResult.skipped;
     while (!_disposed) {
       final observedGeneration = _requestedGeneration;
@@ -238,18 +239,27 @@ final class SyncCoordinator {
         aggregate += await _runCycle(session: session, deviceId: deviceId);
       } on Object {
         // A cycle that failed with a session the user has since replaced
-        // (Sign in again while a retry was in flight) says nothing about the
-        // new one: drop the verdict it recorded and run again at once with
-        // the new session, instead of failing into a backoff retry that can
-        // be minutes away.
-        if (credentials != null || !await _sessionReplaced(session)) {
+        // (Sign in again while a retry, a Sync now or a nudge was in flight)
+        // says nothing about the new one: drop the verdict it recorded and
+        // run again at once with the current session, instead of failing
+        // into a backoff retry that can be minutes away. That includes runs
+        // started with fixed credentials: the session they were given is the
+        // replaced one, and the authChanged run the replacement asked for was
+        // folded into this run.
+        if (!await _sessionReplaced(session)) {
           rethrow;
         }
+        credentials = null;
         await _clearReplacedSessionVerdict?.call();
         continue;
       }
       if (_requestedGeneration == observedGeneration) {
         return aggregate;
+      }
+      // The follow-up run must not reuse fixed credentials the user has
+      // since replaced or signed out of.
+      if (credentials != null && await _sessionReplaced(session)) {
+        credentials = null;
       }
     }
     return aggregate;

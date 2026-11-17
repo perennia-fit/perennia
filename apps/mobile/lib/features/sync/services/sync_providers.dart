@@ -103,7 +103,13 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
     // out), it must not make the new state look expired. The first load of
     // the stored session is not a change: the verdict about it still holds.
     if (previous?.hasValue ?? false) {
-      unawaited(repository.statusRepository.clearAuthExpired());
+      // A failed clear is left for the new session's Sync Run to settle: its
+      // success records over the verdict and a rejection is a fresh one.
+      unawaited(
+        repository.statusRepository
+            .clearAuthExpired()
+            .catchError((Object _) {}),
+      );
     }
     if (nextSession != null) {
       coordinator.requestSync(SyncTrigger.authChanged);

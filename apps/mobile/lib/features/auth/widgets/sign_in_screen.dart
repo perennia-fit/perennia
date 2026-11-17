@@ -69,12 +69,22 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// again" notice.
   String? _signedInAgainToken;
 
-  /// Set when Sign in again succeeds and cleared once the expired verdict is
-  /// seen to lift. The verdict is dropped when the session changes, but that
-  /// lands a moment after the new session does, and until then it is still
-  /// about the old session. A verdict recorded after that is about the new
-  /// session and shows.
+  /// Set when Sign in again succeeds and cleared by the first sync status
+  /// recorded after it. The old verdict is dropped when the session changes,
+  /// but that lands a moment after the new session does, and until then the
+  /// status on screen is still about the old session. Any status written after
+  /// that (the clear, or the new session's own Sync Run outcome, even when the
+  /// clear failed or the stream skipped straight to a new rejection) is about
+  /// the new session and shows.
   bool _awaitingFreshVerdict = false;
+
+  /// The sync status on screen when Sign in again succeeded: the old
+  /// session's verdict, which [_awaitingFreshVerdict] hides.
+  SyncStatusState? _statusAtSignInAgain;
+
+  /// The email field was prefilled for this Sign in again, so a user who
+  /// clears it to type another address does not get the old one back.
+  bool _emailPrefilled = false;
 
   /// An auth error the user has already backed out of (Cancel), so going
   /// back into Sign in again does not show it as if it were new.
@@ -98,9 +108,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final authError =
         identical(authValue.error, _dismissedError) ? null : authValue.error;
     final verdictExpired = ref.watch(sessionExpiredProvider);
-    ref.listen<bool>(sessionExpiredProvider, (_, next) {
-      if (!next && _awaitingFreshVerdict) {
-        setState(() => _awaitingFreshVerdict = false);
+    ref.listen<AsyncValue<SyncStatusState>>(syncStatusControllerProvider, (
+      _,
+      next,
+    ) {
+      final status = next.value;
+      if (_awaitingFreshVerdict &&
+          status != null &&
+          !identical(status, _statusAtSignInAgain)) {
+        setState(() {
+          _awaitingFreshVerdict = false;
+          _statusAtSignInAgain = null;
+        });
       }
     });
     final sessionExpired = verdictExpired && !_awaitingFreshVerdict;
@@ -119,12 +138,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         _signingInAgain = false;
         _signedInAgainToken = nextSession.token;
         _awaitingFreshVerdict = true;
+        _statusAtSignInAgain = ref.read(syncStatusControllerProvider).value;
         _passwordController.clear();
       });
     });
 
-    if (signingInAgain && _emailController.text.isEmpty) {
-      _emailController.text = session.userEmail;
+    if (signingInAgain && !_emailPrefilled) {
+      _emailPrefilled = true;
+      if (_emailController.text.isEmpty) {
+        _emailController.text = session.userEmail;
+      }
     }
 
     if (!_serverUrlEdited &&
@@ -386,7 +409,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (session.token == _signedInAgainToken && !sessionExpired) ...[
         const SizedBox(height: AppDimens.base),
         Text(
-          'Signed in again. Changes on this phone are syncing.',
+          'Signed in again. Changes on this phone will sync.',
           key: SignInScreen.noticeTextKey,
           textAlign: TextAlign.center,
           style: context.textStyles.body,
@@ -453,6 +476,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   void _startSigningInAgain() {
     setState(() {
       _signingInAgain = true;
+      _emailPrefilled = false;
       _formMode = _AuthFormMode.signIn;
       _noticeText = null;
       _verificationEmailAddress = null;
