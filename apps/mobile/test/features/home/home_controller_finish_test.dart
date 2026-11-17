@@ -192,6 +192,34 @@ void main() {
     expect(scheduler.cancelled, <String>[timerId]);
   });
 
+  test('delete cancels the schedule of a running rest past its deadline',
+      () async {
+    // The rest ran out in the background, so its row still says running and
+    // its "Rest over" notification was posted. Delete cancels the row anyway,
+    // so it also cancels the schedule, which removes that notification.
+    final timerId = await startRestAfterASet();
+    now = startedAt.add(const Duration(minutes: 40));
+
+    await controller.deleteWorkout(workoutId);
+
+    final timer = await repositories.restTimers.getById(timerId);
+    expect(timer!.status, RestTimerStatus.canceled);
+    expect(scheduler.cancelled, <String>[timerId]);
+  });
+
+  test('delete leaves the schedule of a rest that already ended alone',
+      () async {
+    final timerId = await startRestAfterASet();
+    await repositories.restTimers.markAlertFired(
+      timerId,
+      now: startedAt.add(const Duration(minutes: 32)),
+    );
+
+    await controller.deleteWorkout(workoutId);
+
+    expect(scheduler.cancelled, isEmpty);
+  });
+
   test('delete with no running rest cancels no schedule', () async {
     await controller.deleteWorkout(workoutId);
 

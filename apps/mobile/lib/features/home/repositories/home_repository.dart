@@ -71,8 +71,8 @@ abstract interface class HomeRepository {
   Future<void> resumeWorkout(String workoutId);
 
   /// Deletes [workoutId], which cancels its rests. Returns the id of the rest
-  /// that was still running, so the caller can cancel its background
-  /// notifications too; null when none was.
+  /// still marked running, even past its deadline, so the caller can cancel
+  /// its background notifications too; null when none was.
   Future<String?> deleteWorkout(String workoutId);
 
   Future<String> copyWorkout({
@@ -384,16 +384,23 @@ class RepositoryHomeRepository implements HomeRepository {
   }
 
   /// Deleting the Workout cancels all its rests with it (the soft delete
-  /// cancels the Workout's children), so this returns the rest that was
-  /// still counting down, for the caller to cancel its background schedule
-  /// as Finish does.
+  /// cancels the Workout's children), so this returns the rest still marked
+  /// running, for the caller to cancel its background schedule as Finish
+  /// does.
+  ///
+  /// Unlike Finish, this includes a rest whose deadline has passed: the
+  /// soft delete rewrites that row as cancelled anyway, and the schedule
+  /// cancel is what removes its delivered "Rest over" notification (and, on
+  /// Android, stops the end tone), which would otherwise outlive the Workout.
+  /// A rest already marked expired had its schedule cancelled when the strip
+  /// marked the end.
   @override
   Future<String?> deleteWorkout(String workoutId) {
-    final now = _now().toUtc();
     return _repositories.database.transaction(() async {
-      final rest = await _restStillRunning(workoutId, now);
+      final rest =
+          await _repositories.restTimers.getCurrentForWorkout(workoutId);
       await _repositories.workoutSessions.softDelete(workoutId);
-      return rest?.id;
+      return rest?.status == RestTimerStatus.running ? rest!.id : null;
     });
   }
 

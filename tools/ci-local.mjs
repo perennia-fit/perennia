@@ -115,9 +115,16 @@ function checkFlutterVersion() {
   } catch {
     local = undefined;
   }
-  if (local !== pinned) {
+  if (local === undefined) {
+    // No Flutter on PATH, or one that printed no version: say that, rather
+    // than reporting a missing tool as a version mismatch.
     console.log(
-      `\n  ⚠ Flutter ${local ?? '(unknown)'} is on PATH, but ci.yml pins ${pinned} ` +
+      `\n  ⚠ Could not read the Flutter version on PATH (is flutter installed?). ` +
+        `ci.yml pins ${pinned} (FLUTTER_VERSION).`,
+    );
+  } else if (local !== pinned) {
+    console.log(
+      `\n  ⚠ Flutter ${local} is on PATH, but ci.yml pins ${pinned} ` +
         '(FLUTTER_VERSION). Results may differ from hosted CI.',
     );
   }

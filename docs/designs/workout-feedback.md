@@ -780,7 +780,10 @@ are one Activity Log batch. A rest whose deadline has already passed is left
 as it is, even when its row still says running (only a visible rest strip
 marks the end): it finished, and its end notification has been posted.
 Deleting the Workout cancels the background schedule of its running rest the
-same way.
+same way. Delete also cancels the schedule of a rest past its deadline whose
+row still says running: the delete cancels that row anyway, and the schedule
+cancel removes its delivered end notification, which would otherwise outlive
+the Workout.
 
 *   **Layout.** The sheet is `isScrollControlled: true` with a maximum height
     of 90% of the screen and `showDragHandle: true`. Its body is a
