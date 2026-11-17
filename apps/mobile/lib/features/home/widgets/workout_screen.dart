@@ -32,8 +32,22 @@ import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
 import 'copy_workout_summary.dart';
-import 'finish_summary_sheet.dart';
+import 'finish_workout_flow.dart';
 import 'workout_duration.dart';
+
+/// The [RouteSettings.name] a Workout screen is pushed with, so a Training
+/// Screen that finishes the Workout can find the Workout screen below it and
+/// leave both (see `TrainingScreen`'s Finish Workout).
+String workoutScreenRouteName(String workoutId) => '/workout/$workoutId';
+
+/// The route every entry point pushes a [WorkoutScreen] with, named by
+/// [workoutScreenRouteName].
+MaterialPageRoute<void> buildWorkoutScreenRoute(String workoutId) {
+  return MaterialPageRoute<void>(
+    settings: RouteSettings(name: workoutScreenRouteName(workoutId)),
+    builder: (_) => WorkoutScreen(workoutId: workoutId),
+  );
+}
 
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
@@ -310,7 +324,7 @@ class _WorkoutContent extends ConsumerWidget {
                   controller,
                   initialFocusId: workout.focusId,
                 ),
-                onFinish: () => _finishWorkout(context, controller, ref),
+                onFinish: () => _finishWorkout(context, ref),
                 onResume: () async {
                   await controller.resumeWorkout(workout.id);
                   if (!context.mounted) {
@@ -679,51 +693,15 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
-  /// The Workout is already finished when the sheet opens, so the sheet is
-  /// a summary, not a decision: there is nothing to go back to, and closing
-  /// it in any way (Done, a swipe-down, Back) returns to the screen that
-  /// opened this one.
-  ///
-  /// The pop uses the [NavigatorState] captured up front, not a
-  /// `context.mounted` guard: this widget can be rebuilt away while the sheet
-  /// is open (the Workout became unavailable, say), and the Workout screen
-  /// must still pop.
-  Future<void> _finishWorkout(
-    BuildContext context,
-    HomeController controller,
-    WidgetRef ref,
-  ) async {
-    final navigator = Navigator.of(context);
-    // Back can pop this route during the awaits below. context.mounted stays
-    // true while the route animates out, so only the route can say the lifter
-    // has left: the Workout still finishes, but a sheet would open over the
-    // opener, and closing it would pop the opener too.
-    final route = ModalRoute.of(context);
-    // Read (not watch): only touched when Finish is actually tapped, so
-    // widget tests that never tap Finish never instantiate the real
-    // Drift-backed repository behind this provider.
-    final divergenceRepository = ref.read(
-      templateDivergenceFeatureRepositoryProvider,
-    );
-
-    // Divergence is read from the Workout's facts as they stand right now;
-    // finishing (setting endedAt) doesn't change them, so this can safely
-    // happen before the write.
-    final divergenceSummary =
-        await divergenceRepository.summaryForWorkout(workout.id);
-
-    await controller.finishWorkout(workout.id);
-    if (!context.mounted || route?.isActive != true) {
-      return;
-    }
-    await showFinishSummarySheet(
+  /// Finish Workout from this screen: the shared [runFinishWorkoutFlow],
+  /// which leaves by popping this screen back to the one that opened it.
+  Future<void> _finishWorkout(BuildContext context, WidgetRef ref) {
+    return runFinishWorkoutFlow(
       context,
+      ref,
       workoutId: workout.id,
-      divergenceSummary: divergenceSummary,
+      leave: (navigator) => navigator.pop(),
     );
-    if (route?.isCurrent == true) {
-      navigator.pop();
-    }
   }
 
   /// The overflow's "Update template" verb (ROUTINES.md §2, §3.4): available

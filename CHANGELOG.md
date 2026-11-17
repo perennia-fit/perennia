@@ -9,6 +9,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Finish Workout from the Training Screen.** Once no exercise has a planned
+  set left, Finish Workout takes the Next button's place, so you no longer go
+  back to the Workout screen to finish. Logging the plan's last set no longer
+  starts a rest.
+
 ### Changed
 
 - **Exercise names follow one style.** 787 names change, such as "Bent Over

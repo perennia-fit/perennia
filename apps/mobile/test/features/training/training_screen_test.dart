@@ -15,11 +15,17 @@ import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/analytics/repositories/exercise_analytics_repository.dart';
 import 'package:perennia/features/catalog/repositories/exercise_catalog_repository.dart';
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
+import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
+import 'package:perennia/features/home/widgets/workout_screen.dart'
+    show workoutScreenRouteName;
+import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/training/services/rest_cues.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 import 'package:perennia/features/training/services/timer_cue_player.dart';
+import 'package:perennia/features/training/services/timer_notification_router.dart'
+    show buildExercisePageRoute;
 import 'package:perennia/features/training/widgets/rest_strip.dart';
 import 'package:perennia/features/training/widgets/training_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
@@ -4986,6 +4992,345 @@ void main() {
     });
   });
 
+  group('finish workout', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    final finishButton = find.byKey(TrainingScreen.finishWorkoutButtonKey);
+    final nextButton = find.byKey(TrainingScreen.nextExerciseButtonKey);
+
+    Future<void> logSet(WidgetTester tester) async {
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+    }
+
+    _testTrainingScreen(
+        'Finish Workout takes the Next slot once no exercise has a Planned '
+        'Set left, and leaves it in Update mode', (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '60', reps: '8'),
+          ),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(finishButton, findsNothing);
+      expect(nextButton, findsNothing);
+
+      await logSet(tester);
+      await _waitForFinder(tester, finishButton);
+      expect(nextButton, findsNothing);
+      expect(
+        find.descendant(
+            of: finishButton, matching: find.text('Finish Workout')),
+        findsOneWidget,
+      );
+      _expectMinimumTargetSize(tester, finishButton);
+
+      // Selecting a Performed Set turns the form to Update mode.
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(bench.setIds[0])));
+      await tester.pump();
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsOneWidget);
+      expect(finishButton, findsNothing);
+    });
+
+    _testTrainingScreen(
+        'Next, not Finish Workout, while another exercise has a Planned Set',
+        (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          performedCount: 1,
+        ),
+      ))!;
+      await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: bench.workoutId,
+          name: 'Barbell Row',
+          planned: <LoggedSet>[_loadRepsValues(load: '50', reps: '8')],
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+      );
+      await _waitForFinder(tester, nextButton);
+      expect(find.text('Next: Barbell Row'), findsOneWidget);
+      expect(finishButton, findsNothing);
+    });
+
+    _testTrainingScreen(
+        'a freshly opened exercise with no Performed Set offers no Finish '
+        'Workout', (tester) async {
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(finishButton, findsNothing);
+      expect(nextButton, findsNothing);
+    });
+
+    _testTrainingScreen('an ended Workout offers no Finish Workout',
+        (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          performedCount: 1,
+          endedAt: DateTime.utc(2026, 11, 2, 7),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(find.byKey(TrainingScreen.setTileKey(bench.setIds[0])),
+          findsOneWidget);
+      expect(finishButton, findsNothing);
+    });
+
+    _testTrainingScreen(
+        'Finish Workout ends the Workout, shows the Finish summary, and lands '
+        'on the screen that opened the Workout', (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpFinishHost(tester, repositories, bench);
+      await _waitForFinder(tester, finishButton);
+
+      // A double tap finishes once and opens one Finish summary.
+      await tester.tap(finishButton);
+      await tester.tap(finishButton);
+      await _waitForFinder(tester, find.byKey(FinishSummarySheet.sheetKey));
+      await _settle(tester);
+      expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+      final workout = await tester.runAsync(
+        () => repositories.workoutSessions.getById(bench.workoutId),
+      );
+      expect(workout!.endedAt, isNotNull);
+
+      // Past the sheet's entrance, so Done is on screen.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+      // Covered routes stay in the tree offstage, so look there too: done
+      // once the Training Screen and the Workout screen have both left.
+      final standIn = find.text(_workoutStandIn, skipOffstage: false);
+      // The route holds an ExercisePage, a TrainingScreen subtype.
+      final trainingScreen = find.byWidgetPredicate(
+        (widget) => widget is TrainingScreen,
+        skipOffstage: false,
+      );
+      for (var attempt = 0;
+          attempt < 50 &&
+              (standIn.evaluate().isNotEmpty ||
+                  trainingScreen.evaluate().isNotEmpty);
+          attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // Lets the reads the closed screens started finish, so the database
+      // can close.
+      await _settle(tester);
+      expect(standIn, findsNothing);
+      expect(trainingScreen, findsNothing);
+      expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+      expect(find.text(_openerText), findsOneWidget);
+
+      // The Finish summary's reads run on the real clock; let them end
+      // before the database closes, as the Finish summary tests do.
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (var round = 0; round < 20; round += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+    });
+
+    _testTrainingScreen(
+        'logging the plan\'s final Planned Set starts no rest and schedules '
+        'nothing', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '60', reps: '8'),
+          ),
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _settle(tester);
+
+      await logSet(tester);
+      await _waitForFinder(tester, finishButton);
+      await _settle(tester);
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, bench)))!;
+      expect(sets.every((set) => set.isCompleted), isTrue);
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+      );
+      expect(timer, isNull);
+      expect(scheduler.schedules, isEmpty);
+      expect(find.byKey(TrainingScreen.restStripStopKey), findsNothing);
+    });
+
+    _testTrainingScreen(
+        'a freestyle Set still starts its rest, and then offers Finish '
+        'Workout', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId,
+        liveSets: true,
+        timerBackgroundScheduler: scheduler,
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForSchedules(tester, scheduler, 1);
+
+      final workoutExercise = await tester.runAsync(
+        () => repositories.workoutExercises.getById(workoutExerciseId),
+      );
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(
+          workoutExercise!.workoutId,
+        ),
+      );
+      expect(timer?.status, RestTimerStatus.running);
+      expect(scheduler.schedules.single.timerId, timer!.id);
+      await _waitForFinder(tester, finishButton);
+    });
+
+    _testTrainingScreen('Finish Workout keeps its text at textScaler 2.0',
+        (tester) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '8')],
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+        textScaler: const TextScaler.linear(2.0),
+        surfaceSize: const Size(412, 915),
+      );
+      await _waitForFinder(tester, finishButton);
+      await _settle(tester);
+
+      expect(tester.takeException(), isNull);
+      final text = find.descendant(
+        of: finishButton,
+        matching: find.text('Finish Workout'),
+      );
+      expect(text, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(text);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      // It may wrap to two lines on a narrow phone, but every line shows,
+      // inside the button.
+      final textRect = tester.getRect(text);
+      final buttonRect = tester.getRect(finishButton);
+      expect(buttonRect.contains(textRect.topLeft), isTrue);
+      expect(
+        buttonRect.contains(textRect.bottomRight - const Offset(1, 1)),
+        isTrue,
+      );
+      final screen = Offset.zero & tester.view.physicalSize;
+      expect(screen.contains(tester.getRect(finishButton).bottomRight), isTrue);
+      _expectMinimumTargetSize(tester, finishButton);
+    });
+  });
+
   group('kill and reopen', () {
     _testTrainingScreen(
         'CUJ 14: after a kill, Set 3 is current and the rest resumes', (
@@ -5314,6 +5659,57 @@ Future<void> _pumpTrainingScreen(
           widget.key == TrainingScreen.updateSetButtonKey,
     ),
   );
+}
+
+const _openerText = 'Opener';
+const _workoutStandIn = 'Workout screen stand-in';
+
+/// The Training Screen as the app reaches it: an opener, a route named as
+/// the Workout screen's (a stand-in, so the test reads only what the
+/// Training Screen does), and the exercise's page above it.
+Future<void> _pumpFinishHost(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  _PlanFixture plan,
+) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  final navigatorKey = GlobalKey<NavigatorState>();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        appDatabaseProvider.overrideWith((ref) => repositories.database),
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        // Skips the real New Bests read, which runs `compute`.
+        progressFeatureRepositoryProvider.overrideWith(
+          (ref) => const StubProgressFeatureRepository(),
+        ),
+      ],
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const Scaffold(body: Text(_openerText)),
+      ),
+    ),
+  );
+  unawaited(
+    navigatorKey.currentState!.push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: workoutScreenRouteName(plan.workoutId)),
+        builder: (_) => const Scaffold(body: Text(_workoutStandIn)),
+      ),
+    ),
+  );
+  unawaited(
+    navigatorKey.currentState!.push(
+      buildExercisePageRoute(plan.workoutExerciseId),
+    ),
+  );
+  await _waitForFinder(tester, find.byKey(TrainingScreen.logSetButtonKey));
+  await _settle(tester);
 }
 
 /// Resolves the rest strip's `State`, which owns the ticker. Its key sits
