@@ -3547,5 +3547,224 @@
   "labIssueFallback": "Check this field.",
   "@labIssueFallback": {
     "description": "Shown for a lab validation rule this screen has no message for."
+  },
+  "labResultsTitle": "Lab results",
+  "@labResultsTitle": {
+    "description": "App bar title of the Lab Results screen."
+  },
+  "labResultsProfileLine": "General ranges use your sex and birth year from Profile.",
+  "@labResultsProfileLine": {
+    "description": "Fixed line on the Lab Results screen saying which Profile fields the general ranges use. Not dismissible."
+  },
+  "labResultsProfileLink": "Open Profile",
+  "@labResultsProfileLink": {
+    "description": "Link under the general-ranges line that opens the Profile screen."
+  },
+  "labResultsAddResults": "Add results",
+  "@labResultsAddResults": {
+    "description": "Button on the Lab Results screen that opens the lab entry sheet."
+  },
+  "labResultsEmpty": "No lab results yet.",
+  "@labResultsEmpty": {
+    "description": "Empty state of the Lab Results screen."
+  },
+  "labResultsUnavailable": "Lab results couldn't be loaded.",
+  "@labResultsUnavailable": {
+    "description": "Shown on the Lab Results screen when its data fails to load."
+  },
+  "labResultsOtherPanel": "Other",
+  "@labResultsOtherPanel": {
+    "description": "Heading of the Lab Results section for Lab Tests this version of the app does not recognise."
+  },
+  "labResultsLatest": "{value} · {date}",
+  "@labResultsLatest": {
+    "description": "Subtitle of a Lab Test row on the Lab Results screen: the latest result as entered with its unit, and its collection date.",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultValue": "{entered} {unit}",
+  "@labResultValue": {
+    "description": "A lab result as entered, comparator included, followed by its unit as entered.",
+    "placeholders": {
+      "entered": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultLimitSemantics": "{comparator} {number} {unit}",
+  "@labResultLimitSemantics": {
+    "description": "Screen reader label for a lab result printed as a limit, with the comparator in words: less than 1 mg/L.",
+    "placeholders": {
+      "comparator": {
+        "type": "String"
+      },
+      "number": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultComparatorLtWords": "less than",
+  "@labResultComparatorLtWords": {
+    "description": "Comparator < read aloud in a lab result."
+  },
+  "labResultComparatorLeWords": "less than or equal to",
+  "@labResultComparatorLeWords": {
+    "description": "Comparator <= read aloud in a lab result."
+  },
+  "labResultComparatorGtWords": "greater than",
+  "@labResultComparatorGtWords": {
+    "description": "Comparator > read aloud in a lab result."
+  },
+  "labResultComparatorGeWords": "greater than or equal to",
+  "@labResultComparatorGeWords": {
+    "description": "Comparator >= read aloud in a lab result."
+  },
+  "labResultLabRange": "Lab range {range}",
+  "@labResultLabRange": {
+    "description": "The reference range as the lab printed it.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultTarget": "Target {range}",
+  "@labResultTarget": {
+    "description": "The guideline target the lab printed, for a Lab Test whose printed range is a target rather than a reference range.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultGeneralRange": "General range {low}–{high} {unit} · {source}",
+  "@labResultGeneralRange": {
+    "description": "The general (default) range for a result with no printed range, and the publication it comes from.",
+    "placeholders": {
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultGeneralRangeBelow": "General range below {high} {unit} · {source}",
+  "@labResultGeneralRangeBelow": {
+    "description": "A general range with only an upper limit, and the publication it comes from.",
+    "placeholders": {
+      "high": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultGeneralRangeAbove": "General range above {low} {unit} · {source}",
+  "@labResultGeneralRangeAbove": {
+    "description": "A general range with only a lower limit, and the publication it comes from.",
+    "placeholders": {
+      "low": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultPositionBelowPrinted": "Below the lab's range",
+  "@labResultPositionBelowPrinted": {
+    "description": "Where a result sits against the range the lab printed. Never say normal or abnormal."
+  },
+  "labResultPositionWithinPrinted": "Within the lab's range",
+  "@labResultPositionWithinPrinted": {
+    "description": "Where a result sits against the range the lab printed. Never say normal or abnormal."
+  },
+  "labResultPositionAbovePrinted": "Above the lab's range",
+  "@labResultPositionAbovePrinted": {
+    "description": "Where a result sits against the range the lab printed. Never say normal or abnormal."
+  },
+  "labResultPositionBelowGeneral": "Below the general range",
+  "@labResultPositionBelowGeneral": {
+    "description": "Where a result sits against the general range. Never say normal or abnormal."
+  },
+  "labResultPositionWithinGeneral": "Within the general range",
+  "@labResultPositionWithinGeneral": {
+    "description": "Where a result sits against the general range. Never say normal or abnormal."
+  },
+  "labResultPositionAboveGeneral": "Above the general range",
+  "@labResultPositionAboveGeneral": {
+    "description": "Where a result sits against the general range. Never say normal or abnormal."
+  },
+  "labResultFlag": "Lab flag: {flag}",
+  "@labResultFlag": {
+    "description": "The flag the lab printed next to a result, as printed (H, L, +).",
+    "placeholders": {
+      "flag": {
+        "type": "String"
+      }
+    }
+  },
+  "labResultInterim": "Interim",
+  "@labResultInterim": {
+    "description": "Marks a lab result the lab reported as interim rather than final."
+  },
+  "labResultInterimSemantics": "Interim result",
+  "@labResultInterimSemantics": {
+    "description": "Screen reader label for the Interim marker of a lab result."
+  },
+  "labResultFasting": "Fasting",
+  "@labResultFasting": {
+    "description": "Marks a lab result whose sample was taken fasting."
+  },
+  "labResultArchive": "Archive result",
+  "@labResultArchive": {
+    "description": "Tooltip of the button that archives one lab result."
+  },
+  "labResultArchiveConfirm": "{count, plural, =1{Archive this result?} other{Archive this result? {count} saved copies will be archived.}}",
+  "@labResultArchiveConfirm": {
+    "description": "Confirmation before archiving a lab result; count is how many saved copies (an interim and its final, or copies from two devices) are archived together.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "labResultArchiveCancel": "Cancel",
+  "@labResultArchiveCancel": {
+    "description": "Cancels archiving a lab result."
+  },
+  "labResultArchiveConfirmAction": "Archive",
+  "@labResultArchiveConfirmAction": {
+    "description": "Confirms archiving a lab result."
+  },
+  "labTestDetailEmpty": "No results for this lab test.",
+  "@labTestDetailEmpty": {
+    "description": "Shown on a Lab Test detail screen with no results left."
   }
 }

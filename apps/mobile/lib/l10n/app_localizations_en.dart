@@ -4615,4 +4615,135 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get labIssueFallback => 'Check this field.';
+
+  @override
+  String get labResultsTitle => 'Lab results';
+
+  @override
+  String get labResultsProfileLine =>
+      'General ranges use your sex and birth year from Profile.';
+
+  @override
+  String get labResultsProfileLink => 'Open Profile';
+
+  @override
+  String get labResultsAddResults => 'Add results';
+
+  @override
+  String get labResultsEmpty => 'No lab results yet.';
+
+  @override
+  String get labResultsUnavailable => 'Lab results couldn\'t be loaded.';
+
+  @override
+  String get labResultsOtherPanel => 'Other';
+
+  @override
+  String labResultsLatest(String value, String date) {
+    return '$value · $date';
+  }
+
+  @override
+  String labResultValue(String entered, String unit) {
+    return '$entered $unit';
+  }
+
+  @override
+  String labResultLimitSemantics(
+      String comparator, String number, String unit) {
+    return '$comparator $number $unit';
+  }
+
+  @override
+  String get labResultComparatorLtWords => 'less than';
+
+  @override
+  String get labResultComparatorLeWords => 'less than or equal to';
+
+  @override
+  String get labResultComparatorGtWords => 'greater than';
+
+  @override
+  String get labResultComparatorGeWords => 'greater than or equal to';
+
+  @override
+  String labResultLabRange(String range) {
+    return 'Lab range $range';
+  }
+
+  @override
+  String labResultTarget(String range) {
+    return 'Target $range';
+  }
+
+  @override
+  String labResultGeneralRange(
+      String low, String high, String unit, String source) {
+    return 'General range $low–$high $unit · $source';
+  }
+
+  @override
+  String labResultGeneralRangeBelow(String high, String unit, String source) {
+    return 'General range below $high $unit · $source';
+  }
+
+  @override
+  String labResultGeneralRangeAbove(String low, String unit, String source) {
+    return 'General range above $low $unit · $source';
+  }
+
+  @override
+  String get labResultPositionBelowPrinted => 'Below the lab\'s range';
+
+  @override
+  String get labResultPositionWithinPrinted => 'Within the lab\'s range';
+
+  @override
+  String get labResultPositionAbovePrinted => 'Above the lab\'s range';
+
+  @override
+  String get labResultPositionBelowGeneral => 'Below the general range';
+
+  @override
+  String get labResultPositionWithinGeneral => 'Within the general range';
+
+  @override
+  String get labResultPositionAboveGeneral => 'Above the general range';
+
+  @override
+  String labResultFlag(String flag) {
+    return 'Lab flag: $flag';
+  }
+
+  @override
+  String get labResultInterim => 'Interim';
+
+  @override
+  String get labResultInterimSemantics => 'Interim result';
+
+  @override
+  String get labResultFasting => 'Fasting';
+
+  @override
+  String get labResultArchive => 'Archive result';
+
+  @override
+  String labResultArchiveConfirm(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Archive this result? $count saved copies will be archived.',
+      one: 'Archive this result?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get labResultArchiveCancel => 'Cancel';
+
+  @override
+  String get labResultArchiveConfirmAction => 'Archive';
+
+  @override
+  String get labTestDetailEmpty => 'No results for this lab test.';
 }

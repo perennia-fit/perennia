@@ -7305,6 +7305,211 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Check this field.'**
   String get labIssueFallback;
+
+  /// App bar title of the Lab Results screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Lab results'**
+  String get labResultsTitle;
+
+  /// Fixed line on the Lab Results screen saying which Profile fields the general ranges use. Not dismissible.
+  ///
+  /// In en, this message translates to:
+  /// **'General ranges use your sex and birth year from Profile.'**
+  String get labResultsProfileLine;
+
+  /// Link under the general-ranges line that opens the Profile screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Profile'**
+  String get labResultsProfileLink;
+
+  /// Button on the Lab Results screen that opens the lab entry sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add results'**
+  String get labResultsAddResults;
+
+  /// Empty state of the Lab Results screen.
+  ///
+  /// In en, this message translates to:
+  /// **'No lab results yet.'**
+  String get labResultsEmpty;
+
+  /// Shown on the Lab Results screen when its data fails to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Lab results couldn\'t be loaded.'**
+  String get labResultsUnavailable;
+
+  /// Heading of the Lab Results section for Lab Tests this version of the app does not recognise.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get labResultsOtherPanel;
+
+  /// Subtitle of a Lab Test row on the Lab Results screen: the latest result as entered with its unit, and its collection date.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} · {date}'**
+  String labResultsLatest(String value, String date);
+
+  /// A lab result as entered, comparator included, followed by its unit as entered.
+  ///
+  /// In en, this message translates to:
+  /// **'{entered} {unit}'**
+  String labResultValue(String entered, String unit);
+
+  /// Screen reader label for a lab result printed as a limit, with the comparator in words: less than 1 mg/L.
+  ///
+  /// In en, this message translates to:
+  /// **'{comparator} {number} {unit}'**
+  String labResultLimitSemantics(String comparator, String number, String unit);
+
+  /// Comparator < read aloud in a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'less than'**
+  String get labResultComparatorLtWords;
+
+  /// Comparator <= read aloud in a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'less than or equal to'**
+  String get labResultComparatorLeWords;
+
+  /// Comparator > read aloud in a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'greater than'**
+  String get labResultComparatorGtWords;
+
+  /// Comparator >= read aloud in a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'greater than or equal to'**
+  String get labResultComparatorGeWords;
+
+  /// The reference range as the lab printed it.
+  ///
+  /// In en, this message translates to:
+  /// **'Lab range {range}'**
+  String labResultLabRange(String range);
+
+  /// The guideline target the lab printed, for a Lab Test whose printed range is a target rather than a reference range.
+  ///
+  /// In en, this message translates to:
+  /// **'Target {range}'**
+  String labResultTarget(String range);
+
+  /// The general (default) range for a result with no printed range, and the publication it comes from.
+  ///
+  /// In en, this message translates to:
+  /// **'General range {low}–{high} {unit} · {source}'**
+  String labResultGeneralRange(
+      String low, String high, String unit, String source);
+
+  /// A general range with only an upper limit, and the publication it comes from.
+  ///
+  /// In en, this message translates to:
+  /// **'General range below {high} {unit} · {source}'**
+  String labResultGeneralRangeBelow(String high, String unit, String source);
+
+  /// A general range with only a lower limit, and the publication it comes from.
+  ///
+  /// In en, this message translates to:
+  /// **'General range above {low} {unit} · {source}'**
+  String labResultGeneralRangeAbove(String low, String unit, String source);
+
+  /// Where a result sits against the range the lab printed. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Below the lab\'s range'**
+  String get labResultPositionBelowPrinted;
+
+  /// Where a result sits against the range the lab printed. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Within the lab\'s range'**
+  String get labResultPositionWithinPrinted;
+
+  /// Where a result sits against the range the lab printed. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Above the lab\'s range'**
+  String get labResultPositionAbovePrinted;
+
+  /// Where a result sits against the general range. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Below the general range'**
+  String get labResultPositionBelowGeneral;
+
+  /// Where a result sits against the general range. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Within the general range'**
+  String get labResultPositionWithinGeneral;
+
+  /// Where a result sits against the general range. Never say normal or abnormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Above the general range'**
+  String get labResultPositionAboveGeneral;
+
+  /// The flag the lab printed next to a result, as printed (H, L, +).
+  ///
+  /// In en, this message translates to:
+  /// **'Lab flag: {flag}'**
+  String labResultFlag(String flag);
+
+  /// Marks a lab result the lab reported as interim rather than final.
+  ///
+  /// In en, this message translates to:
+  /// **'Interim'**
+  String get labResultInterim;
+
+  /// Screen reader label for the Interim marker of a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'Interim result'**
+  String get labResultInterimSemantics;
+
+  /// Marks a lab result whose sample was taken fasting.
+  ///
+  /// In en, this message translates to:
+  /// **'Fasting'**
+  String get labResultFasting;
+
+  /// Tooltip of the button that archives one lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive result'**
+  String get labResultArchive;
+
+  /// Confirmation before archiving a lab result; count is how many saved copies (an interim and its final, or copies from two devices) are archived together.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Archive this result?} other{Archive this result? {count} saved copies will be archived.}}'**
+  String labResultArchiveConfirm(int count);
+
+  /// Cancels archiving a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get labResultArchiveCancel;
+
+  /// Confirms archiving a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get labResultArchiveConfirmAction;
+
+  /// Shown on a Lab Test detail screen with no results left.
+  ///
+  /// In en, this message translates to:
+  /// **'No results for this lab test.'**
+  String get labTestDetailEmpty;
 }
 
 class _AppLocalizationsDelegate
