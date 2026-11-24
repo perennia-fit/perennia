@@ -1,12 +1,25 @@
+import { labTestByKey } from "./data/lab-test-catalogue.generated.js";
+import {
+  encodeLab,
+  formatEntered,
+  isValidCollected,
+  parseEntered,
+  resolveLabUnit
+} from "./lab-results.js";
+
 export type MetricReadingNormalizationInput = {
   metric: {
     valueShape: "scalar" | "structured" | "series";
     unit: string;
+    /** Set for a Lab Metric: the Lab Test its readings are results of. */
+    labTestKey?: string | null;
   };
   value: {
     shape: "scalar" | "structured" | "series";
     entered?: string;
     unit?: string;
+    /** A Lab Result's `lab` object, as sent; only a Lab Metric takes one. */
+    lab?: Record<string, unknown> | null;
     fields?: Record<string, { entered: string; unit?: string }>;
     samples?: Array<{ offsetSeconds: number; entered: string; unit?: string }>;
   };
@@ -34,16 +47,20 @@ export function normalizeMetricReading(
   input: MetricReadingNormalizationInput
 ): NormalizedMetricReading {
   const { valueShape, unit } = input.metric;
+  const labTestKey = input.metric.labTestKey ?? null;
   if (input.value.shape !== valueShape) {
     throw new Error("Reading value shape must match Metric value shape.");
   }
 
   const warnings: string[] = [];
-  const normalizedValue = normalizeValue({
-    valueShape,
-    unit,
-    value: input.value
-  });
+  const normalizedValue =
+    labTestKey !== null && valueShape === "scalar"
+      ? normalizeLabValue({ labTestKey, unit, value: input.value })
+      : normalizeValue({
+          valueShape,
+          unit,
+          value: input.value
+        });
   const normalizedAnchor = normalizeTimeAnchor(input.timeAnchor, warnings);
 
   return {
@@ -69,6 +86,9 @@ function normalizeValue({
 }) {
   switch (valueShape) {
     case "scalar": {
+      if (value.lab !== undefined && value.lab !== null) {
+        throw new Error("Lab fields need a Lab Metric.");
+      }
       const normalized = normalizeNumericValue({
         entered: requireString(value.entered, "entered"),
         enteredUnit: value.unit ?? unit,
@@ -139,6 +159,81 @@ function normalizeValue({
     default:
       throw new Error(`Unknown Reading value shape: ${valueShape}.`);
   }
+}
+
+/**
+ * A Lab Result's value (docs/designs/lab-results.md, "The normaliser"). Every
+ * writer validates first (`validateLabResult`), so each throw here is a
+ * defensive check a writer reaching it has a bug for; no message names a
+ * value. The steps:
+ *
+ * 1. the entered unit (`value.unit`, else the Metric's) must be the Lab
+ *    Test's unit or an alias under the fold; it is stored as sent and never
+ *    converted, so `value` is the entered number;
+ * 2. a leading comparator (`<`, `<=`, `≤`, `>`, `>=`, `≥`, optionally then a
+ *    space) makes a Limit Result: `value` and `scalarValue` are null, the
+ *    bound lives in `lab.limit`, `entered` takes the canonical `"< 1"` form,
+ *    and any `limit` sent is replaced;
+ * 3. the text fields are trimmed with a blank (or a non-string) written as
+ *    null, an absent `reportStatus` becomes `final`, and `lab` is written
+ *    last, in `encodeLab`'s key order.
+ */
+function normalizeLabValue({
+  labTestKey,
+  unit,
+  value
+}: {
+  labTestKey: string;
+  unit: string;
+  value: MetricReadingNormalizationInput["value"];
+}) {
+  const labTest = labTestByKey(labTestKey);
+  if (labTest === null) {
+    throw new Error("Unknown Lab Test.");
+  }
+  const enteredUnit = value.unit ?? unit;
+  if (resolveLabUnit(labTest, enteredUnit) === null) {
+    throw new Error("Lab result unit not accepted.");
+  }
+  const lab = value.lab;
+  const collected =
+    typeof lab === "object" && lab !== null && !Array.isArray(lab) ? lab.collected : undefined;
+  if (typeof collected !== "string" || !isValidCollected(collected)) {
+    throw new Error("Lab result collected date is invalid.");
+  }
+  const parsed = parseEntered(requireString(value.entered, "entered").trim());
+  if (parsed === null) {
+    throw new Error("Metric Reading value must be finite.");
+  }
+  const number = canonicalNumber(Number(parsed.number));
+  const isLimit = parsed.comparator !== null;
+  const reportStatus = lab?.reportStatus;
+  return {
+    valueJson: JSON.stringify({
+      shape: "scalar",
+      unit,
+      value: isLimit ? null : number,
+      entered: formatEntered(parsed.comparator, parsed.number),
+      enteredUnit,
+      lab: encodeLab({
+        collected,
+        limit: parsed.comparator === null ? null : { comparator: parsed.comparator, bound: number },
+        printedRange: labText(lab?.printedRange),
+        printedFlag: labText(lab?.printedFlag),
+        reportStatus: typeof reportStatus === "string" ? reportStatus : "final",
+        fasting: lab?.fasting === true ? true : null,
+        labName: labText(lab?.labName)
+      })
+    }),
+    scalarValue: isLimit ? null : number
+  };
+}
+
+/** A text field trimmed, with a blank or a non-string as null. */
+function labText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 /**

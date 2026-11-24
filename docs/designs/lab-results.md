@@ -519,7 +519,7 @@ with `id`, `labTestKey`, `lab` (or null), `atTime`, `updatedAt` (ISO 8601) and `
 4.  In each group keep one row: `final` beats `interim`; then the later `updatedAt`, compared in
     whole seconds (the app stores seconds, the server milliseconds, so finer precision would let
     the two disagree); then the greater `id` by code-unit string order.
-5.  Return the kept rows, newest first by `atTime`, then by `id`.
+5.  Return the kept rows, newest first by `atTime`, then by `id`, the greater `id` first.
 
 Every reader of Lab Results applies it to the readings of **every Metric with that
 `labTestKey`**: the Lab Results screen, the Lab Test detail list, the app's Effect samples, the
@@ -581,9 +581,9 @@ reference intervals for Australasia, agreed by the Australasian Association for 
 Biochemistry and Laboratory Medicine (AACB) and the Royal College of Pathologists of
 Australasia (RCPA):
 
-*   Tate JR et al., "Harmonised Adult and Paediatric Reference Intervals in Australia and New
-    Zealand – The Continuing Story", *Clin Biochem Rev* 2014
-    (https://pmc.ncbi.nlm.nih.gov/articles/PMC4310061);
+*   Tate JR et al., "Harmonising Adult and Paediatric Reference Intervals in Australia and New
+    Zealand: An Evidence-Based Approach for Establishing a First Panel of Chemistry Analytes",
+    *Clin Biochem Rev* 2014 (https://pmc.ncbi.nlm.nih.gov/articles/PMC4310061);
 *   updated by Koerbin G et al., "An update report on the harmonization of adult reference
     intervals in Australasia", *Clin Chem Lab Med* 2018, doi:10.1515/cclm-2017-0920
     (https://www.degruyterbrill.com/document/doi/10.1515/cclm-2017-0920/html).
@@ -594,6 +594,22 @@ chemistry only, so only chemistry Lab Tests get a Default Range; the full blood 
 (Haemoglobin included), hormones, hs-CRP and lipids get none. "Adult" is written as `ageMin` 18.
 Sex and age bands are copied as published (Creatinine's adult bands, for example, stop at 59),
 and an age the source does not cover gets no default.
+
+**What the seed has, and what it does not.** The seed's Default Ranges are copied from Tate 2014,
+Table 1, and cite it: Sodium, Potassium, Chloride, Bicarbonate, Creatinine, Calcium, Adjusted
+Calcium, Phosphate, Magnesium, LD, ALP and Total Protein. The full text of Koerbin 2018 is closed
+access and could not be read when the seed was written, so two gaps remain until someone reads it:
+
+*   The twelve intervals above have not been checked against the 2018 update. If it revised one,
+    the seed shows the superseded 2014 interval with its 2014 citation.
+*   Ten chemistry Lab Tests that the 2014 paper does not cover have no Default Range and so no
+    `plausibleBounds`: Urea, Urate, eGFR, Anion Gap, Total Bilirubin, GGT, ALT, AST, Albumin and
+    Globulin. A result for one of them with no Printed Range shows no general range, and a value
+    outside its range gets no `lab_value_implausible` warning (the hard bounds still apply).
+
+Closing both is a later catalogue pull request: read Koerbin 2018, replace any interval it revised
+(with `version` 2018), and add the ten Lab Tests' intervals and `plausibleBounds` by the Bounds rule.
+Ranges are never taken from a secondary source to fill these gaps.
 
 **Choosing one, on read.** `defaultRangeFor(labTest, printedRange, sex, age)`, Dart only, pure,
 golden-vectored in `m44-lab-default-range.json`, domain `lab-default-range`. `age` is
@@ -646,6 +662,13 @@ inclusive bound is `within`, and equal to an exclusive bound is outside.
     otherwise `unknown`.
 
 For example, against an inclusive low of 1, `< 1` is `below` and `<= 1` is `unknown`.
+
+`rangePosition` cannot see a Lab Test's `printedRangeKind`, so readers call
+`resultPosition({value, printedRange, kind, defaultRange})`, in the same file and vector file,
+which applies the precedence above and returns the position with its `RangeSource` (`printed` or
+`general`), or none. A Printed Range that parses is used, unless `kind` is `riskTarget`, which
+gives no position. Otherwise the Default Range is used, with inclusive bounds. With neither,
+there is no position.
 
 It is shown as words, never as colour alone, and never as "normal" or "abnormal". It is never
 stored.
@@ -1174,6 +1197,7 @@ These decisions bind the phase 2 design.
 | An older app build edits a Lab Result in the explorer | The `lab` object is dropped | Pre-1.0 and recoverable: the previous row is the Activity Log before-image. The collapse shows a lab-less row as its own result. |
 | An older server drops `lab_test_key` | Metrics created through it reach other devices without the key and show as custom Metrics there | Accepted pre-1.0; app and server release together. |
 | A Default Range is transcribed wrongly | A wrong general range is shown | Values are copied verbatim from one cited source, reviewed in PR 2, and always shown with that source. |
+| The seed's 2014 intervals were not checked against Koerbin 2018, and ten chemistry Lab Tests have no Default Range | A superseded general range may be shown; those ten show no general range and no plausibility warning | Accepted for now and listed under [What the seed has](#default-ranges); a later catalogue pull request reads the 2018 update and closes both. |
 | Age is accurate to ±1 year (User Profile) | A user near an age-band edge may get the neighbouring band's range | Accepted; the range is labelled general and shows its source. |
 | Two rows of one Lab Test in one collection on two devices (e.g. typed twice) | Collapse keeps one | Accepted; this is the intended rule. |
 
@@ -1238,7 +1262,7 @@ Pure data and pure functions. No database change, no UI, no Agent surface change
 | `apps/mobile/lib/domain/labs/lab_result.dart` | Create | `LabFields` (the `lab` object), `LabLimit`, `ReportStatus`, `LabComparator`; `encodeLab` in the canonical key order; `decodeLab` as in [Storage](#storage); `formatEntered(comparator, value)` and `parseEntered(entered)` for the canonical `entered` form. |
 | `apps/mobile/lib/domain/labs/lab_result_validation.dart` | Create | `LabResultInput {labTestKey, entered, enteredUnit, lab, timeAnchor}`; `validateLabResult(LabResultInput, {required DateTime today}) → LabValidationResult {errors, warnings}`, each issue `{rule, field}`; the reading rules in [Validation](#validation). |
 | `apps/mobile/lib/domain/labs/lab_result_collapse.dart` | Create | `LabReadingRef {id, labTestKey, lab (LabFields?), atTime, updatedAt, deletedAt}`; `collapseLabResults(List<LabReadingRef>) → List<LabReadingRef>`, as in [the collapse](#result-identity-and-the-collapse). |
-| `apps/mobile/lib/domain/labs/lab_default_range.dart` | Create | `ParsedRange {low, lowInclusive, high, highInclusive}`; `defaultRangeFor(LabTest, String? printedRange, Sex? sex, int? age) → DefaultRange?`; `parsePrintedRange(String) → ParsedRange?`; `rangePosition(LabValue, ParsedRange) → RangePosition`, where `LabValue` is a number or a limit. |
+| `apps/mobile/lib/domain/labs/lab_default_range.dart` | Create | `ParsedRange {low, lowInclusive, high, highInclusive}`; `defaultRangeFor(LabTest, String? printedRange, ProfileSex? sex, int? age) → DefaultRange?` (`ProfileSex` from `lib/domain/profile/user_profile.dart`); `parsePrintedRange(String) → ParsedRange?`; `rangePosition(LabValue, ParsedRange) → RangePosition`, where `LabValue` is a number (`LabNumber`) or a limit (`LabLimitValue`); `resultPosition({value, printedRange, kind, defaultRange}) → ({RangePosition position, RangeSource source})?`, as in [Position, on read](#default-ranges). |
 | `apps/mobile/lib/domain/metrics/reading_normalization.dart` | Modify | The three normaliser steps in [Storage](#storage), including a null `scalarValue` for a Limit Result; non-lab behaviour unchanged. |
 | `apps/server/src/lab-results.ts` | Create | TypeScript counterparts of `lab_test.dart`, `lab_result.dart` and `lab_result_collapse.dart`. |
 | `apps/server/src/agent-validation.ts` | Modify | `validateLabResult`, matching the Dart reading rules, in the existing validators' result shape. |
@@ -1246,7 +1270,7 @@ Pure data and pure functions. No database change, no UI, no Agent surface change
 | `apps/server/src/index.ts` | Modify | Export `validateLabResult` and `collapseLabResults`, which the golden-vector runners import from `../src/index.ts`. |
 | `packages/golden-vectors/vectors/m42-lab-result-validation.json` (+ `.schema.json`) | Create | Cases shaped as in [Validation](#validation). Every reading rule, accepted and rejected, including boundaries (equal to `min` and `max`, exclusive limits), a fold match (`x10^9 /L`), an unlisted case variant rejected, blank text accepted as null, a 121-code-unit `printedRange`, and an offset of 841. |
 | `packages/golden-vectors/vectors/m43-lab-result-collapse.json` (+ `.schema.json`) | Create | Each case `{name, input: {readings}, expected: {keptIds}}`, `keptIds` in output order. Interim then final → final kept; two finals → later `updatedAt`; `updatedAt` in the same second with different milliseconds → greater id; one archived row → the other kept; a row with no `lab` → kept alone; an unknown `reportStatus` loses to `final`; date-only against date-time → both kept; two Metric rows with one key → one group; different keys → two groups. |
-| `packages/golden-vectors/vectors/m44-lab-default-range.json` (+ `.schema.json`) | Create | Each case has a `function` discriminator (`defaultRangeFor`, `parsePrintedRange` or `rangePosition`) with that function's `input` and `expected`. Printed Range wins; sex null with a sex-specific entry → none; birth year null with an age-banded entry → none; `any` entry with no profile → shown; two matching entries → none; age at both band edges and one past each; every grammar form, brackets, an em dash, `a > b`, a comma decimal and trailing text; every `rangePosition` rule for numbers and limits at inclusive and exclusive bounds, including `unknown`; `riskTarget` never positioned. |
+| `packages/golden-vectors/vectors/m44-lab-default-range.json` (+ `.schema.json`) | Create | Each case has a `function` discriminator (`defaultRangeFor`, `parsePrintedRange`, `rangePosition` or `resultPosition`) with that function's `input` and `expected`; `defaultRangeFor` cases give their entries inline rather than from the catalogue, so two matching entries can be expressed. Printed Range wins; sex null with a sex-specific entry → none; birth year null with an age-banded entry → none; `any` entry with no profile → shown; two matching entries → none; age at both band edges and one past each; every grammar form, brackets, an em dash, `a > b`, a comma decimal and trailing text; every `rangePosition` rule for numbers and limits at inclusive and exclusive bounds, including `unknown`; `riskTarget` never positioned and a Printed Range beating a Default Range, through `resultPosition`. |
 | `packages/golden-vectors/vectors/m12-reading-normalization.json` | Modify | The lab cases in [Validation and analytics consequence](#validation-and-analytics-consequence). |
 | `packages/golden-vectors/vectors/README.md` | Modify | Register m42, m43, m44 and their domains. |
 | `apps/mobile/test/domain/lab_result_validation_test.dart` | Create | Runs m42 in Dart. |
@@ -1279,8 +1303,8 @@ that differs from a listed one only by spaces is not listed, because the generat
     `cholesterol_hdl_ratio` `ratio`.
 *   *Inflammation:* `hs_crp` `mg/L`.
 *   *Electrolytes:* `sodium`, `potassium`, `chloride`, `bicarbonate`, `anion_gap` `mmol/L`.
-*   *Kidney:* `urea` `mmol/L`, `creatinine` `umol/L`, `egfr` `mL/min/1.73m²` (alias
-    `mL/min/1.73m2`), `urate` `mmol/L`.
+*   *Kidney:* `urea` `mmol/L`, `creatinine` `umol/L`, `egfr` `mL/min/1.73m²` (aliases
+    `mL/min/1.73m2`, `ml/min/1.73m²` and `ml/min/1.73m2`), `urate` `mmol/L`.
 *   *Liver:* `bilirubin_total` `umol/L`; `alp`, `ggt`, `alt`, `ast`, `ld` `U/L`; `total_protein`,
     `albumin`, `globulin` `g/L`.
 *   *Bone and minerals:* `calcium`, `calcium_adjusted`, `phosphate`, `magnesium` `mmol/L`.

@@ -1,0 +1,666 @@
+{
+  "name": "m42-lab-result-validation",
+  "domain": "lab-result-validation",
+  "schemaVersion": 1,
+  "schema": "m42-lab-result-validation.schema.json",
+  "cases": [
+    {
+      "name": "accepted-full-reading",
+      "note": "Every field set and valid: nothing reported.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "accepted-minimal-lab",
+      "note": "Only collected: absent optional keys, reportStatus included, are valid.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "accepted-null-optional-fields",
+      "note": "Null optional keys are valid; a sent limit is ignored (the normaliser replaces it).",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "limit": {"comparator": ">", "bound": 9}, "printedRange": null, "printedFlag": null, "reportStatus": null, "fasting": null, "labName": null}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "collected-missing-lab-null",
+      "note": "No lab object at all.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": null, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_missing"], "warningRules": []}
+    },
+    {
+      "name": "collected-missing-lab-absent",
+      "note": "The lab key is not sent.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_missing"], "warningRules": []}
+    },
+    {
+      "name": "collected-missing-key",
+      "note": "A lab object without collected.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"printedRange": "135 - 145"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_missing"], "warningRules": []}
+    },
+    {
+      "name": "collected-missing-skips-anchor-and-future",
+      "note": "With no collected the anchor is not checked, even when it is wrong.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": null}, "timeAnchor": {"atTime": "2026-03-04T08:15:00Z"}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_missing"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-format",
+      "note": "Not YYYY-MM-DD or YYYY-MM-DDTHH:mm.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "04/03/2026", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-calendar-date",
+      "note": "30 February is not a real date.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-02-30", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-02-30T12:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-leap-day-accepted",
+      "note": "29 February 2024 is a real date.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2024-02-29", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2024-02-29T12:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-time",
+      "note": "24:00 is not a time.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T24:00", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T24:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-seconds",
+      "note": "Seconds are not part of collected.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15:00", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-blank",
+      "note": "A blank collected is invalid, not missing.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-not-a-string",
+      "note": "A number is not a collection date.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": 20260304, "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-invalid-skips-future",
+      "note": "An invalid collected is not checked for the future either.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2099-13-01", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_invalid"], "warningRules": []}
+    },
+    {
+      "name": "collected-tomorrow-accepted",
+      "note": "One day after today is allowed (time zones).",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-06T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-06T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "collected-day-after-tomorrow-rejected",
+      "note": "Two days after today is in the future.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-07T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-07T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_future"], "warningRules": []}
+    },
+    {
+      "name": "collected-tomorrow-across-month-end",
+      "note": "Today + 1 rolls over the month.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-01", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-01T12:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-02-28",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "collected-day-after-across-month-end",
+      "note": "Today + 2 across the month end is rejected.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-02", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-02T12:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-02-28",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_future"], "warningRules": []}
+    },
+    {
+      "name": "collected-long-ago-accepted",
+      "note": "No lower limit on the collection date.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "1999-12-31T23:59", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "1999-12-31T23:59:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "anchor-date-only-noon",
+      "note": "A date-only collected anchors at T12:00:00.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T12:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "anchor-date-only-midnight-rejected",
+      "note": "A date-only collected must anchor at noon.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T00:00:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-other-time-rejected",
+      "note": "localDateTime must equal collected.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:16:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-without-seconds-rejected",
+      "note": "The expansion adds :00 seconds.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-instant-rejected",
+      "note": "An atTime anchor is not a local anchor.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"atTime": "2026-03-03T22:15:00Z"}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-with-extra-instant-rejected",
+      "note": "A local anchor that also sends atTime is rejected.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600, "atTime": "2026-03-03T22:15:00Z"}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-null-extra-key-accepted",
+      "note": "A null atTime is not sent.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600, "atTime": null}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "anchor-missing-offset-rejected",
+      "note": "The offset is required.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00"}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-minus-720-accepted",
+      "note": "The lowest offset.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": -720}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-840-accepted",
+      "note": "The highest offset.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 840}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-841-rejected",
+      "note": "One minute past the highest offset.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 841}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-minus-721-rejected",
+      "note": "One minute below the lowest offset.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": -721}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-fractional-rejected",
+      "note": "The offset is whole minutes.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600.5}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "anchor-offset-string-rejected",
+      "note": "The offset is a number.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": "600"}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_time_anchor_mismatch"], "warningRules": []}
+    },
+    {
+      "name": "unit-alias-accepted",
+      "note": "A listed alias.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/l", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "unit-fold-removes-spaces",
+      "note": "The fold removes spaces: x10^9 /L is x10^9/L.",
+      "input": {"labTestKey": "wcc", "entered": "6.2", "enteredUnit": "x10^9 /L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "4.0 - 11.0", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "unit-unlisted-case-variant-rejected",
+      "note": "The fold keeps case and NMOL/L is not listed.",
+      "input": {"labTestKey": "testosterone_total", "entered": "18", "enteredUnit": "NMOL/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_unit_not_accepted"], "warningRules": []}
+    },
+    {
+      "name": "unit-other-unit-rejected",
+      "note": "No conversion: mg/dL is not accepted for a mmol/L Lab Test.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mg/dL", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_unit_not_accepted"], "warningRules": []}
+    },
+    {
+      "name": "unit-micro-sign-alias-accepted",
+      "note": "µmol/L is listed for umol/L.",
+      "input": {"labTestKey": "creatinine", "entered": "80", "enteredUnit": "µmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "60 - 110", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "unit-blank-rejected",
+      "note": "A blank unit is not the Lab Test's.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_unit_not_accepted"], "warningRules": []}
+    },
+    {
+      "name": "value-trimmed-accepted",
+      "note": "entered is trimmed first.",
+      "input": {"labTestKey": "sodium", "entered": "  140  ", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "value-decimal-accepted",
+      "note": "A decimal number.",
+      "input": {"labTestKey": "potassium", "entered": "4.25", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "3.5 - 5.2", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "value-not-a-number-rejected",
+      "note": "Not a number.",
+      "input": {"labTestKey": "sodium", "entered": "abc", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-blank-rejected",
+      "note": "Blank.",
+      "input": {"labTestKey": "sodium", "entered": "  ", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-comma-decimal-rejected",
+      "note": "A comma decimal is not the grammar.",
+      "input": {"labTestKey": "sodium", "entered": "140,5", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-trailing-text-rejected",
+      "note": "Trailing text.",
+      "input": {"labTestKey": "sodium", "entered": "140 H", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-limit-accepted",
+      "note": "A comparator, one space and a number.",
+      "input": {"labTestKey": "sodium", "entered": "< 140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "value-limit-without-space-rejected",
+      "note": "Exactly one space after the comparator.",
+      "input": {"labTestKey": "sodium", "entered": "<140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-limit-two-spaces-rejected",
+      "note": "Exactly one space after the comparator.",
+      "input": {"labTestKey": "sodium", "entered": "<  140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-unicode-comparator-rejected",
+      "note": "Only ASCII comparators: the entry sheet and Agents send <=.",
+      "input": {"labTestKey": "sodium", "entered": "≤ 140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-ascii-two-char-comparator-accepted",
+      "note": "<= with one space.",
+      "input": {"labTestKey": "sodium", "entered": "<= 140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "value-bare-comparator-rejected",
+      "note": "A comparator with no number.",
+      "input": {"labTestKey": "sodium", "entered": "<", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "value-invalid-skips-bounds",
+      "note": "No bounds check without a number.",
+      "input": {"labTestKey": "sodium", "entered": "-", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_invalid"], "warningRules": []}
+    },
+    {
+      "name": "hard-min-accepted",
+      "note": "Equal to hardBounds.min (bounds are inclusive).",
+      "input": {"labTestKey": "testosterone_total", "entered": "0", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "hard-max-accepted",
+      "note": "Equal to hardBounds.max.",
+      "input": {"labTestKey": "testosterone_total", "entered": "100000", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "hard-below-min-rejected",
+      "note": "Just below hardBounds.min.",
+      "input": {"labTestKey": "testosterone_total", "entered": "-0.01", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "hard-above-max-rejected",
+      "note": "Just above hardBounds.max.",
+      "input": {"labTestKey": "testosterone_total", "entered": "100000.01", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "hard-max-fraction-unit-rejected",
+      "note": "L/L has hardBounds 0 to 1.",
+      "input": {"labTestKey": "haematocrit", "entered": "1.01", "enteredUnit": "L/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "0.40 - 0.54", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "plausible-min-accepted",
+      "note": "Equal to plausibleBounds.min: no warning.",
+      "input": {"labTestKey": "sodium", "entered": "27", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "plausible-max-accepted",
+      "note": "Equal to plausibleBounds.max: no warning.",
+      "input": {"labTestKey": "sodium", "entered": "725", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "plausible-below-min-warned",
+      "note": "Just below plausibleBounds.min.",
+      "input": {"labTestKey": "sodium", "entered": "26.9", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": ["lab_value_implausible"]}
+    },
+    {
+      "name": "plausible-above-max-warned",
+      "note": "Just above plausibleBounds.max.",
+      "input": {"labTestKey": "sodium", "entered": "725.1", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": ["lab_value_implausible"]}
+    },
+    {
+      "name": "plausible-at-hard-max-warned",
+      "note": "Inside hardBounds, outside plausibleBounds.",
+      "input": {"labTestKey": "sodium", "entered": "1000", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": ["lab_value_implausible"]}
+    },
+    {
+      "name": "out-of-bounds-skips-implausible",
+      "note": "Outside hardBounds: the hard reject only.",
+      "input": {"labTestKey": "sodium", "entered": "1000.1", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "no-plausible-bounds-never-warned",
+      "note": "A Lab Test without plausibleBounds never warns.",
+      "input": {"labTestKey": "testosterone_total", "entered": "99999", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-exclusive-at-hard-min-accepted",
+      "note": "< 0: the bound is checked as the value.",
+      "input": {"labTestKey": "testosterone_total", "entered": "< 0", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-inclusive-at-hard-min-accepted",
+      "note": "<= 0 at hardBounds.min.",
+      "input": {"labTestKey": "testosterone_total", "entered": "<= 0", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-exclusive-at-hard-max-accepted",
+      "note": "> 100000 at hardBounds.max.",
+      "input": {"labTestKey": "testosterone_total", "entered": "> 100000", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-inclusive-at-hard-max-accepted",
+      "note": ">= 100000 at hardBounds.max.",
+      "input": {"labTestKey": "testosterone_total", "entered": ">= 100000", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-bound-below-hard-min-rejected",
+      "note": "< -1: the bound is outside hardBounds.",
+      "input": {"labTestKey": "testosterone_total", "entered": "< -1", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "limit-bound-above-hard-max-rejected",
+      "note": "> 100001: the bound is outside hardBounds.",
+      "input": {"labTestKey": "testosterone_total", "entered": "> 100001", "enteredUnit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_value_out_of_bounds"], "warningRules": []}
+    },
+    {
+      "name": "limit-exclusive-at-plausible-min-accepted",
+      "note": "< 27 at plausibleBounds.min: no warning.",
+      "input": {"labTestKey": "sodium", "entered": "< 27", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-inclusive-at-plausible-max-accepted",
+      "note": ">= 725 at plausibleBounds.max: no warning.",
+      "input": {"labTestKey": "sodium", "entered": ">= 725", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "limit-bound-below-plausible-warned",
+      "note": "< 26: the bound is outside plausibleBounds.",
+      "input": {"labTestKey": "sodium", "entered": "< 26", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": ["lab_value_implausible"]}
+    },
+    {
+      "name": "text-blank-accepted",
+      "note": "Blank text is valid: the normaliser writes it as null.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "   ", "printedFlag": "", "reportStatus": "final", "fasting": null, "labName": " \t "}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "text-printed-range-120-accepted",
+      "note": "120 UTF-16 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "text-printed-range-121-rejected",
+      "note": "121 UTF-16 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_text_too_long"], "warningRules": []}
+    },
+    {
+      "name": "text-printed-range-trimmed-before-counting",
+      "note": "Surrounding spaces do not count.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "  rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr  ", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "text-printed-range-astral-counts-two",
+      "note": "61 astral characters are 122 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙𝟙", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_text_too_long"], "warningRules": []}
+    },
+    {
+      "name": "text-printed-flag-8-accepted",
+      "note": "8 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": "ffffffff", "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "text-printed-flag-9-rejected",
+      "note": "9 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": "fffffffff", "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_text_too_long"], "warningRules": []}
+    },
+    {
+      "name": "text-lab-name-80-accepted",
+      "note": "80 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "text-lab-name-81-rejected",
+      "note": "81 code units.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_text_too_long"], "warningRules": []}
+    },
+    {
+      "name": "text-all-too-long-in-field-order",
+      "note": "printedRange, printedFlag, labName.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "printedFlag": "fffffffff", "reportStatus": "final", "fasting": null, "labName": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_text_too_long", "lab_text_too_long", "lab_text_too_long"], "warningRules": []}
+    },
+    {
+      "name": "report-status-interim-accepted",
+      "note": "interim.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "interim", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "report-status-absent-accepted",
+      "note": "Absent decodes as final.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "report-status-unknown-rejected",
+      "note": "Only final or interim may be written.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "preliminary", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_report_status_invalid"], "warningRules": []}
+    },
+    {
+      "name": "report-status-case-variant-rejected",
+      "note": "Final is not final.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "Final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_report_status_invalid"], "warningRules": []}
+    },
+    {
+      "name": "fasting-true-accepted",
+      "note": "true.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": true, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": true, "errorRules": [], "warningRules": []}
+    },
+    {
+      "name": "fasting-false-rejected",
+      "note": "Only true or empty: false is not written.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": false, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_fasting_invalid"], "warningRules": []}
+    },
+    {
+      "name": "fasting-string-rejected",
+      "note": "A string is not true.",
+      "input": {"labTestKey": "sodium", "entered": "140", "enteredUnit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": "yes", "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_fasting_invalid"], "warningRules": []}
+    },
+    {
+      "name": "every-error-in-table-order",
+      "note": "Issues follow the Validation table's row order.",
+      "input": {"labTestKey": "sodium", "entered": "1000.1", "enteredUnit": "mg/dL", "lab": {"collected": "2026-03-09T08:15", "printedRange": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "printedFlag": "fffffffff", "reportStatus": "draft", "fasting": false, "labName": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}, "timeAnchor": {"localDateTime": "2026-03-09T08:15:00", "timezoneOffsetMinutes": 900}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_future", "lab_time_anchor_mismatch", "lab_unit_not_accepted", "lab_value_out_of_bounds", "lab_text_too_long", "lab_text_too_long", "lab_text_too_long", "lab_report_status_invalid", "lab_fasting_invalid"], "warningRules": []}
+    },
+    {
+      "name": "errors-with-a-warning",
+      "note": "A soft warning is reported beside hard rejects.",
+      "input": {"labTestKey": "sodium", "entered": "5", "enteredUnit": "mg/dL", "lab": {"collected": "2026-03-04T08:15", "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_unit_not_accepted"], "warningRules": ["lab_value_implausible"]}
+    },
+    {
+      "name": "missing-collected-and-invalid-value",
+      "note": "Missing collected, then the value.",
+      "input": {"labTestKey": "sodium", "entered": "x", "enteredUnit": "mmol/L", "lab": null, "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}},
+      "today": "2026-03-05",
+      "expected": {"accepted": false, "errorRules": ["lab_collected_missing", "lab_value_invalid"], "warningRules": []}
+    }
+  ]
+}

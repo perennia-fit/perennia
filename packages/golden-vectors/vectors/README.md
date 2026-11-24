@@ -234,3 +234,76 @@ UTF-16 code units, so an astral-plane character counts as 2. The file carries a
 governed by the adjacent `m41-user-profile-validation.schema.json`; its
 `schemaVersion`, the schema's constant and both runners' constants move
 together.
+
+## Lab Result validation
+
+`m42-lab-result-validation.json` (domain `lab-result-validation`) pins the Lab
+Result reading rules of the shared two-tier validator in both languages:
+`validateLabResult`. The app runs it in
+`apps/mobile/test/domain/lab_result_validation_test.dart` against
+`apps/mobile/lib/domain/labs/lab_result_validation.dart`; the server runs it in
+`apps/server/test/agent-validation.golden.test.mjs` against
+`apps/server/src/agent-validation.ts`. The behaviour is specified in
+[`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Validation).
+
+Each case gives one reading in `input` (`labTestKey`, `entered`, `enteredUnit`,
+the raw `lab` object and the raw `timeAnchor`) and the local date `today`, so no
+result depends on the clock, and in `expected` the ordered error and warning
+rule ids and `accepted`. The vectors use the real Lab Test catalogue, so a pull
+request that widens a bound updates the affected cases in the same commit.
+Issues follow the Validation table's row order, and the schema's description
+states which checks skip which. Text length is counted in UTF-16 code units
+after trimming. The file is governed by the adjacent
+`m42-lab-result-validation.schema.json`; its `schemaVersion`, the schema's
+constant and both runners' constants move together.
+
+## Lab Result collapse
+
+`m43-lab-result-collapse.json` (domain `lab-result-collapse`) pins
+`collapseLabResults` in both languages: which stored Lab Results every reader
+keeps, one per Lab Test and `lab.collected` string, and in what order. The app
+runs it in `apps/mobile/test/domain/lab_result_collapse_test.dart` against
+`apps/mobile/lib/domain/labs/lab_result_collapse.dart`; the server runs it in
+`apps/server/test/lab-results.golden.test.mjs` against
+`apps/server/src/lab-results.ts`. The behaviour is specified in
+[`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Result identity and the collapse).
+
+Each case gives the stored `readings` in `input`, each with its `lab` as the
+stored JSON object (decoded by `decodeLab`) or null, and the kept ids in output
+order in `expected.keptIds`. `updatedAt` is compared in whole epoch seconds
+(floored) and ids by code-unit order, so the cases include a same-second pair
+whose milliseconds and `localeCompare` would both pick the other row. A
+reading's optional `metricId` is informational and ignored. The file is
+governed by the adjacent `m43-lab-result-collapse.schema.json`; its
+`schemaVersion`, the schema's constant and both runners' constants move
+together.
+
+## Lab Default Range
+
+`m44-lab-default-range.json` (domain `lab-default-range`) pins, in Dart only,
+which general range a Lab Result shows and where the result sits against it:
+`defaultRangeFor`, `parsePrintedRange`, `rangePosition` and `resultPosition`.
+No server reader computes these (Agents get Default Ranges as catalogue data),
+so the server's `agent-validation.golden.test.mjs` lists the domain as owned
+elsewhere. The app runs it in
+`apps/mobile/test/domain/lab_default_range_test.dart` against
+`apps/mobile/lib/domain/labs/lab_default_range.dart`. The behaviour is
+specified in [`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Default Ranges).
+
+Each case names its `function` and gives that function's `input` and
+`expected`. A `defaultRangeFor` case gives its `defaultRanges` entries inline,
+not from the real catalogue, so two matching entries can be expressed, with the
+`printedRange`, `sex` and `age`; `expected` is the chosen entry or null. A
+`parsePrintedRange` case gives the `text` and expects
+`{low, lowInclusive, high, highInclusive}`, a missing side null with its flag
+`true`, or null when the text does not parse. A `rangePosition` case gives a
+`value` (`{number}` or `{limit: {comparator, bound}}`) and a `range` in the
+same shape as a parsed one, and expects `below`, `within`, `above` or
+`unknown`. A `resultPosition` case adds the Lab Test's `kind` and a
+`defaultRange` entry or null, and expects `{position, source}` (`printed` or
+`general`) or null. The file is governed by the adjacent
+`m44-lab-default-range.schema.json`; its `schemaVersion`, the schema's
+constant and the Dart runner's constant move together.

@@ -36,6 +36,9 @@ const Map<String, String> _dartRunnerByDomain = <String, String>{
   'progress-measure': 'test/domain/progress_measure_golden_test.dart',
   'metric-trend': 'test/domain/metric_trend_golden_test.dart',
   'compound-purposes': 'test/domain/compound_purposes_golden_test.dart',
+  'lab-default-range': 'test/domain/lab_default_range_test.dart',
+  'lab-result-collapse': 'test/domain/lab_result_collapse_test.dart',
+  'lab-result-validation': 'test/domain/lab_result_validation_test.dart',
   'protocol-plan': 'test/domain/protocol_plan_golden_test.dart',
   'protocol-plan-validation':
       'test/domain/protocol_plan_validation_test.dart',

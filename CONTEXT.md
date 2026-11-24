@@ -287,8 +287,8 @@ its data being merged into that Workout.
 A measurable signal about the user's body or physiology, tracked over time — body
 composition (weight, body fat), heart rate, sleep, HRV, calories, and the like. The
 umbrella over what the Body Tracker historically held and what trackers now supply
-automatically: a single domain whose readings differ only by provenance (tracked,
-manual, or agent). Distinct from training data (a Set): a Metric is the body's state
+automatically: a single domain whose readings differ only by provenance (`manual`,
+`integration`, or `agent`); a Lab Result also carries lab metadata. Distinct from training data (a Set): a Metric is the body's state
 or response, never what the user prescribed or logged. Automation is the default
 source; manual entry is the fallback for metrics no tracker captures or when no
 Integration is connected. Logged nutrition intake (a Food Entry) is *not* a
@@ -311,6 +311,33 @@ Immutable and provenance-stamped; never conflated with a Set's Dimensions.
 The association recording that a Workout and an External Activity describe the same
 session. It connects the two without merging their data, enabling combined analysis —
 for example, Monitoring Data shown alongside the Workout's logged Sets.
+
+## Lab Test
+A catalogue entry for one thing a lab measures, with its key, unit, bounds and
+Default Ranges. Read-only, like the Nutrient registry. Always "Lab Test", never a bare
+"test".
+
+## Lab Metric
+A Metric for one Lab Test. Readers join every Lab Metric with the same Lab Test.
+
+## Lab Result
+One value of one Lab Test from one collection: a Metric Reading on a Lab Metric,
+carrying what the lab printed, its Report Status (interim or final) and whether it was
+fasting.
+
+## Limit Result
+A Lab Result reported only as a bound, such as `< 1`. Never treated as equal to its
+bound.
+
+## Printed Range
+The range the lab printed beside a Lab Result, kept as text. Never computed.
+
+## Printed Flag
+The flag the lab printed beside a Lab Result, kept as printed. Never computed.
+
+## Default Range
+A general range from the catalogue, with its source, shown only where the lab printed
+none, chosen by the User Profile's sex and age. Derived on read.
 
 ## Nutrient
 One of a curated set of measurable nutrition values a Food carries — energy,

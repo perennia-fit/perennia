@@ -52,6 +52,10 @@ jobs:
               - 'tools/platform-exercise-focus.mjs'
               - 'tools/data/platform-exercise-focus-overrides.json'
               - 'tools/generate-server-usda-food-seed.mjs'
+              - 'packages/lab-catalogue/**'
+              - 'tools/generate-lab-test-catalogue.mjs'
+              - 'apps/mobile/lib/domain/labs/lab_test_catalogue.generated.dart'
+              - 'apps/server/src/data/lab-test-catalogue.generated.ts'
               - '.node-version'
               - 'package.json'
               - 'pnpm-workspace.yaml'
@@ -88,6 +92,9 @@ jobs:
               - 'apps/server/test/metric-trend.golden.test.mjs'
               - 'apps/server/src/compound-purposes.ts'
               - 'apps/server/test/compound-purposes.golden.test.mjs'
+              - 'apps/server/src/lab-results.ts'
+              - 'apps/server/src/data/lab-test-catalogue.generated.ts'
+              - 'apps/server/test/lab-results.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
               - 'apps/mobile/lib/domain/**'
@@ -113,6 +120,8 @@ jobs:
               - 'apps/mobile/lib/domain/nutrition/food_aisle.dart'
               - 'tools/generate-wger-platform-exercises.mjs'
               - 'tools/platform-exercise-cleanup.mjs'
+              - 'packages/lab-catalogue/**'
+              - 'tools/generate-lab-test-catalogue.mjs'
               - 'packages/contract/**'
               - 'packages/golden-vectors/**'
               - 'sidecars/**'
@@ -272,6 +281,9 @@ jobs:
 
       - name: Check server USDA Food seed is in sync
         run: node tools/generate-server-usda-food-seed.mjs --check
+
+      - name: Check Lab Test catalogue is in sync
+        run: node tools/generate-lab-test-catalogue.mjs --check
 
       - name: Regenerate and diff contract artifacts
         run: pnpm --filter @perennia/contract check:drift

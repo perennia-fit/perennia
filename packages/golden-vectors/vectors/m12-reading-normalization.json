@@ -191,6 +191,240 @@
         "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
       },
       "expected": {"rejected": true, "error": "Reading value shape must match Metric value shape"}
+    },
+    {
+      "name": "lab-alias-unit-kept-as-entered",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "nmol/L", "labTestKey": "testosterone_total"},
+        "value": {"shape": "scalar", "entered": "18.5", "unit": "nmol/l", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "nmol/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"nmol/L\",\"value\":18.5,\"entered\":\"18.5\",\"enteredUnit\":\"nmol/l\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":null,\"printedRange\":\"10 - 30\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 18.5,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-folded-unit-kept-as-entered",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "x10^9/L", "labTestKey": "wcc"},
+        "value": {"shape": "scalar", "entered": "6.2", "unit": "x10^9 /L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "4.0 - 11.0", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "x10^9/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"x10^9/L\",\"value\":6.2,\"entered\":\"6.2\",\"enteredUnit\":\"x10^9 /L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":null,\"printedRange\":\"4.0 - 11.0\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 6.2,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-unaccepted-unit-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "nmol/L", "labTestKey": "testosterone_total"},
+        "value": {"shape": "scalar", "entered": "18.5", "unit": "NMOL/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {"rejected": true, "error": "Lab result unit not accepted"}
+    },
+    {
+      "name": "lab-unknown-lab-test-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "nmol/L", "labTestKey": "not_a_lab_test"},
+        "value": {"shape": "scalar", "entered": "18.5", "unit": "nmol/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {"rejected": true, "error": "Unknown Lab Test"}
+    },
+    {
+      "name": "lab-invalid-collected-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "nmol/L", "labTestKey": "testosterone_total"},
+        "value": {"shape": "scalar", "entered": "18.5", "unit": "nmol/L", "lab": {"collected": "2026-02-30", "limit": null, "printedRange": "10 - 30", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {"rejected": true, "error": "Lab result collected date is invalid"}
+    },
+    {
+      "name": "lab-missing-lab-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "nmol/L", "labTestKey": "testosterone_total"},
+        "value": {"shape": "scalar", "entered": "18.5", "unit": "nmol/L"},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {"rejected": true, "error": "Lab result collected date is invalid"}
+    },
+    {
+      "name": "lab-less-than-becomes-limit-result",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mg/L", "labTestKey": "hs_crp"},
+        "value": {"shape": "scalar", "entered": "< 1", "unit": "mg/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "< 5", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mg/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mg/L\",\"value\":null,\"entered\":\"< 1\",\"enteredUnit\":\"mg/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":{\"comparator\":\"<\",\"bound\":1},\"printedRange\":\"< 5\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": null,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-unicode-less-or-equal-stored-ascii",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mg/L", "labTestKey": "hs_crp"},
+        "value": {"shape": "scalar", "entered": "≤ 1", "unit": "mg/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "< 5", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mg/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mg/L\",\"value\":null,\"entered\":\"<= 1\",\"enteredUnit\":\"mg/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":{\"comparator\":\"<=\",\"bound\":1},\"printedRange\":\"< 5\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": null,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-comparator-without-space-canonicalised",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mg/L", "labTestKey": "hs_crp"},
+        "value": {"shape": "scalar", "entered": " >5 ", "unit": "mg/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "< 5", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mg/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mg/L\",\"value\":null,\"entered\":\"> 5\",\"enteredUnit\":\"mg/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":{\"comparator\":\">\",\"bound\":5},\"printedRange\":\"< 5\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": null,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-sent-limit-overwritten-by-number",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mmol/L", "labTestKey": "sodium"},
+        "value": {"shape": "scalar", "entered": "140", "unit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "limit": {"comparator": ">", "bound": 9}, "printedRange": "135 - 145", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mmol/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mmol/L\",\"value\":140,\"entered\":\"140\",\"enteredUnit\":\"mmol/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":null,\"printedRange\":\"135 - 145\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 140,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-sent-limit-overwritten-by-entered-limit",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mg/L", "labTestKey": "hs_crp"},
+        "value": {"shape": "scalar", "entered": "< 1", "unit": "mg/L", "lab": {"collected": "2026-03-04T08:15", "limit": {"comparator": ">=", "bound": 5}, "printedRange": "< 5", "printedFlag": null, "reportStatus": "final", "fasting": null, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mg/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mg/L\",\"value\":null,\"entered\":\"< 1\",\"enteredUnit\":\"mg/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":{\"comparator\":\"<\",\"bound\":1},\"printedRange\":\"< 5\",\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": null,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-blank-text-written-as-null",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mmol/L", "labTestKey": "sodium"},
+        "value": {"shape": "scalar", "entered": "140", "unit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "printedRange": "   ", "printedFlag": "", "labName": "  Example Pathology  "}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mmol/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mmol/L\",\"value\":140,\"entered\":\"140\",\"enteredUnit\":\"mmol/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":null,\"printedRange\":null,\"printedFlag\":null,\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 140,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-interim-and-fasting-kept",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mmol/L", "labTestKey": "triglycerides"},
+        "value": {"shape": "scalar", "entered": "1.2", "unit": "mmol/L", "lab": {"collected": "2026-03-04T08:15", "limit": null, "printedRange": "< 2.0", "printedFlag": null, "reportStatus": "interim", "fasting": true, "labName": "Example Pathology"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T08:15:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mmol/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mmol/L\",\"value\":1.2,\"entered\":\"1.2\",\"enteredUnit\":\"mmol/L\",\"lab\":{\"collected\":\"2026-03-04T08:15\",\"limit\":null,\"printedRange\":\"< 2.0\",\"printedFlag\":null,\"reportStatus\":\"interim\",\"fasting\":true,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 1.2,
+        "atTime": "2026-03-03T22:15:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "lab-canonical-key-order-with-local-anchor",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "mmol/L", "labTestKey": "sodium"},
+        "value": {"shape": "scalar", "entered": "140", "unit": "mmol/L", "lab": {"labName": "Example Pathology", "accession": "dropped", "fasting": null, "reportStatus": "final", "printedFlag": "H", "printedRange": "135 - 145", "collected": "2026-03-04"}},
+        "timeAnchor": {"localDateTime": "2026-03-04T12:00:00", "timezoneOffsetMinutes": 600}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "mmol/L",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"mmol/L\",\"value\":140,\"entered\":\"140\",\"enteredUnit\":\"mmol/L\",\"lab\":{\"collected\":\"2026-03-04\",\"limit\":null,\"printedRange\":\"135 - 145\",\"printedFlag\":\"H\",\"reportStatus\":\"final\",\"fasting\":null,\"labName\":\"Example Pathology\"}}",
+        "scalarValue": 140,
+        "atTime": "2026-03-04T02:00:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "comparator-on-non-lab-metric-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "< 1", "unit": "kilogram"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Metric Reading value must be finite"}
+    },
+    {
+      "name": "lab-on-non-lab-metric-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "percent"},
+        "value": {"shape": "scalar", "entered": "14.2", "unit": "percent", "lab": {"collected": "2026-03-04"}},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Lab fields need a Lab Metric"}
     }
   ]
 }

@@ -9,6 +9,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **A Lab Test catalogue for contributors.** `packages/lab-catalogue` lists 60
+  blood tests with their units, accepted spellings, bounds and cited general
+  ranges; the app and the server are generated from it. Lab results are not yet
+  visible in the app.
+
 ### Fixed
 
 - **The server rejects Metric values with trailing text, as the app does.** An

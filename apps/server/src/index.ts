@@ -1144,7 +1144,11 @@ export {
   type DoseUnit,
   type UserProfileSectionName,
   type UserProfileValidationIssue,
-  type UserProfileValidationResult
+  type UserProfileValidationResult,
+  validateLabResult,
+  type LabResultValidationInput,
+  type LabResultValidationIssue,
+  type LabResultValidationResult
 } from "./agent-validation.js";
 export { localDateAtOffset } from "./timezone.js";
 export {
@@ -1461,6 +1465,24 @@ export {
   type MetricReadingNormalizationInput,
   type NormalizedMetricReading
 } from "./metric-reading-normalization.js";
+export {
+  LAB_COMPARATORS,
+  collapseLabResults,
+  collectedLocalDateTime,
+  decodeLab,
+  encodeLab,
+  foldUnit,
+  formatEntered,
+  isValidCollected,
+  parseEntered,
+  resolveLabUnit,
+  type KnownReportStatus,
+  type LabComparator,
+  type LabFields,
+  type LabLimit,
+  type LabReadingRef,
+  type ReportStatus
+} from "./lab-results.js";
 export { createOpenApiDocument } from "./openapi.js";
 export {
   DEFAULT_RATE_LIMIT_ENFORCE,

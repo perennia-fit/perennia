@@ -1,21 +1,38 @@
 import 'dart:convert';
 
+import '../labs/lab_result.dart';
+import '../labs/lab_test.dart';
+import '../labs/lab_test_catalogue.generated.dart';
+
+/// Normalises one Metric Reading to its stored columns; the TypeScript twin is
+/// `normalizeMetricReading` in apps/server/src/metric-reading-normalization.ts,
+/// and the m12 golden vectors pin both.
+///
+/// `metric.labTestKey` (optional) marks a Lab Metric, whose scalar `value` may
+/// carry a `lab` object; see [_normalizeLabValue]. A `lab` on any other
+/// Metric's scalar value throws.
 Map<String, Object?> normalizeMetricReading(Map<String, Object?> input) {
   final metric = _requiredMap(input, 'metric');
   final value = _requiredMap(input, 'value');
   final timeAnchor = _requiredMap(input, 'timeAnchor');
   final valueShape = _requiredString(metric, 'valueShape');
   final unit = _requiredString(metric, 'unit');
+  final labTestKey = metric['labTestKey'];
+  if (labTestKey != null && labTestKey is! String) {
+    throw ArgumentError('labTestKey must be a string.');
+  }
   if (_requiredString(value, 'shape') != valueShape) {
     throw ArgumentError('Reading value shape must match Metric value shape.');
   }
 
   final warnings = <String>[];
-  final normalizedValue = _normalizeValue(
-    valueShape: valueShape,
-    unit: unit,
-    value: value,
-  );
+  final normalizedValue = labTestKey is String && valueShape == 'scalar'
+      ? _normalizeLabValue(labTestKey: labTestKey, unit: unit, value: value)
+      : _normalizeValue(
+          valueShape: valueShape,
+          unit: unit,
+          value: value,
+        );
   final normalizedAnchor = _normalizeTimeAnchor(timeAnchor, warnings);
 
   return <String, Object?>{
@@ -37,6 +54,9 @@ _NormalizedReadingValue _normalizeValue({
 }) {
   switch (valueShape) {
     case 'scalar':
+      if (value['lab'] != null) {
+        throw ArgumentError('Lab fields need a Lab Metric.');
+      }
       final normalized = _normalizeNumericValue(
         entered: _requiredString(value, 'entered'),
         enteredUnit: (value['unit'] as String?) ?? unit,
@@ -112,6 +132,82 @@ _NormalizedReadingValue _normalizeValue({
     default:
       throw ArgumentError.value(valueShape, 'valueShape', 'Unknown shape.');
   }
+}
+
+/// A Lab Result's value (docs/designs/lab-results.md, "The normaliser"). Every
+/// writer validates first (`validateLabResult`), so each throw here is a
+/// defensive check a writer reaching it has a bug for; no message names a
+/// value. The steps:
+///
+/// 1. the entered unit (`value.unit`, else the Metric's) must be the Lab
+///    Test's unit or an alias under [foldUnit]; it is stored as sent and never
+///    converted, so `value` is the entered number;
+/// 2. a leading comparator (`<`, `<=`, `≤`, `>`, `>=`, `≥`, optionally then a
+///    space) makes a Limit Result: `value` and `scalarValue` are null, the
+///    bound lives in `lab.limit`, `entered` takes the canonical `"< 1"` form,
+///    and any `limit` sent is replaced;
+/// 3. the text fields are trimmed with a blank (or a non-string) written as
+///    null, an absent `reportStatus` becomes `final`, and `lab` is written
+///    last, in [encodeLab]'s key order.
+_NormalizedReadingValue _normalizeLabValue({
+  required String labTestKey,
+  required String unit,
+  required Map<String, Object?> value,
+}) {
+  final labTest = labTestByKey(labTestKey);
+  if (labTest == null) {
+    throw ArgumentError('Unknown Lab Test.');
+  }
+  final enteredUnit = (value['unit'] as String?) ?? unit;
+  if (resolveLabUnit(labTest, enteredUnit) == null) {
+    throw ArgumentError('Lab result unit not accepted.');
+  }
+  final rawLab = value['lab'];
+  final lab = rawLab is Map ? Map<String, Object?>.from(rawLab) : null;
+  final collected = lab?['collected'];
+  if (collected is! String || !isValidCollected(collected)) {
+    throw ArgumentError('Lab result collected date is invalid.');
+  }
+  final parsed = parseEntered(_requiredString(value, 'entered').trim());
+  if (parsed == null) {
+    throw ArgumentError('Metric Reading value must be finite.');
+  }
+  final number = _canonicalNumber(double.parse(parsed.number)) as num;
+  final comparator = parsed.comparator;
+  final reportStatus = lab!['reportStatus'];
+  final valueOrNull = comparator == null ? number : null;
+  return _NormalizedReadingValue(
+    valueJson: jsonEncode(<String, Object?>{
+      'shape': 'scalar',
+      'unit': unit,
+      'value': valueOrNull,
+      'entered': formatEntered(comparator, parsed.number),
+      'enteredUnit': enteredUnit,
+      'lab': encodeLab(
+        LabFields(
+          collected: collected,
+          limit: comparator == null
+              ? null
+              : LabLimit(comparator: comparator, bound: number),
+          printedRange: _labText(lab['printedRange']),
+          printedFlag: _labText(lab['printedFlag']),
+          reportStatus: reportStatus is String
+              ? ReportStatus.fromWire(reportStatus)
+              : ReportStatus.final_,
+          fasting: lab['fasting'] == true ? true : null,
+          labName: _labText(lab['labName']),
+        ),
+      ),
+    }),
+    scalarValue: valueOrNull,
+  );
+}
+
+/// A text field trimmed, with a blank or a non-string as null.
+String? _labText(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 _NormalizedNumericValue _normalizeNumericValue({

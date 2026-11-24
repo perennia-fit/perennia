@@ -16,6 +16,10 @@ test("server Metric Reading normalization matches the shared golden vectors", as
     vector.cases.some((vectorCase) => vectorCase.expected.rejected !== true),
     "m12 has at least one accepted case"
   );
+  assert.ok(
+    vector.cases.some((vectorCase) => typeof vectorCase.input.metric.labTestKey === "string"),
+    "m12 has at least one Lab Metric case"
+  );
   for (const vectorCase of vector.cases) {
     if (vectorCase.expected.rejected === true) {
       assert.throws(
