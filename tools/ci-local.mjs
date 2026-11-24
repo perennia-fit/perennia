@@ -147,6 +147,7 @@ const JS_PATHS = [
   'apps/mobile/lib/domain/nutrition/food_aisle.dart',
   'tools/generate-wger-platform-exercises.mjs',
   'tools/platform-exercise-cleanup.mjs',
+  'packages/lab-catalogue/**', 'tools/generate-lab-test-catalogue.mjs',
   'packages/contract/**', 'packages/golden-vectors/**',
   'sidecars/**', '.node-version', 'package.json', 'pnpm-workspace.yaml',
   'pnpm-lock.yaml', 'tsconfig.base.json', '.github/workflows/ci.yml',
@@ -237,6 +238,9 @@ const JOBS = {
       'apps/server/test/metric-trend.golden.test.mjs',
       'apps/server/src/compound-purposes.ts',
       'apps/server/test/compound-purposes.golden.test.mjs',
+      'apps/server/src/lab-results.ts',
+      'apps/server/src/data/lab-test-catalogue.generated.ts',
+      'apps/server/test/lab-results.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
       'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
@@ -261,6 +265,9 @@ const JOBS = {
       'tools/platform-exercise-focus.mjs',
       'tools/data/platform-exercise-focus-overrides.json',
       'tools/generate-server-usda-food-seed.mjs',
+      'packages/lab-catalogue/**', 'tools/generate-lab-test-catalogue.mjs',
+      'apps/mobile/lib/domain/labs/lab_test_catalogue.generated.dart',
+      'apps/server/src/data/lab-test-catalogue.generated.ts',
       '.node-version', 'package.json', 'pnpm-workspace.yaml',
       'pnpm-lock.yaml', 'tsconfig.base.json', '.github/workflows/ci.yml'],
     pnpm: true,
@@ -268,6 +275,7 @@ const JOBS = {
       run('node tools/generate-server-platform-exercise-seed.mjs --check') &&
       run('node tools/platform-exercise-focus.mjs --check') &&
       run('node tools/generate-server-usda-food-seed.mjs --check') &&
+      run('node tools/generate-lab-test-catalogue.mjs --check') &&
       run('corepack pnpm --filter @perennia/contract check:drift'),
   },
 

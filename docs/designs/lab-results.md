@@ -581,9 +581,9 @@ reference intervals for Australasia, agreed by the Australasian Association for 
 Biochemistry and Laboratory Medicine (AACB) and the Royal College of Pathologists of
 Australasia (RCPA):
 
-*   Tate JR et al., "Harmonised Adult and Paediatric Reference Intervals in Australia and New
-    Zealand – The Continuing Story", *Clin Biochem Rev* 2014
-    (https://pmc.ncbi.nlm.nih.gov/articles/PMC4310061);
+*   Tate JR et al., "Harmonising Adult and Paediatric Reference Intervals in Australia and New
+    Zealand: An Evidence-Based Approach for Establishing a First Panel of Chemistry Analytes",
+    *Clin Biochem Rev* 2014 (https://pmc.ncbi.nlm.nih.gov/articles/PMC4310061);
 *   updated by Koerbin G et al., "An update report on the harmonization of adult reference
     intervals in Australasia", *Clin Chem Lab Med* 2018, doi:10.1515/cclm-2017-0920
     (https://www.degruyterbrill.com/document/doi/10.1515/cclm-2017-0920/html).
@@ -1279,8 +1279,8 @@ that differs from a listed one only by spaces is not listed, because the generat
     `cholesterol_hdl_ratio` `ratio`.
 *   *Inflammation:* `hs_crp` `mg/L`.
 *   *Electrolytes:* `sodium`, `potassium`, `chloride`, `bicarbonate`, `anion_gap` `mmol/L`.
-*   *Kidney:* `urea` `mmol/L`, `creatinine` `umol/L`, `egfr` `mL/min/1.73m²` (alias
-    `mL/min/1.73m2`), `urate` `mmol/L`.
+*   *Kidney:* `urea` `mmol/L`, `creatinine` `umol/L`, `egfr` `mL/min/1.73m²` (aliases
+    `mL/min/1.73m2`, `ml/min/1.73m²` and `ml/min/1.73m2`), `urate` `mmol/L`.
 *   *Liver:* `bilirubin_total` `umol/L`; `alp`, `ggt`, `alt`, `ast`, `ld` `U/L`; `total_protein`,
     `albumin`, `globulin` `g/L`.
 *   *Bone and minerals:* `calcium`, `calcium_adjusted`, `phosphate`, `magnesium` `mmol/L`.
