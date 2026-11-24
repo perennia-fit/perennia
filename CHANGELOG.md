@@ -16,6 +16,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   ranges; the app and the server are generated from it. Lab results are not yet
   visible in the app.
 
+### Changed
+
+- **Metric sync carries an optional `lab_test_key`.** A Lab Metric keeps its Lab
+  Test across devices, restore and the server.
+
 ### Fixed
 
 - **The server rejects Metric values with trailing text, as the app does.** An

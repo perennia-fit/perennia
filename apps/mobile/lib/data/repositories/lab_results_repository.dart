@@ -299,6 +299,37 @@ class LabResultsRepository {
     return byKey;
   }
 
+  /// The live readings of every Metric with [labTestKey] (whatever each Lab
+  /// Metric's own `deletedAt`) that survive [collapseLabResults], newest first.
+  ///
+  /// Unlike [watchLabResults], a reading whose `lab` does not decode is kept:
+  /// the collapse makes it its own group, and a reader of values (the Effect
+  /// samples) still has its value and instant. This is the whole key series,
+  /// unwindowed; a reader that windows filters this list afterwards.
+  Future<List<MetricReadingRow>> _collapsedKeyReadingRows(
+    String labTestKey,
+  ) async {
+    final rows = await _labRowsQuery(labTestKey).get();
+    final readings =
+        _groupByKey(rows)[labTestKey]?.readings ?? const <MetricReadingRow>[];
+    final rowsById = <String, MetricReadingRow>{
+      for (final reading in readings) reading.id: reading,
+    };
+    return collapseLabResults(<LabReadingRef>[
+      for (final reading in readings)
+        LabReadingRef(
+          id: reading.id,
+          labTestKey: labTestKey,
+          lab: _decodeReadingLab(reading),
+          atTime:
+              (reading.atTime ?? reading.windowStartedAt ?? reading.updatedAt)
+                  .toUtc(),
+          updatedAt: reading.updatedAt.toUtc(),
+          deletedAt: reading.deletedAt,
+        ),
+    ]).map((kept) => rowsById[kept.id]!).toList(growable: false);
+  }
+
   Future<List<LabResultRecord>> _loadResults(String labTestKey) async {
     final rows = await _labRowsQuery(labTestKey).get();
     final group = _groupByKey(rows)[labTestKey];

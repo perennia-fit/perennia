@@ -1,7 +1,8 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/labs/lab_result.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 
 /// the `Effect` view's window + outcome-sample reads, against real
@@ -178,6 +179,124 @@ void main() {
 
       expect(samples, hasLength(2));
       expect(samples.map((s) => s.value), containsAll(<double>[82, 80]));
+    });
+
+    test(
+        'samplesFor a Lab Metric joins every Metric with its key, archived '
+        'or not, collapses the whole series before windowing, and skips a '
+        'Limit Result (lab-results.md, Result identity and the collapse)',
+        () async {
+      Future<String> createMetric({String? labTestKey}) {
+        return repositories.metrics.createMetric(
+          MetricDraft(
+            name: 'Testosterone',
+            unit: 'nmol/L',
+            valueShape: MetricValueShape.scalar,
+            group: MetricGroup.custom,
+            enabled: true,
+            pinned: false,
+            labTestKey: labTestKey,
+          ),
+        );
+      }
+
+      final archivedLabMetricId =
+          await createMetric(labTestKey: 'testosterone_total');
+      final liveLabMetricId =
+          await createMetric(labTestKey: 'testosterone_total');
+      // A custom Metric with the Lab Test's name is not a Lab Metric.
+      final customMetricId = await createMetric();
+
+      Future<void> labReading(
+        String metricId, {
+        required String collected,
+        required String value,
+        ReportStatus reportStatus = ReportStatus.final_,
+        int timezoneOffsetMinutes = 0,
+      }) async {
+        await repositories.metrics.createManualReading(
+          ManualMetricReadingDraft.scalar(
+            metricId: metricId,
+            valueEntered: value,
+            source: 'labEntry',
+            lab: LabFields(collected: collected, reportStatus: reportStatus),
+            localDateTime: '${collected}T12:00:00',
+            timezoneOffsetMinutes: timezoneOffsetMinutes,
+          ),
+        );
+      }
+
+      // Inside the window, on the Lab Metric archived below.
+      await labReading(archivedLabMetricId,
+          collected: '2026-01-05', value: '18');
+      // One result across both Lab Metrics: the final hides the interim.
+      await labReading(
+        liveLabMetricId,
+        collected: '2026-01-20',
+        value: '19',
+        reportStatus: ReportStatus.interim,
+      );
+      await labReading(archivedLabMetricId,
+          collected: '2026-01-20', value: '21');
+      // One result entered at two UTC offsets: the interim's instant is inside
+      // the window (2025-12-17T00:00Z), the final's is outside it
+      // (2025-12-15T22:00Z). The final still hides the interim.
+      await labReading(
+        liveLabMetricId,
+        collected: '2025-12-16',
+        value: '30',
+        reportStatus: ReportStatus.interim,
+        timezoneOffsetMinutes: -720,
+      );
+      await labReading(
+        archivedLabMetricId,
+        collected: '2025-12-16',
+        value: '31',
+        timezoneOffsetMinutes: 840,
+      );
+      // A Limit Result has no scalar value: skipped, never zeroed.
+      await labReading(liveLabMetricId, collected: '2026-02-01', value: '< 1');
+      // Outside the window.
+      await labReading(liveLabMetricId, collected: '2026-04-01', value: '25');
+      await repositories.metrics.createManualReading(
+        ManualMetricReadingDraft.scalar(
+          metricId: customMetricId,
+          valueEntered: '99',
+          atTime: DateTime.utc(2026, 1, 25, 8),
+          source: 'manual',
+        ),
+      );
+      await (database.update(database.metrics)
+            ..where((row) => row.id.equals(archivedLabMetricId)))
+          .write(MetricsCompanion(deletedAt: Value(DateTime.utc(2026, 3))));
+
+      final window = EffectWindow(
+        duringStart: DateTime.utc(2026, 1, 15),
+        duringEnd: DateTime.utc(2026, 2, 14),
+        now: DateTime.utc(2026, 3, 16),
+      );
+      expect(window.beforeStart, DateTime.utc(2025, 12, 16));
+
+      for (final metricId in <String>[archivedLabMetricId, liveLabMetricId]) {
+        final samples = await repositories.effect.samplesFor(
+          EffectOutcomeSelection.metric(metricId),
+          window,
+        );
+        expect(
+          samples.map((s) => (s.at.toUtc(), s.value)),
+          <(DateTime, double)>[
+            (DateTime.utc(2026, 1, 5, 12), 18),
+            (DateTime.utc(2026, 1, 20, 12), 21),
+          ],
+          reason: 'selected by $metricId',
+        );
+      }
+
+      final customSamples = await repositories.effect.samplesFor(
+        EffectOutcomeSelection.metric(customMetricId),
+        window,
+      );
+      expect(customSamples.map((s) => s.value), <double>[99]);
     });
 
     test(

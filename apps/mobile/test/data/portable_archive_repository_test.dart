@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/labs/lab_result.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
@@ -1430,6 +1431,77 @@ void main() {
       final merged = await local.select(local.metrics).getSingle();
       expect(merged.name, 'Resting HR');
       expect(merged.labTestKey, 'ferritin');
+    });
+
+    test(
+        'a restored Lab Metric with another id but the same key reads as one '
+        'series, and an overlapping result collapses to the final '
+        '(lab-results.md, V7)', () async {
+      final today = DateTime(2026, 11, 25);
+      CollectionDraft collection(
+        DateTime collectedDate,
+        String value, {
+        ReportStatus reportStatus = ReportStatus.final_,
+      }) {
+        return CollectionDraft(
+          collectedDate: collectedDate,
+          collectedTime: (hour: 8, minute: 15),
+          reportStatus: reportStatus,
+          rows: <CollectionDraftRow>[
+            CollectionDraftRow(labTestKey: 'testosterone_total', value: value),
+          ],
+        );
+      }
+
+      // The archive's device: the final of 2026-03-04, and 2026-01-10.
+      await repositories.labResults
+          .saveCollection(collection(DateTime(2026, 3, 4), '21'), today: today);
+      await repositories.labResults.saveCollection(
+          collection(DateTime(2026, 1, 10), '18'),
+          today: today);
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      // This device: its own Lab Metric (another random id) holds the interim
+      // of 2026-03-04, and 2026-02-10.
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      final localRepositories = TrainingRepositories(local);
+      await localRepositories.labResults.saveCollection(
+        collection(
+          DateTime(2026, 3, 4),
+          '20',
+          reportStatus: ReportStatus.interim,
+        ),
+        today: today,
+      );
+      await localRepositories.labResults.saveCollection(
+          collection(DateTime(2026, 2, 10), '19'),
+          today: today);
+
+      await localRepositories.portableArchives.importPortableArchive(archive);
+
+      final labMetrics = await (local.select(local.metrics)
+            ..where((row) => row.labTestKey.equals('testosterone_total')))
+          .get();
+      expect(labMetrics.map((row) => row.id).toSet(), hasLength(2));
+      final results = await localRepositories.labResults
+          .watchLabResults('testosterone_total')
+          .first;
+      expect(
+        results.map((r) => (r.lab.collected, r.entered)),
+        <(String, String)>[
+          ('2026-03-04T08:15', '21'),
+          ('2026-02-10T08:15', '19'),
+          ('2026-01-10T08:15', '18'),
+        ],
+      );
+      expect(results.first.lab.reportStatus, ReportStatus.final_);
+      expect(results.first.identityRowCount, 2);
+      expect(
+        results.map((r) => r.metricId).toSet(),
+        labMetrics.map((row) => row.id).toSet(),
+      );
     });
 
     test('a newer row in a current archive carries its own tags', () async {

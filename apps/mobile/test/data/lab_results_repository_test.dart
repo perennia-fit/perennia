@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/labs/lab_result.dart';
 import 'package:perennia/domain/labs/lab_test_catalogue.generated.dart';
+import 'package:perennia/features/labs/controllers/lab_results_providers.dart';
 
 /// LabResultsRepository against an in-memory SQLite database
 /// (docs/designs/lab-results.md, PR 3, V5).
@@ -826,6 +828,46 @@ void main() {
       );
       expect(
           rows.singleWhere((row) => row.id == 'reading-b').deletedAt, isNull);
+    });
+  });
+
+  group('providers', () {
+    test('expose the repository, the Lab Tests and one Lab Test\'s results',
+        () async {
+      await labs.saveCollection(
+        _draft(
+          rows: const <CollectionDraftRow>[
+            CollectionDraftRow(labTestKey: 'shbg', value: '40'),
+          ],
+        ),
+        today: today,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(labResultsRepositoryProvider), same(labs));
+      final testsSubscription =
+          container.listen(labTestsProvider, (previous, next) {});
+      addTearDown(testsSubscription.close);
+      final resultsSubscription =
+          container.listen(labResultsProvider('shbg'), (previous, next) {});
+      addTearDown(resultsSubscription.close);
+
+      final tests = await container.read(labTestsProvider.future);
+      expect(tests.map((summary) => summary.labTestKey), <String>['shbg']);
+      final results = await container.read(labResultsProvider('shbg').future);
+      expect(results.single.entered, '40');
+      final emptySubscription =
+          container.listen(labResultsProvider('ferritin'), (previous, next) {});
+      addTearDown(emptySubscription.close);
+      expect(
+        await container.read(labResultsProvider('ferritin').future),
+        isEmpty,
+      );
     });
   });
 }

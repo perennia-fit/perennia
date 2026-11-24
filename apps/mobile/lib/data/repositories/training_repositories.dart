@@ -9013,6 +9013,11 @@ class EffectRepository {
   /// outcome reads the existing `Metric` Readings; a `performance`
   /// outcome reads [performanceVolumeSamples]. Never fabricates a sample: a
   /// Reading missing a scalar value/instant is simply excluded, not zeroed.
+  ///
+  /// A Lab Metric (a Metric with a `labTestKey`) reads through
+  /// [_labMetricSamples] instead: the Lab Results of every Metric with its
+  /// key, collapsed before windowing (docs/designs/lab-results.md, Result
+  /// identity and the collapse).
   Future<List<EffectSample>> samplesFor(
     EffectOutcomeSelection outcome,
     EffectWindow window,
@@ -9022,6 +9027,18 @@ class EffectRepository {
         final metricId = outcome.metricId;
         if (metricId == null) {
           return const <EffectSample>[];
+        }
+        // Read whatever the Metric's own `deletedAt`: an archived Lab Metric
+        // (left by undoing the save that created it) still names its Lab
+        // Test. Only a Lab Metric takes this branch; any other Metric keeps
+        // [MetricRepository.metricSeries], which ignores an archived Metric.
+        final labTestKey = await (_database.selectOnly(_database.metrics)
+              ..addColumns([_database.metrics.labTestKey])
+              ..where(_database.metrics.id.equals(metricId)))
+            .map((row) => row.read(_database.metrics.labTestKey))
+            .getSingleOrNull();
+        if (labTestKey != null) {
+          return _labMetricSamples(labTestKey, window);
         }
         final series = await _repositories.metrics.metricSeries(
           metricId,
@@ -9049,6 +9066,69 @@ class EffectRepository {
           to: window.afterEnd,
         );
     }
+  }
+
+  /// The Effect samples of the Lab Test [labTestKey] over [window].
+  ///
+  /// Reads the live readings of **every** Metric with the key, ignoring each
+  /// Lab Metric's own `deletedAt` (identity is per Lab Test, not per Metric
+  /// row), and applies [collapseLabResults] to the **whole** key series
+  /// before keeping the readings inside the window. The order matters: an
+  /// interim and its final share `lab.collected` but each is anchored at its
+  /// own instant (a final entered at another UTC offset, say), so a final
+  /// outside the window must still hide its interim inside it. Windowing
+  /// first would let the superseded interim through as a sample.
+  ///
+  /// The window bounds and the order (oldest first, then by id) are the ones
+  /// [MetricRepository.metricSeries] uses for any other Metric. A reading
+  /// with no instant or no scalar value (a Limit Result such as `< 1`) is
+  /// skipped, never zeroed.
+  Future<List<EffectSample>> _labMetricSamples(
+    String labTestKey,
+    EffectWindow window,
+  ) async {
+    final from = window.beforeStart;
+    final to = window.afterEnd;
+    final kept = (await _repositories.labResults
+            ._collapsedKeyReadingRows(labTestKey))
+        .map(_metricReadingRecordFromRow)
+        .where((reading) {
+      final startsInTime =
+          (reading.atTime != null && !reading.atTime!.isBefore(from)) ||
+              (reading.windowEndedAt != null &&
+                  !reading.windowEndedAt!.isBefore(from));
+      final endsInTime =
+          (reading.atTime != null && reading.atTime!.isBefore(to)) ||
+              (reading.windowStartedAt != null &&
+                  reading.windowStartedAt!.isBefore(to));
+      return startsInTime && endsInTime;
+    }).toList()
+      ..sort((a, b) {
+        final byAt = _compareNullableInstants(a.atTime, b.atTime);
+        if (byAt != 0) return byAt;
+        final byWindowEnd =
+            _compareNullableInstants(a.windowEndedAt, b.windowEndedAt);
+        if (byWindowEnd != 0) return byWindowEnd;
+        return a.id.compareTo(b.id);
+      });
+    return kept
+        .where(
+          (reading) => reading.atTime != null && reading.scalarValue != null,
+        )
+        .map(
+          (reading) => EffectSample(
+            at: reading.atTime!,
+            value: reading.scalarValue!,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// SQLite's ascending order for nullable instants: null first.
+  static int _compareNullableInstants(DateTime? a, DateTime? b) {
+    if (a == null) return b == null ? 0 : -1;
+    if (b == null) return 1;
+    return a.compareTo(b);
   }
 
   /// The ACTUAL logged `Dose` markers for the `Effect` view's dose-overlay
