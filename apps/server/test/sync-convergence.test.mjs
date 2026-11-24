@@ -5,6 +5,7 @@ import test from "node:test";
 import { inArray } from "drizzle-orm";
 
 import {
+  collapseLabResults,
   createApp,
   createMigratedServerApp,
   createUuidV7,
@@ -1424,6 +1425,167 @@ test(
     }
   }
 );
+
+test(
+  "two devices' Lab Metrics for one Lab Test converge on the same kept Lab Result, the final one",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const [replicaA, replicaB] = ["a", "b"].map(
+        (name) =>
+          new PlanTreeReplica({
+            name: `Lab Replica ${name.toUpperCase()}`,
+            deviceId: `device-${name}`,
+            server,
+            entityOrder: bodyTrackerEntityOrder
+          })
+      );
+      // Offline, each device creates its own Lab Metric for Haemoglobin
+      // under a random id and enters the same collection: A the interim
+      // report (edited later), B the final one.
+      const metricA = stageLabMetric(replicaA, "2026-03-05T08:00:00.000Z");
+      const metricB = stageLabMetric(replicaB, "2026-03-05T08:00:00.000Z");
+      stageLabResult(replicaA, {
+        metricId: metricA,
+        entered: "141",
+        reportStatus: "interim",
+        at: "2026-03-06T09:00:00.000Z"
+      });
+      const finalId = stageLabResult(replicaB, {
+        metricId: metricB,
+        entered: "142",
+        reportStatus: "final",
+        at: "2026-03-05T09:00:00.000Z"
+      });
+
+      await settlePlanReplicas([replicaA, replicaB]);
+
+      const stored = await server.database.sql`
+        select id, lab_test_key from metrics
+        where user_id = ${server.userId}
+        order by id
+      `;
+      assert.deepEqual(
+        stored.map((row) => [row.id, row.lab_test_key]),
+        [metricA, metricB].sort().map((id) => [id, "haemoglobin"]),
+        "no fold: both Lab Metrics persist"
+      );
+      for (const replica of [replicaA, replicaB]) {
+        assert.deepEqual(
+          collapseLabResults(labReadingsFor(replica, "haemoglobin")).map(
+            (reading) => reading.id
+          ),
+          [finalId],
+          replica.name
+        );
+      }
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+function stageLabMetric(replica, at) {
+  const id = randomUUID();
+  replica.stageChange("metrics", {
+    id,
+    payload: {
+      id,
+      name: "Haemoglobin",
+      unit: "g/L",
+      value_shape: "scalar",
+      metric_group: "custom",
+      goal_type: null,
+      goal_target_value: null,
+      enabled: true,
+      pinned: false,
+      sort_order: 0,
+      lab_test_key: "haemoglobin",
+      updated_at: at,
+      deleted_at: null
+    },
+    updatedAt: at,
+    deletedAt: null
+  });
+  return id;
+}
+
+/** A Lab Result with `valueJson` shaped as docs/designs/lab-results.md, Storage. */
+function stageLabResult(replica, { metricId, entered, reportStatus, at }) {
+  const id = randomUUID();
+  const value = Number(entered);
+  replica.stageChange("metric_readings", {
+    id,
+    payload: {
+      id,
+      metric_id: metricId,
+      value_json: JSON.stringify({
+        shape: "scalar",
+        unit: "g/L",
+        value,
+        entered,
+        enteredUnit: "g/L",
+        lab: {
+          collected: "2026-03-04T08:15",
+          limit: null,
+          printedRange: "(130-170)",
+          printedFlag: null,
+          reportStatus,
+          fasting: null,
+          labName: "Example Pathology"
+        }
+      }),
+      scalar_value: value,
+      scalar_entered: entered,
+      at_time: "2026-03-03T21:15:00.000Z",
+      window_started_at: null,
+      window_ended_at: null,
+      provenance: "manual",
+      source: "labEntry",
+      external_id: null,
+      comment: null,
+      updated_at: at,
+      deleted_at: null
+    },
+    updatedAt: at,
+    deletedAt: null
+  });
+  return id;
+}
+
+/** A replica's readings for one Lab Test, joined by key across its Lab Metrics. */
+function labReadingsFor(replica, labTestKey) {
+  const rows = [...replica.rows.values()];
+  const metricIds = new Set(
+    rows
+      .filter(
+        (row) =>
+          row.entity === "metrics" && row.payload.lab_test_key === labTestKey
+      )
+      .map((row) => row.id)
+  );
+  return rows
+    .filter(
+      (row) =>
+        row.entity === "metric_readings" && metricIds.has(row.payload.metric_id)
+    )
+    .map((row) => {
+      const valueJson =
+        typeof row.payload.value_json === "string"
+          ? JSON.parse(row.payload.value_json)
+          : row.payload.value_json;
+      return {
+        id: row.id,
+        labTestKey,
+        lab: valueJson.lab,
+        atTime: row.payload.at_time,
+        updatedAt: row.updatedAt,
+        deletedAt: row.deletedAt
+      };
+    });
+}
 
 const userProfileEntityOrder = ["user_profile_sections"];
 

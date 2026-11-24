@@ -812,7 +812,9 @@ sheet is lost, never half a collection.
     `lab`, `labtestkey`, `printedrange`, `printedflag`, `collected`, `labname`, `value`,
     `scalarvalue`, `scalarentered`, `valuejson`, `externalid`, `entered`, `timeanchor`,
     `localdatetime` and `attime` to its denylist (PR 3, with the column that first syncs lab
-    data). Lab validation messages carry no value and no Lab Test name (see
+    data). Keys are matched everywhere, so `externalid` also filters the `externalId` in the
+    canonical import's logged reference summaries; only their `source` and counts remain. Lab
+    validation messages carry no value and no Lab Test name (see
     [Validation](#validation)); normaliser errors carry the field name and code only.
 *   **CSV export** holds no Metrics, so it holds no lab results. **The portable archive** holds
     them, like every Metric.

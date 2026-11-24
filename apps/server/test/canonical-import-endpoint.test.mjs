@@ -383,7 +383,10 @@ test("canonical import logs and crash reports never carry raw Monitoring Data pa
     [
       {
         source: "garmin",
-        externalId: "daily-sensitive-observability:resting-heart-rate"
+        // `externalId` is a denied key since Lab Results
+        // (docs/designs/lab-results.md, Privacy): a lab's external id can
+        // name an order, so every logged external id is filtered.
+        externalId: "[Filtered]"
       }
     ]
   );

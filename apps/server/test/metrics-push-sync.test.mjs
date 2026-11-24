@@ -206,6 +206,88 @@ test(
   }
 );
 
+test(
+  "lab_test_key round-trips and is write-once: omitted, null or another key keeps the stored key",
+  { skip },
+  async () => {
+    const server = await createServer();
+    try {
+      const user = await createSignedInUser(server);
+      const labMetricId = randomUUID();
+      await push(server, user, "device-a", "metrics", [
+        labMetricChange({ id: labMetricId, labTestKey: "haemoglobin" })
+      ]);
+      assert.equal((await pulledMetric(server, user, labMetricId)).lab_test_key, "haemoglobin");
+
+      const laterPushes = [
+        { at: "2026-07-01T09:00:00.000Z", sortOrder: 1 },
+        { at: "2026-07-01T10:00:00.000Z", sortOrder: 2, labTestKey: null },
+        { at: "2026-07-01T11:00:00.000Z", sortOrder: 3, labTestKey: "ferritin" }
+      ];
+      for (const later of laterPushes) {
+        const response = await push(server, user, "device-b", "metrics", [
+          labMetricChange({ id: labMetricId, ...later })
+        ]);
+        assert.deepEqual(response.applied.map((row) => row.id), [labMetricId]);
+        const [stored] = await labKeyRows(server, user, labMetricId);
+        assert.equal(stored.sort_order, later.sortOrder, "the rest of the push applied");
+        assert.equal(stored.lab_test_key, "haemoglobin", "the stored key never changes");
+      }
+      assert.equal((await pulledMetric(server, user, labMetricId)).lab_test_key, "haemoglobin");
+
+      // An older server dropped the key: a later push that carries it fills it.
+      const keylessId = randomUUID();
+      await push(server, user, "device-a", "metrics", [
+        labMetricChange({ id: keylessId })
+      ]);
+      assert.equal((await labKeyRows(server, user, keylessId))[0].lab_test_key, null);
+      assert.equal((await pulledMetric(server, user, keylessId)).lab_test_key, null);
+      await push(server, user, "device-a", "metrics", [
+        labMetricChange({
+          id: keylessId,
+          at: "2026-07-01T09:00:00.000Z",
+          labTestKey: "ferritin"
+        })
+      ]);
+      assert.equal((await labKeyRows(server, user, keylessId))[0].lab_test_key, "ferritin");
+      assert.equal((await pulledMetric(server, user, keylessId)).lab_test_key, "ferritin");
+    } finally {
+      await server.database.close();
+    }
+  }
+);
+
+test(
+  "two Lab Metrics with one lab_test_key and one name stay separate rows (no fold)",
+  { skip },
+  async () => {
+    const server = await createServer();
+    try {
+      const user = await createSignedInUser(server);
+      const ids = [randomUUID(), randomUUID()];
+      const first = await push(server, user, "device-a", "metrics", [
+        labMetricChange({ id: ids[0], labTestKey: "haemoglobin" })
+      ]);
+      const second = await push(server, user, "device-b", "metrics", [
+        labMetricChange({ id: ids[1], labTestKey: "haemoglobin" })
+      ]);
+      assert.deepEqual([first.merged, second.merged], [[], []]);
+      assert.deepEqual(second.accepted, [ids[1]]);
+      const rows = await server.database.sql`
+        select id, name, lab_test_key from metrics
+        where user_id = ${user.userId}
+        order by id
+      `;
+      assert.deepEqual(
+        rows.map((row) => [row.id, row.name, row.lab_test_key]),
+        [...ids].sort().map((id) => [id, "Haemoglobin", "haemoglobin"])
+      );
+    } finally {
+      await server.database.close();
+    }
+  }
+);
+
 async function createServer() {
   return createMigratedServerApp({
     databaseUrl,
@@ -327,5 +409,67 @@ function readingRows(serverApp, user) {
     from metric_readings
     where user_id = ${user.userId}
     order by id
+  `;
+}
+
+/** A Lab Metric as the app sends it; `labTestKey` undefined omits the field. */
+function labMetricChange({
+  id,
+  name = "Haemoglobin",
+  unit = "g/L",
+  at = "2026-07-01T08:00:00.000Z",
+  sortOrder = 0,
+  labTestKey
+}) {
+  const payload = {
+    id,
+    name,
+    unit,
+    value_shape: "scalar",
+    metric_group: "custom",
+    goal_type: null,
+    goal_target_value: null,
+    enabled: true,
+    pinned: false,
+    sort_order: sortOrder,
+    ...(labTestKey === undefined ? {} : { lab_test_key: labTestKey }),
+    updated_at: at,
+    deleted_at: null
+  };
+  return { id, payload, updatedAt: at, deletedAt: null };
+}
+
+async function pulledMetric(serverApp, user, id) {
+  let cursor = null;
+  let found;
+  while (true) {
+    const response = await serverApp.app.request("/sync/pull", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${user.sessionToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    const body = await response.json();
+    for (const change of body.changes) {
+      if (change.entity === "metrics" && change.id === id) {
+        found = change.payload;
+      }
+    }
+    cursor = body.nextCursor;
+    if (body.changes.length === 0) {
+      break;
+    }
+  }
+  assert.notEqual(found, undefined, `pull returned Metric ${id}`);
+  return found;
+}
+
+function labKeyRows(serverApp, user, id) {
+  return serverApp.database.sql`
+    select id, sort_order, lab_test_key from metrics
+    where user_id = ${user.userId} and id = ${id}
   `;
 }

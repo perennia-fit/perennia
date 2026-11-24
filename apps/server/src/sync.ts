@@ -3320,7 +3320,10 @@ const MetricSyncPayloadSchema = z.object({
   goal_target_value: z.number().finite().nullable(),
   enabled: z.boolean(),
   pinned: z.boolean(),
-  sort_order: z.number().int()
+  sort_order: z.number().int(),
+  // Optional so an older app's push still parses; see the write-once rule in
+  // pushMetricsInTransaction (docs/designs/lab-results.md, Storage).
+  lab_test_key: z.string().min(1).nullable().optional()
 });
 
 const nullableIsoTimestamp = z
@@ -3483,10 +3486,26 @@ export async function pushMetricsInTransaction(
       continue;
     }
 
+    /**
+     * `lab_test_key` is write-once (docs/designs/lab-results.md, Storage).
+     * The key is written only when the row is new or its stored key is null,
+     * and the push carries a non-null key; otherwise the column is left out
+     * of the insert or update entirely. So a push that omits the field (an
+     * older app), sends null or sends a different key never changes a stored
+     * key: a stray null cannot turn a Lab Metric back into a custom Metric,
+     * and a key never moves to another Lab Test. Lab Metrics are `custom`, so
+     * `metricAliasTarget` never folds them (Finding the Lab Metric, No fold).
+     */
+    const labTestKeyValue =
+      fields.lab_test_key != null &&
+      (target === undefined || target.labTestKey === null)
+        ? { labTestKey: fields.lab_test_key }
+        : {};
     const rowValues = {
       id: targetId,
       userId,
       deviceId,
+      ...labTestKeyValue,
       name: fields.name,
       unit: fields.unit,
       valueShape: fields.value_shape,
@@ -3688,7 +3707,8 @@ async function readMetricClock(
     .select({
       userId: schema.metrics.userId,
       updatedAt: schema.metrics.updatedAt,
-      deviceId: schema.metrics.deviceId
+      deviceId: schema.metrics.deviceId,
+      labTestKey: schema.metrics.labTestKey
     })
     .from(schema.metrics)
     .where(eq(schema.metrics.id, id))
@@ -4908,6 +4928,7 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           enabled: schema.metrics.enabled,
           pinned: schema.metrics.pinned,
           sortOrder: schema.metrics.sortOrder,
+        labTestKey: schema.metrics.labTestKey,
           updatedAt: schema.metrics.updatedAt,
           deletedAt: schema.metrics.deletedAt,
           receivedAt: schema.metrics.receivedAt
@@ -6021,6 +6042,7 @@ async function pullParentRowsById(
         enabled: schema.metrics.enabled,
         pinned: schema.metrics.pinned,
         sortOrder: schema.metrics.sortOrder,
+        labTestKey: schema.metrics.labTestKey,
         updatedAt: schema.metrics.updatedAt,
         deletedAt: schema.metrics.deletedAt,
         receivedAt: schema.metrics.receivedAt
@@ -6330,6 +6352,7 @@ function metricSyncPayload(row: {
   enabled: boolean;
   pinned: boolean;
   sortOrder: number;
+  labTestKey: string | null;
   updatedAt: Date;
   deletedAt: Date | null;
 }) {
@@ -6344,6 +6367,7 @@ function metricSyncPayload(row: {
     enabled: row.enabled,
     pinned: row.pinned,
     sort_order: row.sortOrder,
+    lab_test_key: row.labTestKey,
     updated_at: row.updatedAt.toISOString(),
     deleted_at: row.deletedAt?.toISOString() ?? null
   };

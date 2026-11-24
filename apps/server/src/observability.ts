@@ -486,5 +486,22 @@ const TRAINING_DATA_KEYS = new Set([
   // carries a person's health text and notes under `sections`, and a section's
   // `values`. Sync payloads and Activity Log images are already covered above.
   "sections",
-  "values"
+  "values",
+  // Lab Results (docs/designs/lab-results.md, Privacy): a Lab Metric's key,
+  // a Lab Result's `lab` object and its fields, and the Reading columns that
+  // carry a result's value or collection time. `value` is listed above.
+  "lab",
+  "labtestkey",
+  "printedrange",
+  "printedflag",
+  "collected",
+  "labname",
+  "scalarvalue",
+  "scalarentered",
+  "valuejson",
+  "externalid",
+  "entered",
+  "timeanchor",
+  "localdatetime",
+  "attime"
 ]);
