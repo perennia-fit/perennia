@@ -11,16 +11,20 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- **Lab results.** Progress → Lab results lists your blood test results by Lab
+  Test, behind the Protocols lock. Enter one collection at a time (date, lab,
+  interim or final, fasting) with many results, including limits such as "< 1",
+  and see each Lab Test over time with the lab's printed range and flag, or a
+  sourced general range from your Profile's sex and birth year where the lab
+  printed none.
 - **A Lab Test catalogue for contributors.** `packages/lab-catalogue` lists 60
   blood tests with their units, accepted spellings, bounds and cited general
-  ranges; the app and the server are generated from it. Lab results are not yet
-  visible in the app.
+  ranges; the app and the server are generated from it.
 - **Agents can log lab results by Lab Test.** `agent_list_lab_tests` (`GET
   /agent/lab-tests`) lists the Lab Tests with their keys and units, and
   `batchWriteAgentMetrics` writes a result by `labTestKey` with its collection
   date and printed range. Metric reads and the Effect window join a Lab Test's
-  Metrics and show one result per collection. Lab results are still not visible
-  in the app.
+  Metrics and show one result per collection.
 
 ### Changed
 

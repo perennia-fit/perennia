@@ -256,8 +256,8 @@ rectangles with `md` corners, never FABs.
 - **Root navigation:** three labelled destinations — Today, Progress, Library — with
   selected state in Signal Cyan. Each retains its own view state; the bar is absent from
   logging, editor, and detail routes. Progress is the Progress Overview: a period
-  control (4 wk, 12 wk, 1 yr) over a scroll of summary cards, then the Body Tracker
-  and Health metrics links.
+  control (4 wk, 12 wk, 1 yr) over a scroll of summary cards, then the Body Tracker,
+  Health metrics and Lab results links.
 - **Today Log action:** one extended FAB opening a bottom sheet of authored daily writes
   (Workout, Meal, Supplement). Body measurements remain contextual to Progress → Body.
 - **Tabs (Track | History | Graph):** text tabs in the chrome, active tab in Signal
