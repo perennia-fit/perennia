@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/labs/lab_result.dart';
 import '../../../domain/labs/lab_test_catalogue.generated.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../profile/widgets/profile_screen.dart';
 import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../controllers/lab_results_controller.dart';
-import '../controllers/lab_test_detail_controller.dart';
 import 'lab_entry_sheet.dart';
 import 'lab_result_row.dart';
 import 'lab_test_detail_screen.dart';

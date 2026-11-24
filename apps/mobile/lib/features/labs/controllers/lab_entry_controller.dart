@@ -80,7 +80,6 @@ class LabEntryState {
     required this.rows,
     this.errorsByRow = const <int, List<LabValidationIssue>>{},
     this.collectionErrors = const <LabValidationIssue>[],
-    this.saving = false,
   });
 
   /// Null until chosen. Only the date part is read.
@@ -104,9 +103,6 @@ class LabEntryState {
   /// and the other collection-wide fields), each once.
   final List<LabValidationIssue> collectionErrors;
 
-  /// Whether a save is in flight.
-  final bool saving;
-
   LabEntryState copyWith({
     DateTime? collectedDate,
     ({int hour, int minute})? Function()? collectedTime,
@@ -116,7 +112,6 @@ class LabEntryState {
     List<LabEntryRow>? rows,
     Map<int, List<LabValidationIssue>>? errorsByRow,
     List<LabValidationIssue>? collectionErrors,
-    bool? saving,
   }) {
     return LabEntryState(
       collectedDate: collectedDate ?? this.collectedDate,
@@ -128,7 +123,6 @@ class LabEntryState {
       rows: rows ?? this.rows,
       errorsByRow: errorsByRow ?? this.errorsByRow,
       collectionErrors: collectionErrors ?? this.collectionErrors,
-      saving: saving ?? this.saving,
     );
   }
 }
@@ -339,7 +333,6 @@ class LabEntryController extends Notifier<LabEntryState> {
       await check();
       return null;
     }
-    state = state.copyWith(saving: true);
     try {
       return await _repository.saveCollection(
         draft,
@@ -350,10 +343,6 @@ class LabEntryController extends Notifier<LabEntryState> {
         _applyErrors(error.issuesByRow);
       }
       return null;
-    } finally {
-      if (ref.mounted) {
-        state = state.copyWith(saving: false);
-      }
     }
   }
 

@@ -42,8 +42,8 @@ const double _sheetHeightFactor = 0.92;
 
 /// The Lab Test picker's content. Open it with [showLabTestPicker].
 ///
-/// The catalogue is grouped by `panel`, panels in order of their first Lab
-/// Test and Lab Tests in catalogue order. Search is a case-insensitive
+/// The catalogue is grouped by `panel`, panels in [labCataloguePanels] order
+/// and Lab Tests in catalogue order. Search is a case-insensitive
 /// substring match against the name and every variant: the catalogue is
 /// lowercased once ([_searchIndex]), a keystroke filters it in memory, and
 /// [ListView.builder] builds only the rows on screen.
@@ -222,23 +222,16 @@ List<_PickerItem> _buildItems(String lowerQuery) {
   return items;
 }
 
-/// The catalogue in panel order (panels by first appearance, Lab Tests in
-/// catalogue order within a panel), with each name and variant lowercased
-/// once for search.
-final List<_SearchEntry> _searchIndex = () {
-  final panels = <String>[];
-  final byPanel = <String, List<LabTest>>{};
-  for (final labTest in labTestCatalogue) {
-    byPanel.putIfAbsent(labTest.panel, () {
-      panels.add(labTest.panel);
-      return <LabTest>[];
-    }).add(labTest);
-  }
-  return <_SearchEntry>[
-    for (final panel in panels)
-      for (final labTest in byPanel[panel]!) _SearchEntry(labTest),
-  ];
-}();
+/// The catalogue in panel order ([labCataloguePanels], Lab Tests in catalogue
+/// order within a panel), with each name and variant lowercased once for
+/// search.
+final List<_SearchEntry> _searchIndex = List<_SearchEntry>.unmodifiable(
+  <_SearchEntry>[
+    for (final panel in labCataloguePanels)
+      for (final labTest in labTestCatalogue)
+        if (labTest.panel == panel) _SearchEntry(labTest),
+  ],
+);
 
 class _SearchEntry {
   _SearchEntry(this.labTest)

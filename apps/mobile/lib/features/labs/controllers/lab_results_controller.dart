@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
-import '../../../domain/labs/lab_test_catalogue.generated.dart';
+import '../../../domain/labs/lab_test.dart';
 import '../../protocols/controllers/protocols_lock_controller.dart';
 import 'lab_results_providers.dart';
 
@@ -16,15 +16,17 @@ class LabPanelSection {
   /// The catalogue panel, or null for "Other".
   final String? panel;
 
-  /// The Lab Tests with results, in catalogue order (for "Other", in the
-  /// repository's order: stored name, then key).
+  /// The Lab Tests with results, in the order
+  /// [LabResultsRepository.watchLabTests] returns them: catalogue order for a
+  /// panel, stored name then key for "Other". [labPanelSections] keeps that
+  /// order and never sorts.
   final List<LabTestSummary> tests;
 }
 
 /// The Lab Results screen's sections (docs/designs/lab-results.md,
-/// "The display"): catalogue panels in order of their first appearance in
-/// [labTestCatalogue], only panels with results, then one final "Other"
-/// section for summaries whose `labTest` is null.
+/// "The display"): catalogue panels in [labCataloguePanels] order, only
+/// panels with results, then one final "Other" section for summaries whose
+/// `labTest` is null.
 ///
 /// Derived on read from [labTestsProvider]; nothing here is stored.
 final labResultsScreenProvider =
@@ -96,6 +98,8 @@ final labResultsProgressRowProvider =
 });
 
 /// Groups [summaries] into [LabPanelSection]s: see [labResultsScreenProvider].
+/// Panels come in [labCataloguePanels] order; each panel's summaries keep the
+/// order they arrive in, which watchLabTests makes catalogue order.
 List<LabPanelSection> labPanelSections(List<LabTestSummary> summaries) {
   final byPanel = <String, List<LabTestSummary>>{};
   final other = <LabTestSummary>[];
@@ -110,13 +114,11 @@ List<LabPanelSection> labPanelSections(List<LabTestSummary> summaries) {
     }
   }
   final sections = <LabPanelSection>[
-    for (final panel in _cataloguePanelOrder)
+    for (final panel in labCataloguePanels)
       if (byPanel[panel] case final tests?)
         LabPanelSection(
           panel: panel,
-          tests: List<LabTestSummary>.unmodifiable(
-            tests..sort(_byCatalogueIndex),
-          ),
+          tests: List<LabTestSummary>.unmodifiable(tests),
         ),
     if (other.isNotEmpty)
       LabPanelSection(
@@ -126,16 +128,3 @@ List<LabPanelSection> labPanelSections(List<LabTestSummary> summaries) {
   ];
   return List<LabPanelSection>.unmodifiable(sections);
 }
-
-int _byCatalogueIndex(LabTestSummary a, LabTestSummary b) =>
-    _catalogueIndex[a.labTestKey]!.compareTo(_catalogueIndex[b.labTestKey]!);
-
-/// The catalogue's panels, each once, in order of first appearance.
-final List<String> _cataloguePanelOrder = <String>{
-  for (final labTest in labTestCatalogue) labTest.panel,
-}.toList(growable: false);
-
-final Map<String, int> _catalogueIndex = <String, int>{
-  for (var index = 0; index < labTestCatalogue.length; index++)
-    labTestCatalogue[index].key: index,
-};
