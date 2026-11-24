@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/labs/lab_result.dart';
+import 'package:perennia/domain/labs/lab_test.dart';
 import 'package:perennia/domain/labs/lab_test_catalogue.generated.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
+import 'package:perennia/features/labs/controllers/lab_test_detail_controller.dart';
+import 'package:perennia/features/labs/widgets/lab_result_row.dart';
 import 'package:perennia/features/labs/widgets/lab_test_detail_screen.dart';
 
 import 'lab_test_helpers.dart';
@@ -236,6 +239,134 @@ void main() {
     );
     expect(find.text('Within the general range'), findsOneWidget);
     semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('the general range uses the age at the collection date',
+      (tester) async {
+    // ageAt counts calendar years from the birth year alone: born 1966 is 59
+    // in 2025, when the sample was taken, and 60 in 2026, "today". The male
+    // Creatinine Default Range covers ages 18-59, so it shows only if the
+    // age is taken at the collection date.
+    await onFakeTime(
+      tester,
+      () => harness.repositories.userProfile.saveSection(
+        UserProfileSection.aboutYou,
+        <String, Object?>{'sex': 'male', 'birth_year': 1966},
+      ),
+    );
+    await harness.save(
+      tester,
+      date: DateTime(2025, 3, 4),
+      rows: const <CollectionDraftRow>[
+        CollectionDraftRow(labTestKey: 'creatinine', value: '80'),
+      ],
+    );
+    await pumpDetail(tester, 'creatinine');
+
+    expect(
+      find.text('General range 60–110 umol/L · $creatinineSource'),
+      findsOneWidget,
+    );
+    expect(find.text('Within the general range'), findsOneWidget);
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a Limit Result is positioned against a Printed Range',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    await harness.save(
+      tester,
+      date: DateTime(2026, 3, 4),
+      rows: const <CollectionDraftRow>[
+        CollectionDraftRow(
+          labTestKey: 'hs_crp',
+          comparator: LabComparator.lt,
+          value: '1',
+          printedRange: '(2-10)',
+        ),
+      ],
+    );
+    // Every value under 5 is not below 2, so its position is unknown.
+    await harness.save(
+      tester,
+      date: DateTime(2026, 3, 5),
+      rows: const <CollectionDraftRow>[
+        CollectionDraftRow(
+          labTestKey: 'hs_crp',
+          comparator: LabComparator.lt,
+          value: '5',
+          printedRange: '(2-10)',
+        ),
+      ],
+    );
+    await pumpDetail(tester, 'hs_crp');
+
+    expect(find.text('< 1 mg/L'), findsOneWidget);
+    expect(find.text('< 5 mg/L'), findsOneWidget);
+    expect(find.text('Lab range (2-10)'), findsNWidgets(2));
+    expect(find.text("Below the lab's range"), findsOneWidget);
+    expect(find.bySemanticsLabel("Below the lab's range"), findsOneWidget);
+    expect(find.text("Within the lab's range"), findsNothing);
+    expect(find.text("Above the lab's range"), findsNothing);
+    // The `< 1` row's position sits under its own value, not the `< 5` one.
+    expect(
+      tester.getTopLeft(find.text("Below the lab's range")).dy,
+      greaterThan(tester.getTopLeft(find.text('< 1 mg/L')).dy),
+    );
+    semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a one-sided Default Range states its side', (tester) async {
+    const source = DefaultRangeSource(
+      title: 'Test source',
+      url: 'https://example.org',
+      version: '1',
+    );
+    final labTest = labTestByKey('creatinine')!;
+
+    LabResultView view(DefaultRange range) => LabResultView(
+          record: LabResultRecord(
+            readingId: 'reading-1',
+            metricId: 'metric-1',
+            labTestKey: 'creatinine',
+            entered: '80',
+            enteredUnit: 'umol/L',
+            scalarValue: 80,
+            lab: const LabFields(collected: '2026-03-04'),
+            atTime: DateTime.utc(2026, 3, 4, 12),
+            updatedAt: DateTime.utc(2026, 3, 4, 12),
+            identityRowCount: 1,
+          ),
+          labTest: labTest,
+          kind: labTest.printedRangeKind,
+          defaultRange: range,
+          position: null,
+        );
+
+    Future<void> pumpRow(DefaultRange range) => harness.pump(
+          tester,
+          Scaffold(
+            body: LabResultRow(view: view(range), onArchive: () {}),
+          ),
+        );
+
+    await pumpRow(
+      const DefaultRange(sex: DefaultRangeSex.male, high: 110, source: source),
+    );
+    expect(
+      find.text('General range below 110 umol/L · Test source'),
+      findsOneWidget,
+    );
+
+    await pumpRow(
+      const DefaultRange(sex: DefaultRangeSex.male, low: 60, source: source),
+    );
+    expect(
+      find.text('General range above 60 umol/L · Test source'),
+      findsOneWidget,
+    );
     await harness.unmount(tester);
   });
 
