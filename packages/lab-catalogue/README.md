@@ -91,6 +91,11 @@ The seed's ranges come from the harmonised adult reference intervals for Austral
 and RCPA). Only chemistry is harmonised there, so the full blood count, hormones, hs-CRP and
 lipids have none. Never transcribe a range you cannot read in the source itself.
 
+Current gaps (see the spec's "What the seed has, and what it does not"): the seed's ranges are
+Tate 2014 and have not been checked against the Koerbin 2018 update, which could not be read;
+and urea, urate, egfr, anion_gap, bilirubin_total, ggt, alt, ast, albumin and globulin have no
+`defaultRanges` and so no `plausibleBounds` until someone reads the 2018 update and adds them.
+
 ## Regenerating
 
 ```bash

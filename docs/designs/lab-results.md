@@ -595,6 +595,22 @@ chemistry only, so only chemistry Lab Tests get a Default Range; the full blood 
 Sex and age bands are copied as published (Creatinine's adult bands, for example, stop at 59),
 and an age the source does not cover gets no default.
 
+**What the seed has, and what it does not.** The seed's Default Ranges are copied from Tate 2014,
+Table 1, and cite it: Sodium, Potassium, Chloride, Bicarbonate, Creatinine, Calcium, Adjusted
+Calcium, Phosphate, Magnesium, LD, ALP and Total Protein. The full text of Koerbin 2018 is closed
+access and could not be read when the seed was written, so two gaps remain until someone reads it:
+
+*   The twelve intervals above have not been checked against the 2018 update. If it revised one,
+    the seed shows the superseded 2014 interval with its 2014 citation.
+*   Ten chemistry Lab Tests that the 2014 paper does not cover have no Default Range and so no
+    `plausibleBounds`: Urea, Urate, eGFR, Anion Gap, Total Bilirubin, GGT, ALT, AST, Albumin and
+    Globulin. A result for one of them with no Printed Range shows no general range, and a value
+    outside its range gets no `lab_value_implausible` warning (the hard bounds still apply).
+
+Closing both is a later catalogue pull request: read Koerbin 2018, replace any interval it revised
+(with `version` 2018), and add the ten Lab Tests' intervals and `plausibleBounds` by the Bounds rule.
+Ranges are never taken from a secondary source to fill these gaps.
+
 **Choosing one, on read.** `defaultRangeFor(labTest, printedRange, sex, age)`, Dart only, pure,
 golden-vectored in `m44-lab-default-range.json`, domain `lab-default-range`. `age` is
 `UserProfile.ageAt(d)` where `d` is the `collected` date at local midnight; the User Profile read
@@ -1181,6 +1197,7 @@ These decisions bind the phase 2 design.
 | An older app build edits a Lab Result in the explorer | The `lab` object is dropped | Pre-1.0 and recoverable: the previous row is the Activity Log before-image. The collapse shows a lab-less row as its own result. |
 | An older server drops `lab_test_key` | Metrics created through it reach other devices without the key and show as custom Metrics there | Accepted pre-1.0; app and server release together. |
 | A Default Range is transcribed wrongly | A wrong general range is shown | Values are copied verbatim from one cited source, reviewed in PR 2, and always shown with that source. |
+| The seed's 2014 intervals were not checked against Koerbin 2018, and ten chemistry Lab Tests have no Default Range | A superseded general range may be shown; those ten show no general range and no plausibility warning | Accepted for now and listed under [What the seed has](#default-ranges); a later catalogue pull request reads the 2018 update and closes both. |
 | Age is accurate to ±1 year (User Profile) | A user near an age-band edge may get the neighbouring band's range | Accepted; the range is labelled general and shows its source. |
 | Two rows of one Lab Test in one collection on two devices (e.g. typed twice) | Collapse keeps one | Accepted; this is the intended rule. |
 
