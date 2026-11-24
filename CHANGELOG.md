@@ -9,12 +9,23 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
+A minor release: browsing foods by Aisle in the app and for agents, Finish
+Workout from the Training Screen, one naming style across the Exercise Library,
+guided onboarding, and fixes that keep a synced phone signed in and receiving
+everything an agent writes. It adds no Drift schema version or server migration,
+but the server's job queue (pg-boss) migrates its own schema on start, so
+upgrade the API server and the worker together. Upgrade a Self-Hosted Deployment
+before the app. Agent clients gain an optional `aisle` on platform food search.
+
 ### Added
 
 - **Browse foods by Aisle.** When the offline food list is ready, the add-food
   picker lists 14 Aisles, such as Dairy & eggs and Snacks, before you type. An
   Aisle shows its 100 most scanned products, and typing searches only within it,
   on the device. Back closes the Aisle and keeps the Meal screen open.
+  ([#157](https://github.com/perennia-fit/perennia/pull/157))
 - **Agents can browse Open Food Facts foods by Aisle.** `searchAgentPlatformFoods`
   (`GET /agent/foods/platform-search`) and its MCP tool
   `agent_search_platform_foods` take an optional `aisle`, such as `snacks`, and
@@ -22,14 +33,18 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Aisle's foods, most scanned first. `aisle` makes Open Food Facts the default
   source, and `source=usda` with `aisle` is rejected with 422
   `agent_platform_search_invalid_request`, because USDA foods have no Aisle.
+  ([#143](https://github.com/perennia-fit/perennia/pull/143))
 - Each bundled Open Food Facts product now carries an Aisle, a consumer-facing
   group such as Dairy & eggs or Snacks (bundle format 2). The device rebuilds its
   food reference cache once after updating.
+  ([#143](https://github.com/perennia-fit/perennia/pull/143))
 - **Finish Workout from the Training Screen.** Once no exercise has a planned
   set left, Finish Workout takes the Next button's place, so you no longer go
   back to the Workout screen to finish. Logging the plan's last set no longer
   starts a rest, and stops one still running. Finishing a Workout stops its
   rest timer, so no rest notification arrives after the Workout ends.
+  ([#154](https://github.com/perennia-fit/perennia/pull/154),
+  [#153](https://github.com/perennia-fit/perennia/pull/153))
 
 ### Changed
 
@@ -38,10 +53,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   for each term, and no stray text or non-English names. Names update on existing
   devices and logged sets keep their history. 14 left, right and one-leg variants
   merge into one exercise, taking the library from 1,450 to 1,436.
+  ([#147](https://github.com/perennia-fit/perennia/pull/147))
 - Onboarding explains each screen and shows which step you are on. Experience asks
   which kinds of training you do, with what each covers, before asking your level.
+  ([#148](https://github.com/perennia-fit/perennia/pull/148))
 - Training setup offers Gym, Home and Bodyweight only presets and groups the
   equipment. Onboarding starts from Gym, so Done saves a typical gym list.
+  ([#148](https://github.com/perennia-fit/perennia/pull/148))
 - Server dependencies move to Better Auth 1.7 and pg-boss 12.38. Self-hosters:
   whichever of the API server and the worker starts first migrates the job-queue
   schema from 36 to 46: new columns, a new `instance` table, a new `job_now()`
@@ -50,29 +68,30 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   upgrade both together. The auth contract gains Better Auth's optional sign-out,
   social sign-in and callback fields, and `/api/auth/link-social` now ignores
   `idToken.scopes`; send `scopes` at the top level of the body instead.
+  ([#14](https://github.com/perennia-fit/perennia/pull/14))
 
 ### Fixed
 
 - Deleting a Workout cancels its running rest timer's notifications, as
   finishing one now does. Before, the rest's notification still fired after
-  the Workout was gone.
+  the Workout was gone. ([#153](https://github.com/perennia-fit/perennia/pull/153))
 - **Sync no longer stops a week after sign-in.** The server renews a device's
   session when it syncs, as it already did for the website, so a device that
   syncs at least once a week stays signed in. Before, every device's session
   expired 7 days after sign-in however often it synced, and sync stopped with
   "Sign in required" until the user signed in again. Devices already showing
-  that need one more sign-in.
+  that need one more sign-in. ([#149](https://github.com/perennia-fit/perennia/pull/149))
 - **An expired sign-in no longer looks signed in.** When the server stops
   accepting this phone's session, the Account screen says the sign-in expired
   instead of "Signed in as", the Account & app button shows a small dot, and
   both the Account and Sync screens offer **Sign in again**. Signing in again
   keeps everything on the phone, including changes that have not synced yet,
-  and the next sync sends them.
+  and the next sync sends them. ([#151](https://github.com/perennia-fit/perennia/pull/151))
 - **A sync pulls everything waiting on the server.** When a page of changes
   carried the parent rows its changes refer to, the app took it for the last
   page and stopped, so part of a batch waited for a later sync. An agent's
   plan could arrive as Workout Templates without the Routine, Prescriptions or
-  Groups that belong to them.
+  Groups that belong to them. ([#150](https://github.com/perennia-fit/perennia/pull/150))
 
 ## [0.3.0] - 2026-11-07
 
