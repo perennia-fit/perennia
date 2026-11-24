@@ -378,10 +378,10 @@ with the second opinion (see
 
 *   **Given** an Aisle is open with a typed query,
 *   **When** the user taps the header's back button, uses the system back
-    gesture, or taps outside the sheet,
+    gesture, or taps the Meal screen's app-bar back button,
 *   **Then** the Aisle closes, the search field is cleared, and the picker
     shows the filter that was selected before the Aisle opened, with its
-    blank-query view. The sheet stays open.
+    blank-query view. The Meal screen stays open; a second back leaves it.
 
 ### CUJ 4: A product has no Aisle
 
@@ -1163,6 +1163,8 @@ Aisle open, and "Search <label>" with one open.
     for a typed query, or in the Your foods or USDA filters.
 *   **Layout.** The label "Browse" (`label` style, `textSecondary`), marked as
     a semantics header, then one list row per `FoodAisle`, in order.
+    The attribution footer, when the view has an Open Food Facts row, stays
+    the last list item, after the Aisle rows.
 *   **Each row.** The Aisle's UI label in body text, and a trailing
     `Icons.chevron_right` in `textSecondary`. Rows are at least 48 dp tall,
     separated by hairline dividers (`divider-*` tokens). There are no colours
@@ -1190,10 +1192,10 @@ Aisle open, and "Search <label>" with one open.
     Food Facts filter.
 *   **Back.** The picker wraps its content in a `PopScope` whose `canPop` is
     `aisle == null`. With an Aisle open, its `onPopInvokedWithResult` calls
-    `closeAisle` and the sheet stays open. This covers the system back
-    gesture and a tap on the barrier outside the sheet, which both pop
-    through `Navigator.maybePop`. Dragging the sheet down closes the sheet,
-    as it does today.
+    `closeAisle` and the Meal screen, which embeds the picker, stays open.
+    This covers the system back gesture and the Meal screen's app-bar back
+    button, which both pop through `Navigator.maybePop`. With no Aisle open,
+    a back leaves the Meal screen as it does today.
 
 **Keys**, as static members of `AddFoodPicker`:
 
@@ -2253,8 +2255,10 @@ them out again.
     *   **The field:** opening and closing an Aisle clears the text on screen.
     *   **A scanned barcode** while an Aisle is open closes the Aisle before
         the lookup.
-    *   **Back:** the back button, the system back and a barrier tap each
-        close the Aisle and leave the sheet open.
+    *   **Back:** the back button, the system back and a host app bar's
+        back button each close the Aisle and leave the picker's route open;
+        a second system back pops it. `meal_screen_test.dart` checks the
+        same on the Meal screen.
     *   **Accessibility:** semantics labels and headers, 48 dp rows, and text
         scale 2.0 with no overflow.
 
