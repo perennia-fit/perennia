@@ -763,10 +763,19 @@ sheet is lost, never half a collection.
     or MCP schema, so Agent sessions do not load them into context unless they call this. It is
     authenticated like the other Agent reads (an Agent bearer key; no extra scope).
 *   **`batchWriteAgentMetrics`**: the reading item gains an optional `labTestKey`, `metricId`
-    becomes optional, and exactly one of the two must be present. The scalar value gains an
-    optional `lab` object in the shape above. Its zod schema is permissive (each field a string,
-    boolean or number, or null, and unknown keys allowed), so that a malformed field reaches the
-    lab rules and gets its own code rather than a generic schema error. Validation runs before
+    becomes optional, and exactly one of the two must be present (`lab_target_ambiguous`, a
+    request rule, not a schema check). The scalar value gains an optional `lab` object in the
+    shape above. Its zod schema is permissive where a lab rule judges the field: `collected`,
+    `reportStatus` and `fasting` each take a string, boolean or number, or null, and unknown keys
+    are allowed and dropped by the normaliser, so that a malformed field reaches the lab rules
+    and gets its own code rather than a generic schema error. The text fields `printedRange`,
+    `printedFlag` and `labName` are typed `string | null`: no lab rule judges a text field's
+    type, and the normaliser would write a non-string as null without a word, so a wrong type
+    there is a schema error. `limit` is accepted and overwritten. `AgentMetricBatchWriteMetric`
+    also declares an optional `labTestKey` (any type) only so that zod does not strip it: a
+    `metrics[]` row that sends it is rejected with `lab_metric_upsert_not_allowed` rather than
+    silently creating a custom Metric. An omitted `value.unit` on a lab reading is the Lab
+    Test's `unit`, as the normaliser reads an omitted unit as its Metric's. Validation runs before
     normalisation, and each issue keeps its rule as its code (never folded into
     `metric_reading_normalization_failed`). The idempotency receipt is the shared one. For a
     reading with `labTestKey`:
@@ -792,9 +801,11 @@ sheet is lost, never half a collection.
     windowing, as the app does.
 *   **Contract diff:** one new operation and its schemas (`AgentLabTest`, `AgentLabTestList`);
     `metricId` optional and `labTestKey` added on `AgentMetricBatchWriteReading`; optional `lab`
-    on `AgentMetricReadingScalarValue`; descriptions noting the key read, the collapse, the
-    controls above and the Trend exclusion. No field is removed or narrowed: making `metricId`
-    optional widens the request. `agent-skills/perennia/SKILL.md` gains a "Logging lab results"
+    on `AgentMetricReadingScalarValue`, with `printedRange`, `printedFlag` and `labName` typed
+    `string | null`; an optional, untyped `labTestKey` on `AgentMetricBatchWriteMetric`,
+    described as not accepted; descriptions noting the key read, the collapse, the controls
+    above and the Trend exclusion. No field is removed or narrowed: making `metricId` optional
+    widens the request, and the `labTestKey` on a `metrics[]` row was stripped before. `agent-skills/perennia/SKILL.md` gains a "Logging lab results"
     section.
 
 ### Privacy

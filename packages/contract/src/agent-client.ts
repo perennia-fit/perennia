@@ -891,6 +891,7 @@ export type AgentMetricBatchWriteMetric = {
   "sortOrder"?: number;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
+  "labTestKey"?: unknown;
 };
 
 export type AgentMetricBatchWriteMetricResult = {
@@ -905,7 +906,8 @@ export type AgentMetricBatchWriteMetricResult = {
 
 export type AgentMetricBatchWriteReading = {
   "id": string;
-  "metricId": string;
+  "metricId"?: string;
+  "labTestKey"?: string;
   "value": AgentMetricReadingValue;
   "timeAnchor": AgentMetricReadingTimeAnchor;
   "provenance"?: string;

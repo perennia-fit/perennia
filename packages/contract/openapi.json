@@ -6904,6 +6904,9 @@
             "minLength": 1,
             "default": null,
             "description": "ISO-8601 timestamp."
+          },
+          "labTestKey": {
+            "description": "Not accepted: Lab Metrics can't be upserted; sending it rejects the batch with lab_metric_upsert_not_allowed."
           }
         },
         "required": [
@@ -6924,7 +6927,13 @@
           },
           "metricId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "The Metric this Reading belongs to. Give exactly one of metricId and labTestKey (lab_target_ambiguous otherwise); a Lab Metric's id is rejected (lab_metric_id_not_allowed)."
+          },
+          "labTestKey": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Write a lab result by Lab Test key (list keys with agent_list_lab_tests) instead of metricId. The server finds or creates the user's Lab Metric for the key."
           },
           "value": {
             "$ref": "#/components/schemas/AgentMetricReadingValue"
@@ -6982,7 +6991,6 @@
         },
         "required": [
           "id",
-          "metricId",
           "value",
           "timeAnchor"
         ]
@@ -7024,6 +7032,91 @@
           "unit": {
             "type": "string",
             "minLength": 1
+          },
+          "lab": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "collected": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The collection date as printed, local, no offset: YYYY-MM-DD or YYYY-MM-DDTHH:mm. Required for a lab result."
+              },
+              "reportStatus": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "final (the default) or interim."
+              },
+              "fasting": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "true when the sample was taken fasting; otherwise null or absent."
+              },
+              "printedRange": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The reference range as printed on the report, at most 120 characters."
+              },
+              "printedFlag": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The flag as printed (for example H, L, +), at most 8 characters."
+              },
+              "labName": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The lab's name, never the patient's, at most 80 characters."
+              },
+              "limit": {
+                "description": "Output only: the server derives it from entered (\"< 1\") and overwrites any value sent."
+              }
+            },
+            "additionalProperties": {},
+            "description": "A Lab Result's lab fields, accepted only on a reading written by labTestKey. Each malformed field is reported with its own lab_* rule code. lab.limit is derived from entered; unknown keys are dropped."
           }
         },
         "required": [
@@ -21849,7 +21942,7 @@
           "Agent Writes"
         ],
         "summary": "Batch-write Metrics and Metric Readings as one Activity Log batch.",
-        "description": "Authenticated agent write path for Metric definitions and Readings. Readings are normalized with the same Metric normalization module used by imported data, then written atomically with one Activity Log batch and a best-effort sync nudge. Derived metrics, analytics, and repair recalculations are not stored.",
+        "description": "Authenticated agent write path for Metric definitions and Readings. Readings are normalized with the same Metric normalization module used by imported data, then written atomically with one Activity Log batch and a best-effort sync nudge. Derived metrics, analytics, and repair recalculations are not stored. Lab results: write each by labTestKey (list keys with agent_list_lab_tests), never by metricId, with value.lab.collected and a matching timeAnchor (localDateTime = collected expanded, a date as T12:00:00 and a time with :00 seconds, plus timezoneOffsetMinutes). Use only a listed unit or unit alias, and send a limit as entered \"< 1\". The server sets updatedAt, provenance, source and lab.limit. A stored Lab Result cannot be overwritten or archived: to correct one, write a new final result for the same collection.",
         "security": [
           {
             "bearerAuth": []

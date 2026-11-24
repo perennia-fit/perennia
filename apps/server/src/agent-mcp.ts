@@ -2102,7 +2102,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Metrics",
       description:
-        "Apply Metric definitions and Metric Readings through the same normalization, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key.",
+        "Apply Metric definitions and Metric Readings through the same normalization, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key. Lab results: write each by labTestKey (list keys with agent_list_lab_tests), never by metricId, with value.lab.collected and a matching timeAnchor (localDateTime = collected expanded, a date as T12:00:00 and a time with :00 seconds, plus timezoneOffsetMinutes). Use only a listed unit or unit alias, and send a limit as entered \"< 1\". The server sets updatedAt, provenance, source and lab.limit. A stored Lab Result cannot be overwritten or archived: to correct one, write a new final result for the same collection.",
       inputSchema: AgentMcpMetricBatchWriteInputSchema,
       outputSchema: AgentMetricBatchWriteResponseSchema
     },
