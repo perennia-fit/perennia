@@ -75,6 +75,7 @@ const DOMAINS_OWNED_ELSEWHERE = new Set([
   "metric-trend", // metric-trend.golden.test.mjs
   "compound-purposes", // compound-purposes.golden.test.mjs
   "lab-result-collapse", // lab-results.golden.test.mjs
+  "lab-default-range", // Dart only: no server reader
   // Dart only: Body Tracker measurements have no server implementation, so
   // these vectors pin the app against its own spec.
   "measurement-validation",
