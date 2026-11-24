@@ -234,3 +234,25 @@ UTF-16 code units, so an astral-plane character counts as 2. The file carries a
 governed by the adjacent `m41-user-profile-validation.schema.json`; its
 `schemaVersion`, the schema's constant and both runners' constants move
 together.
+
+## Lab Result collapse
+
+`m43-lab-result-collapse.json` (domain `lab-result-collapse`) pins
+`collapseLabResults` in both languages: which stored Lab Results every reader
+keeps, one per Lab Test and `lab.collected` string, and in what order. The app
+runs it in `apps/mobile/test/domain/lab_result_collapse_test.dart` against
+`apps/mobile/lib/domain/labs/lab_result_collapse.dart`; the server runs it in
+`apps/server/test/lab-results.golden.test.mjs` against
+`apps/server/src/lab-results.ts`. The behaviour is specified in
+[`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Result identity and the collapse).
+
+Each case gives the stored `readings` in `input`, each with its `lab` as the
+stored JSON object (decoded by `decodeLab`) or null, and the kept ids in output
+order in `expected.keptIds`. `updatedAt` is compared in whole epoch seconds
+(floored) and ids by code-unit order, so the cases include a same-second pair
+whose milliseconds and `localeCompare` would both pick the other row. A
+reading's optional `metricId` is informational and ignored. The file is
+governed by the adjacent `m43-lab-result-collapse.schema.json`; its
+`schemaVersion`, the schema's constant and both runners' constants move
+together.

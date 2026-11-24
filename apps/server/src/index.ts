@@ -1461,6 +1461,24 @@ export {
   type MetricReadingNormalizationInput,
   type NormalizedMetricReading
 } from "./metric-reading-normalization.js";
+export {
+  LAB_COMPARATORS,
+  collapseLabResults,
+  collectedLocalDateTime,
+  decodeLab,
+  encodeLab,
+  foldUnit,
+  formatEntered,
+  isValidCollected,
+  parseEntered,
+  resolveLabUnit,
+  type KnownReportStatus,
+  type LabComparator,
+  type LabFields,
+  type LabLimit,
+  type LabReadingRef,
+  type ReportStatus
+} from "./lab-results.js";
 export { createOpenApiDocument } from "./openapi.js";
 export {
   DEFAULT_RATE_LIMIT_ENFORCE,

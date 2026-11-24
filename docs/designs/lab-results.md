@@ -519,7 +519,7 @@ with `id`, `labTestKey`, `lab` (or null), `atTime`, `updatedAt` (ISO 8601) and `
 4.  In each group keep one row: `final` beats `interim`; then the later `updatedAt`, compared in
     whole seconds (the app stores seconds, the server milliseconds, so finer precision would let
     the two disagree); then the greater `id` by code-unit string order.
-5.  Return the kept rows, newest first by `atTime`, then by `id`.
+5.  Return the kept rows, newest first by `atTime`, then by `id`, the greater `id` first.
 
 Every reader of Lab Results applies it to the readings of **every Metric with that
 `labTestKey`**: the Lab Results screen, the Lab Test detail list, the app's Effect samples, the
