@@ -37,6 +37,16 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Agent Metric Reading whose `entered` is, for example, `64 %` or `1.7 x10^9` is
   now rejected with `metric_reading_normalization_failed`, instead of being
   saved as `64` or `1.7`.
+- **An Agent's unfiltered Metric Reading list collapses lab results.** With no
+  `metricId` or `metricKey`, `listAgentMetricReadings` now returns one result
+  per collection for each Lab Test, a final hiding its interim, and never an
+  archived lab result, even with `includeArchived=true`.
+- **Locking the app closes the lab entry sheet's date and time pickers and
+  its comparator menu.** Before, they could stay on screen above the
+  Protocols lock.
+- **Saving lab results with no date shows every row's errors at once.** The
+  rows are checked on the same Save that asks for the date, instead of on a
+  later one.
 
 ## [0.4.0] - 2026-11-24
 

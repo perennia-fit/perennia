@@ -257,10 +257,10 @@ class LabEntryController extends Notifier<LabEntryState> {
     state = state.copyWith(rows: rows, errorsByRow: errors);
   }
 
-  /// The repository's draft of the sheet, or null while no date is chosen.
-  /// Blank text is null.
-  CollectionDraft? toDraft() {
-    final date = state.collectedDate;
+  /// The repository's draft of the sheet, or null while no date is chosen
+  /// (unless [dateIfMissing] stands in for it). Blank text is null.
+  CollectionDraft? toDraft({DateTime? dateIfMissing}) {
+    final date = state.collectedDate ?? dateIfMissing;
     if (date == null) {
       return null;
     }
@@ -290,22 +290,31 @@ class LabEntryController extends Notifier<LabEntryState> {
   /// [LabResultsRepository.checkCollection], the code the save itself runs.
   /// `lab_result_replaces` needs stored results, so it is read from
   /// [LabResultsRepository.previewCollection] only once there are no errors.
+  ///
+  /// With no date chosen, Save still runs the reading rules on every row
+  /// (docs/designs/lab-results.md, "Collection-based manual entry"), against
+  /// today as a stand-in date, so each row's hard rejects show now rather
+  /// than on a second Save and no earlier error outlives the rows it was
+  /// about. `lab_collected_missing` then replaces any date error the stand-in
+  /// produced.
   Future<LabEntryCheck> check() async {
+    final today = ref.read(labClockProvider)();
+    final repository = _repository;
     final draft = toDraft();
     if (draft == null) {
+      final standIn = toDraft(
+        dateIfMissing: DateTime(today.year, today.month, today.day),
+      )!;
+      _applyErrors(repository.checkCollection(standIn, today: today).errors);
       state = state.copyWith(
         collectionErrors: _withIssue(
-          state.collectionErrors,
+          _withoutField(state.collectionErrors, _dateFields),
           labCollectedMissingIssue,
         ),
       );
       return const LabEntryCheck(hasErrors: true, warnings: []);
     }
-    final repository = _repository;
-    final result = repository.checkCollection(
-      draft,
-      today: ref.read(labClockProvider)(),
-    );
+    final result = repository.checkCollection(draft, today: today);
     _applyErrors(result.errors);
     if (result.errors.isNotEmpty) {
       return const LabEntryCheck(hasErrors: true, warnings: []);

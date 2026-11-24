@@ -426,6 +426,22 @@ void main() {
     );
     expect(await readings(tester), isEmpty);
 
+    // The row rules run on the same Save, date or not: a second row's hard
+    // reject shows with the date error, not on a later Save.
+    await addRow(tester);
+    await chooseLabTest(tester, 1, 'crp', 'hs_crp');
+    await enter(tester, LabEntrySheet.rowValueKey(1), '20000');
+    await save(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(LabEntrySheet.rowValueKey(1)),
+        matching: find.text('Value must be between 0 and 10000 mg/L.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(LabEntrySheet.dateErrorKey), findsOneWidget);
+    expect(await readings(tester), isEmpty);
+
     // Choosing a date clears it.
     await chooseToday(tester);
     expect(find.byKey(LabEntrySheet.dateErrorKey), findsNothing);
@@ -515,6 +531,70 @@ void main() {
     expect(
         tester.widget<Text>(find.byKey(LabEntrySheet.rowUnitKey(0))).data, '–');
     expect(await readings(tester), isEmpty);
+    await harness.unmount(tester);
+  });
+  testWidgets(
+      'locking closes the date picker, the time picker and the comparator menu with the sheet',
+      (tester) async {
+    final hash = await tester.runAsync(
+      () => const ProtocolsPinHasher(iterations: 10).hash('1234'),
+    );
+    harness.lockStore
+      ..enabled = true
+      ..pinHash = hash;
+    await pumpHost(tester);
+
+    final scope = container(tester);
+    final lock = scope.read(protocolsLockControllerProvider.notifier);
+    Future<void> unlock() async {
+      await onFakeTime(
+        tester,
+        () => scope.read(protocolsLockControllerProvider.future),
+      );
+      expect(
+          await onFakeTime(tester, () => lock.unlockWithPin('1234')), isTrue);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> lockApp() async {
+      lock
+        ..didChangeAppLifecycleState(AppLifecycleState.paused)
+        ..didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+          scope.read(protocolsLockControllerProvider).value!.isLocked, isTrue);
+      expect(find.byType(LabEntrySheet), findsNothing);
+      expect(sheet.closed, isTrue);
+    }
+
+    // The date picker.
+    await unlock();
+    await openSheet(tester);
+    await tapVisible(tester, find.byKey(LabEntrySheet.dateFieldKey));
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await lockApp();
+    expect(find.byType(DatePickerDialog), findsNothing);
+
+    // The time picker.
+    await unlock();
+    await openSheet(tester);
+    await tapVisible(tester, find.byKey(LabEntrySheet.timeFieldKey));
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await lockApp();
+    expect(find.byType(TimePickerDialog), findsNothing);
+
+    // The comparator menu: its items are on screen twice while it is open
+    // (the field and the menu), and not at all once the lock closes both.
+    await unlock();
+    await openSheet(tester);
+    await tapVisible(tester, find.byKey(LabEntrySheet.rowComparatorKey(0)));
+    expect(find.text('<'), findsWidgets);
+    await lockApp();
+    expect(find.text('<'), findsNothing);
+    expect(find.byType(BottomSheet), findsNothing);
     await harness.unmount(tester);
   });
 }

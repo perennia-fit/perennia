@@ -475,7 +475,7 @@ Lab Test.
 | `lab_text_too_long` | Reading | Hard | After trimming, `printedRange` over 120 UTF-16 code units, `printedFlag` over 8, `labName` over 80 | "{field} is too long." |
 | `lab_report_status_invalid` | Reading | Hard | `reportStatus` is present and not `final` or `interim` | "Report status must be final or interim." |
 | `lab_fasting_invalid` | Reading | Hard | `fasting` is not `true` or null | "Fasting must be true or empty." |
-| `lab_test_unknown` | Request | Hard | `labTestKey` is not in the catalogue (Agent) | "Unknown Lab Test. List Lab Tests with agent_list_lab_tests." |
+| `lab_test_unknown` | Request | Hard | `labTestKey` is not in the catalogue (Agent), or an entry sheet row has no Lab Test chosen (app) | Agent: "Unknown Lab Test. List Lab Tests with agent_list_lab_tests." App: "Choose a Lab Test." |
 | `lab_target_ambiguous` | Request | Hard | An Agent reading has both or neither of `metricId` and `labTestKey` | "Give exactly one of metricId and labTestKey." |
 | `lab_metric_id_not_allowed` | Request | Hard | An Agent reading's `metricId` names a Lab Metric | "Write lab results by labTestKey." |
 | `lab_metric_upsert_not_allowed` | Request | Hard | An Agent `metrics[]` row names a Lab Metric or sends `labTestKey` | "Lab Metrics can't be changed." |
@@ -486,7 +486,17 @@ Lab Test.
 | `lab_result_replaces` | Request | Soft | The reading's identity already has a live result with a different value (or a different limit) | "This replaces a saved result for the same collection." |
 
 A hard reject blocks the save and names the field. In the app, every soft warning of one Save is
-listed in one confirmation dialog, confirmed once. To an Agent they are returned as warnings, as
+listed in one confirmation dialog, confirmed once.
+
+**Agent rule order.** The table is grouped by kind, not by the order the server checks. For each
+Agent reading the server checks `lab_target_ambiguous` first, because which rules apply depends
+on whether the reading names a `metricId` or a `labTestKey`. With a `labTestKey` it then checks
+`lab_test_unknown`, a non-scalar value (`lab_value_invalid`), `lab_archive_not_allowed` and
+`lab_result_exists`, and only then the reading rules (all of their issues) and
+`lab_result_replaces`. With a `metricId`, outside a replay, it checks `lab_result_exists` (the
+reading's `id` is a stored Lab Result), then `lab_metric_id_not_allowed`, then
+`lab_fields_on_non_lab_metric`. A request rule stops that reading's checks, so a reading that
+breaks two request rules gets the earlier code; other readings are still checked. To an Agent they are returned as warnings, as
 for other Metrics. An Agent batch is all-or-nothing, as today: one rejected reading rejects the
 batch.
 
@@ -563,7 +573,8 @@ archive state, and the next save reuses a live Lab Metric for the key or creates
     its name, so a Lab Metric is never read uncollapsed; a key this build's catalogue does not know
     (a Lab Metric written by a later build) reads collapsed like a catalogue key. In
     `listAgentMetricReadings`, a `metricId` and a `metricKey` that name different keys return an
-    empty page.
+    empty page, including when only one of them names a Lab Metric (a Lab Metric's `metricId`
+    with a non-lab `metricKey`, or the reverse).
 *   **No fold.** Two Lab Metrics for one Lab Test can still arise (two devices offline, or a
     Metric created through an older server). They are not merged: readers join their readings by
     key. The cost is a Lab Test appearing twice in the Effect and target-outcome pickers; see
@@ -716,9 +727,12 @@ for choosing a Lab Test, and standard form inputs.
 *   **No Trend.** Nothing in the app draws a Trend for a Lab Metric. The Agent read omits
     `trendValue` for Lab Metrics even when `includeTrend` is true.
 *   **The lock.** The Lab Results screen and the detail sit inside `ProtocolsLockGate`; the entry
-    sheet, the Lab Test picker, the warning dialog and the archive confirmation use
+    sheet, the Lab Test picker, the warning dialog, the archive confirmation, and the date and
+    time pickers opened from the sheet (through each picker's `builder`) use
     `ProtocolsLockSheetGuard`, so they close when the app locks and an unsaved sheet is
-    discarded. While locked, the Progress row shows a lock icon and no names, counts or values.
+    discarded. The sheet's comparator menu closes with the sheet: the guard keeps locked
+    content mounted but offstage and pops any unguarded route above its own (such as that
+    menu) before removing its route. While locked, the Progress row shows a lock icon and no names, counts or values.
     The Effect view and
     the target-outcome picker are opened only from Protocols screens, which are already behind the
     lock. Activity feed labels for Metric Readings are generic and name no Lab Test. The lock is a
@@ -740,7 +754,7 @@ The sheet's state is a `CollectionDraft`:
 
 ```text
 CollectionDraft {
-  collectedDate: DateTime (date part only),  collectedTime: TimeOfDay?,
+  collectedDate: DateTime (date part only),  collectedTime: ({int hour, int minute})?,
   labName: String?,  reportStatus: ReportStatus (final | interim),  fasting: bool,
   rows: List<CollectionDraftRow>
 }
@@ -750,12 +764,16 @@ CollectionDraftRow {
 }
 ```
 
-`collected` is `YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` when a time is set. `entered` is built from
+`collectedTime` is a plain record, not Flutter's `TimeOfDay`, so the repository that takes the
+draft imports nothing from Flutter (the sheet converts at the time picker). `collected` is
+`YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` when a time is set. `entered` is built from
 the comparator and value as in [Storage](#storage); `≤` and `≥` are written `<=` and `>=`.
 `fasting` false is stored as null. `enteredUnit` is the Lab Test's `unit`.
 
 **Save** runs the reading rules on every row and the app's request rules (`lab_result_repeated`,
-`lab_result_replaces`), shows each hard reject on its row, lists every soft warning in one
+`lab_result_replaces`), shows each hard reject on its row (with no date chosen, the rows are
+checked against today as a stand-in date and `lab_collected_missing` shows on the date field,
+so every hard reject shows on the first Save), lists every soft warning in one
 confirmation dialog, and then writes every new Lab Metric and Lab Result in one transaction with
 one Activity Log Batch. Nothing is written before Save: if the app is killed, only the unsaved
 sheet is lost, never half a collection.
@@ -792,7 +810,9 @@ sheet is lost, never half a collection.
     an Agent cannot move, archive or backdate a stored result through another Metric. For a
     reading with `labTestKey`:
     *   a reading `id` that already exists is rejected (`lab_result_exists`), unless the request is
-        a replay, which the idempotency receipt answers before any validation;
+        a replay. The idempotency receipt is read first, and a replayed lab reading is answered from
+        its stored row without the lab rules; the request's schema and its other readings are
+        still checked as for any batch before the duplicate response is returned;
     *   `deletedAt` is rejected (`lab_archive_not_allowed`): Agents do not archive lab results in
         phase 1;
     *   `updatedAt` is the server clock, whatever the request sends;
@@ -801,9 +821,12 @@ sheet is lost, never half a collection.
 *   **`listAgentMetricReadings`**: when the request's `metricId` or `metricKey` filter resolves to
     any Lab Metric, the read expands to every Metric with that Lab Metric's key, collapses them,
     then applies the `source`, `provenance` and date filters, the endpoint's existing order and
-    the cursor, so the cursor pages over the collapsed list. Archived rows are never returned for
-    Lab Metrics, even with `includeArchived=true`, because the collapse drops them. Each reading
-    keeps its own `metricId`, so readings of one Lab Test can name sibling Lab Metrics. Each
+    the cursor, so the cursor pages over the collapsed list. A read with neither filter does the
+    same for every Lab Test the user has: each key's collapsed results replace its Lab Metrics'
+    raw rows and merge with the other Metrics' readings in the endpoint's order. A filter that
+    names a non-lab Metric reads no lab row. Archived rows are never returned for Lab Metrics,
+    even with `includeArchived=true`, because the collapse drops them. Each reading keeps its own
+    `metricId`, so readings of one Lab Test can name sibling Lab Metrics. Each
     carries its `lab` object in `valueJson`; `trendValue` is never present.
 *   **`listAgentMetrics`**: a Lab Metric's `canonicalKey` is its `labTestKey`, and a catalogue key
     in the `metricKey` filter matches only Metrics with that `lab_test_key`. It may list two
@@ -1392,7 +1415,7 @@ Covers V9, and V10 for Agent requests.
 | `apps/server/src/app.ts` | Modify | Mount `GET /agent/lab-tests` with `app.openapi`, behind the same Agent bearer authentication and rate limit as the other Agent reads. |
 | `apps/server/src/index.ts` | Modify | Export `listAgentLabTests`. |
 | `apps/server/src/metric-identity.ts` | Modify | `findLabMetric(db, {userId, labTestKey})` (live, lowest sort order, then id); `labMetricIds(db, {userId, labTestKey})` (every row with the key, archived included); `readCollapsedLabReadings(db, {userId, labTestKey, metricIds?})`, the one key-join and collapse that `lab_result_replaces`, `listAgentMetricReadings` and the Effect window all call, anchored by `metricReadingAnchor`; `stableMetricId` moved here from `agent-metrics.ts` and exported, so both modules use one copy. |
-| `apps/server/src/agent-metrics.ts` | Modify | **Schema:** `AgentMetricBatchWriteReadingSchema` makes `metricId` optional and adds optional `labTestKey`; the scalar value gains the permissive `lab` schema. **Write:** request rules and reading rules run before normalisation, in [Validation](#validation)'s order, each issue keeping its code; the Lab Metric controls and server-set fields in [Agent surface](#agent-surface); find or create the Lab Metric as in [Finding the Lab Metric](#finding-the-lab-metric-for-a-lab-test), adding it to `preparedMetrics`; `lab_result_replaces` computed against the user's stored rows for the identity. **Reads:** `listAgentMetrics` sets `canonicalKey` to the `labTestKey` for Lab Metrics; `metricMatchesMetricKey` matches a catalogue key only against `lab_test_key`; `listAgentMetricReadings` expands, collapses and pages as in [Agent surface](#agent-surface), never returns archived lab rows and never adds `trendValue`. |
+| `apps/server/src/agent-metrics.ts` | Modify | **Schema:** `AgentMetricBatchWriteReadingSchema` makes `metricId` optional and adds optional `labTestKey`; the scalar value gains the permissive `lab` schema. **Write:** request rules and reading rules run before normalisation, in the order [Validation](#validation)'s "Agent rule order" gives, each issue keeping its code; the Lab Metric controls and server-set fields in [Agent surface](#agent-surface); find or create the Lab Metric as in [Finding the Lab Metric](#finding-the-lab-metric-for-a-lab-test), adding it to `preparedMetrics`; `lab_result_replaces` computed against the user's stored rows for the identity. **Reads:** `listAgentMetrics` sets `canonicalKey` to the `labTestKey` for Lab Metrics; `metricMatchesMetricKey` matches a catalogue key only against `lab_test_key`; `listAgentMetricReadings` expands, collapses and pages as in [Agent surface](#agent-surface), never returns archived lab rows and never adds `trendValue`. |
 | `apps/server/src/agent-protocols.ts` | Modify | `resolveMetric` gains a Lab Metric branch: a catalogue key resolves through `labMetricIds`, never by name. `readAgentEffectWindow` reads the samples of those ids, collapses the whole series, then windows. |
 | `apps/server/src/agent-mcp.ts` | Modify | `agent_list_lab_tests` tool; `agent_batch_write_metrics` and `agent_list_metric_readings` descriptions mention `labTestKey`, `lab`, the collapse and the Trend exclusion. |
 | `packages/contract/src/agent-skill-reference.ts` | Modify | `listAgentLabTests: "list-lab-tests"` in `AGENT_SKILL_COMMAND_NAMES` and `listAgentLabTests: "agent_list_lab_tests"` in `AGENT_MCP_TOOL_NAMES`. |

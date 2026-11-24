@@ -1245,11 +1245,11 @@ test(
 );
 
 test(
-  "includeTrend adds no trendValue to lab readings while a body-weight reading still gets one",
+  "an unfiltered read collapses lab rows by key, drops archived ones and gives them no trendValue",
   { skip: databaseSkip },
   async () => {
     await withLabUser(async ({ database, userId, app }) => {
-      const { ids } = await seedTwoLabMetrics(database, { userId, app });
+      const { ids, metricA } = await seedTwoLabMetrics(database, { userId, app });
       const bodyWeightId = `bw-${randomUUID()}`;
       const weightReadingId = `bw-reading-${randomUUID()}`;
       await insertBodyWeightMetric(database, { id: bodyWeightId, userId });
@@ -1261,15 +1261,67 @@ test(
         atTime: new Date("2026-03-05T00:00:00.000Z")
       });
 
-      const response = await getAgent(app, "/agent/metrics/readings?includeTrend=true");
-      assert.equal(response.status, 200);
-      const body = await response.json();
-      const byId = new Map(body.readings.map((reading) => [reading.id, reading]));
-      assertTrend(byId.get(weightReadingId), 80);
-      // An unfiltered read is not collapsed, but no lab reading has a Trend.
-      for (const id of [ids.interim, ids.final, ids.april]) {
-        assert.ok(byId.has(id), id);
-        assert.equal("trendValue" in byId.get(id), false, id);
+      for (const query of ["includeTrend=true", "includeTrend=true&includeArchived=true"]) {
+        const response = await getAgent(app, `/agent/metrics/readings?${query}`);
+        assert.equal(response.status, 200, query);
+        const body = await response.json();
+        // Every reader collapses by key: the interim is hidden by its final
+        // on the other Lab Metric, the archived lab row never comes back,
+        // and the lab results merge into the list's order.
+        assert.deepEqual(
+          body.readings.map((reading) => reading.id),
+          [weightReadingId, ids.final, ids.april],
+          query
+        );
+        assert.equal(body.totalMatched, 3, query);
+        const byId = new Map(body.readings.map((reading) => [reading.id, reading]));
+        assertTrend(byId.get(weightReadingId), 80);
+        for (const id of [ids.final, ids.april]) {
+          assert.equal("trendValue" in byId.get(id), false, `${query} ${id}`);
+        }
+      }
+
+      // The cursor pages over the merged list.
+      const firstPage = await (
+        await getAgent(app, "/agent/metrics/readings?limit=2")
+      ).json();
+      assert.deepEqual(
+        firstPage.readings.map((reading) => reading.id),
+        [weightReadingId, ids.final]
+      );
+      const secondPage = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor)}`
+        )
+      ).json();
+      assert.deepEqual(
+        secondPage.readings.map((reading) => reading.id),
+        [ids.april]
+      );
+      assert.equal(secondPage.nextCursor, null);
+
+      // A non-lab filter reads no lab row at all.
+      const weightOnly = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?metricId=${encodeURIComponent(bodyWeightId)}&includeArchived=true`
+        )
+      ).json();
+      assert.deepEqual(
+        weightOnly.readings.map((reading) => reading.id),
+        [weightReadingId]
+      );
+
+      // A Lab Metric's metricId with a non-lab metricKey, and a non-lab
+      // metricId with a Lab Test key, name different keys: an empty page.
+      for (const query of [
+        `metricId=${encodeURIComponent(metricA)}&metricKey=${encodeURIComponent("Body Weight")}`,
+        `metricId=${encodeURIComponent(bodyWeightId)}&metricKey=testosterone_total`
+      ]) {
+        const body = await (await getAgent(app, `/agent/metrics/readings?${query}`)).json();
+        assert.deepEqual(body.readings, [], query);
+        assert.equal(body.totalMatched, 0, query);
       }
     });
   }

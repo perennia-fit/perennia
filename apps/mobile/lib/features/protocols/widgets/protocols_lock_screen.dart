@@ -53,11 +53,21 @@ class ProtocolsLockGate extends ConsumerWidget {
 /// would stay on screen, names and all. Wrap the content of every Protocols
 /// sheet and dialog in this.
 ///
-/// While the state is locked or unavailable it renders nothing and removes its
-/// own route after the frame. It uses `removeRoute`, not `pop`, because a
+/// While the state is locked or unavailable it hides its content and removes
+/// its own route after the frame. It uses `removeRoute`, not `pop`, because a
 /// `pop` removes whatever is on top: with nested sheets each guard must remove
 /// the route it sits in. The route's future completes with null, as a dismissal
 /// does.
+///
+/// The content stays mounted but [Offstage] (not painted, not hit-tested, out
+/// of the semantics tree) until the route goes, rather than being swapped for
+/// an empty box. Disposing it during this build would dispose an open
+/// dropdown's button, whose dispose removes the menu's route while the tree is
+/// locked, and Flutter throws. Routes above its own on the same navigator that
+/// carry no guard (that dropdown's menu) are popped first, so nothing opened
+/// from a Protocols sheet stays above the lock. A picker on another navigator
+/// (the root, for the date and time pickers) needs its own guard, through the
+/// picker's `builder` (docs/designs/lab-results.md, "The lock").
 ///
 /// While the lock state is still loading it renders [child], unlike the gate:
 /// a sheet is only reachable from a screen the gate has already let through.
@@ -69,18 +79,23 @@ class ProtocolsLockSheetGuard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lockState = ref.watch(protocolsLockControllerProvider).value;
+    // Always an Offstage, so locking changes a flag, not the widget type:
+    // a new type would rebuild the whole subtree and dispose the content.
     if (lockState == null || !(lockState.isLocked || lockState.isUnavailable)) {
-      return child;
+      return Offstage(offstage: false, child: child);
     }
 
     final navigator = Navigator.of(context);
     final route = ModalRoute.of(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (route != null && route.isActive) {
+        if (!route.isCurrent) {
+          navigator.popUntil((candidate) => candidate == route);
+        }
         navigator.removeRoute(route);
       }
     });
-    return const SizedBox.shrink();
+    return Offstage(child: child);
   }
 }
 

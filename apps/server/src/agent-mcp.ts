@@ -2062,7 +2062,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metric Readings",
       description:
-        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
+        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId. A read with no Metric filter collapses every Lab Test's rows the same way. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
       inputSchema: AgentMcpMetricReadingsInputSchema,
       outputSchema: AgentMetricReadingsResponseSchema
     },

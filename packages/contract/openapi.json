@@ -21712,7 +21712,7 @@
           "Agent Reads"
         ],
         "summary": "List a bounded page of Metric Readings.",
-        "description": "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
+        "description": "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. A read with no Metric filter collapses every Lab Test's rows the same way. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
         "security": [
           {
             "bearerAuth": []

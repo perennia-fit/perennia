@@ -649,7 +649,7 @@ export const agentMetricReadingsRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "List a bounded page of Metric Readings.",
   description:
-    "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
+    "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. A read with no Metric filter collapses every Lab Test's rows the same way. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
   security: [{ bearerAuth: [] }],
   request: {
     query: AgentMetricReadingsQuerySchema
@@ -931,16 +931,35 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
             eq(schema.metricReadings.userId, userId),
             isNull(schema.metricReadings.deletedAt)
           );
-      const rows = await db
-        .select()
-        .from(schema.metricReadings)
-        .where(baseWhere)
-        .orderBy(
-          asc(schema.metricReadings.atTime),
-          asc(schema.metricReadings.windowStartedAt),
-          asc(schema.metricReadings.updatedAt),
-          asc(schema.metricReadings.id)
-        );
+      const labMetrics = await userLabMetricIdsByKey(db, userId);
+      const labMetricIdSet = new Set([...labMetrics.values()].flat());
+      // Every reader collapses Lab Results by key (docs/designs/lab-results.md,
+      // "Result identity and the collapse"), so a read with no Lab Metric
+      // filter never sees a Lab Metric's raw rows: they are replaced by each
+      // key's collapsed results, which drop archived rows whatever
+      // `includeArchived` says, and merged back in the list's order. A
+      // non-lab metricId or metricKey filter cannot match a Lab Metric, so
+      // only an unfiltered read needs the lab rows at all.
+      const rawRows = (
+        await db
+          .select()
+          .from(schema.metricReadings)
+          .where(baseWhere)
+          .orderBy(
+            asc(schema.metricReadings.atTime),
+            asc(schema.metricReadings.windowStartedAt),
+            asc(schema.metricReadings.updatedAt),
+            asc(schema.metricReadings.id)
+          )
+      ).filter((row) => !labMetricIdSet.has(row.metricId));
+      const labRows =
+        query.metricId === undefined && metricKeyIds === null
+          ? await readAllCollapsedLabReadings(db, userId, labMetrics)
+          : [];
+      const rows =
+        labRows.length === 0
+          ? rawRows
+          : [...rawRows, ...labRows].sort(compareReadingListOrder);
 
       const from = parseOptionalDate(query.from);
       const to = parseOptionalDate(query.to);
@@ -972,7 +991,7 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
 
       const trendByReadingId =
         query.includeTrend === "true"
-          ? readingTrendsForPage(rows, page, await userLabMetricIds(db, userId))
+          ? readingTrendsForPage(rows, page, labMetricIdSet)
           : null;
 
       return AgentMetricReadingsResponseSchema.parse({
@@ -2536,15 +2555,39 @@ async function resolveMetricIdsForMetricKey(
   );
 }
 
-/** The ids of every Metric of the user with a `labTestKey`, archived included. */
-async function userLabMetricIds(db: ServerDatabase, userId: string) {
+/**
+ * The ids of every Metric of the user with a `labTestKey`, archived
+ * included, grouped by that key and sorted by id within it.
+ */
+async function userLabMetricIdsByKey(db: ServerDatabase, userId: string) {
   const rows = await db
-    .select({ id: schema.metrics.id })
+    .select({ id: schema.metrics.id, labTestKey: schema.metrics.labTestKey })
     .from(schema.metrics)
     .where(
       and(eq(schema.metrics.userId, userId), isNotNull(schema.metrics.labTestKey))
-    );
-  return new Set(rows.map((row) => row.id));
+    )
+    .orderBy(asc(schema.metrics.id));
+  const byKey = new Map<string, string[]>();
+  for (const row of rows) {
+    const ids = byKey.get(row.labTestKey!) ?? [];
+    ids.push(row.id);
+    byKey.set(row.labTestKey!, ids);
+  }
+  return byKey;
+}
+
+/** Every Lab Test's collapsed Lab Results for the user, one key at a time. */
+async function readAllCollapsedLabReadings(
+  db: ServerDatabase,
+  userId: string,
+  labMetrics: ReadonlyMap<string, readonly string[]>
+) {
+  const perKey = await Promise.all(
+    [...labMetrics].map(([labTestKey, metricIds]) =>
+      readCollapsedLabReadings(db, { userId, labTestKey, metricIds })
+    )
+  );
+  return perKey.flat();
 }
 
 /**
