@@ -3304,5 +3304,248 @@
   "profileEquipmentGroupOther": "Other",
   "@profileEquipmentGroupOther": {
     "description": "Heading of the group that holds stored equipment ids outside the registry."
+  },
+  "labTestPickerTitle": "Choose a Lab Test",
+  "@labTestPickerTitle": {
+    "description": "Title of the Lab Test picker sheet opened from a result row of the lab entry sheet."
+  },
+  "labTestPickerRecognisedTitle": "{count, plural, =1{Perennia recognises 1 lab test} other{Perennia recognises {count} lab tests}}",
+  "@labTestPickerRecognisedTitle": {
+    "description": "Title of the read-only Lab Test picker that lists every Lab Test in the catalogue.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "labTestPickerSearchHint": "Search lab tests",
+  "@labTestPickerSearchHint": {
+    "description": "Hint of the Lab Test picker's search field, which matches names and other names."
+  },
+  "labTestPickerEmpty": "No lab tests match your search.",
+  "@labTestPickerEmpty": {
+    "description": "Shown in the Lab Test picker when the search matches no Lab Test."
+  },
+  "labEntryTitle": "Add results",
+  "@labEntryTitle": {
+    "description": "Title of the lab entry sheet, where one collection's lab results are entered."
+  },
+  "labEntryDateLabel": "Collection date",
+  "@labEntryDateLabel": {
+    "description": "Label above the required collection date field of the lab entry sheet."
+  },
+  "labEntryDatePrompt": "Choose a date",
+  "@labEntryDatePrompt": {
+    "description": "Shown in the collection date field before a date is chosen."
+  },
+  "labEntryTimeLabel": "Collection time (optional)",
+  "@labEntryTimeLabel": {
+    "description": "Label above the optional collection time field of the lab entry sheet."
+  },
+  "labEntryTimePrompt": "Add a time",
+  "@labEntryTimePrompt": {
+    "description": "Shown in the collection time field before a time is chosen."
+  },
+  "labEntryClearTime": "Clear time",
+  "@labEntryClearTime": {
+    "description": "Tooltip and screen-reader label of the button that removes the collection time."
+  },
+  "labEntryLabNameLabel": "Lab name (optional)",
+  "@labEntryLabNameLabel": {
+    "description": "Label above the optional lab name field of the lab entry sheet. The lab, never the patient."
+  },
+  "labEntryReportStatusLabel": "Report status",
+  "@labEntryReportStatusLabel": {
+    "description": "Label above the Final | Interim choice of the lab entry sheet."
+  },
+  "labEntryReportStatusFinal": "Final",
+  "@labEntryReportStatusFinal": {
+    "description": "Report status choice: the lab printed the results as final."
+  },
+  "labEntryReportStatusInterim": "Interim",
+  "@labEntryReportStatusInterim": {
+    "description": "Report status choice: the lab printed the results as interim."
+  },
+  "labEntryFasting": "Fasting",
+  "@labEntryFasting": {
+    "description": "Switch on the lab entry sheet: the report says the sample was fasting."
+  },
+  "labEntryRowTitle": "Result {number}",
+  "@labEntryRowTitle": {
+    "description": "Heading of one result row card in the lab entry sheet, numbered from 1.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "labEntryLabTestLabel": "Lab Test",
+  "@labEntryLabTestLabel": {
+    "description": "Label above a result row's Lab Test chooser."
+  },
+  "labEntryLabTestPrompt": "Choose a Lab Test",
+  "@labEntryLabTestPrompt": {
+    "description": "Shown in a result row's Lab Test chooser before a Lab Test is chosen."
+  },
+  "labEntryComparatorLabel": "Comparator",
+  "@labEntryComparatorLabel": {
+    "description": "Label above a result row's comparator chooser (none, <, ≤, >, ≥)."
+  },
+  "labEntryComparatorNone": "None",
+  "@labEntryComparatorNone": {
+    "description": "Comparator choice for a plain number with no comparator."
+  },
+  "labEntryComparatorLt": "Less than",
+  "@labEntryComparatorLt": {
+    "description": "Screen-reader label of the < comparator choice."
+  },
+  "labEntryComparatorLe": "Less than or equal to",
+  "@labEntryComparatorLe": {
+    "description": "Screen-reader label of the ≤ comparator choice."
+  },
+  "labEntryComparatorGt": "Greater than",
+  "@labEntryComparatorGt": {
+    "description": "Screen-reader label of the > comparator choice."
+  },
+  "labEntryComparatorGe": "Greater than or equal to",
+  "@labEntryComparatorGe": {
+    "description": "Screen-reader label of the ≥ comparator choice."
+  },
+  "labEntryValueLabel": "Value",
+  "@labEntryValueLabel": {
+    "description": "Label above a result row's value field."
+  },
+  "labEntryUnitLabel": "Unit",
+  "@labEntryUnitLabel": {
+    "description": "Label above a result row's fixed unit, which is the Lab Test's unit and can't be edited."
+  },
+  "labEntryPrintedRangeLabel": "Printed range",
+  "@labEntryPrintedRangeLabel": {
+    "description": "Label above a result row's field for the range text as the lab printed it. Also names the field in a too-long message."
+  },
+  "labEntryPrintedFlagLabel": "Printed flag",
+  "@labEntryPrintedFlagLabel": {
+    "description": "Label above a result row's field for the flag as the lab printed it (for example H or +). Also names the field in a too-long message."
+  },
+  "labEntryLabNameField": "Lab name",
+  "@labEntryLabNameField": {
+    "description": "Names the lab name field in a too-long message."
+  },
+  "labEntryRemoveRow": "Remove result",
+  "@labEntryRemoveRow": {
+    "description": "Tooltip and screen-reader label of the button that removes a result row from the lab entry sheet."
+  },
+  "labEntryAddRow": "Add result",
+  "@labEntryAddRow": {
+    "description": "Button that adds an empty result row to the lab entry sheet."
+  },
+  "labEntrySave": "Save",
+  "@labEntrySave": {
+    "description": "Saves the lab entry sheet's collection."
+  },
+  "labEntryWarningTitle": "Check before saving",
+  "@labEntryWarningTitle": {
+    "description": "Title of the dialog listing every soft warning of one lab entry Save."
+  },
+  "labEntryWarningLine": "{name}: {message}",
+  "@labEntryWarningLine": {
+    "description": "One warning in the lab entry warning dialog: the Lab Test's name, then the warning.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "labEntryWarningCancel": "Cancel",
+  "@labEntryWarningCancel": {
+    "description": "Closes the lab entry warning dialog without saving."
+  },
+  "labEntryWarningSaveAnyway": "Save anyway",
+  "@labEntryWarningSaveAnyway": {
+    "description": "Saves the collection despite the warnings listed in the dialog."
+  },
+  "labIssueCollectedMissing": "Give the collection date.",
+  "@labIssueCollectedMissing": {
+    "description": "Lab validation (lab_collected_missing): no collection date."
+  },
+  "labIssueCollectedInvalid": "Collection date must be YYYY-MM-DD or YYYY-MM-DDTHH:mm.",
+  "@labIssueCollectedInvalid": {
+    "description": "Lab validation (lab_collected_invalid)."
+  },
+  "labIssueCollectedFuture": "Collection date can't be more than one day in the future.",
+  "@labIssueCollectedFuture": {
+    "description": "Lab validation (lab_collected_future)."
+  },
+  "labIssueTimeAnchorMismatch": "timeAnchor.localDateTime must match lab.collected.",
+  "@labIssueTimeAnchorMismatch": {
+    "description": "Lab validation (lab_time_anchor_mismatch). Not expected from the app's own entry."
+  },
+  "labIssueUnitNotAccepted": "Unit not accepted. Use {units}.",
+  "@labIssueUnitNotAccepted": {
+    "description": "Lab validation (lab_unit_not_accepted), listing the Lab Test's unit then its other spellings.",
+    "placeholders": {
+      "units": {
+        "type": "String"
+      }
+    }
+  },
+  "labIssueValueInvalid": "Enter a number, optionally after <, <=, > or >=.",
+  "@labIssueValueInvalid": {
+    "description": "Lab validation (lab_value_invalid)."
+  },
+  "labIssueValueOutOfBounds": "Value must be between {min} and {max} {unit}.",
+  "@labIssueValueOutOfBounds": {
+    "description": "Lab validation (lab_value_out_of_bounds), with the Lab Test's hard bounds and unit.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "labIssueValueImplausible": "Value is unusual for this Lab Test. Check it before saving.",
+  "@labIssueValueImplausible": {
+    "description": "Lab validation warning (lab_value_implausible)."
+  },
+  "labIssueTextTooLong": "{field} is too long.",
+  "@labIssueTextTooLong": {
+    "description": "Lab validation (lab_text_too_long), naming the field.",
+    "placeholders": {
+      "field": {
+        "type": "String"
+      }
+    }
+  },
+  "labIssueReportStatusInvalid": "Report status must be final or interim.",
+  "@labIssueReportStatusInvalid": {
+    "description": "Lab validation (lab_report_status_invalid)."
+  },
+  "labIssueFastingInvalid": "Fasting must be true or empty.",
+  "@labIssueFastingInvalid": {
+    "description": "Lab validation (lab_fasting_invalid)."
+  },
+  "labIssueTestUnknown": "Choose a Lab Test.",
+  "@labIssueTestUnknown": {
+    "description": "Lab validation (lab_test_unknown) in the app: a result row has no Lab Test."
+  },
+  "labIssueResultRepeated": "This Lab Test is already in this collection.",
+  "@labIssueResultRepeated": {
+    "description": "Lab validation (lab_result_repeated): the same Lab Test on two rows."
+  },
+  "labIssueResultReplaces": "This replaces a saved result for the same collection.",
+  "@labIssueResultReplaces": {
+    "description": "Lab validation warning (lab_result_replaces)."
+  },
+  "labIssueFallback": "Check this field.",
+  "@labIssueFallback": {
+    "description": "Shown for a lab validation rule this screen has no message for."
   }
 }
