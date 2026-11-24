@@ -802,25 +802,45 @@ test(
 );
 
 test(
-  "a replayed lab write returns duplicate and writes nothing",
+  "a replayed lab write returns its stored response as duplicate and writes nothing",
   { skip: databaseSkip },
   async () => {
     await withLabUser(async ({ database, userId, app }) => {
-      const request = labBatch(`lab-replay-${randomUUID()}`, [labReading()]);
-      const first = await postAgentMetrics(app, request);
-      assert.equal(first.status, 200);
-      const firstBody = await first.json();
-      const counts = await labRowCounts(database, userId);
+      const asDuplicate = (results) =>
+        results.map((result) => ({ ...result, applied: false, outcome: "duplicate" }));
+      const expectReplay = async (request) => {
+        const first = await postAgentMetrics(app, request);
+        assert.equal(first.status, 200);
+        const firstBody = await first.json();
+        const counts = await labRowCounts(database, userId);
 
-      const replay = await postAgentMetrics(app, request);
-      assert.equal(replay.status, 200);
-      const replayBody = await replay.json();
-      assert.equal(replayBody.duplicate, true);
-      assert.equal(replayBody.readings.length, 1);
-      assert.equal(replayBody.readings[0].metricId, firstBody.readings[0].metricId);
-      assert.equal(replayBody.readings[0].outcome, "duplicate");
-      assert.deepEqual(replayBody.readings[0].warnings, []);
-      assert.deepEqual(await labRowCounts(database, userId), counts);
+        const replay = await postAgentMetrics(app, request);
+        assert.equal(replay.status, 200);
+        const replayBody = await replay.json();
+        assert.equal(replayBody.duplicate, true);
+        assert.deepEqual(replayBody.metrics, asDuplicate(firstBody.metrics));
+        assert.deepEqual(replayBody.readings, asDuplicate(firstBody.readings));
+        assert.deepEqual(await labRowCounts(database, userId), counts);
+        return firstBody;
+      };
+
+      // The first write creates the Lab Metric: the replay still names it.
+      const created = await expectReplay(
+        labBatch(`lab-replay-${randomUUID()}`, [labReading()])
+      );
+      assert.equal(created.metrics.length, 1);
+      assert.equal(created.metrics[0].id, created.readings[0].metricId);
+      assert.equal(created.metrics[0].outcome, "applied");
+
+      // A revised value warns: the replay returns the same warning, though
+      // the reading it warned about is now the saved result.
+      const revised = await expectReplay(
+        labBatch(`lab-replay-revised-${randomUUID()}`, [
+          labReading({ entered: "21.0" })
+        ])
+      );
+      assert.deepEqual(revised.metrics, []);
+      assert.deepEqual(revised.readings[0].warnings, ["lab_result_replaces"]);
     });
   }
 );
@@ -923,6 +943,37 @@ test(
         "lab_archive_not_allowed",
         "readings[0].deletedAt"
       );
+
+      // A stored Lab Result can't be moved, archived or backdated by sending
+      // its id under a custom Metric either.
+      const [storedBefore] = await database.sql`
+        select * from metric_readings where id = ${stored.id}
+      `;
+      const overwrite = {
+        id: stored.id,
+        metricId: customMetric.id,
+        value: { shape: "scalar", entered: "1" },
+        timeAnchor: { atTime: "2026-01-01T00:00:00.000Z" },
+        updatedAt: new Date(Date.now() + 60_000).toISOString(),
+        deletedAt: "2026-01-01T00:00:00.000Z",
+        provenance: "user",
+        source: "lab"
+      };
+      const overwriteError = await expectRejected(
+        batch([overwrite], [customMetric]),
+        "lab_result_exists",
+        "readings[0].id"
+      );
+      assert.equal(overwriteError.readingId, stored.id);
+      await expectRejected(
+        batch([{ ...overwrite, metricId: bodyWeightId, deletedAt: null }]),
+        "lab_result_exists",
+        "readings[0].id"
+      );
+      const [storedAfter] = await database.sql`
+        select * from metric_readings where id = ${stored.id}
+      `;
+      assert.deepEqual(storedAfter, storedBefore);
       const unit = await expectRejected(
         batch([labReading({ unit: "ng/dL" })]),
         "lab_unit_not_accepted",

@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray, isNotNull, isNull, max } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 
 import {
   agentBatchRequestFingerprint,
@@ -16,16 +16,12 @@ import {
 } from "./data/lab-test-catalogue.generated.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import {
-  collapseLabResults,
-  decodeLab,
-  parseEntered,
-  type LabReadingRef
-} from "./lab-results.js";
+import { decodeLab, parseEntered } from "./lab-results.js";
 import {
   findLabMetric,
-  labMetricIds,
   lockMetricIdentity,
+  metricReadingAnchor,
+  readCollapsedLabReadings,
   stableMetricId
 } from "./metric-identity.js";
 import {
@@ -815,6 +811,8 @@ type PreparedMetric = {
    * a Lab Test").
    */
   insertOnConflictDoNothing: boolean;
+  /** True for a Lab Metric the batch creates, unarchives or keys. */
+  lab: boolean;
   values: typeof schema.metrics.$inferInsert;
   afterImage: Record<string, unknown>;
   result: z.infer<typeof AgentMetricBatchWriteMetricResultSchema>;
@@ -824,6 +822,8 @@ type PreparedReading = {
   id: string;
   updatedAt: Date;
   deletedAt: Date | null;
+  /** True for a reading written by labTestKey. */
+  lab: boolean;
   values: typeof schema.metricReadings.$inferInsert;
   afterImage: Record<string, unknown>;
   result: z.infer<typeof AgentMetricBatchWriteReadingResultSchema>;
@@ -834,6 +834,12 @@ type PreparedMetricBatch =
       accepted: true;
       metrics: PreparedMetric[];
       readings: PreparedReading[];
+      /**
+       * On a replay, the Lab Metrics the original created, unarchived or
+       * keyed, from its receipt: they follow `metrics` in the duplicate
+       * response, as they followed the request's rows in the original.
+       */
+      replayedLabMetrics: z.infer<typeof AgentMetricBatchWriteMetricResultSchema>[];
     }
   | {
       accepted: false;
@@ -1002,18 +1008,18 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
         // the lab rules, which would reject its now-stored reading ids with
         // lab_result_exists (docs/designs/lab-results.md, "Agent surface").
         // The marker claim below still decides duplicate and writes nothing.
-        const replay = await agentMetricBatchReceiptMatches(transaction, {
-          userId,
-          batchId,
-          requestFingerprint
-        });
+        const { replay, labReplay } = await agentMetricBatchReceiptMatches(
+          transaction,
+          { userId, batchId, requestFingerprint }
+        );
         const prepared = await prepareMetricBatch({
           transaction,
           userId,
           deviceId,
           request,
           serverClock,
-          replay
+          replay,
+          labReplay
         });
         if (!prepared.accepted) {
           return prepared;
@@ -1049,9 +1055,10 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
             serverClock: serverClock.toISOString(),
             activityLogEntries: 0,
             applied: [],
-            metrics: prepared.metrics.map((metric) =>
-              metricResultWithOutcome(metric.result, "duplicate")
-            ),
+            metrics: [
+              ...prepared.metrics.map((metric) => metric.result),
+              ...prepared.replayedLabMetrics
+            ].map((result) => metricResultWithOutcome(result, "duplicate")),
             readings: prepared.readings.map((reading) =>
               readingResultWithOutcome(reading.result, "duplicate")
             )
@@ -1199,6 +1206,27 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
           );
         }
 
+        const labMetricIds = new Set(
+          prepared.metrics.filter((metric) => metric.lab).map((metric) => metric.id)
+        );
+        const labReadingIds = new Set(
+          prepared.readings.filter((reading) => reading.lab).map((reading) => reading.id)
+        );
+        if (labMetricIds.size > 0 || labReadingIds.size > 0) {
+          await storeAgentMetricBatchLabReplay(transaction, {
+            userId,
+            batchId,
+            labReplay: {
+              metrics: metricResults.filter((result) => labMetricIds.has(result.id)),
+              readingWarnings: Object.fromEntries(
+                readingResults
+                  .filter((result) => labReadingIds.has(result.id))
+                  .map((result) => [result.id, result.warnings])
+              )
+            }
+          });
+        }
+
         return {
           accepted: true,
           duplicate: false,
@@ -1234,7 +1262,8 @@ async function prepareMetricBatch({
   deviceId,
   request,
   serverClock,
-  replay
+  replay,
+  labReplay
 }: {
   transaction: MutationDatabase;
   userId: string;
@@ -1242,32 +1271,38 @@ async function prepareMetricBatch({
   request: AgentMetricBatchWriteRequest;
   serverClock: Date;
   replay: boolean;
+  labReplay: AgentMetricBatchLabReplay | null;
 }): Promise<PreparedMetricBatch> {
   const errors: AgentMetricBatchWriteIssue[] = [];
   const warnings: AgentMetricBatchWriteIssue[] = [];
   const seenMetricIds = new Set<string>();
   const seenReadingIds = new Set<string>();
+  const readingIds = [...new Set(request.readings.map((reading) => reading.id))];
+  const existingReadingRows = await readMetricReadingRowsById(
+    transaction,
+    readingIds
+  );
+  // The stored readings' own Metrics are read too, so that a reading whose
+  // id is already a Lab Result is caught whatever Metric the request names.
   const metricIds = [
     ...new Set([
       ...request.metrics.map((metric) => metric.id),
       ...request.readings.flatMap((reading) =>
         reading.metricId === undefined ? [] : [reading.metricId]
+      ),
+      ...[...existingReadingRows.values()].flatMap((row) =>
+        row.userId === userId ? [row.metricId] : []
       )
     ])
   ];
-  const readingIds = [...new Set(request.readings.map((reading) => reading.id))];
   const existingMetricRows = await readMetricRowsById(transaction, metricIds);
-  const existingReadingRows = await readMetricReadingRowsById(
-    transaction,
-    readingIds
-  );
   const requestMetricDefinitions = new Map<string, MetricDefinition>();
   const preparedMetrics: PreparedMetric[] = [];
   const preparedReadings: PreparedReading[] = [];
   // The server's UTC date: "today" for lab_collected_future.
   const today = serverClock.toISOString().slice(0, 10);
   const labMetricsByKey = new Map<string, MetricDefinition>();
-  const savedLabResultsByKey = new Map<string, SavedLabResult[]>();
+  const savedLabResultsByKey = new Map<string, MetricReadingRow[]>();
   let metricIdentityLocked = false;
   let nextLabMetricSortOrder: number | null = null;
 
@@ -1378,6 +1413,7 @@ async function prepareMetricBatch({
       // A new row is inserted with ON CONFLICT DO NOTHING on id, as the spec
       // says; the lock above already makes a conflict unreachable.
       insertOnConflictDoNothing: true,
+      lab: true,
       values: {
         id,
         userId,
@@ -1422,31 +1458,10 @@ async function prepareMetricBatch({
     if (cached !== undefined) {
       return cached;
     }
-    const ids = await labMetricIds(transaction, { userId, labTestKey });
-    const rows =
-      ids.length === 0
-        ? []
-        : await transaction
-            .select()
-            .from(schema.metricReadings)
-            .where(
-              and(
-                eq(schema.metricReadings.userId, userId),
-                inArray(schema.metricReadings.metricId, ids),
-                isNull(schema.metricReadings.deletedAt)
-              )
-            );
-    const saved = collapseLabResults(
-      rows.map((row) => ({
-        id: row.id,
-        labTestKey,
-        lab: row.valueJson?.lab ?? null,
-        atTime: readingAnchor(row).toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-        deletedAt: null,
-        scalarValue: row.scalarValue
-      }))
-    );
+    const saved = await readCollapsedLabReadings(transaction, {
+      userId,
+      labTestKey
+    });
     savedLabResultsByKey.set(labTestKey, saved);
     return saved;
   }
@@ -1461,7 +1476,8 @@ async function prepareMetricBatch({
     source,
     updatedAt,
     deletedAt,
-    ruleWarnings
+    ruleWarnings,
+    lab
   }: {
     reading: AgentMetricBatchWriteReading;
     itemIndex: number;
@@ -1473,6 +1489,7 @@ async function prepareMetricBatch({
     updatedAt: Date;
     deletedAt: Date | null;
     ruleWarnings: string[];
+    lab: boolean;
   }) {
     for (const warning of normalized.warnings) {
       warnings.push(
@@ -1513,6 +1530,7 @@ async function prepareMetricBatch({
       id: reading.id,
       updatedAt,
       deletedAt,
+      lab,
       values: {
         id: reading.id,
         userId,
@@ -1638,6 +1656,7 @@ async function prepareMetricBatch({
       updatedAt,
       deletedAt,
       insertOnConflictDoNothing: false,
+      lab: false,
       values: {
         id: metric.id,
         userId,
@@ -1704,7 +1723,12 @@ async function prepareMetricBatch({
     // before any lab rule: lab_result_exists would reject it otherwise. The
     // receipt claim then returns `duplicate`, so nothing is written.
     if (replay && reading.labTestKey !== undefined && existingReading !== undefined) {
-      preparedReadings.push(replayedLabReading(existingReading));
+      preparedReadings.push(
+        replayedLabReading(
+          existingReading,
+          labReplay?.readingWarnings[existingReading.id] ?? []
+        )
+      );
       continue;
     }
 
@@ -1812,7 +1836,7 @@ async function prepareMetricBatch({
       // the kept saved result with this collection, when its value differs.
       const collected = lab.collected as string;
       const replaced = (await savedLabResults(labTestKey)).find(
-        (saved) => decodeLab(saved.lab)?.collected === collected
+        (saved) => decodeLab(saved.valueJson.lab)?.collected === collected
       );
       if (replaced !== undefined && labValueDiffers(replaced, value.entered)) {
         warnings.push(
@@ -1878,13 +1902,39 @@ async function prepareMetricBatch({
         source: "agent",
         updatedAt: serverClock,
         deletedAt: null,
-        ruleWarnings
+        ruleWarnings,
+        lab: true
       });
       continue;
     }
 
     const metricId = reading.metricId as string;
     if (!replay) {
+      // A stored Lab Result is never changed by an Agent, whatever Metric the
+      // request names: moving it, archiving it or rewriting its timestamps
+      // through a custom Metric is the same overwrite lab_result_exists
+      // stops on the labTestKey path (docs/designs/lab-results.md, CUJ 5).
+      const existingReadingMetric =
+        existingReading === undefined
+          ? undefined
+          : existingMetricRows.get(existingReading.metricId);
+      if (
+        existingReadingMetric !== undefined &&
+        existingReadingMetric.userId === userId &&
+        existingReadingMetric.labTestKey !== null
+      ) {
+        errors.push(
+          readingIssue({
+            field: `readings[${itemIndex}].id`,
+            itemIndex,
+            readingId: reading.id,
+            metricId,
+            rule: "lab_result_exists",
+            message: "Lab results can't be changed. Write a new result."
+          })
+        );
+        continue;
+      }
       const storedMetric = existingMetricRows.get(metricId);
       if (
         storedMetric !== undefined &&
@@ -2014,7 +2064,8 @@ async function prepareMetricBatch({
       source: reading.source,
       updatedAt,
       deletedAt,
-      ruleWarnings: []
+      ruleWarnings: [],
+      lab: false
     });
   }
 
@@ -2025,12 +2076,13 @@ async function prepareMetricBatch({
   return {
     accepted: true,
     metrics: preparedMetrics,
-    readings: preparedReadings
+    readings: preparedReadings,
+    replayedLabMetrics: labReplay?.metrics ?? []
   };
 }
 
 /** A saved Lab Result as `lab_result_replaces` compares it. */
-type SavedLabResult = LabReadingRef & { scalarValue: number | null };
+type SavedLabResult = Pick<MetricReadingRow, "valueJson" | "scalarValue">;
 
 /**
  * Whether [entered] states a different value from [saved], the rule of the
@@ -2043,7 +2095,7 @@ function labValueDiffers(saved: SavedLabResult, entered: string) {
     return false;
   }
   const number = Number(parsed.number);
-  const limit = decodeLab(saved.lab)?.limit ?? null;
+  const limit = decodeLab(saved.valueJson.lab)?.limit ?? null;
   if (limit !== null) {
     return !(parsed.comparator === limit.comparator && number === limit.bound);
   }
@@ -2070,15 +2122,20 @@ function labIssueWirePath(itemIndex: number, field: string) {
 
 /**
  * A replayed lab reading, answered from the row its original request wrote:
- * its Metric, value shape and unit, and no warnings. It is reported as a
- * duplicate and never written.
+ * its Metric, value shape and unit, and the [warnings] the original returned
+ * for it, kept in the batch receipt. It is reported as a duplicate and never
+ * written.
  */
-function replayedLabReading(stored: MetricReadingRow): PreparedReading {
+function replayedLabReading(
+  stored: MetricReadingRow,
+  warnings: readonly string[]
+): PreparedReading {
   const serialized = serializeMetricReadingRow(stored, []);
   return {
     id: stored.id,
     updatedAt: stored.updatedAt,
     deletedAt: stored.deletedAt,
+    lab: true,
     values: { ...stored },
     afterImage: serialized,
     result: AgentMetricBatchWriteReadingResultSchema.parse({
@@ -2086,7 +2143,7 @@ function replayedLabReading(stored: MetricReadingRow): PreparedReading {
       metricId: stored.metricId,
       valueShape: serialized.valueShape,
       unit: serialized.unit,
-      warnings: [],
+      warnings: [...warnings],
       applied: true,
       outcome: "applied"
     })
@@ -2094,8 +2151,28 @@ function replayedLabReading(stored: MetricReadingRow): PreparedReading {
 }
 
 /**
+ * What a lab write's duplicate response needs that the request alone cannot
+ * rebuild: the Lab Metrics the original created, unarchived or keyed (they
+ * are not in the request's `metrics[]`), and each lab reading's warnings
+ * (`lab_result_replaces` depends on what was saved before it). Kept on the
+ * batch receipt after the writes, so that a replay returns the stored
+ * response (docs/designs/lab-results.md, "Agent surface").
+ */
+type AgentMetricBatchLabReplay = {
+  metrics: z.infer<typeof AgentMetricBatchWriteMetricResultSchema>[];
+  readingWarnings: Record<string, string[]>;
+};
+
+const AgentMetricBatchLabReplaySchema = z.object({
+  metrics: z.array(AgentMetricBatchWriteMetricResultSchema),
+  readingWarnings: z.record(z.string(), z.array(z.string().min(1)))
+});
+
+/**
  * Whether this user's receipt for [batchId] already holds this exact request,
- * read without writing, with the same match as `claimAgentBatchReceipt`.
+ * read without writing, with the same match as `claimAgentBatchReceipt`, and
+ * the lab replay data the original kept on it (null when it kept none: no
+ * lab item, or a receipt written before lab results).
  * Read before validation so that a replay of a lab write is answered as a
  * duplicate rather than rejected by `lab_result_exists`
  * (docs/designs/lab-results.md, "Agent surface").
@@ -2107,27 +2184,59 @@ async function agentMetricBatchReceiptMatches(
     batchId,
     requestFingerprint
   }: { userId: string; batchId: string; requestFingerprint: string }
-) {
+): Promise<{ replay: boolean; labReplay: AgentMetricBatchLabReplay | null }> {
   const rows = await transaction
     .select({ afterImage: schema.activityLog.afterImage })
     .from(schema.activityLog)
-    .where(
-      and(
-        eq(schema.activityLog.id, `agent:${batchId}:batch`),
-        eq(schema.activityLog.userId, userId),
-        eq(schema.activityLog.actor, "agent"),
-        eq(schema.activityLog.batchId, batchId),
-        eq(schema.activityLog.entityTable, AGENT_METRIC_BATCH_ENTITY),
-        eq(schema.activityLog.entityId, batchId)
-      )
-    )
+    .where(agentMetricBatchReceiptWhere(userId, batchId))
     .limit(1);
   const receipt = rows[0];
-  return (
+  const replay =
     receipt !== undefined &&
     receipt.afterImage?.kind === "agent_metric_batch" &&
-    receipt.afterImage.requestFingerprint === requestFingerprint
+    receipt.afterImage.requestFingerprint === requestFingerprint;
+  if (!replay) {
+    return { replay: false, labReplay: null };
+  }
+  const parsed = AgentMetricBatchLabReplaySchema.safeParse(
+    receipt.afterImage?.labReplay
   );
+  return { replay: true, labReplay: parsed.success ? parsed.data : null };
+}
+
+/** The batch receipt row of [batchId] for [userId]. */
+function agentMetricBatchReceiptWhere(userId: string, batchId: string) {
+  return and(
+    eq(schema.activityLog.id, `agent:${batchId}:batch`),
+    eq(schema.activityLog.userId, userId),
+    eq(schema.activityLog.actor, "agent"),
+    eq(schema.activityLog.batchId, batchId),
+    eq(schema.activityLog.entityTable, AGENT_METRIC_BATCH_ENTITY),
+    eq(schema.activityLog.entityId, batchId)
+  );
+}
+
+/**
+ * Keeps [labReplay] on the batch receipt the write just claimed, merged into
+ * its after-image, so that a replay of this request returns the same
+ * response ([AgentMetricBatchLabReplay]).
+ */
+async function storeAgentMetricBatchLabReplay(
+  transaction: MutationDatabase,
+  {
+    userId,
+    batchId,
+    labReplay
+  }: { userId: string; batchId: string; labReplay: AgentMetricBatchLabReplay }
+) {
+  await transaction
+    .update(schema.activityLog)
+    .set({
+      afterImage: sql`${schema.activityLog.afterImage} || ${JSON.stringify({
+        labReplay
+      })}::jsonb`
+    })
+    .where(agentMetricBatchReceiptWhere(userId, batchId));
 }
 
 async function readMetricRowsById(
@@ -2498,10 +2607,10 @@ async function resolveLabReadingTarget(
  * A readings page for one Lab Test (docs/designs/lab-results.md, "Agent
  * surface" and "Result identity and the collapse").
  *
- * Reads the readings of every Metric with the key ([labMetricIds], archived
- * Lab Metrics included), archived readings included whatever
- * `includeArchived` says, and collapses the whole key series first: the
- * collapse drops archived rows, and a final outside the date filter must
+ * Reads the readings of every Metric with the key, archived Lab Metrics
+ * included, through the shared `readCollapsedLabReadings`, archived readings
+ * included whatever `includeArchived` says, and collapses the whole key
+ * series first: the collapse drops archived rows, and a final outside the date filter must
  * still hide its interim inside it. Then the `provenance`, `source` and
  * date filters, the endpoint's order and the cursor apply, so the cursor
  * pages over the collapsed list and `totalMatched` counts it. Each reading
@@ -2521,34 +2630,13 @@ async function listLabMetricReadings(
     labTarget: LabReadingTarget;
   }
 ) {
-  let rows: MetricReadingRow[] = [];
-  if (labTarget.kind === "lab") {
-    const ids = await labMetricIds(db, { userId, labTestKey: labTarget.labTestKey });
-    rows =
-      ids.length === 0
-        ? []
-        : await db
-            .select()
-            .from(schema.metricReadings)
-            .where(
-              and(
-                eq(schema.metricReadings.userId, userId),
-                inArray(schema.metricReadings.metricId, ids)
-              )
-            );
-  }
-  const labTestKey = labTarget.kind === "lab" ? labTarget.labTestKey : "";
-  const collapsed = collapseLabResults(
-    rows.map((row) => ({
-      id: row.id,
-      labTestKey,
-      lab: row.valueJson?.lab ?? null,
-      atTime: readingAnchor(row).toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-      deletedAt: row.deletedAt?.toISOString() ?? null,
-      row
-    }))
-  ).map((ref) => ref.row);
+  const collapsed =
+    labTarget.kind === "lab"
+      ? await readCollapsedLabReadings(db, {
+          userId,
+          labTestKey: labTarget.labTestKey
+        })
+      : [];
 
   const from = parseOptionalDate(query.from);
   const to = parseOptionalDate(query.to);
@@ -2968,7 +3056,7 @@ function readingScalarValue(row: MetricReadingRow) {
 }
 
 function readingAnchor(row: MetricReadingRow) {
-  return row.atTime ?? row.windowStartedAt ?? row.windowEndedAt ?? row.updatedAt;
+  return metricReadingAnchor(row);
 }
 
 function parseOptionalDate(value: string | undefined) {

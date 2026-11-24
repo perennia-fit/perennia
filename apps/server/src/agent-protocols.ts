@@ -35,8 +35,11 @@ import {
 import { labTestByKey } from "./data/lab-test-catalogue.generated.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import { collapseLabResults } from "./lab-results.js";
-import { findLabMetric, labMetricIds } from "./metric-identity.js";
+import {
+  findLabMetric,
+  labMetricIds,
+  readCollapsedLabReadings
+} from "./metric-identity.js";
 import {
   MS_PER_DAY,
   ProtocolPlanCodecError,
@@ -6133,7 +6136,8 @@ async function resolveMetric(
  * The Effect samples' source rows for a Lab Metric: every reading of every
  * Metric with its key, archived Lab Metrics included, collapsed as one
  * series **before** the window is applied (docs/designs/lab-results.md,
- * "Result identity and the collapse"). An interim and its final share
+ * "Result identity and the collapse"), through the shared
+ * `readCollapsedLabReadings`. An interim and its final share
  * `lab.collected` but each is anchored at its own instant, so a final
  * outside the window must still hide its interim inside it; windowing first
  * would let the superseded interim through. The app twin is
@@ -6141,46 +6145,16 @@ async function resolveMetric(
  * drops archived readings; the caller then skips Limit Results, whose
  * `scalarValue` is null.
  */
-async function collapsedLabEffectRows(
+function collapsedLabEffectRows(
   db: ServerDatabase,
   userId: string,
   metric: { labTestKey: string | null; metricIds: string[] }
 ) {
-  const labTestKey = metric.labTestKey!;
-  const rows = await db
-    .select({
-      id: schema.metricReadings.id,
-      valueJson: schema.metricReadings.valueJson,
-      scalarValue: schema.metricReadings.scalarValue,
-      atTime: schema.metricReadings.atTime,
-      windowStartedAt: schema.metricReadings.windowStartedAt,
-      windowEndedAt: schema.metricReadings.windowEndedAt,
-      updatedAt: schema.metricReadings.updatedAt,
-      deletedAt: schema.metricReadings.deletedAt
-    })
-    .from(schema.metricReadings)
-    .where(
-      and(
-        eq(schema.metricReadings.userId, userId),
-        inArray(schema.metricReadings.metricId, metric.metricIds)
-      )
-    );
-  return collapseLabResults(
-    rows.map((row) => ({
-      id: row.id,
-      labTestKey,
-      lab: row.valueJson?.lab ?? null,
-      atTime: (
-        row.atTime ??
-        row.windowStartedAt ??
-        row.windowEndedAt ??
-        row.updatedAt
-      ).toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-      deletedAt: row.deletedAt?.toISOString() ?? null,
-      row
-    }))
-  ).map((ref) => ref.row);
+  return readCollapsedLabReadings(db, {
+    userId,
+    labTestKey: metric.labTestKey!,
+    metricIds: metric.metricIds
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
+import { collapseLabResults } from "./lab-results.js";
 import { normalizeMetricLookupKey } from "./metric-catalog.js";
 
 type MetricIdentityDatabase = Pick<ServerDatabase, "select">;
@@ -165,4 +166,67 @@ export async function labMetricIds(
     )
     .orderBy(asc(schema.metrics.id));
   return rows.map((row) => row.id);
+}
+
+type MetricReadingRow = typeof schema.metricReadings.$inferSelect;
+
+/**
+ * The instant a reading is anchored at: its `atTime`, else its window start,
+ * else its window end, else its `updatedAt`. The one anchor the Lab Result
+ * collapse orders by, on every Agent read and write.
+ */
+export function metricReadingAnchor(
+  row: Pick<
+    MetricReadingRow,
+    "atTime" | "windowStartedAt" | "windowEndedAt" | "updatedAt"
+  >
+) {
+  return row.atTime ?? row.windowStartedAt ?? row.windowEndedAt ?? row.updatedAt;
+}
+
+/**
+ * The user's Lab Results for [labTestKey], collapsed: every reading of every
+ * Metric with the key ([labMetricIds], archived Lab Metrics included), one
+ * row kept per Lab Result by `collapseLabResults`, newest first. Archived
+ * readings are dropped by the collapse (docs/designs/lab-results.md, "Result
+ * identity and the collapse").
+ *
+ * The one key-join and collapse of the server's Agent surface: the batch
+ * writer's `lab_result_replaces`, the readings list and the Effect window all
+ * read through it, so they agree on which result is kept for a collection.
+ * [metricIds] skips the key lookup when the caller already holds
+ * `labMetricIds` for the key.
+ */
+export async function readCollapsedLabReadings(
+  database: MetricIdentityDatabase,
+  {
+    userId,
+    labTestKey,
+    metricIds
+  }: { userId: string; labTestKey: string; metricIds?: readonly string[] }
+): Promise<MetricReadingRow[]> {
+  const ids = metricIds ?? (await labMetricIds(database, { userId, labTestKey }));
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await database
+    .select()
+    .from(schema.metricReadings)
+    .where(
+      and(
+        eq(schema.metricReadings.userId, userId),
+        inArray(schema.metricReadings.metricId, [...ids])
+      )
+    );
+  return collapseLabResults(
+    rows.map((row) => ({
+      id: row.id,
+      labTestKey,
+      lab: row.valueJson?.lab ?? null,
+      atTime: metricReadingAnchor(row).toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      deletedAt: row.deletedAt?.toISOString() ?? null,
+      row
+    }))
+  ).map((ref) => ref.row);
 }

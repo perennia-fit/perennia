@@ -480,7 +480,7 @@ Lab Test.
 | `lab_metric_id_not_allowed` | Request | Hard | An Agent reading's `metricId` names a Lab Metric | "Write lab results by labTestKey." |
 | `lab_metric_upsert_not_allowed` | Request | Hard | An Agent `metrics[]` row names a Lab Metric or sends `labTestKey` | "Lab Metrics can't be changed." |
 | `lab_fields_on_non_lab_metric` | Request | Hard | `lab` sent for a Metric without a `labTestKey` | "This Metric is not a Lab Test." |
-| `lab_result_exists` | Request | Hard | An Agent lab reading's `id` is an existing reading, and the request is not a replay of the request that wrote it | "Lab results can't be changed. Write a new result." |
+| `lab_result_exists` | Request | Hard | An Agent lab reading's `id` is an existing reading, or any Agent reading's `id` is an existing Lab Result (a reading of a Lab Metric), whatever `metricId` it names; and the request is not a replay of the request that wrote it | "Lab results can't be changed. Write a new result." |
 | `lab_archive_not_allowed` | Request | Hard | An Agent lab reading sends `deletedAt` | "Agents can't archive lab results." |
 | `lab_result_repeated` | Request | Hard | The same Lab Test twice in one entry sheet (app) | "This Lab Test is already in this collection." |
 | `lab_result_replaces` | Request | Soft | The reading's identity already has a live result with a different value (or a different limit) | "This replaces a saved result for the same collection." |
@@ -782,7 +782,13 @@ sheet is lost, never half a collection.
     silently creating a custom Metric. An omitted `value.unit` on a lab reading is the Lab
     Test's `unit`, as the normaliser reads an omitted unit as its Metric's. Validation runs before
     normalisation, and each issue keeps its rule as its code (never folded into
-    `metric_reading_normalization_failed`). The idempotency receipt is the shared one. For a
+    `metric_reading_normalization_failed`). The idempotency receipt is the shared one. A replay
+    returns the stored response: after a write with any lab item, the receipt also keeps the
+    `metrics[]` results of the Lab Metrics the write created, unarchived or keyed, and each lab
+    reading's `warnings`, and the duplicate response lists those Lab Metrics after the request's
+    own `metrics[]` and gives each replayed lab reading its original warnings. A reading sent
+    with a `metricId` whose `id` is an existing Lab Result is rejected (`lab_result_exists`), so
+    an Agent cannot move, archive or backdate a stored result through another Metric. For a
     reading with `labTestKey`:
     *   a reading `id` that already exists is rejected (`lab_result_exists`), unless the request is
         a replay, which the idempotency receipt answers before any validation;
@@ -1384,7 +1390,7 @@ Covers V9, and V10 for Agent requests.
 | `apps/server/src/agent-lab-tests.ts` | Create | `listAgentLabTests` handler and the `AgentLabTest`/`AgentLabTestList` schemas, served from the generated catalogue. |
 | `apps/server/src/app.ts` | Modify | Mount `GET /agent/lab-tests` with `app.openapi`, behind the same Agent bearer authentication and rate limit as the other Agent reads. |
 | `apps/server/src/index.ts` | Modify | Export `listAgentLabTests`. |
-| `apps/server/src/metric-identity.ts` | Modify | `findLabMetric(db, {userId, labTestKey})` (live, lowest sort order, then id); `labMetricIds(db, {userId, labTestKey})` (every row with the key, archived included); `stableMetricId` moved here from `agent-metrics.ts` and exported, so both modules use one copy. |
+| `apps/server/src/metric-identity.ts` | Modify | `findLabMetric(db, {userId, labTestKey})` (live, lowest sort order, then id); `labMetricIds(db, {userId, labTestKey})` (every row with the key, archived included); `readCollapsedLabReadings(db, {userId, labTestKey, metricIds?})`, the one key-join and collapse that `lab_result_replaces`, `listAgentMetricReadings` and the Effect window all call, anchored by `metricReadingAnchor`; `stableMetricId` moved here from `agent-metrics.ts` and exported, so both modules use one copy. |
 | `apps/server/src/agent-metrics.ts` | Modify | **Schema:** `AgentMetricBatchWriteReadingSchema` makes `metricId` optional and adds optional `labTestKey`; the scalar value gains the permissive `lab` schema. **Write:** request rules and reading rules run before normalisation, in [Validation](#validation)'s order, each issue keeping its code; the Lab Metric controls and server-set fields in [Agent surface](#agent-surface); find or create the Lab Metric as in [Finding the Lab Metric](#finding-the-lab-metric-for-a-lab-test), adding it to `preparedMetrics`; `lab_result_replaces` computed against the user's stored rows for the identity. **Reads:** `listAgentMetrics` sets `canonicalKey` to the `labTestKey` for Lab Metrics; `metricMatchesMetricKey` matches a catalogue key only against `lab_test_key`; `listAgentMetricReadings` expands, collapses and pages as in [Agent surface](#agent-surface), never returns archived lab rows and never adds `trendValue`. |
 | `apps/server/src/agent-protocols.ts` | Modify | `resolveMetric` gains a Lab Metric branch: a catalogue key resolves through `labMetricIds`, never by name. `readAgentEffectWindow` reads the samples of those ids, collapses the whole series, then windows. |
 | `apps/server/src/agent-mcp.ts` | Modify | `agent_list_lab_tests` tool; `agent_batch_write_metrics` and `agent_list_metric_readings` descriptions mention `labTestKey`, `lab`, the collapse and the Trend exclusion. |
