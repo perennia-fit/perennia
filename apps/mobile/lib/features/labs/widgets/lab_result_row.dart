@@ -134,8 +134,9 @@ class LabResultRow extends StatelessWidget {
 }
 
 /// The collection date as the locale writes it, plus the time only when the
-/// lab printed one. Built from `collected`'s own components (see
-/// [collectedLocal]), never from the stored instant.
+/// lab printed one. Built from `collected`'s own components (see the domain's
+/// [collectedLocal]), never from the stored instant; a date-only value shows
+/// no time, so its noon placeholder is never read.
 String _collectedText(BuildContext context, String collected) {
   final locale = Localizations.localeOf(context).toLanguageTag();
   final parsed = collectedLocal(collected);

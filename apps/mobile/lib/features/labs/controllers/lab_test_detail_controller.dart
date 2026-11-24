@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/labs/lab_default_range.dart';
+import '../../../domain/labs/lab_result.dart';
 import '../../../domain/labs/lab_test.dart';
 import '../../../domain/labs/lab_test_catalogue.generated.dart';
 import '../../../domain/profile/user_profile.dart';
@@ -114,22 +115,4 @@ LabResultView labResultView(
             defaultRange: defaultRange,
           ),
   );
-}
-
-/// The local date (and time, when printed) a `collected` string names, built
-/// from its components with no zone conversion: a lab prints local wall time,
-/// so `2026-03-04T08:15` is 08:15 wherever the device now is.
-///
-/// [collected] is valid (`LabFields` only carries one that
-/// `isValidCollected` accepts).
-({DateTime dateTime, bool hasTime}) collectedLocal(String collected) {
-  final year = int.parse(collected.substring(0, 4));
-  final month = int.parse(collected.substring(5, 7));
-  final day = int.parse(collected.substring(8, 10));
-  if (collected.length < 16) {
-    return (dateTime: DateTime(year, month, day), hasTime: false);
-  }
-  final hour = int.parse(collected.substring(11, 13));
-  final minute = int.parse(collected.substring(14, 16));
-  return (dateTime: DateTime(year, month, day, hour, minute), hasTime: true);
 }

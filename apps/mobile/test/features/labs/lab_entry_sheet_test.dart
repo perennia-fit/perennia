@@ -4,20 +4,17 @@ import 'dart:convert';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
-import 'package:perennia/features/labs/controllers/lab_entry_controller.dart';
 import 'package:perennia/features/labs/widgets/lab_entry_sheet.dart';
 import 'package:perennia/features/labs/widgets/lab_test_picker.dart';
-import 'package:perennia/features/profile/controllers/profile_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
-import 'package:perennia/features/protocols/services/biometric_authenticator.dart';
-import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/services/protocols_pin_hasher.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+
+import 'lab_test_helpers.dart';
 
 /// The lab entry sheet against a real in-memory database
 /// (docs/designs/lab-results.md, PR 5, V11 and V12).
@@ -35,42 +32,26 @@ void main() {
   });
 
   // Today is 25 November 2026; the date picker opens on it.
-  final now = DateTime(2026, 11, 25, 10);
+  final now = labTestToday;
   const openKey = Key('test.openLabEntry');
 
+  late LabScreenHarness harness;
   late AppDatabase database;
   late TrainingRepositories repositories;
-  late _LockStore lockStore;
 
   /// What the last opened sheet completed with, once it has.
   late _SheetResult sheet;
 
   setUp(() {
-    database = AppDatabase.inMemory();
-    repositories = TrainingRepositories(database);
-    lockStore = _LockStore();
+    harness = LabScreenHarness(clock: () => now);
+    database = harness.database;
+    repositories = harness.repositories;
     sheet = _SheetResult();
   });
 
   tearDown(() async {
-    await database.close();
+    await harness.close();
   });
-
-  List<Override> overrides() => <Override>[
-        appDatabaseProvider.overrideWith((ref) => database),
-        trainingRepositoriesProvider.overrideWith((ref) => repositories),
-        labClockProvider.overrideWithValue(() => now),
-        profileDisclosureProvider.overrideWithValue(
-          const ProfileDisclosure.localOnly(),
-        ),
-        protocolsLockStoreProvider.overrideWith((ref) => lockStore),
-        biometricAuthenticatorProvider.overrideWith((ref) => _NoBiometrics()),
-        protocolsLockControllerProvider.overrideWith(
-          () => ProtocolsLockController(
-            hasher: const ProtocolsPinHasher(iterations: 10),
-          ),
-        ),
-      ];
 
   Future<void> pumpHost(WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 3200);
@@ -80,7 +61,7 @@ void main() {
       ProviderScope(
         // A new scope each time, as after the app is killed and reopened.
         key: UniqueKey(),
-        overrides: overrides(),
+        overrides: harness.overrides(),
         child: MaterialApp(
           theme: AppTheme.light(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -112,39 +93,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Drift's timers fire only on frames here, on fake time, so a database
-  /// call from the test body has to pump while it waits.
-  Future<T> onFakeTime<T>(
-    WidgetTester tester,
-    Future<T> Function() work,
-  ) async {
-    late T result;
-    Object? failure;
-    var done = false;
-    unawaited(
-      work().then(
-        (value) {
-          result = value;
-          done = true;
-        },
-        onError: (Object error) {
-          failure = error;
-          done = true;
-        },
-      ),
-    );
-    for (var frame = 0; frame < 100 && !done; frame += 1) {
-      await tester.pump(const Duration(milliseconds: 10));
-    }
-    expect(done, isTrue);
-    if (failure != null) {
-      throw failure!;
-    }
-    return result;
-  }
-
   Future<List<MetricReadingRow>> readings(WidgetTester tester) =>
-      onFakeTime(tester, () => database.select(database.metricReadings).get());
+      harness.readings(tester);
 
   Future<List<MetricRow>> metrics(WidgetTester tester) =>
       onFakeTime(tester, () => database.select(database.metrics).get());
@@ -196,13 +146,6 @@ void main() {
   Future<void> save(WidgetTester tester) =>
       tapVisible(tester, find.byKey(LabEntrySheet.saveButtonKey));
 
-  /// Unmounts the app so nothing holds the database when tearDown closes it.
-  Future<void> unmount(WidgetTester tester) async {
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 1));
-    await tester.pump(const Duration(milliseconds: 1));
-  }
-
   ProviderContainer container(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(find.byKey(openKey)));
 
@@ -235,7 +178,7 @@ void main() {
       find.text('Value must be between 0 and 10000 mg/L.'),
       findsNothing,
     );
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets(
@@ -296,7 +239,7 @@ void main() {
     expect(find.byType(LabEntrySheet), findsOneWidget);
     expect(await readings(tester), hasLength(1));
     expect(sheet.closed, isFalse);
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets("the unit is a fixed label showing the Lab Test's unit",
@@ -319,7 +262,7 @@ void main() {
       find.ancestor(of: unit, matching: find.byType(TextField)),
       findsNothing,
     );
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('choosing ≤ and typing 1 stores entered "<= 1"', (tester) async {
@@ -340,7 +283,7 @@ void main() {
     final valueJson = jsonDecode(stored.valueJson) as Map<String, Object?>;
     expect(valueJson['entered'], '<= 1');
     expect(stored.scalarValue, isNull);
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('picker search for a variant finds the Lab Test', (
@@ -377,7 +320,7 @@ void main() {
     );
     expect(tester.widget<Text>(find.byKey(LabEntrySheet.rowUnitKey(0))).data,
         'U/L');
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('the same Lab Test on two rows is rejected and writes nothing',
@@ -403,7 +346,7 @@ void main() {
     expect(find.byKey(LabEntrySheet.rowLabTestErrorKey(0)), findsNothing);
     expect(await readings(tester), isEmpty);
     expect(sheet.closed, isFalse);
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('a valid three-row save writes one Batch holding the readings',
@@ -463,7 +406,7 @@ void main() {
     expect(byKey['hs_crp']!['entered'], '< 1');
     expect(byKey['haemoglobin']!['entered'], '150');
     expect((byKey['haemoglobin']!['lab']! as Map)['printedFlag'], '+');
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('Save with no date shows the date error', (tester) async {
@@ -486,7 +429,7 @@ void main() {
     // Choosing a date clears it.
     await chooseToday(tester);
     expect(find.byKey(LabEntrySheet.dateErrorKey), findsNothing);
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets('killed before Save, no Metric Reading exists', (tester) async {
@@ -510,7 +453,7 @@ void main() {
       await onFakeTime(tester, repositories.activityLog.listEntries),
       isEmpty,
     );
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 
   testWidgets(
@@ -519,7 +462,7 @@ void main() {
     final hash = await tester.runAsync(
       () => const ProtocolsPinHasher(iterations: 10).hash('1234'),
     );
-    lockStore
+    harness.lockStore
       ..enabled = true
       ..pinHash = hash;
     await pumpHost(tester);
@@ -572,45 +515,11 @@ void main() {
     expect(
         tester.widget<Text>(find.byKey(LabEntrySheet.rowUnitKey(0))).data, '–');
     expect(await readings(tester), isEmpty);
-    await unmount(tester);
+    await harness.unmount(tester);
   });
 }
 
 class _SheetResult {
   bool closed = false;
   String? batchId;
-}
-
-class _LockStore implements ProtocolsLockStore {
-  bool enabled = false;
-  String? pinHash;
-
-  @override
-  Future<bool> isEnabled() async => enabled;
-
-  @override
-  Future<void> setEnabled(bool value) async {
-    enabled = value;
-  }
-
-  @override
-  Future<String?> readPinHash() async => pinHash;
-
-  @override
-  Future<void> writePinHash(String hash) async {
-    pinHash = hash;
-  }
-
-  @override
-  Future<void> clearPin() async {
-    pinHash = null;
-  }
-}
-
-class _NoBiometrics implements BiometricAuthenticator {
-  @override
-  Future<bool> isSupported() async => false;
-
-  @override
-  Future<bool> authenticate({required String reason}) async => false;
 }

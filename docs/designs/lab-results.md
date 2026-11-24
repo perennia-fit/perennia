@@ -702,7 +702,8 @@ for choosing a Lab Test, and standard form inputs.
     *   the value as entered with its comparator, and the unit as entered;
     *   `Lab range {text}`, or `Target {text}` for a `riskTarget` Lab Test, when printed;
     *   `General range {low}–{high} {unit} · {source title}` when a Default Range applies
-        (`Below {high}` or `Above {low}` when one side is missing);
+        (`General range below {high} {unit} · {source title}` or
+        `General range above {low} {unit} · {source title}` when one side is missing);
     *   the position sentence: "Below the lab's range", "Within the lab's range", "Above the
         lab's range", or the same with "general range"; nothing for `unknown`;
     *   `Lab flag: {flag}` when printed;

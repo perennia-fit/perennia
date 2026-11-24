@@ -387,7 +387,7 @@ class _LabEntrySheetState extends ConsumerState<LabEntrySheet> {
           child: FilledButton(
             key: LabEntrySheet.saveButtonKey,
             style: saveFormButtonStyle(context),
-            onPressed: _busy || state.saving ? null : _save,
+            onPressed: _busy ? null : _save,
             child: Text(l10n.labEntrySave),
           ),
         ),

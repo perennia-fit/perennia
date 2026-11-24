@@ -5,6 +5,8 @@
 /// by [LabTest.key].
 library;
 
+import 'lab_test_catalogue.generated.dart';
+
 /// An inclusive numeric range in a Lab Test's canonical unit.
 class Bounds {
   const Bounds({required this.min, required this.max});
@@ -126,3 +128,11 @@ String? resolveLabUnit(LabTest labTest, String enteredUnit) {
   }
   return null;
 }
+
+/// The catalogue's panels, each once, in order of their first appearance in
+/// [labTestCatalogue]. Both the Lab Results screen and the Lab Test picker
+/// list panels in this order; derive it nowhere else. Sits beside
+/// [labTestByKey] (in the generated file) as the other catalogue lookup.
+final List<String> labCataloguePanels = List<String>.unmodifiable(<String>{
+  for (final labTest in labTestCatalogue) labTest.panel,
+});

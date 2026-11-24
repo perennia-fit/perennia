@@ -264,3 +264,14 @@ String collectedLocalDateTime(String collected) {
   }
   return collected.length == 10 ? '${collected}T12:00:00' : '$collected:00';
 }
+
+/// The local date (and time, when printed) a `collected` string names, read
+/// with no zone conversion: a lab prints local wall time, so
+/// `2026-03-04T08:15` is 08:15 wherever the device now is. Built on
+/// [collectedLocalDateTime], so an invalid [collected] throws its
+/// [ArgumentError]. A date-only value resolves to local noon, like the time
+/// anchor, and [hasTime] is false: callers then use only the date.
+({DateTime dateTime, bool hasTime}) collectedLocal(String collected) => (
+      dateTime: DateTime.parse(collectedLocalDateTime(collected)),
+      hasTime: collected.length > 10,
+    );

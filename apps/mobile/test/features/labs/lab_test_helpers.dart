@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/labs/lab_result.dart';
+import 'package:perennia/features/labs/controllers/lab_entry_controller.dart';
 import 'package:perennia/features/labs/widgets/lab_test_detail_screen.dart';
 import 'package:perennia/features/profile/controllers/profile_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
@@ -23,9 +24,9 @@ final DateTime labTestToday = DateTime(2026, 11, 25, 10);
 
 /// Shared set-up for the Lab Results screen and Lab Test detail tests: a
 /// real in-memory database, real repositories, and the Protocols lock with a
-/// fake store.
+/// fake store. With a [clock], the lab entry sheet's "today" comes from it.
 class LabScreenHarness {
-  LabScreenHarness()
+  LabScreenHarness({this.clock})
       : database = AppDatabase.inMemory(),
         lockStore = LabLockStore() {
     repositories = TrainingRepositories(database);
@@ -34,6 +35,7 @@ class LabScreenHarness {
   final AppDatabase database;
   late final TrainingRepositories repositories;
   final LabLockStore lockStore;
+  final DateTime Function()? clock;
 
   List<Override> overrides() => <Override>[
         appDatabaseProvider.overrideWith((ref) => database),
@@ -48,6 +50,7 @@ class LabScreenHarness {
             hasher: const ProtocolsPinHasher(iterations: 10),
           ),
         ),
+        if (clock case final clock?) labClockProvider.overrideWithValue(clock),
       ];
 
   /// Pumps [home] in an app that resolves the Lab Test detail route as
