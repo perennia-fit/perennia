@@ -14,15 +14,11 @@ import '../../tool/open_food_facts_bundle/aisle_pipeline.dart';
 /// stale data, and every line is treated as current.
 void main() {
   late final AisleLabels labels;
-  late final AisleSecondOpinions secondOpinions;
   late final List<AisleOverrideRow> overrides;
   late final List<BundleProductLine> bundle;
 
   setUpAll(() {
     labels = parseAisleLabels(File(aisleLabelsPath).readAsStringSync());
-    secondOpinions = parseAisleSecondOpinions(
-      File(aisleSecondOpinionsPath).readAsStringSync(),
-    );
     overrides = parseAisleOverrides(
       File(aisleOverridesPath).readAsStringSync(),
     );
@@ -35,35 +31,21 @@ void main() {
     ];
   });
 
-  test('the three data files parse and have a header', () {
+  test('the two data files parse, and the labels file has a header', () {
     expect(labels.header, isNotNull);
     expect(labels.byCode, isNotEmpty);
-    expect(secondOpinions.header, isNotNull);
     // The overrides file may hold no rows; parsing it is the check.
     expect(overrides, isA<List<AisleOverrideRow>>());
   });
 
-  test("both headers' questionHash is the current question's", () {
+  test("the labels header's questionHash is the current question's", () {
     expect(labels.header!.questionHash, aisleQuestionHash());
-    expect(secondOpinions.header!.questionHash, aisleQuestionHash());
   });
 
   test('every bundled code has a label line', () {
     final missing = [
       for (final line in bundle)
         if (!labels.byCode.containsKey(line.product.code)) line.product.code,
-    ];
-
-    expect(missing, isEmpty);
-  });
-
-  test('every label that is not confident has a second opinion line', () {
-    final missing = [
-      for (final line in bundle)
-        if (labels.byCode[line.product.code] case final label?
-            when !isConfidentLabel(label) &&
-                !secondOpinions.byCode.containsKey(line.product.code))
-          line.product.code,
     ];
 
     expect(missing, isEmpty);
@@ -77,7 +59,6 @@ void main() {
       final code = line.product.code;
       final resolved = resolveFoodAisle(
         currentLabel: labels.byCode[code],
-        currentSecondOpinion: secondOpinions.byCode[code],
         override: overrideByCode[code],
       );
       if (resolved != line.aisle) {

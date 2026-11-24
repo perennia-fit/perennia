@@ -23,11 +23,9 @@
 //
 // Adding Aisles is these runs: this tool with --aisle-input-only, which writes
 // build/open_food_facts_aisle_input.ndjson and no bundle; label_aisles.dart
-// label, second-opinion-input, second-opinion-apply and review; and this tool
-// again, which refuses to write a bundle while any product's label, or a
-// second opinion it needs, is missing or stale. --aisle-labels,
-// --aisle-second-opinions and --aisle-overrides name the three data files when
-// they are not at their committed paths. See docs/designs/food-aisles.md,
+// label; and this tool again, which refuses to write a bundle while any
+// product's label is missing or stale. --aisle-labels and --aisle-overrides
+// name the two data files when they are not at their committed paths. See docs/designs/food-aisles.md,
 // "The builder".
 //
 // Exit status: 0 done, 1 data missing or stale or the bundle over budget,
@@ -82,9 +80,8 @@ const _attributionText =
     'apps/mobile/assets/seeds/open_food_facts_bundle.LICENSE.md and '
     'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart. Each '
     "product's Aisle is decided from "
-    'apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson, '
-    'aisle_second_opinions.ndjson and aisle_overrides.csv, made with '
-    'label_aisles.dart, in the same directory.';
+    'apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson, made with '
+    'label_aisles.dart, and aisle_overrides.csv, in the same directory.';
 
 const _usage = '''
 Usage:
@@ -92,10 +89,9 @@ Usage:
   dart run tool/open_food_facts_bundle/build_bundle.dart --from-bundle <bundle .ndjson.gz> --tags-export <en.openfoodfacts.org.products.csv.gz> [options]
 
 Options:
-  --aisle-labels <path>            default $aisleLabelsPath
-  --aisle-second-opinions <path>   default $aisleSecondOpinionsPath
-  --aisle-overrides <path>         default $aisleOverridesPath
-  --aisle-input-only               write $aisleInputPath and no bundle''';
+  --aisle-labels <path>      default $aisleLabelsPath
+  --aisle-overrides <path>   default $aisleOverridesPath
+  --aisle-input-only         write $aisleInputPath and no bundle''';
 
 Future<void> main(List<String> args) async {
   final options = _parseArguments(args);
@@ -116,18 +112,12 @@ Future<void> main(List<String> args) async {
   // Read before the products, so a broken data file costs seconds, not 30
   // minutes.
   final AisleLabels labels;
-  final AisleSecondOpinions secondOpinions;
   final List<AisleOverrideRow> overrides;
   try {
     labels = _readDataFile(
       options.aisleLabels,
       parse: parseAisleLabels,
       ifMissing: const AisleLabels(header: null, byCode: {}),
-    );
-    secondOpinions = _readDataFile(
-      options.aisleSecondOpinions,
-      parse: parseAisleSecondOpinions,
-      ifMissing: const AisleSecondOpinions(header: null, byCode: {}),
     );
     overrides = _readDataFile(
       options.aisleOverrides,
@@ -173,46 +163,25 @@ Future<void> main(List<String> args) async {
         ),
       )
       .length;
-  final needSecondOpinions =
-      secondOpinionsToAsk(aisleInput, labels, secondOpinions).length;
-  if (options.aisleInputOnly || needLabels > 0 || needSecondOpinions > 0) {
+  if (options.aisleInputOnly || needLabels > 0) {
     report.printAisleInput(
       productCount: aisleInput.length,
       needLabels: needLabels,
-      needSecondOpinions: needSecondOpinions,
     );
     if (options.aisleInputOnly) {
       return;
     }
-    // Edge cases nobody answered do not stop a build: they have no Aisle.
-    // Labels come first, because a product with none cannot say yet whether
-    // it needs a second opinion.
     stdout.writeln(
-      needLabels > 0
-          ? '$needLabels products need labels: run label_aisles.dart label, '
-              'then build again.'
-          : '$needSecondOpinions products need a second opinion: run '
-              'label_aisles.dart second-opinion-input, then build again.',
+      '$needLabels products need labels: run label_aisles.dart label, then '
+      'build again.',
     );
     exit(1);
   }
 
-  // Every label, and every second opinion a product needs, is current from
-  // here on. Only current second opinions are passed: a stale line must not
-  // count as agreement.
-  final currentSecondOpinions = <String, AisleSecondOpinion>{
-    for (final line in aisleInput)
-      if (isCurrentSecondOpinion(
-        secondOpinions.byCode[line.code],
-        secondOpinions.header,
-        line.inputHash,
-      ))
-        line.code: secondOpinions.byCode[line.code]!,
-  };
+  // Every label is current from here on.
   final aisleBundle = resolveAisleBundle(
     input: aisleInput,
     labels: labels.byCode,
-    secondOpinions: currentSecondOpinions,
     overrides: overrides,
   );
 
@@ -263,7 +232,6 @@ Future<void> main(List<String> args) async {
       products: products,
       bundle: aisleBundle,
       labels: labels.byCode,
-      secondOpinions: currentSecondOpinions,
       overrides: overrides,
     ),
     uncompressedProductBytes: productLines.length,
@@ -650,25 +618,19 @@ final class _AisleFigures {
   int overrideAisle = 0;
   int overrideNone = 0;
   int byLabel = 0;
-  int byAgreement = 0;
-  int byNone = 0;
+  int byLabelBelowThreshold = 0;
+  int byOther = 0;
   int productCount = 0;
-  int secondOpinionsAgreed = 0;
-  int secondOpinionsBothOther = 0;
-  int edgeCases = 0;
-  int edgeCasesAnswered = 0;
-  int edgeCasesWithNoAisle = 0;
   int unsureRows = 0;
 
   /// For each Aisle, its [aisleBrowseLimit] most scanned products' countries.
   final topCountries = <FoodAisle, List<Set<String>>>{};
 
-  /// [labels] and [secondOpinions] are current; every product has a label.
+  /// [labels] are current; every product has a label.
   factory _AisleFigures.of({
     required List<_Candidate> products,
     required List<AisleBundleProduct> bundle,
     required Map<String, AisleLabel> labels,
-    required Map<String, AisleSecondOpinion> secondOpinions,
     required List<AisleOverrideRow> overrides,
   }) {
     final figures = _AisleFigures._();
@@ -688,38 +650,19 @@ final class _AisleFigures {
 
       final label = labels[product.code]!;
       final override = overrideByCode[product.code];
-      // The deciding step, by asking resolveFoodAisle with fewer inputs, so
-      // the report cannot disagree with the rule it reports on.
       if (override?.answer == AisleOverrideAnswer.aisle) {
         figures.overrideAisle++;
       } else if (override?.answer == AisleOverrideAnswer.none) {
         figures.overrideNone++;
-      } else if (resolveFoodAisle(currentLabel: label) != null) {
-        figures.byLabel++;
       } else if (aisle != null) {
-        figures.byAgreement++;
-      } else {
-        figures.byNone++;
-      }
-
-      final opinion = secondOpinions[product.code];
-      if (isConfidentLabel(label) || opinion == null) {
-        continue;
-      }
-      if (opinion.aisle == label.aisle) {
-        if (opinion.aisle == null) {
-          figures.secondOpinionsBothOther++;
-        } else {
-          figures.secondOpinionsAgreed++;
+        figures.byLabel++;
+        // How many products rest on a label Clef was unsure of: informative
+        // only, since confidence decides nothing.
+        if (label.confidence < 0.6) {
+          figures.byLabelBelowThreshold++;
         }
-        continue;
-      }
-      figures.edgeCases++;
-      if (override != null) {
-        figures.edgeCasesAnswered++;
-      }
-      if (aisle == null) {
-        figures.edgeCasesWithNoAisle++;
+      } else {
+        figures.byOther++;
       }
     }
     figures.unsureRows = overrides
@@ -750,20 +693,14 @@ final class _AisleFigures {
       ..writeln('  products per deciding step:')
       ..writeln('    ${'override, an Aisle'.padRight(21)} $overrideAisle')
       ..writeln('    ${'override, none'.padRight(21)} $overrideNone')
-      ..writeln('    ${'label'.padRight(21)} $byLabel')
-      ..writeln('    ${'agreement'.padRight(21)} $byAgreement')
-      ..writeln('    ${'none'.padRight(21)} $byNone')
+      ..writeln('    ${'label'.padRight(21)} $byLabel '
+          '($byLabelBelowThreshold at confidence below 0.6)')
+      ..writeln('    ${'label of other'.padRight(21)} $byOther')
       ..writeln(
         '  products with an Aisle:  $withAisle of $productCount '
         '(${_percent(share)}; floor ${_percent(aisleCoverageFloor)}'
         '${share < aisleCoverageFloor ? ', BELOW THE FLOOR' : ''})',
       )
-      ..writeln('  second opinions:')
-      ..writeln('    ${'agreed'.padRight(21)} $secondOpinionsAgreed')
-      ..writeln('    ${'both other'.padRight(21)} $secondOpinionsBothOther')
-      ..writeln('    ${'made an edge case'.padRight(21)} $edgeCases')
-      ..writeln('  edge cases answered by a person: $edgeCasesAnswered')
-      ..writeln('  edge cases with no Aisle:        $edgeCasesWithNoAisle')
       ..writeln('  override rows marked unsure:     $unsureRows')
       ..writeln(
         '  launch countries in each Aisle\'s $aisleBrowseLimit most scanned '
@@ -830,9 +767,7 @@ class _Report {
         );
       }
     }
-    out
-      ..writeln('  labels missing or stale: 0')
-      ..writeln('  second opinions missing or stale: 0');
+    out.writeln('  labels missing or stale: 0');
     aisles.write(out);
     out
       ..writeln(
@@ -854,15 +789,13 @@ class _Report {
   void printAisleInput({
     required int productCount,
     required int needLabels,
-    required int needSecondOpinions,
   }) {
     final out = StringBuffer()..writeln('Open Food Facts aisle input report');
     _writeInputSection(out);
     out
       ..writeln('  aisle input:             $aisleInputPath')
       ..writeln('  aisle input products:    $productCount')
-      ..writeln('  labels missing or stale: $needLabels')
-      ..writeln('  second opinions missing or stale: $needSecondOpinions');
+      ..writeln('  labels missing or stale: $needLabels');
     stdout.write(out);
   }
 
@@ -916,7 +849,6 @@ typedef _Options = ({
   String? fromBundle,
   String? tagsExport,
   String aisleLabels,
-  String aisleSecondOpinions,
   String aisleOverrides,
   bool aisleInputOnly,
 });
@@ -932,7 +864,6 @@ _Options? _parseArguments(List<String> args) {
     '--from-bundle',
     '--tags-export',
     '--aisle-labels',
-    '--aisle-second-opinions',
     '--aisle-overrides',
   };
   final values = <String, String>{};
@@ -996,8 +927,6 @@ _Options? _parseArguments(List<String> args) {
     fromBundle: fromBundle,
     tagsExport: tagsExport,
     aisleLabels: values['--aisle-labels'] ?? aisleLabelsPath,
-    aisleSecondOpinions:
-        values['--aisle-second-opinions'] ?? aisleSecondOpinionsPath,
     aisleOverrides: values['--aisle-overrides'] ?? aisleOverridesPath,
     aisleInputOnly: aisleInputOnly,
   );

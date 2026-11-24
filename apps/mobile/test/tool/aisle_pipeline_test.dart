@@ -53,36 +53,6 @@ AisleOverrideRow _override(
   );
 }
 
-/// Labels under the current question.
-AisleLabels _currentLabels(Map<String, AisleLabel> byCode) {
-  return AisleLabels(
-    header: AisleLabelsHeader(
-      questionHash: aisleQuestionHash(),
-      model: 'clef:latest',
-      modelDigest: 'd1',
-    ),
-    byCode: byCode,
-  );
-}
-
-/// Second opinions under the current question.
-AisleSecondOpinions _currentOpinions(
-  Map<String, AisleSecondOpinion> byCode, {
-  String model = 'claude-haiku-5-5',
-}) {
-  return AisleSecondOpinions(
-    header: AisleSecondOpinionsHeader(
-      questionHash: aisleQuestionHash(),
-      model: model,
-    ),
-    byCode: byCode,
-  );
-}
-
-const _noOpinions = AisleSecondOpinions(header: null, byCode: {});
-
-String _code(int number) => number.toString().padLeft(6, '0');
-
 Matcher _throwsFormatNamingLine(int line) {
   return throwsA(
     isA<FormatException>().having(
@@ -522,125 +492,6 @@ void main() {
     });
   });
 
-  group('second opinions file', () {
-    const headerLine =
-        '{"format":"perennia-open-food-facts-aisle-second-opinions",'
-        '"formatVersion":1,"questionHash":"q1","model":"claude-haiku-5-5"}';
-    const text = '$headerLine\n'
-        '{"code":"1","inputHash":"a","choice":"dairyEggs"}\n'
-        '{"code":"2","inputHash":"b","choice":"other"}\n';
-
-    test('a sorted, compact file round-trips', () {
-      final opinions = parseAisleSecondOpinions(text);
-
-      expect(opinions.header!.questionHash, 'q1');
-      expect(opinions.header!.model, 'claude-haiku-5-5');
-      expect(
-          opinions.byCode['1'], (inputHash: 'a', aisle: FoodAisle.dairyEggs));
-      expect(opinions.byCode['2'], (inputHash: 'b', aisle: null));
-      expect(encodeAisleSecondOpinions(opinions), text);
-    });
-
-    test('encoding sorts by code', () {
-      final encoded = encodeAisleSecondOpinions(
-        const AisleSecondOpinions(
-          header: AisleSecondOpinionsHeader(
-            questionHash: 'q1',
-            model: 'claude-haiku-5-5',
-          ),
-          byCode: {
-            '2': (inputHash: 'b', aisle: null),
-            '1': (inputHash: 'a', aisle: FoodAisle.dairyEggs),
-          },
-        ),
-      );
-
-      expect(encoded, text);
-    });
-
-    test('an empty text is no file', () {
-      final opinions = parseAisleSecondOpinions('');
-
-      expect(opinions.header, isNull);
-      expect(opinions.byCode, isEmpty);
-      expect(encodeAisleSecondOpinions(opinions), '');
-    });
-
-    test('second opinions with no header cannot be written', () {
-      expect(
-        () => encodeAisleSecondOpinions(
-          const AisleSecondOpinions(
-            header: null,
-            byCode: {'1': (inputHash: 'a', aisle: null)},
-          ),
-        ),
-        throwsArgumentError,
-      );
-    });
-
-    group('rejects', () {
-      const good = '{"code":"1","inputHash":"a","choice":"snacks"}';
-
-      void expectRejected(String text, int line) {
-        expect(
-          () => parseAisleSecondOpinions(text),
-          _throwsFormatNamingLine(line),
-        );
-      }
-
-      test('a first line that is not a header', () {
-        expectRejected('$good\n', 1);
-      });
-
-      test('a labels header, or a wrong format version', () {
-        expectRejected('$_headerLine\n', 1);
-        expectRejected(
-          '${headerLine.replaceFirst('"formatVersion":1', '"formatVersion":2')}'
-          '\n',
-          1,
-        );
-      });
-
-      test('a header missing its question hash or model', () {
-        expectRejected(
-          '${headerLine.replaceFirst(',"model":"claude-haiku-5-5"', '')}\n',
-          1,
-        );
-        expectRejected(
-          '${headerLine.replaceFirst('"questionHash":"q1",', '')}\n',
-          1,
-        );
-      });
-
-      test('a missing or extra key', () {
-        expectRejected(
-          '$headerLine\n{"code":"1","choice":"snacks"}\n',
-          2,
-        );
-        expectRejected(
-          '$headerLine\n'
-          '{"code":"1","inputHash":"a","choice":"snacks","confidence":0.9}\n',
-          2,
-        );
-      });
-
-      test('an unknown choice', () {
-        expectRejected(
-          '$headerLine\n{"code":"1","inputHash":"a","choice":"frozen"}\n',
-          2,
-        );
-      });
-
-      test('a repeated code, on the line that repeats it', () {
-        expectRejected('$headerLine\n$good\n$good\n', 3);
-      });
-
-      test('a line that is not JSON', () {
-        expectRejected('$headerLine\nnot json\n', 2);
-      });
-    });
-  });
-
   group('overrides CSV', () {
     const columns = 'code,name,brand,categories,aisle';
 
@@ -875,59 +726,9 @@ void main() {
     });
   });
 
-  group('isCurrentSecondOpinion', () {
-    final header = AisleSecondOpinionsHeader(
-      questionHash: aisleQuestionHash(),
-      model: 'claude-haiku-5-5',
-    );
-    const AisleSecondOpinion opinion = (inputHash: 'a', aisle: null);
-
-    test('a matching input hash and question is current', () {
-      expect(isCurrentSecondOpinion(opinion, header, 'a'), isTrue);
-    });
-
-    test('a changed input hash is stale', () {
-      expect(isCurrentSecondOpinion(opinion, header, 'b'), isFalse);
-    });
-
-    test('a changed question hash is stale', () {
-      expect(
-        isCurrentSecondOpinion(
-          opinion,
-          const AisleSecondOpinionsHeader(questionHash: 'q1', model: 'm'),
-          'a',
-        ),
-        isFalse,
-      );
-    });
-
-    test('no header or no second opinion is stale', () {
-      expect(isCurrentSecondOpinion(opinion, null, 'a'), isFalse);
-      expect(isCurrentSecondOpinion(null, header, 'a'), isFalse);
-    });
-  });
-
-  group('isConfidentLabel', () {
-    test('keeps an Aisle at the threshold and not one just below', () {
-      expect(
-          isConfidentLabel(_label(FoodAisle.snacks, confidence: 0.6)), isTrue);
-      expect(isConfidentLabel(_label(FoodAisle.snacks, confidence: 0.599)),
-          isFalse);
-    });
-
-    test('other at high confidence is not confident', () {
-      expect(isConfidentLabel(_label(null, confidence: 0.99)), isFalse);
-    });
-  });
-
   group('resolveFoodAisle', () {
     final confident = _label(FoodAisle.snacks, confidence: 0.99);
-    final low = _label(FoodAisle.snacks, confidence: 0.4);
-    const AisleSecondOpinion saysSnacks =
-        (inputHash: 'h', aisle: FoodAisle.snacks);
-    const AisleSecondOpinion saysPantry =
-        (inputHash: 'h', aisle: FoodAisle.pantry);
-    const AisleSecondOpinion saysOther = (inputHash: 'h', aisle: null);
+    final low = _label(FoodAisle.snacks, confidence: 0.2);
 
     test('an override Aisle beats a confident label', () {
       expect(
@@ -939,13 +740,19 @@ void main() {
       );
     });
 
-    test('an override none gives no Aisle even with a confident label', () {
+    test('an override Aisle beats a low label', () {
       expect(
         resolveFoodAisle(
-          currentLabel: confident,
-          currentSecondOpinion: saysSnacks,
-          override: _override('1'),
+          currentLabel: low,
+          override: _override('1', aisle: FoodAisle.fruitVeg),
         ),
+        FoodAisle.fruitVeg,
+      );
+    });
+
+    test('an override none gives no Aisle even with a confident label', () {
+      expect(
+        resolveFoodAisle(currentLabel: confident, override: _override('1')),
         isNull,
       );
     });
@@ -953,97 +760,35 @@ void main() {
     test('unsure falls through to the label', () {
       expect(
         resolveFoodAisle(
-          currentLabel: confident,
-          override: _override('1', answer: AisleOverrideAnswer.unsure),
-        ),
-        FoodAisle.snacks,
-      );
-    });
-
-    test('unsure falls through to agreement too', () {
-      expect(
-        resolveFoodAisle(
           currentLabel: low,
-          currentSecondOpinion: saysSnacks,
           override: _override('1', answer: AisleOverrideAnswer.unsure),
         ),
         FoodAisle.snacks,
       );
     });
 
-    test('a confident label beats a differing second opinion', () {
+    test('a label gives its Aisle at any confidence', () {
+      expect(resolveFoodAisle(currentLabel: confident), FoodAisle.snacks);
+      expect(resolveFoodAisle(currentLabel: low), FoodAisle.snacks);
       expect(
-        resolveFoodAisle(
-          currentLabel: confident,
-          currentSecondOpinion: saysPantry,
-        ),
-        FoodAisle.snacks,
+        resolveFoodAisle(currentLabel: _label(FoodAisle.pantry, confidence: 0)),
+        FoodAisle.pantry,
       );
     });
 
-    test('keeps a label at the threshold and drops one just below', () {
+    test('other gives no Aisle at any confidence', () {
       expect(
-        resolveFoodAisle(
-          currentLabel: _label(FoodAisle.snacks, confidence: 0.6),
-        ),
-        FoodAisle.snacks,
+        resolveFoodAisle(currentLabel: _label(null, confidence: 0.99)),
+        isNull,
       );
       expect(
-        resolveFoodAisle(
-          currentLabel: _label(FoodAisle.snacks, confidence: 0.599),
-        ),
+        resolveFoodAisle(currentLabel: _label(null, confidence: 0.1)),
         isNull,
       );
     });
 
-    test('a low label with an equal second opinion gives that Aisle', () {
-      expect(
-        resolveFoodAisle(currentLabel: low, currentSecondOpinion: saysSnacks),
-        FoodAisle.snacks,
-      );
-    });
-
-    test('a low label with a different second opinion gives no Aisle', () {
-      expect(
-        resolveFoodAisle(currentLabel: low, currentSecondOpinion: saysPantry),
-        isNull,
-      );
-      expect(
-        resolveFoodAisle(currentLabel: low, currentSecondOpinion: saysOther),
-        isNull,
-      );
-    });
-
-    test('a low label with no second opinion gives no Aisle', () {
-      expect(resolveFoodAisle(currentLabel: low), isNull);
-    });
-
-    test('other with an Aisle second opinion gives no Aisle', () {
-      expect(
-        resolveFoodAisle(
-          currentLabel: _label(null, confidence: 0.99),
-          currentSecondOpinion: saysSnacks,
-        ),
-        isNull,
-      );
-    });
-
-    test('both other gives no Aisle', () {
-      expect(
-        resolveFoodAisle(
-          currentLabel: _label(null, confidence: 0.3),
-          currentSecondOpinion: saysOther,
-        ),
-        isNull,
-      );
-    });
-
-    test('no current label gives no Aisle, whatever the second opinion', () {
+    test('no current label gives no Aisle', () {
       expect(resolveFoodAisle(currentLabel: null), isNull);
-      expect(
-        resolveFoodAisle(currentLabel: null, currentSecondOpinion: saysSnacks),
-        isNull,
-      );
     });
   });
 
@@ -1056,7 +801,6 @@ void main() {
           '2': _label(FoodAisle.drinks),
           '3': _label(FoodAisle.pantry, confidence: 0.3),
         },
-        secondOpinions: const {'3': (inputHash: 'h', aisle: FoodAisle.pantry)},
         overrides: const [],
       );
 
@@ -1071,10 +815,6 @@ void main() {
       final bundle = resolveAisleBundle(
         input: [_line('1'), _line('2')],
         labels: const {},
-        secondOpinions: const {
-          '1': (inputHash: 'h', aisle: FoodAisle.snacks),
-          '2': (inputHash: 'h', aisle: FoodAisle.snacks),
-        },
         overrides: [_override('1', aisle: FoodAisle.pantry)],
       );
 
@@ -1183,495 +923,6 @@ void main() {
       expect(merged.byCode.keys.toSet(), {'1', '2'});
       expect(merged.byCode['1']!.aisle, FoodAisle.snacks);
       expect(merged.byCode['2']!.aisle, FoodAisle.drinks);
-    });
-  });
-
-  group('secondOpinionsToAsk', () {
-    test('asks only about labels that are not confident, other included', () {
-      final input = [_line('1'), _line('2'), _line('3'), _line('4')];
-      final labels = _currentLabels({
-        '1': _label(FoodAisle.snacks, confidence: 0.9),
-        '2': _label(FoodAisle.snacks, confidence: 0.4),
-        '3': _label(null, confidence: 0.99),
-        '4': _label(FoodAisle.snacks, confidence: 0.6),
-      });
-
-      final asked = secondOpinionsToAsk(input, labels, _noOpinions);
-
-      expect(asked.map((line) => line.code), ['2', '3']);
-    });
-
-    test('a current second opinion is not asked again; a stale one is', () {
-      final input = [_line('1'), _line('2'), _line('3', hash: 'new')];
-      final labels = _currentLabels({
-        '1': _label(FoodAisle.snacks, confidence: 0.4),
-        '2': _label(FoodAisle.snacks, confidence: 0.4),
-        '3': _label(FoodAisle.snacks, confidence: 0.4, hash: 'new'),
-      });
-      final opinions = _currentOpinions({
-        '1': (inputHash: 'h', aisle: FoodAisle.snacks),
-        '3': (inputHash: 'old', aisle: FoodAisle.snacks),
-      });
-
-      final asked = secondOpinionsToAsk(input, labels, opinions);
-
-      expect(asked.map((line) => line.code), ['2', '3']);
-    });
-
-    test('second opinions under another question are all asked again', () {
-      final input = [_line('1')];
-      final labels = _currentLabels({
-        '1': _label(FoodAisle.snacks, confidence: 0.4),
-      });
-      const opinions = AisleSecondOpinions(
-        header: AisleSecondOpinionsHeader(questionHash: 'q1', model: 'm'),
-        byCode: {'1': (inputHash: 'h', aisle: FoodAisle.snacks)},
-      );
-
-      expect(secondOpinionsToAsk(input, labels, opinions), hasLength(1));
-    });
-
-    test('a product with no current label is not asked about yet', () {
-      final input = [_line('1'), _line('2')];
-      final labels = _currentLabels({
-        '2': _label(FoodAisle.snacks, confidence: 0.4, hash: 'old'),
-      });
-
-      expect(secondOpinionsToAsk(input, labels, _noOpinions), isEmpty);
-    });
-  });
-
-  group('encodeSecondOpinionInput', () {
-    final line = AisleInputLine(
-      code: '0818290014313',
-      name: 'Greek Yogurt Plain Nonfat',
-      brand: 'Chobani',
-      categories: const [
-        'en:dairies',
-        'en:fermented-foods',
-        'en:fermented-milk-products',
-        'en:yogurts',
-        'en:greek-style-yogurts',
-      ],
-      scans: 412,
-      inputHash: '352594eedc0b9cad',
-    );
-
-    test('the first line holds the instructions and criteria Clef is asked',
-        () {
-      final lines = encodeSecondOpinionInput([line]).split('\n');
-      final question = jsonDecode(lines.first) as Map<String, Object?>;
-      final clef = (aisleModelRequest(
-          model: 'clef:latest',
-          state: const {})['questions']! as Map)['aisle'] as Map;
-
-      expect(question.keys, ['instructions', 'criteria', 'answer']);
-      expect(question['instructions'], clef['instructions']);
-      expect(jsonEncode(question['criteria']), jsonEncode(clef['criteria']));
-      expect(
-        question['answer'],
-        'Reply with exactly one id from criteria, for each product.',
-      );
-    });
-
-    test('a product line holds the code and the same state as Clef\'s', () {
-      final text = encodeSecondOpinionInput([line]);
-      final lines = text.split('\n');
-
-      expect(lines, hasLength(3));
-      expect(lines.last, isEmpty, reason: 'ends with a newline');
-      expect(
-        lines[1],
-        '{"code":"0818290014313","state":${jsonEncode(aisleModelState(
-          name: line.name,
-          brand: line.brand,
-          categories: line.categories,
-        ))}}',
-      );
-    });
-
-    test('no line holds Clef\'s answer', () {
-      final text = encodeSecondOpinionInput([line]);
-
-      expect(text, isNot(contains('confidence')));
-      expect(text, isNot(contains('"choice"')));
-      expect(text, isNot(contains('inputHash')));
-    });
-
-    test('with nothing to ask, it is the question line alone', () {
-      expect(encodeSecondOpinionInput(const []).split('\n'), hasLength(2));
-    });
-  });
-
-  group('parseSecondOpinionAnswers', () {
-    test('reads code and choice in any order, skipping blank lines', () {
-      final answers = parseSecondOpinionAnswers(
-        '{"code":"2","choice":"other"}\n'
-        '\n'
-        '{"choice":"snacks","code":"1"}\n',
-        asked: {'1', '2', '3'},
-      );
-
-      expect(answers, {'2': null, '1': FoodAisle.snacks});
-    });
-
-    test('an empty file is no answers', () {
-      expect(parseSecondOpinionAnswers('', asked: {'1'}), isEmpty);
-    });
-
-    group('rejects, naming the line,', () {
-      void expectRejected(String text, int line) {
-        expect(
-          () => parseSecondOpinionAnswers(text, asked: {'1', '2'}),
-          _throwsFormatNamingLine(line),
-        );
-      }
-
-      test('a code that was not asked', () {
-        expectRejected(
-          '{"code":"1","choice":"snacks"}\n{"code":"9","choice":"snacks"}\n',
-          2,
-        );
-      });
-
-      test('an unknown choice', () {
-        expectRejected('{"code":"1","choice":"frozen"}\n', 1);
-        expectRejected('{"code":"1","choice":"none"}\n', 1);
-      });
-
-      test('a missing or extra key', () {
-        expectRejected('{"code":"1"}\n', 1);
-        expectRejected('{"code":"1","choice":"snacks","confidence":0.9}\n', 1);
-      });
-
-      test('a repeated code', () {
-        expectRejected(
-          '{"code":"1","choice":"snacks"}\n{"code":"1","choice":"pantry"}\n',
-          2,
-        );
-      });
-
-      test('a line that is not a JSON object', () {
-        expectRejected('["1","snacks"]\n', 1);
-        expectRejected('not json\n', 1);
-      });
-    });
-  });
-
-  group('mergeSecondOpinions', () {
-    const header = AisleSecondOpinionsHeader(
-      questionHash: 'current',
-      model: 'claude-haiku-5-5',
-    );
-
-    test('adds the answers, with each product\'s input hash, under header', () {
-      final merged = mergeSecondOpinions(
-        input: [_line('1', hash: 'a'), _line('2', hash: 'b')],
-        labels: _currentLabels({
-          '1': _label(FoodAisle.snacks, confidence: 0.4, hash: 'a'),
-          '2': _label(null, confidence: 0.9, hash: 'b'),
-        }),
-        existing: _noOpinions,
-        answers: {'1': FoodAisle.snacks, '2': null},
-        header: header,
-      );
-
-      expect(merged.header, same(header));
-      expect(merged.byCode, {
-        '1': (inputHash: 'a', aisle: FoodAisle.snacks),
-        '2': (inputHash: 'b', aisle: null),
-      });
-    });
-
-    test('keeps current lines from the same model, an answer winning', () {
-      final merged = mergeSecondOpinions(
-        input: [_line('1'), _line('2'), _line('3')],
-        labels: _currentLabels({
-          '1': _label(FoodAisle.snacks, confidence: 0.4),
-          '2': _label(FoodAisle.snacks, confidence: 0.4),
-          '3': _label(FoodAisle.snacks, confidence: 0.4),
-        }),
-        existing: _currentOpinions({
-          '1': (inputHash: 'h', aisle: FoodAisle.pantry),
-          '2': (inputHash: 'h', aisle: FoodAisle.pantry),
-          '3': (inputHash: 'stale', aisle: FoodAisle.pantry),
-        }),
-        answers: {'2': FoodAisle.snacks},
-        header: header,
-      );
-
-      expect(merged.byCode, {
-        '1': (inputHash: 'h', aisle: FoodAisle.pantry),
-        '2': (inputHash: 'h', aisle: FoodAisle.snacks),
-      });
-    });
-
-    test('drops the lines of another model', () {
-      final merged = mergeSecondOpinions(
-        input: [_line('1'), _line('2')],
-        labels: _currentLabels({
-          '1': _label(FoodAisle.snacks, confidence: 0.4),
-          '2': _label(FoodAisle.snacks, confidence: 0.4),
-        }),
-        existing: _currentOpinions(
-          {'1': (inputHash: 'h', aisle: FoodAisle.pantry)},
-          model: 'another-model',
-        ),
-        answers: {'2': FoodAisle.snacks},
-        header: header,
-      );
-
-      expect(merged.byCode.keys, ['2']);
-    });
-
-    test('drops codes whose label became confident or that left the input', () {
-      final merged = mergeSecondOpinions(
-        input: [_line('1'), _line('2')],
-        labels: _currentLabels({
-          '1': _label(FoodAisle.snacks, confidence: 0.95),
-          '2': _label(FoodAisle.snacks, confidence: 0.4),
-        }),
-        existing: _currentOpinions({
-          '1': (inputHash: 'h', aisle: FoodAisle.snacks),
-          '2': (inputHash: 'h', aisle: FoodAisle.snacks),
-          '9': (inputHash: 'h', aisle: FoodAisle.snacks),
-        }),
-        answers: const {},
-        header: header,
-      );
-
-      expect(merged.byCode.keys, ['2']);
-    });
-  });
-
-  group('selectAisleEdgeCases', () {
-    List<AisleEdgeCase> select(
-      List<AisleInputLine> input,
-      Map<String, AisleLabel> labels,
-      Map<String, AisleSecondOpinion> opinions, {
-      List<AisleOverrideRow> overrides = const [],
-    }) {
-      return selectAisleEdgeCases(
-        input: input,
-        labels: _currentLabels(labels),
-        opinions: _currentOpinions(opinions),
-        overrides: overrides,
-      );
-    }
-
-    test('different choices are edge cases; agreement and both other not', () {
-      final cases = select(
-        [_line('1'), _line('2'), _line('3'), _line('4'), _line('5')],
-        {
-          '1': _label(FoodAisle.snacks, confidence: 0.4),
-          '2': _label(FoodAisle.snacks, confidence: 0.4),
-          '3': _label(null, confidence: 0.4),
-          '4': _label(null, confidence: 0.9),
-          '5': _label(FoodAisle.snacks, confidence: 0.4),
-        },
-        {
-          '1': (inputHash: 'h', aisle: FoodAisle.pantry),
-          '2': (inputHash: 'h', aisle: FoodAisle.snacks),
-          '3': (inputHash: 'h', aisle: null),
-          '4': (inputHash: 'h', aisle: FoodAisle.drinks),
-          '5': (inputHash: 'h', aisle: null),
-        },
-      );
-
-      expect(cases.map((edgeCase) => edgeCase.line.code), ['1', '4', '5']);
-      expect(cases.first.label.aisle, FoodAisle.snacks);
-      expect(cases.first.secondOpinion.aisle, FoodAisle.pantry);
-    });
-
-    test('a confident label is never an edge case', () {
-      final cases = select(
-        [_line('1')],
-        {'1': _label(FoodAisle.snacks, confidence: 0.9)},
-        {'1': (inputHash: 'h', aisle: FoodAisle.pantry)},
-      );
-
-      expect(cases, isEmpty);
-    });
-
-    test('a product with a stale second opinion is not an edge case yet', () {
-      final cases = select(
-        [_line('1')],
-        {'1': _label(FoodAisle.snacks, confidence: 0.4)},
-        {'1': (inputHash: 'old', aisle: FoodAisle.pantry)},
-      );
-
-      expect(cases, isEmpty);
-    });
-
-    test('a product with an override row is left out, unsure included', () {
-      final cases = select(
-        [_line('1'), _line('2'), _line('3'), _line('4')],
-        {
-          for (final code in ['1', '2', '3', '4'])
-            code: _label(FoodAisle.snacks, confidence: 0.4),
-        },
-        {
-          for (final code in ['1', '2', '3', '4'])
-            code: (inputHash: 'h', aisle: FoodAisle.pantry),
-        },
-        overrides: [
-          _override('1', aisle: FoodAisle.snacks),
-          _override('2'),
-          _override('3', answer: AisleOverrideAnswer.unsure),
-        ],
-      );
-
-      expect(cases.map((edgeCase) => edgeCase.line.code), ['4']);
-    });
-
-    test('orders by scans descending, then code ascending', () {
-      final cases = select(
-        [
-          _line('c', scans: 5),
-          _line('a', scans: 9),
-          _line('d', scans: 5),
-          _line('b', scans: 1),
-        ],
-        {
-          for (final code in ['a', 'b', 'c', 'd'])
-            code: _label(FoodAisle.snacks, confidence: 0.4),
-        },
-        {
-          for (final code in ['a', 'b', 'c', 'd'])
-            code: (inputHash: 'h', aisle: FoodAisle.pantry),
-        },
-      );
-
-      expect(cases.map((edgeCase) => edgeCase.line.code), ['a', 'c', 'd', 'b']);
-    });
-
-    test('keeps at most aisleReviewLimit, the most scanned', () {
-      expect(aisleReviewLimit, 50);
-      final codes = [for (var i = 0; i < 60; i += 1) _code(i)];
-      final cases = select(
-        [for (final code in codes) _line(code, scans: int.parse(code))],
-        {
-          for (final code in codes)
-            code: _label(FoodAisle.snacks, confidence: 0.4),
-        },
-        {
-          for (final code in codes)
-            code: (inputHash: 'h', aisle: FoodAisle.pantry),
-        },
-      );
-
-      expect(cases, hasLength(50));
-      expect(cases.first.line.code, _code(59));
-      expect(cases.last.line.code, _code(10));
-    });
-  });
-
-  group('aisleReviewPage', () {
-    AisleEdgeCase edgeCase(
-      String code, {
-      String name = 'A product',
-      String? brand = 'A brand',
-      List<String> categories = const ['en:snacks', 'en:crisps'],
-    }) {
-      return AisleEdgeCase(
-        line: AisleInputLine(
-          code: code,
-          name: name,
-          brand: brand,
-          categories: categories,
-          scans: 3,
-          inputHash: 'h',
-        ),
-        label: _label(FoodAisle.snacks, confidence: 0.452),
-        secondOpinion: (inputHash: 'h', aisle: FoodAisle.sweetsDesserts),
-      );
-    }
-
-    test('shows each product\'s name, brand, tags, both answers, confidence',
-        () {
-      final page = aisleReviewPage(
-        [edgeCase('1', name: 'Salted crisps'), edgeCase('2', name: 'Oat bar')],
-        postPath: '/token',
-      );
-
-      expect(page, startsWith('<!doctype html>'));
-      expect(page, contains('Salted crisps'));
-      expect(page, contains('Oat bar'));
-      expect(page, contains('A brand'));
-      expect(page, contains('en:crisps'));
-      expect(page, contains('Snacks (snacks)'));
-      expect(page, contains('Sweets &amp; desserts (sweetsDesserts)'));
-      expect(page, contains('0.452'));
-      expect(page, contains('data-post-path="/token"'));
-    });
-
-    test('has a button per Aisle, by its UI label, then none and unsure', () {
-      final page = aisleReviewPage([edgeCase('1')], postPath: '/token');
-
-      var position = 0;
-      for (final id in [
-        for (final aisle in FoodAisle.values) aisle.name,
-        'none',
-        'unsure',
-      ]) {
-        final found = page.indexOf('data-aisle="$id"', position);
-        expect(found, greaterThan(position), reason: id);
-        position = found;
-      }
-      for (final aisle in FoodAisle.values) {
-        expect(
-          page,
-          contains('>${aisle.label.replaceAll('&', '&amp;')}</button>'),
-        );
-      }
-    });
-
-    test('holds the guide', () {
-      final page = aisleReviewPage([edgeCase('1')], postPath: '/token');
-
-      for (final principle in aislePrinciples) {
-        expect(page, contains(principle.split('(').first.trim()));
-      }
-      expect(page, contains('<details>'));
-    });
-
-    test('loads nothing from elsewhere: no http:// or https:// URL', () {
-      final page = aisleReviewPage(
-        [edgeCase('1'), edgeCase('2', brand: null, categories: const [])],
-        postPath: '/token',
-      );
-
-      expect(page, isNot(contains('http://')));
-      expect(page, isNot(contains('https://')));
-      expect(page, isNot(contains(' src=')));
-      expect(page, isNot(contains('<link')));
-    });
-
-    test('escapes every product field as HTML text', () {
-      const hostile = '<script>alert("x")</script>';
-      final page = aisleReviewPage(
-        [
-          edgeCase(
-            '"><img onerror=x>',
-            name: hostile,
-            brand: "O'Brien & <b>Sons</b>",
-            categories: const ['en:<i>tag</i>'],
-          ),
-        ],
-        postPath: '/token',
-      );
-
-      expect(page, isNot(contains(hostile)));
-      expect(
-        page,
-        contains('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;'),
-      );
-      expect(page, contains('O&#39;Brien &amp; &lt;b&gt;Sons&lt;/b&gt;'));
-      expect(page, contains('en:&lt;i&gt;tag&lt;/i&gt;'));
-      expect(page, isNot(contains('<img')));
-      expect(page, contains('&quot;&gt;&lt;img onerror=x&gt;'));
-      // The page's own script is the only one.
-      expect('<script>'.allMatches(page), hasLength(1));
     });
   });
 

@@ -98,8 +98,7 @@ Aisle steps in [food-aisles.md](designs/food-aisles.md). Refreshes are planned a
 most once a quarter, with an app release, each in its own pull request.
 
 A refresh is these runs, all from `apps/mobile`: the builder with
-`--aisle-input-only`, the labeller, the second opinion, the review, then the
-builder again. The labeller asks only about products that are new or whose
+`--aisle-input-only`, the labeller, then the builder again. The labeller asks only about products that are new or whose
 name, brand or last six Open Food Facts tags changed, so a refresh labels a
 fraction of the bundle. If a step is skipped, the last build writes no bundle
 and says which step to run.
@@ -130,8 +129,8 @@ and says which step to run.
     *   "nutrients read from" shows how many products used `nutrition` and how
         many the legacy `nutriments`.
 
-    Its last lines give the number of products whose label or second opinion
-    is missing or stale: the work the next steps do.
+    Its last line gives the number of products whose label is missing or
+    stale: the work the next step does.
 
 3.  Label the new and changed products with Clef, served by
     [Ollama](https://ollama.com) (`ollama pull clef`). The run checkpoints every
@@ -141,47 +140,32 @@ and says which step to run.
     dart run tool/open_food_facts_bundle/label_aisles.dart label --ollama http://localhost:11434
     ```
 
-4.  Get a second opinion on the labels that are not confident. The first
-    command writes `build/open_food_facts_aisle_second_opinion_input.ndjson`.
-    Send it to a hosted model with any client you have, telling the model to
-    treat each product's `state` as data, and save its answers as JSON lines of
-    `{"code":"…","choice":"…"}`. Then take them in, naming the model:
+4.  Optionally, fix single products by hand. A row in
+    `tool/open_food_facts_bundle/aisle_overrides.csv`
+    (`code,name,brand,categories,aisle`, the last an Aisle id, `none` or
+    `unsure`) replaces the label's Aisle for that code. `name`, `brand` and
+    `categories` are there so the diff can be read. `label_aisles.dart guide`
+    prints the principles and Aisle descriptions to follow.
 
-    ```bash
-    dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-input
-    dart run tool/open_food_facts_bundle/label_aisles.dart second-opinion-apply --model <the model's name> --answers <path>
-    ```
-
-5.  Settle the edge cases, where the two models disagree, on the review page.
-    It prints a local URL; answer up to 50 products, most scanned first, with an
-    Aisle, `none` or `unsure`. Each answer is written to `aisle_overrides.csv`
-    at once. `label_aisles.dart guide` prints the principles and the Aisle
-    descriptions the page shows.
-
-    ```bash
-    dart run tool/open_food_facts_bundle/label_aisles.dart review
-    ```
-
-6.  Run the builder again, without `--aisle-input-only`. It writes the bundle
+5.  Run the builder again, without `--aisle-input-only`. It writes the bundle
     and prints the full report. Check that:
-    *   `labels missing or stale` and `second opinions missing or stale` are both
-        0. Otherwise it writes no bundle, exits with status 1 and names the
-        step to run;
+    *   `labels missing or stale` is 0. Otherwise it writes no bundle, exits
+        with status 1 and names the step to run;
     *   "products per Aisle" gives every Aisle some products, with counts close
         to the last refresh's, and "products per deciding step" shows how many
-        Aisles came from an override, a confident label, or the two models
-        agreeing;
-    *   "products with an Aisle" is above the coverage floor (85%). The line says
+        Aisles came from an override or a label, how many labels were below
+        0.6 confidence, and how many labels were `other`;
+    *   "products with an Aisle" is above the coverage floor (95%). The line says
         `BELOW THE FLOOR` when it is not, and the asset tests then fail; see
         [What CI checks](designs/food-aisles.md#what-ci-checks);
     *   the compressed bundle is under the 6 MB budget. The builder exits with
         an error when it is not.
 
-7.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart
+6.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart
     test/tool/aisle_data_test.dart` from `apps/mobile`, then open the pull
-    request with the bundle and the three data files under
-    `tool/open_food_facts_bundle/` (`aisle_labels.ndjson`,
-    `aisle_second_opinions.ndjson` and `aisle_overrides.csv`). Record the
+    request with the bundle and the two data files under
+    `tool/open_food_facts_bundle/` (`aisle_labels.ndjson` and
+    `aisle_overrides.csv`). Record the
     dataset version and paste both builder reports in its description.
 
 ### Changing Aisles without a refresh
@@ -191,7 +175,7 @@ Aisles, their descriptions or the question asked of the model, build from the
 bundle itself and Open Food Facts' tags export
 (`en.openfoodfacts.org.products.csv.gz`, about 1.5 GB, from
 [Open Food Facts data exports](https://world.openfoodfacts.org/data)). Run
-steps 2 to 7 with `--from-bundle` and `--tags-export` in place of `--input` and
+steps 2 to 6 with `--from-bundle` and `--tags-export` in place of `--input` and
 `--dataset-version`:
 
 ```bash
