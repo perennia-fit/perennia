@@ -122,7 +122,11 @@ _NormalizedNumericValue _normalizeNumericValue({
   final trimmed = entered.trim();
   final parsed = double.tryParse(trimmed);
   if (parsed == null || !parsed.isFinite) {
-    throw ArgumentError.value(entered, 'entered', 'Value must be finite.');
+    throw ArgumentError.value(
+      entered,
+      'entered',
+      'Metric Reading value must be finite.',
+    );
   }
   return _NormalizedNumericValue(
     entered: trimmed,
