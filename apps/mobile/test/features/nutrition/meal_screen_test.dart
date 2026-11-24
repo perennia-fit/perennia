@@ -1231,6 +1231,31 @@ void main() {
       await _unmount(tester);
     });
 
+    testWidgets(
+        "the app bar's back button closes an open Aisle and the Meal screen "
+        'stays (food-aisles.md CUJ 3)', (tester) async {
+      await open(
+        tester,
+        const MealScreen.newMeal(day: today),
+        addFoodRepository: _AisleFoodRepository(_openFoodFactsBar()),
+      );
+      final row = find.byKey(AddFoodPicker.aisleRowKey(FoodAisle.dairyEggs));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MealScreen), findsOneWidget);
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsNothing);
+      expect(find.byKey(AddFoodPicker.browseLabelKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
     testWidgets('a Quick Entry lands in the Meal on screen', (tester) async {
       final mealId = await seedMeal(DateTime(2026, 6, 26, 15), 'Snack');
       final otherId = await seedMeal(DateTime(2026, 6, 26, 10), 'Snack');

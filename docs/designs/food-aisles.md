@@ -1,8 +1,8 @@
 # Food Aisles
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
-*   **Date:** 2026-10-31 (first draft 2026-10-30; revised after review, and again for the definitions experiment; amended 2026-11-07 to replace the person-labelled reference set with a second opinion and a small review; amended 2026-11-24 to drop the second opinion and the review, so Clef's label decides at any confidence)
+*   **Status:** Current
+*   **Date:** 2026-10-31 (first draft 2026-10-30; revised after review, and again for the definitions experiment; amended 2026-11-07 to replace the person-labelled reference set with a second opinion and a small review; amended 2026-11-24 to drop the second opinion and the review, so Clef's label decides at any confidence; amended 2026-11-24 for the picker embedded in the Meal screen)
 *   **Amended by:** [Meal Logging](meal-logging.md). The add-food picker now
     takes a Meal target (a saved Meal, or a new Meal written by the first
     pick) and is embedded in the Meal screen, which the Nutrition Day's
@@ -353,7 +353,8 @@ with the second opinion (see
 ### CUJ 1: A new user browses for a snack
 
 *   **Given** a user with no logged Foods and the bundle installed,
-*   **When** they tap **Add Food**,
+*   **When** they open the picker from the Meal screen (the Nutrition Day's
+    **Log meal**),
 *   **Then** the picker shows the new-user line from
     [Unified Food Search](unified-food-search.md), and under the
     label "Browse" one row for each of the 14 Aisles, in the order of
@@ -378,7 +379,7 @@ with the second opinion (see
 
 *   **Given** an Aisle is open with a typed query,
 *   **When** the user taps the header's back button, uses the system back
-    gesture, or taps the Meal screen's app-bar back button,
+    gesture, or taps the Meal screen's back button,
 *   **Then** the Aisle closes, the search field is cleared, and the picker
     shows the filter that was selected before the Aisle opened, with its
     blank-query view. The Meal screen stays open; a second back leaves it.
@@ -1092,7 +1093,7 @@ in that spec:
     ([Picker items](unified-food-search.md#picker-items));
 *   `searchResultLimit` (50), the limit for a typed query;
 *   the attribution footer and its key (`attributionFooterKey`);
-*   the picker's controller starting fresh each time the sheet opens.
+*   the picker's controller starting fresh each time the Meal screen opens.
 
 **`AddFoodRepository`** gains:
 
@@ -1135,7 +1136,7 @@ that was selected before, so closing the Aisle needs nothing to restore.
 | `_load` (every refresh) | As in phase 1 | Calls `browseAisle(_aisle, query: _query, limit:, yourFoods: _yourFoods)`, with `aisleBrowseLimit` for a blank query and `searchResultLimit` for a typed one, and returns a state with `aisle: _aisle` |
 | `setQuery` | As today | As today: debounced, then a refresh, which goes through `_load` |
 | `submitQuery` | As in phase 1 | Refreshes the device's matches with the current data kept on screen and returns `null`. No live search is made |
-| `selectFilter` | As today | Clears `_aisle`, then as today |
+| `selectFilter` | As today | Clears `_aisle`, then as today. Selecting the filter that is already selected also closes the Aisle and refreshes; the query is kept |
 | `_reloadDeviceMatches` (the bundle becomes `ready`) | As in phase 1 | Runs `browseAisle` as `_load` does, and applies the result only if `_aisle`, `_filter` and `_query` are unchanged |
 | A barcode from the scanner | As today | The picker calls `closeAisle()`, then `lookupBarcode` as today, which may make a live request |
 
@@ -1183,7 +1184,8 @@ Aisle open, and "Search <label>" with one open.
     The header's Scan barcode button stays.
 *   **Blank query.** The Aisle's rows. When there are exactly
     `aisleBrowseLimit` rows, the last item is the line "Showing the 100 most
-    scanned. Search to find more." (secondary text).
+    scanned. Search to find more." (secondary text). An Aisle with no rows
+    shows an empty list, with no line.
 *   **Typed query.** The matching rows, or "No foods match in <label>."
     (secondary text).
 *   **Not shown:** the online slot, the "From Open Food Facts" live group, and
@@ -1195,7 +1197,9 @@ Aisle open, and "Search <label>" with one open.
     `closeAisle` and the Meal screen, which embeds the picker, stays open.
     This covers the system back gesture and the Meal screen's app-bar back
     button, which both pop through `Navigator.maybePop`. With no Aisle open,
-    a back leaves the Meal screen as it does today.
+    a back leaves the Meal screen as it does today. While an Aisle's first
+    load runs, the state has no value yet, so `aisle` reads as `null` and the
+    chips show for that moment, as on any refresh with no data.
 
 **Keys**, as static members of `AddFoodPicker`:
 
@@ -2232,8 +2236,12 @@ them out again.
     `add_food_picker_test.dart`, `_StubAddFoodRepository`,
     `_TrackingAddFoodRepository`, `_DeferredAddFoodRepository`,
     `_EmptyAddFoodRepository`, `_OfflineOpenFoodFactsRepository` and
-    `_OnlineAddFoodRepository`. The fake in `add_food_picker_state_test.dart`
-    implements `browseAisle` itself and records each call.
+    `_OnlineAddFoodRepository`. Three fakes implement `browseAisle`
+    themselves instead: `_FakeAddFoodRepository` in
+    `add_food_picker_state_test.dart`, which records each call, and the
+    Aisle fakes `_AisleAddFoodRepository` in `add_food_picker_test.dart` and
+    `_AisleFoodRepository` in `meal_screen_test.dart`, which return rows for
+    any Aisle.
 *   `test/features/nutrition/add_food_repository_test.dart`: `browseAisle`
     with a blank query (order and the 100 limit); with a typed query; Last
     Portions on Aisle rows.
@@ -2255,10 +2263,11 @@ them out again.
     *   **The field:** opening and closing an Aisle clears the text on screen.
     *   **A scanned barcode** while an Aisle is open closes the Aisle before
         the lookup.
-    *   **Back:** the back button, the system back and a host app bar's
-        back button each close the Aisle and leave the picker's route open;
-        a second system back pops it. `meal_screen_test.dart` checks the
-        same on the Meal screen.
+    *   **Back:** the back button, the system back and the host's app-bar
+        back button each close the Aisle and leave the host screen open; a
+        second system back pops it. `meal_screen_test.dart` checks the same
+        on the Meal screen: with an Aisle open, the system back and the app
+        bar's back button each close the Aisle and the Meal screen stays.
     *   **Accessibility:** semantics labels and headers, 48 dp rows, and text
         scale 2.0 with no overflow.
 
@@ -2306,5 +2315,5 @@ them out again.
 *   **On a device (pull request 2):** a debug build with a fresh install of
     the version 2 bundle. The Browse section lists all 14 Aisles. Opening Snacks and
     searching "salt" shows only products in the Snacks Aisle. Back returns to
-    Browse with the sheet open. This is checked on Android and iOS at text
+    Browse with the Meal screen open. This is checked on Android and iOS at text
     scale 1.0 and 2.0, in the light and dark themes.
