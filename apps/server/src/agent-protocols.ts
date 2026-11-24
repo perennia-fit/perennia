@@ -32,8 +32,14 @@ import {
   normalizePurposeIds,
   validatePurposeName
 } from "./compound-purposes.js";
+import { labTestByKey } from "./data/lab-test-catalogue.generated.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
+import {
+  findLabMetric,
+  labMetricIds,
+  readCollapsedLabReadings
+} from "./metric-identity.js";
 import {
   MS_PER_DAY,
   ProtocolPlanCodecError,
@@ -1237,7 +1243,7 @@ export const AgentEffectWindowQuerySchema = z
     metricKey: z.string().trim().min(1).optional().openapi({
       param: { name: "metricKey", in: "query" },
       description:
-        "The outcome Metric by name/key. Provide exactly one of metricId or metricKey."
+        "The outcome Metric by name/key, or a Lab Test key for its Lab Metrics (never matched by name). Provide exactly one of metricId or metricKey."
     }),
     from: z.string().trim().min(1).openapi({
       param: { name: "from", in: "query" },
@@ -1907,7 +1913,7 @@ export const agentEffectWindowRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "Read a descriptive Effect window for a Compound/Protocol × Metric.",
   description:
-    "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+    "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. A Lab Metric (its metricId, or a Lab Test key as metricKey) reads the results of every Metric with that key, collapsed to one per collection (a final beating an interim) before windowing; a Limit Result such as \"< 1\" is not a sample. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
   security: [{ bearerAuth: [] }],
   request: { query: AgentEffectWindowQuerySchema },
   responses: {
@@ -3736,24 +3742,29 @@ export function createDrizzleAgentProtocolsStore(
           ? null
           : deriveEffectWindow(windowSource, new Date());
 
-      const readingRows = await db
-        .select({
-          scalarValue: schema.metricReadings.scalarValue,
-          atTime: schema.metricReadings.atTime,
-          windowStartedAt: schema.metricReadings.windowStartedAt,
-          windowEndedAt: schema.metricReadings.windowEndedAt,
-          updatedAt: schema.metricReadings.updatedAt,
-          deletedAt: schema.metricReadings.deletedAt
-        })
-        .from(schema.metricReadings)
-        .where(
-          and(
-            eq(schema.metricReadings.userId, userId),
-            eq(schema.metricReadings.metricId, metricRow.id)
-          )
-        );
+      const readingRows =
+        metricRow.labTestKey !== null
+          ? await collapsedLabEffectRows(db, userId, metricRow)
+          : await db
+              .select({
+                scalarValue: schema.metricReadings.scalarValue,
+                atTime: schema.metricReadings.atTime,
+                windowStartedAt: schema.metricReadings.windowStartedAt,
+                windowEndedAt: schema.metricReadings.windowEndedAt,
+                updatedAt: schema.metricReadings.updatedAt,
+                deletedAt: schema.metricReadings.deletedAt
+              })
+              .from(schema.metricReadings)
+              .where(
+                and(
+                  eq(schema.metricReadings.userId, userId),
+                  eq(schema.metricReadings.metricId, metricRow.id)
+                )
+              );
 
       const samples: EffectWindowSample[] = [];
+      // A Limit Result ("< 1") has a null scalarValue and is skipped here,
+      // never zeroed.
       for (const reading of readingRows) {
         if (reading.deletedAt !== null || reading.scalarValue === null) {
           continue;
@@ -6024,24 +6035,126 @@ function localDateOrNull(value: unknown): string | null {
   return typeof value === "string" && isValidLocalDate(value) ? value : null;
 }
 
+/**
+ * The outcome Metric of an Effect window request: the reported
+ * `{id, name, unit}`, plus, for a Lab Metric, its Lab Test key and the ids
+ * of every Metric with that key.
+ *
+ * Lab Metrics resolve by key (docs/designs/lab-results.md, "Finding the Lab
+ * Metric for a Lab Test", Matching by key): a `metricKey` that is a
+ * catalogue Lab Test key resolves through [labMetricIds], never by name, so
+ * a custom Metric named "Testosterone" is not it, and is not found when the
+ * user has no Metric with the key (a key this build's catalogue does not
+ * know resolves the same way when one of the user's Metrics has it, and a
+ * Lab Metric is never matched by its name); a `metricId` naming a row with a
+ * `labTestKey` expands to every Metric with its key. A Lab Metric's own
+ * archive state is ignored. The reported Metric is the live Lab Metric
+ * [findLabMetric] picks; with none live, the named row, or for a key the
+ * first archived one by sort order then id. Any other Metric resolves as
+ * before: by id, or by case-insensitive name.
+ */
 async function resolveMetric(
   db: ServerDatabase,
   userId: string,
   query: AgentEffectWindowQuery
-): Promise<{ id: string; name: string; unit: string } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  unit: string;
+  labTestKey: string | null;
+  metricIds: string[];
+} | null> {
   const rows = await db
     .select({
       id: schema.metrics.id,
       name: schema.metrics.name,
-      unit: schema.metrics.unit
+      unit: schema.metrics.unit,
+      sortOrder: schema.metrics.sortOrder,
+      labTestKey: schema.metrics.labTestKey
     })
     .from(schema.metrics)
     .where(eq(schema.metrics.userId, userId));
+  let named: (typeof rows)[number] | null = null;
+  let labTestKey: string | null = null;
   if (query.metricId !== undefined) {
-    return rows.find((row) => row.id === query.metricId) ?? null;
+    named = rows.find((row) => row.id === query.metricId) ?? null;
+    if (named === null) {
+      return null;
+    }
+    labTestKey = named.labTestKey;
+  } else if (
+    labTestByKey(query.metricKey!) !== null ||
+    rows.some((row) => row.labTestKey === query.metricKey)
+  ) {
+    labTestKey = query.metricKey!;
   }
-  const key = query.metricKey!.toLowerCase();
-  return rows.find((row) => row.name.toLowerCase() === key) ?? null;
+
+  if (labTestKey === null) {
+    if (named === null) {
+      // A Lab Metric is matched by its key only, never by its name.
+      const key = query.metricKey!.toLowerCase();
+      named =
+        rows.find(
+          (row) => row.labTestKey === null && row.name.toLowerCase() === key
+        ) ?? null;
+    }
+    return named === null
+      ? null
+      : {
+          id: named.id,
+          name: named.name,
+          unit: named.unit,
+          labTestKey: null,
+          metricIds: [named.id]
+        };
+  }
+
+  const metricIds = await labMetricIds(db, { userId, labTestKey });
+  if (metricIds.length === 0) {
+    return null;
+  }
+  const reported =
+    (await findLabMetric(db, { userId, labTestKey })) ??
+    named ??
+    rows
+      .filter((row) => row.labTestKey === labTestKey)
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+      )[0]!;
+  return {
+    id: reported.id,
+    name: reported.name,
+    unit: reported.unit,
+    labTestKey,
+    metricIds
+  };
+}
+
+/**
+ * The Effect samples' source rows for a Lab Metric: every reading of every
+ * Metric with its key, archived Lab Metrics included, collapsed as one
+ * series **before** the window is applied (docs/designs/lab-results.md,
+ * "Result identity and the collapse"), through the shared
+ * `readCollapsedLabReadings`. An interim and its final share
+ * `lab.collected` but each is anchored at its own instant, so a final
+ * outside the window must still hide its interim inside it; windowing first
+ * would let the superseded interim through. The app twin is
+ * `EffectRepository.samplesFor` (its `_labMetricSamples`). The collapse
+ * drops archived readings; the caller then skips Limit Results, whose
+ * `scalarValue` is null.
+ */
+function collapsedLabEffectRows(
+  db: ServerDatabase,
+  userId: string,
+  metric: { labTestKey: string | null; metricIds: string[] }
+) {
+  return readCollapsedLabReadings(db, {
+    userId,
+    labTestKey: metric.labTestKey!,
+    metricIds: metric.metricIds
+  });
 }
 
 // ---------------------------------------------------------------------------

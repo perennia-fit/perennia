@@ -643,6 +643,856 @@ test(
   }
 );
 
+// Lab Results by Lab Test (docs/designs/lab-results.md, "Agent surface" and
+// "Finding the Lab Metric for a Lab Test").
+
+const databaseSkip = databaseUrl ? false : "DATABASE_URL is not set.";
+
+test(
+  "a lab write by Lab Test creates one Lab Metric, logs it, reports it and reuses it",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      await insertBodyWeightMetric(database, { id: `bw-${randomUUID()}`, userId });
+      const labMetricId = stableScopedId("metric", userId, "lab:testosterone_total");
+      const idempotencyKey = `lab-create-${randomUUID()}`;
+      const reading = labReading();
+
+      const response = await postAgentMetrics(app, labBatch(idempotencyKey, [reading]));
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.duplicate, false);
+      assert.equal(body.metrics.length, 1);
+      assert.deepEqual(body.metrics[0], {
+        id: labMetricId,
+        name: "Testosterone",
+        valueShape: "scalar",
+        unit: "nmol/L",
+        metricGroup: "custom",
+        applied: true,
+        outcome: "applied"
+      });
+      assert.equal(body.readings[0].metricId, labMetricId);
+      assert.equal(body.readings[0].outcome, "applied");
+
+      const [metric] = await database.sql`select * from metrics where id = ${labMetricId}`;
+      assert.equal(metric.user_id, userId);
+      assert.equal(metric.lab_test_key, "testosterone_total");
+      assert.equal(metric.name, "Testosterone");
+      assert.equal(metric.unit, "nmol/L");
+      assert.equal(metric.value_shape, "scalar");
+      assert.equal(metric.metric_group, "custom");
+      assert.equal(metric.enabled, true);
+      assert.equal(metric.pinned, false);
+      assert.equal(metric.goal_type, null);
+      assert.equal(metric.goal_target_value, null);
+      // One more than the Body Weight Metric's sort order 0.
+      assert.equal(metric.sort_order, 1);
+      assert.equal(metric.deleted_at, null);
+
+      const [stored] = await database.sql`
+        select * from metric_readings where id = ${reading.id}
+      `;
+      assert.equal(stored.metric_id, labMetricId);
+      assert.equal(stored.scalar_value, 20.4);
+      assert.equal(stored.scalar_entered, "20.4");
+      assert.deepEqual(stored.value_json.lab, {
+        collected: "2026-03-04T08:15",
+        limit: null,
+        printedRange: "10.0-30.0",
+        printedFlag: null,
+        reportStatus: "final",
+        fasting: null,
+        labName: "Example Pathology"
+      });
+
+      const activity = await database.sql`
+        select entity_table, entity_id, after_image from activity_log
+        where user_id = ${userId} and batch_id = ${idempotencyKey}
+        order by entity_table
+      `;
+      assert.deepEqual(
+        activity.map((row) => row.entity_table),
+        ["agent_metric_batches", "metric_readings", "metrics"]
+      );
+      const metricEntry = activity.find((row) => row.entity_table === "metrics");
+      assert.equal(metricEntry.entity_id, labMetricId);
+      assert.equal(metricEntry.after_image.canonicalKey, "testosterone_total");
+      assert.deepEqual(metricEntry.after_image.aliases, []);
+      assert.equal(metricEntry.after_image.dataClass, null);
+
+      const second = labReading({ collected: "2026-05-06" });
+      const secondResponse = await postAgentMetrics(
+        app,
+        labBatch(`lab-reuse-${randomUUID()}`, [second])
+      );
+      assert.equal(secondResponse.status, 200);
+      const secondBody = await secondResponse.json();
+      assert.deepEqual(secondBody.metrics, []);
+      assert.equal(secondBody.readings[0].metricId, labMetricId);
+      const labMetrics = await database.sql`
+        select id from metrics where user_id = ${userId} and lab_test_key = 'testosterone_total'
+      `;
+      assert.equal(labMetrics.length, 1);
+      const [secondStored] = await database.sql`
+        select at_time from metric_readings where id = ${second.id}
+      `;
+      // A date-only collection is anchored at noon local (+10:00).
+      assert.equal(new Date(secondStored.at_time).toISOString(), "2026-05-06T02:00:00.000Z");
+    });
+  }
+);
+
+test(
+  "a lab write unarchives the stable-id Lab Metric, and keys a live one that lost its key",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const archivedId = stableScopedId("metric", userId, "lab:testosterone_total");
+      const unkeyedId = stableScopedId("metric", userId, "lab:shbg");
+      await insertLabMetricRow(database, {
+        id: archivedId,
+        userId,
+        name: "Testosterone",
+        labTestKey: "testosterone_total",
+        deletedAt: new Date("2026-06-02T00:00:00.000Z")
+      });
+      await insertLabMetricRow(database, {
+        id: unkeyedId,
+        userId,
+        name: "SHBG",
+        labTestKey: null,
+        deletedAt: null
+      });
+
+      const response = await postAgentMetrics(
+        app,
+        labBatch(`lab-restore-${randomUUID()}`, [
+          labReading(),
+          labReading({ labTestKey: "shbg", entered: "40" })
+        ])
+      );
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.deepEqual(
+        body.metrics.map((metric) => [metric.id, metric.outcome]),
+        [
+          [archivedId, "applied"],
+          [unkeyedId, "applied"]
+        ]
+      );
+      assert.deepEqual(
+        body.readings.map((reading) => reading.metricId),
+        [archivedId, unkeyedId]
+      );
+
+      const rows = await database.sql`
+        select id, lab_test_key, deleted_at from metrics
+        where user_id = ${userId} order by name desc
+      `;
+      assert.deepEqual(
+        rows.map((row) => [row.id, row.lab_test_key, row.deleted_at]),
+        [
+          [archivedId, "testosterone_total", null],
+          [unkeyedId, "shbg", null]
+        ]
+      );
+    });
+  }
+);
+
+test(
+  "a replayed lab write returns its stored response as duplicate and writes nothing",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const asDuplicate = (results) =>
+        results.map((result) => ({ ...result, applied: false, outcome: "duplicate" }));
+      const expectReplay = async (request) => {
+        const first = await postAgentMetrics(app, request);
+        assert.equal(first.status, 200);
+        const firstBody = await first.json();
+        const counts = await labRowCounts(database, userId);
+
+        const replay = await postAgentMetrics(app, request);
+        assert.equal(replay.status, 200);
+        const replayBody = await replay.json();
+        assert.equal(replayBody.duplicate, true);
+        assert.deepEqual(replayBody.metrics, asDuplicate(firstBody.metrics));
+        assert.deepEqual(replayBody.readings, asDuplicate(firstBody.readings));
+        assert.deepEqual(await labRowCounts(database, userId), counts);
+        return firstBody;
+      };
+
+      // The first write creates the Lab Metric: the replay still names it.
+      const created = await expectReplay(
+        labBatch(`lab-replay-${randomUUID()}`, [labReading()])
+      );
+      assert.equal(created.metrics.length, 1);
+      assert.equal(created.metrics[0].id, created.readings[0].metricId);
+      assert.equal(created.metrics[0].outcome, "applied");
+
+      // A revised value warns: the replay returns the same warning, though
+      // the reading it warned about is now the saved result.
+      const revised = await expectReplay(
+        labBatch(`lab-replay-revised-${randomUUID()}`, [
+          labReading({ entered: "21.0" })
+        ])
+      );
+      assert.deepEqual(revised.metrics, []);
+      assert.deepEqual(revised.readings[0].warnings, ["lab_result_replaces"]);
+    });
+  }
+);
+
+test(
+  "lab request and reading rules reject with their own codes",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const bodyWeightId = `bw-${randomUUID()}`;
+      await insertBodyWeightMetric(database, { id: bodyWeightId, userId });
+      const stored = labReading();
+      const seeded = await postAgentMetrics(
+        app,
+        labBatch(`lab-seed-${randomUUID()}`, [stored])
+      );
+      assert.equal(seeded.status, 200);
+      const labMetricId = (await seeded.json()).readings[0].metricId;
+
+      const expectRejected = async (request, rule, field) => {
+        const response = await postAgentMetrics(app, request);
+        assert.equal(response.status, 422, rule);
+        const body = await response.json();
+        assert.equal(body.code, "agent_metric_batch_write_failed");
+        assert.equal(body.errors[0].rule, rule);
+        if (field !== undefined) {
+          assert.equal(body.errors[0].field, field, rule);
+        }
+        return body.errors[0];
+      };
+      const batch = (readings, metrics = []) =>
+        labBatch(`lab-reject-${randomUUID()}`, readings, metrics);
+      const customMetric = {
+        id: `custom-${randomUUID()}`,
+        name: "Morning energy",
+        unit: "score",
+        valueShape: "scalar",
+        metricGroup: "custom"
+      };
+      const { labTestKey: _key, ...withoutKey } = labReading();
+
+      await expectRejected(
+        batch([{ ...labReading(), metricId: labMetricId }]),
+        "lab_target_ambiguous",
+        "readings[0]"
+      );
+      await expectRejected(batch([withoutKey]), "lab_target_ambiguous", "readings[0]");
+      const unknown = await expectRejected(
+        batch([labReading({ labTestKey: "not_a_lab_test" })]),
+        "lab_test_unknown",
+        "readings[0].labTestKey"
+      );
+      assert.match(unknown.message, /agent_list_lab_tests/);
+      await expectRejected(
+        batch([
+          {
+            id: randomUUID(),
+            metricId: labMetricId,
+            value: { shape: "scalar", entered: "20.4", unit: "nmol/L" },
+            timeAnchor: { atTime: "2026-03-04T08:15:00.000Z" }
+          }
+        ]),
+        "lab_metric_id_not_allowed",
+        "readings[0].metricId"
+      );
+      await expectRejected(
+        batch([], [{ ...customMetric, id: labMetricId, name: "Testosterone" }]),
+        "lab_metric_upsert_not_allowed",
+        "metrics[0]"
+      );
+      await expectRejected(
+        batch([], [{ ...customMetric, labTestKey: "testosterone_total" }]),
+        "lab_metric_upsert_not_allowed",
+        "metrics[0]"
+      );
+      await expectRejected(
+        batch([
+          {
+            id: randomUUID(),
+            metricId: bodyWeightId,
+            value: {
+              shape: "scalar",
+              entered: "80",
+              unit: "kilogram",
+              lab: { collected: "2026-03-04" }
+            },
+            timeAnchor: { atTime: "2026-03-04T08:15:00.000Z" }
+          }
+        ]),
+        "lab_fields_on_non_lab_metric",
+        "readings[0].value.lab"
+      );
+      await expectRejected(
+        batch([labReading({ id: stored.id, collected: "2026-07-08" })]),
+        "lab_result_exists",
+        "readings[0].id"
+      );
+      await expectRejected(
+        batch([labReading({ deletedAt: "2026-07-08T00:00:00.000Z" })]),
+        "lab_archive_not_allowed",
+        "readings[0].deletedAt"
+      );
+
+      // A stored Lab Result can't be moved, archived or backdated by sending
+      // its id under a custom Metric either.
+      const [storedBefore] = await database.sql`
+        select * from metric_readings where id = ${stored.id}
+      `;
+      const overwrite = {
+        id: stored.id,
+        metricId: customMetric.id,
+        value: { shape: "scalar", entered: "1" },
+        timeAnchor: { atTime: "2026-01-01T00:00:00.000Z" },
+        updatedAt: new Date(Date.now() + 60_000).toISOString(),
+        deletedAt: "2026-01-01T00:00:00.000Z",
+        provenance: "user",
+        source: "lab"
+      };
+      const overwriteError = await expectRejected(
+        batch([overwrite], [customMetric]),
+        "lab_result_exists",
+        "readings[0].id"
+      );
+      assert.equal(overwriteError.readingId, stored.id);
+      await expectRejected(
+        batch([{ ...overwrite, metricId: bodyWeightId, deletedAt: null }]),
+        "lab_result_exists",
+        "readings[0].id"
+      );
+      const [storedAfter] = await database.sql`
+        select * from metric_readings where id = ${stored.id}
+      `;
+      assert.deepEqual(storedAfter, storedBefore);
+      const unit = await expectRejected(
+        batch([labReading({ unit: "ng/dL" })]),
+        "lab_unit_not_accepted",
+        "readings[0].value.unit"
+      );
+      assert.equal(unit.message, "Unit not accepted. Use nmol/L, nmol/l.");
+      await expectRejected(
+        batch([labReading({ lab: { collected: 20260304 } })]),
+        "lab_collected_invalid",
+        "readings[0].value.lab.collected"
+      );
+      await expectRejected(
+        batch([labReading({ lab: { reportStatus: "draft" } })]),
+        "lab_report_status_invalid",
+        "readings[0].value.lab.reportStatus"
+      );
+
+      const accepted = labReading({ unit: "nmol/l", collected: "2026-07-09" });
+      const acceptedResponse = await postAgentMetrics(app, batch([accepted]));
+      assert.equal(acceptedResponse.status, 200);
+      const [acceptedRow] = await database.sql`
+        select value_json from metric_readings where id = ${accepted.id}
+      `;
+      assert.equal(acceptedRow.value_json.unit, "nmol/L");
+      assert.equal(acceptedRow.value_json.enteredUnit, "nmol/l");
+    });
+  }
+);
+
+test(
+  "lab_result_replaces warns about a changed value for a saved collection, and the batch applies",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const interim = labReading({ lab: { reportStatus: "interim" } });
+      assert.equal(
+        (await postAgentMetrics(app, labBatch(`lab-interim-${randomUUID()}`, [interim]))).status,
+        200
+      );
+
+      const same = labReading();
+      const sameBody = await (
+        await postAgentMetrics(app, labBatch(`lab-same-${randomUUID()}`, [same]))
+      ).json();
+      assert.deepEqual(sameBody.readings[0].warnings, []);
+
+      const revised = labReading({ entered: "21.0" });
+      const revisedResponse = await postAgentMetrics(
+        app,
+        labBatch(`lab-revised-${randomUUID()}`, [revised])
+      );
+      assert.equal(revisedResponse.status, 200);
+      const revisedBody = await revisedResponse.json();
+      assert.deepEqual(revisedBody.readings[0].warnings, ["lab_result_replaces"]);
+      assert.equal(revisedBody.readings[0].outcome, "applied");
+
+      const limit = labReading({ entered: "< 1" });
+      const limitBody = await (
+        await postAgentMetrics(app, labBatch(`lab-limit-${randomUUID()}`, [limit]))
+      ).json();
+      assert.deepEqual(limitBody.readings[0].warnings, ["lab_result_replaces"]);
+
+      const rows = await database.sql`
+        select id from metric_readings where user_id = ${userId} and deleted_at is null
+      `;
+      assert.equal(rows.length, 4);
+    });
+  }
+);
+
+test(
+  "one rejected lab reading rejects the whole batch",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const response = await postAgentMetrics(
+        app,
+        labBatch(`lab-all-or-nothing-${randomUUID()}`, [
+          labReading(),
+          labReading({ labTestKey: "shbg", unit: "ng/dL" })
+        ])
+      );
+      assert.equal(response.status, 422);
+      const body = await response.json();
+      assert.deepEqual(
+        body.errors.map((error) => [error.rule, error.itemIndex]),
+        [["lab_unit_not_accepted", 1]]
+      );
+      assert.deepEqual(await labRowCounts(database, userId), {
+        metrics: 0,
+        readings: 0,
+        activity: 0
+      });
+    });
+  }
+);
+
+test(
+  "the server sets a lab result's updatedAt, provenance, source and lab.limit",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, app }) => {
+      const before = Date.now();
+      const limit = labReading({
+        entered: "< 1",
+        lab: { limit: { comparator: ">", bound: 99 } },
+        provenance: "manual",
+        source: "labEntry",
+        updatedAt: "2020-01-01T00:00:00.000Z"
+      });
+      const number = labReading({
+        labTestKey: "shbg",
+        entered: "40",
+        lab: { limit: { comparator: "<", bound: 5 } }
+      });
+      const response = await postAgentMetrics(
+        app,
+        labBatch(`lab-server-set-${randomUUID()}`, [limit, number])
+      );
+      assert.equal(response.status, 200);
+
+      const [limitRow] = await database.sql`
+        select * from metric_readings where id = ${limit.id}
+      `;
+      assert.equal(limitRow.provenance, "agent");
+      assert.equal(limitRow.source, "agent");
+      assert.ok(new Date(limitRow.updated_at).getTime() >= before - 1000);
+      assert.equal(limitRow.scalar_value, null);
+      assert.equal(limitRow.scalar_entered, "< 1");
+      assert.equal(limitRow.value_json.value, null);
+      assert.deepEqual(limitRow.value_json.lab.limit, { comparator: "<", bound: 1 });
+
+      const [numberRow] = await database.sql`
+        select * from metric_readings where id = ${number.id}
+      `;
+      assert.equal(numberRow.value_json.lab.limit, null);
+      assert.equal(numberRow.scalar_value, 40);
+    });
+  }
+);
+
+test(
+  "two concurrent first lab writes for one Lab Test create one Lab Metric",
+  { skip: databaseSkip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const first = createDatabaseClient(databaseUrl);
+    const second = createDatabaseClient(databaseUrl);
+    const userId = `agent-lab-${randomUUID()}`;
+    const appFor = (database) =>
+      createAgentMetricApp({
+        userId,
+        agentMetricStore: createDrizzleAgentMetricStore(database.db)
+      });
+
+    try {
+      await seedUser(first, userId);
+      const responses = await Promise.all([
+        postAgentMetrics(appFor(first), labBatch(`lab-race-a-${randomUUID()}`, [labReading()])),
+        postAgentMetrics(
+          appFor(second),
+          labBatch(`lab-race-b-${randomUUID()}`, [labReading({ collected: "2026-05-06" })])
+        )
+      ]);
+      assert.deepEqual(
+        responses.map((response) => response.status),
+        [200, 200]
+      );
+      const bodies = await Promise.all(responses.map((response) => response.json()));
+      assert.equal(bodies[0].readings[0].metricId, bodies[1].readings[0].metricId);
+      assert.equal(bodies[0].metrics.length + bodies[1].metrics.length, 1);
+      const metrics = await first.sql`
+        select id from metrics where user_id = ${userId}
+      `;
+      assert.equal(metrics.length, 1);
+    } finally {
+      await first.close();
+      await second.close();
+    }
+  }
+);
+
+// Lab Results read by key (docs/designs/lab-results.md, "Agent surface",
+// "Result identity and the collapse" and "The display", No Trend).
+
+test(
+  "lab readings join two Lab Metrics by key, collapse, page over the collapsed list and drop archived rows",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const fixture = await seedTwoLabMetrics(database, { userId, app });
+      const { ids, metricA, metricB } = fixture;
+
+      for (const query of [
+        "metricKey=testosterone_total",
+        `metricId=${encodeURIComponent(metricA)}`,
+        `metricId=${encodeURIComponent(metricB)}`,
+        `metricId=${encodeURIComponent(metricB)}&metricKey=testosterone_total`
+      ]) {
+        const response = await getAgent(
+          app,
+          `/agent/metrics/readings?${query}&includeArchived=true&includeTrend=true`
+        );
+        assert.equal(response.status, 200, query);
+        const body = await response.json();
+        // The interim is hidden by its final on the other Lab Metric, and
+        // the archived row never comes back, whatever includeArchived says.
+        assert.deepEqual(
+          body.readings.map((reading) => [reading.id, reading.metricId]),
+          [
+            [ids.final, metricB],
+            [ids.april, metricB]
+          ],
+          query
+        );
+        assert.equal(body.totalMatched, 2, query);
+        assert.equal(body.nextCursor, null, query);
+        for (const reading of body.readings) {
+          assert.equal("trendValue" in reading, false, query);
+        }
+        assert.equal(body.readings[0].valueJson.lab.reportStatus, "final");
+      }
+
+      // limit=1 walks the collapsed list through the cursor.
+      const firstPage = await (
+        await getAgent(app, "/agent/metrics/readings?metricKey=testosterone_total&limit=1")
+      ).json();
+      assert.deepEqual(
+        firstPage.readings.map((reading) => reading.id),
+        [ids.final]
+      );
+      assert.equal(firstPage.totalMatched, 2);
+      assert.equal(firstPage.nextCursor, ids.final);
+      const secondPage = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?metricKey=testosterone_total&limit=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`
+        )
+      ).json();
+      assert.deepEqual(
+        secondPage.readings.map((reading) => reading.id),
+        [ids.april]
+      );
+      assert.equal(secondPage.totalMatched, 2);
+      assert.equal(secondPage.nextCursor, null);
+
+      // The date filter applies after the collapse: the final is outside it,
+      // and its interim inside it stays hidden.
+      const windowed = await (
+        await getAgent(
+          app,
+          "/agent/metrics/readings?metricKey=testosterone_total&from=2026-03-01T00:00:00.000Z&to=2026-03-31T00:00:00.000Z"
+        )
+      ).json();
+      assert.deepEqual(windowed.readings, []);
+      assert.equal(windowed.totalMatched, 0);
+
+      // metricId and metricKey naming different keys answer nothing.
+      const conflicting = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?metricId=${encodeURIComponent(metricA)}&metricKey=shbg`
+        )
+      ).json();
+      assert.deepEqual(conflicting.readings, []);
+      assert.equal(conflicting.totalMatched, 0);
+    });
+  }
+);
+
+test(
+  "includeTrend adds no trendValue to lab readings while a body-weight reading still gets one",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const { ids } = await seedTwoLabMetrics(database, { userId, app });
+      const bodyWeightId = `bw-${randomUUID()}`;
+      const weightReadingId = `bw-reading-${randomUUID()}`;
+      await insertBodyWeightMetric(database, { id: bodyWeightId, userId });
+      await insertReading(database, {
+        id: weightReadingId,
+        userId,
+        metricId: bodyWeightId,
+        scalarValue: 80,
+        atTime: new Date("2026-03-05T00:00:00.000Z")
+      });
+
+      const response = await getAgent(app, "/agent/metrics/readings?includeTrend=true");
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      const byId = new Map(body.readings.map((reading) => [reading.id, reading]));
+      assertTrend(byId.get(weightReadingId), 80);
+      // An unfiltered read is not collapsed, but no lab reading has a Trend.
+      for (const id of [ids.interim, ids.final, ids.april]) {
+        assert.ok(byId.has(id), id);
+        assert.equal("trendValue" in byId.get(id), false, id);
+      }
+    });
+  }
+);
+
+test(
+  "a catalogue metricKey finds Lab Metrics only, never a custom Metric with the Lab Test's name",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const { ids, metricA, metricB } = await seedTwoLabMetrics(database, { userId, app });
+      const customIds = [];
+      for (const name of ["Testosterone", "Testosterone Total"]) {
+        const customId = `custom-${randomUUID()}`;
+        customIds.push(customId);
+        await insertLabMetricRow(database, { id: customId, userId, name, labTestKey: null, deletedAt: null });
+        await insertReading(database, {
+          id: `custom-reading-${randomUUID()}`,
+          userId,
+          metricId: customId,
+          scalarValue: 999,
+          valueJson: { value: 999, unit: "nmol/L" },
+          atTime: new Date("2026-03-04T00:00:00.000Z")
+        });
+      }
+
+      const readings = await (
+        await getAgent(app, "/agent/metrics/readings?metricKey=testosterone_total")
+      ).json();
+      assert.deepEqual(
+        readings.readings.map((reading) => reading.id),
+        [ids.final, ids.april]
+      );
+
+      const metrics = await (
+        await getAgent(app, "/agent/metrics?metricKey=testosterone_total")
+      ).json();
+      assert.deepEqual(
+        metrics.metrics.map((metric) => metric.id).sort(),
+        [metricA, metricB].sort()
+      );
+      for (const metric of metrics.metrics) {
+        assert.equal(metric.canonicalKey, "testosterone_total");
+      }
+
+      // A custom Metric's own name still finds it, and not the Lab Metrics.
+      const byName = await (await getAgent(app, "/agent/metrics?metricKey=Testosterone")).json();
+      assert.deepEqual(
+        byName.metrics.map((metric) => metric.id),
+        [customIds[0]]
+      );
+    });
+  }
+);
+
+/**
+ * Two Lab Metrics for Testosterone: [metricA] created by an Agent write of an
+ * interim result, and [metricB] inserted directly, as an offline device's
+ * push would, holding the final of the same collection, a later result and an
+ * archived one.
+ */
+async function seedTwoLabMetrics(database, { userId, app }) {
+  const ids = {
+    interim: randomUUID(),
+    final: `final-${randomUUID()}`,
+    april: `april-${randomUUID()}`,
+    archived: `archived-${randomUUID()}`
+  };
+  const metricA = stableScopedId("metric", userId, "lab:testosterone_total");
+  const metricB = `device-lab-metric-${randomUUID()}`;
+  const response = await postAgentMetrics(
+    app,
+    labBatch(`lab-read-${randomUUID()}`, [
+      labReading({ id: ids.interim, lab: { reportStatus: "interim" } })
+    ])
+  );
+  assert.equal(response.status, 200);
+  await insertLabMetricRow(database, {
+    id: metricB,
+    userId,
+    name: "Testosterone",
+    labTestKey: "testosterone_total",
+    deletedAt: null
+  });
+  const labValue = (value, collected, reportStatus = "final") => ({
+    value,
+    unit: "nmol/L",
+    lab: {
+      collected,
+      limit: null,
+      printedRange: null,
+      printedFlag: null,
+      reportStatus,
+      fasting: null,
+      labName: null
+    }
+  });
+  // The same collection as the interim, anchored outside March (entered
+  // later at another offset, say), so a March date filter holds only the
+  // interim, which the final still hides.
+  await insertReading(database, {
+    id: ids.final,
+    userId,
+    metricId: metricB,
+    scalarValue: 21,
+    valueJson: labValue(21, "2026-03-04T08:15"),
+    atTime: new Date("2026-04-02T00:00:00.000Z")
+  });
+  await insertReading(database, {
+    id: ids.april,
+    userId,
+    metricId: metricB,
+    scalarValue: 18,
+    valueJson: labValue(18, "2026-04-10"),
+    atTime: new Date("2026-04-10T02:00:00.000Z")
+  });
+  await insertReading(database, {
+    id: ids.archived,
+    userId,
+    metricId: metricA,
+    scalarValue: 19,
+    valueJson: labValue(19, "2026-05-01"),
+    atTime: new Date("2026-05-01T02:00:00.000Z"),
+    deletedAt: new Date("2026-06-05T00:00:00.000Z")
+  });
+  return { ids, metricA, metricB };
+}
+
+async function withLabUser(run) {
+  await applyMigrations(databaseUrl);
+  const database = createDatabaseClient(databaseUrl);
+  const userId = `agent-lab-${randomUUID()}`;
+  const app = createAgentMetricApp({
+    userId,
+    agentMetricStore: createDrizzleAgentMetricStore(database.db)
+  });
+  try {
+    await seedUser(database, userId);
+    await run({ database, userId, app });
+  } finally {
+    await database.close();
+  }
+}
+
+/**
+ * One lab reading by Lab Test, `lab.collected` anchored as the spec expands
+ * it: a date at T12:00:00, a time with :00 seconds, here at +10:00.
+ */
+function labReading({
+  id = randomUUID(),
+  labTestKey = "testosterone_total",
+  entered = "20.4",
+  unit = "nmol/L",
+  collected = "2026-03-04T08:15",
+  lab = {},
+  ...rest
+} = {}) {
+  return {
+    id,
+    labTestKey,
+    value: {
+      shape: "scalar",
+      entered,
+      unit,
+      lab: {
+        collected,
+        printedRange: " 10.0-30.0 ",
+        reportStatus: "final",
+        labName: "Example Pathology",
+        ...lab
+      }
+    },
+    timeAnchor: {
+      localDateTime: collected.length === 10 ? `${collected}T12:00:00` : `${collected}:00`,
+      timezoneOffsetMinutes: 600
+    },
+    ...rest
+  };
+}
+
+function labBatch(idempotencyKey, readings, metrics = []) {
+  return { idempotencyKey, metrics, readings };
+}
+
+async function insertLabMetricRow(database, { id, userId, name, labTestKey, deletedAt }) {
+  const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+  await database.db.insert(schema.metrics).values({
+    id,
+    userId,
+    deviceId: "device-lab",
+    name,
+    unit: "nmol/L",
+    valueShape: "scalar",
+    metricGroup: "custom",
+    goalType: null,
+    goalTargetValue: null,
+    enabled: true,
+    pinned: false,
+    sortOrder: 0,
+    labTestKey,
+    updatedAt,
+    deletedAt,
+    receivedAt: updatedAt
+  });
+}
+
+async function labRowCounts(database, userId) {
+  const [metrics] = await database.sql`
+    select count(*)::int as count from metrics where user_id = ${userId}
+  `;
+  const [readings] = await database.sql`
+    select count(*)::int as count from metric_readings where user_id = ${userId}
+  `;
+  const [activity] = await database.sql`
+    select count(*)::int as count from activity_log where user_id = ${userId}
+  `;
+  return {
+    metrics: metrics.count,
+    readings: readings.count,
+    activity: activity.count
+  };
+}
+
 function assertTrend(reading, expected) {
   assert.equal(typeof reading.trendValue, "number", reading.id);
   assert.ok(
@@ -682,10 +1532,10 @@ async function insertReading(
     valueJson = { value: scalarValue, unit: "kilogram" },
     atTime,
     windowStartedAt = null,
-    deletedAt = null
+    deletedAt = null,
+    updatedAt = new Date("2026-06-05T00:00:00.000Z")
   }
 ) {
-  const updatedAt = new Date("2026-06-05T00:00:00.000Z");
   await database.db.insert(schema.metricReadings).values({
     id,
     userId,

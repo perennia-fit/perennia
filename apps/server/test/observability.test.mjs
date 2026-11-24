@@ -433,6 +433,116 @@ test("privacy logger strips Lab Metrics and Lab Results from a logged sync push 
   }
 });
 
+test("privacy logger strips a logged Agent lab batch write, its response and its validation failure (lab-results.md, Privacy)", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  const request = {
+    idempotencyKey: "lab-batch-1",
+    metrics: [],
+    readings: [
+      {
+        id: "reading-lab-2",
+        labTestKey: "testosterone_total",
+        value: {
+          shape: "scalar",
+          entered: "20.4",
+          unit: "nmol/L",
+          lab: {
+            collected: "2026-03-04T08:15",
+            printedRange: "(10.0-30.0)",
+            printedFlag: "H",
+            reportStatus: "final",
+            fasting: true,
+            labName: "Example Pathology"
+          }
+        },
+        timeAnchor: {
+          localDateTime: "2026-03-04T08:15:00",
+          timezoneOffsetMinutes: 600
+        },
+        externalId: "lab-order-88",
+        comment: "Felt tired that week"
+      }
+    ]
+  };
+  const success = {
+    accepted: true,
+    duplicate: false,
+    idempotencyKey: "lab-batch-1",
+    batchId: "lab-batch-1",
+    serverClock: "2026-03-05T00:00:00.000Z",
+    metrics: [
+      {
+        id: "metric-lab-2",
+        name: "Testosterone",
+        valueShape: "scalar",
+        unit: "nmol/L",
+        metricGroup: "custom",
+        applied: true,
+        outcome: "applied"
+      }
+    ],
+    readings: [
+      {
+        id: "reading-lab-2",
+        metricId: "metric-lab-2",
+        valueShape: "scalar",
+        unit: "nmol/L",
+        warnings: ["lab_result_replaces"],
+        applied: true,
+        outcome: "applied"
+      }
+    ]
+  };
+  const failure = {
+    code: "agent_metric_batch_write_failed",
+    message: "Batch contains one or more hard Metric validation failures.",
+    errors: [
+      {
+        field: "readings[0].value.unit",
+        rule: "lab_unit_not_accepted",
+        message: "Unit not accepted. Use nmol/L, nmol/l.",
+        itemIndex: 0,
+        metricId: null,
+        readingId: "reading-lab-2",
+        limit: null
+      }
+    ],
+    warnings: []
+  };
+  // As a request logger would log them: the body spread at the top level,
+  // then each response body under its own key and spread.
+  logger.info(
+    { userId: "user-1", path: "/agent/metrics/batch-write", ...request },
+    "synthetic lab batch write"
+  );
+  logger.info({ userId: "user-1", body: request }, "synthetic lab batch body");
+  logger.info({ userId: "user-1", ...success }, "synthetic lab batch response");
+  logger.info({ userId: "user-1", response: success }, "synthetic lab batch response body");
+  logger.info({ userId: "user-1", ...failure }, "synthetic lab batch failure");
+
+  assert.equal(logEvents.length, 5);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  for (const value of [
+    "20\\.4",
+    "Testosterone",
+    "testosterone_total",
+    "10\\.0-30\\.0",
+    "Example Pathology",
+    "2026-03-04",
+    "lab-order-88",
+    "Felt tired"
+  ]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 function profileQueryError() {
   const cause = Object.assign(new Error("Key (text)=(Left knee) is invalid"), {
     code: "23514",

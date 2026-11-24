@@ -480,7 +480,7 @@ Lab Test.
 | `lab_metric_id_not_allowed` | Request | Hard | An Agent reading's `metricId` names a Lab Metric | "Write lab results by labTestKey." |
 | `lab_metric_upsert_not_allowed` | Request | Hard | An Agent `metrics[]` row names a Lab Metric or sends `labTestKey` | "Lab Metrics can't be changed." |
 | `lab_fields_on_non_lab_metric` | Request | Hard | `lab` sent for a Metric without a `labTestKey` | "This Metric is not a Lab Test." |
-| `lab_result_exists` | Request | Hard | An Agent lab reading's `id` is an existing reading, and the request is not a replay of the request that wrote it | "Lab results can't be changed. Write a new result." |
+| `lab_result_exists` | Request | Hard | An Agent lab reading's `id` is an existing reading, or any Agent reading's `id` is an existing Lab Result (a reading of a Lab Metric), whatever `metricId` it names; and the request is not a replay of the request that wrote it | "Lab results can't be changed. Write a new result." |
 | `lab_archive_not_allowed` | Request | Hard | An Agent lab reading sends `deletedAt` | "Agents can't archive lab results." |
 | `lab_result_repeated` | Request | Hard | The same Lab Test twice in one entry sheet (app) | "This Lab Test is already in this collection." |
 | `lab_result_replaces` | Request | Soft | The reading's identity already has a live result with a different value (or a different limit) | "This replaces a saved result for the same collection." |
@@ -558,7 +558,12 @@ archive state, and the next save reuses a live Lab Metric for the key or creates
     Metric, not two.
 *   **Matching by key.** When a key is a catalogue Lab Test key, it matches only Metrics whose
     `lab_test_key` equals it, never a hand-made custom Metric whose name happens to match. This
-    applies to `listAgentMetrics`, `listAgentMetricReadings` and `readAgentEffectWindow`.
+    applies to `listAgentMetrics`, `listAgentMetricReadings` and `readAgentEffectWindow`. The
+    other way round, an Agent's `metricKey` matches a Lab Metric only by its `labTestKey`, never by
+    its name, so a Lab Metric is never read uncollapsed; a key this build's catalogue does not know
+    (a Lab Metric written by a later build) reads collapsed like a catalogue key. In
+    `listAgentMetricReadings`, a `metricId` and a `metricKey` that name different keys return an
+    empty page.
 *   **No fold.** Two Lab Metrics for one Lab Test can still arise (two devices offline, or a
     Metric created through an older server). They are not merged: readers join their readings by
     key. The cost is a Lab Test appearing twice in the Effect and target-outcome pickers; see
@@ -763,12 +768,27 @@ sheet is lost, never half a collection.
     or MCP schema, so Agent sessions do not load them into context unless they call this. It is
     authenticated like the other Agent reads (an Agent bearer key; no extra scope).
 *   **`batchWriteAgentMetrics`**: the reading item gains an optional `labTestKey`, `metricId`
-    becomes optional, and exactly one of the two must be present. The scalar value gains an
-    optional `lab` object in the shape above. Its zod schema is permissive (each field a string,
-    boolean or number, or null, and unknown keys allowed), so that a malformed field reaches the
-    lab rules and gets its own code rather than a generic schema error. Validation runs before
+    becomes optional, and exactly one of the two must be present (`lab_target_ambiguous`, a
+    request rule, not a schema check). The scalar value gains an optional `lab` object in the
+    shape above. Its zod schema is permissive where a lab rule judges the field: `collected`,
+    `reportStatus` and `fasting` each take a string, boolean or number, or null, and unknown keys
+    are allowed and dropped by the normaliser, so that a malformed field reaches the lab rules
+    and gets its own code rather than a generic schema error. The text fields `printedRange`,
+    `printedFlag` and `labName` are typed `string | null`: no lab rule judges a text field's
+    type, and the normaliser would write a non-string as null without a word, so a wrong type
+    there is a schema error. `limit` is accepted and overwritten. `AgentMetricBatchWriteMetric`
+    also declares an optional `labTestKey` (any type) only so that zod does not strip it: a
+    `metrics[]` row that sends it is rejected with `lab_metric_upsert_not_allowed` rather than
+    silently creating a custom Metric. An omitted `value.unit` on a lab reading is the Lab
+    Test's `unit`, as the normaliser reads an omitted unit as its Metric's. Validation runs before
     normalisation, and each issue keeps its rule as its code (never folded into
-    `metric_reading_normalization_failed`). The idempotency receipt is the shared one. For a
+    `metric_reading_normalization_failed`). The idempotency receipt is the shared one. A replay
+    returns the stored response: after a write with any lab item, the receipt also keeps the
+    `metrics[]` results of the Lab Metrics the write created, unarchived or keyed, and each lab
+    reading's `warnings`, and the duplicate response lists those Lab Metrics after the request's
+    own `metrics[]` and gives each replayed lab reading its original warnings. A reading sent
+    with a `metricId` whose `id` is an existing Lab Result is rejected (`lab_result_exists`), so
+    an Agent cannot move, archive or backdate a stored result through another Metric. For a
     reading with `labTestKey`:
     *   a reading `id` that already exists is rejected (`lab_result_exists`), unless the request is
         a replay, which the idempotency receipt answers before any validation;
@@ -792,10 +812,12 @@ sheet is lost, never half a collection.
     windowing, as the app does.
 *   **Contract diff:** one new operation and its schemas (`AgentLabTest`, `AgentLabTestList`);
     `metricId` optional and `labTestKey` added on `AgentMetricBatchWriteReading`; optional `lab`
-    on `AgentMetricReadingScalarValue`; descriptions noting the key read, the collapse, the
-    controls above and the Trend exclusion. No field is removed or narrowed: making `metricId`
-    optional widens the request. `agent-skills/perennia/SKILL.md` gains a "Logging lab results"
-    section.
+    on `AgentMetricReadingScalarValue`, with `printedRange`, `printedFlag` and `labName` typed
+    `string | null`; an optional, untyped `labTestKey` on `AgentMetricBatchWriteMetric`,
+    described as not accepted; descriptions noting the key read, the collapse, the controls
+    above and the Trend exclusion. No field is removed or narrowed: making `metricId` optional
+    widens the request, and the `labTestKey` on a `metrics[]` row was stripped before.
+    `agent-skills/perennia/SKILL.md` gains a "Logging lab results" section.
 
 ### Privacy
 
@@ -1368,14 +1390,14 @@ Covers V9, and V10 for Agent requests.
 | `apps/server/src/agent-lab-tests.ts` | Create | `listAgentLabTests` handler and the `AgentLabTest`/`AgentLabTestList` schemas, served from the generated catalogue. |
 | `apps/server/src/app.ts` | Modify | Mount `GET /agent/lab-tests` with `app.openapi`, behind the same Agent bearer authentication and rate limit as the other Agent reads. |
 | `apps/server/src/index.ts` | Modify | Export `listAgentLabTests`. |
-| `apps/server/src/metric-identity.ts` | Modify | `findLabMetric(db, {userId, labTestKey})` (live, lowest sort order, then id); `labMetricIds(db, {userId, labTestKey})` (every row with the key, archived included); `stableMetricId` moved here from `agent-metrics.ts` and exported, so both modules use one copy. |
+| `apps/server/src/metric-identity.ts` | Modify | `findLabMetric(db, {userId, labTestKey})` (live, lowest sort order, then id); `labMetricIds(db, {userId, labTestKey})` (every row with the key, archived included); `readCollapsedLabReadings(db, {userId, labTestKey, metricIds?})`, the one key-join and collapse that `lab_result_replaces`, `listAgentMetricReadings` and the Effect window all call, anchored by `metricReadingAnchor`; `stableMetricId` moved here from `agent-metrics.ts` and exported, so both modules use one copy. |
 | `apps/server/src/agent-metrics.ts` | Modify | **Schema:** `AgentMetricBatchWriteReadingSchema` makes `metricId` optional and adds optional `labTestKey`; the scalar value gains the permissive `lab` schema. **Write:** request rules and reading rules run before normalisation, in [Validation](#validation)'s order, each issue keeping its code; the Lab Metric controls and server-set fields in [Agent surface](#agent-surface); find or create the Lab Metric as in [Finding the Lab Metric](#finding-the-lab-metric-for-a-lab-test), adding it to `preparedMetrics`; `lab_result_replaces` computed against the user's stored rows for the identity. **Reads:** `listAgentMetrics` sets `canonicalKey` to the `labTestKey` for Lab Metrics; `metricMatchesMetricKey` matches a catalogue key only against `lab_test_key`; `listAgentMetricReadings` expands, collapses and pages as in [Agent surface](#agent-surface), never returns archived lab rows and never adds `trendValue`. |
 | `apps/server/src/agent-protocols.ts` | Modify | `resolveMetric` gains a Lab Metric branch: a catalogue key resolves through `labMetricIds`, never by name. `readAgentEffectWindow` reads the samples of those ids, collapses the whole series, then windows. |
 | `apps/server/src/agent-mcp.ts` | Modify | `agent_list_lab_tests` tool; `agent_batch_write_metrics` and `agent_list_metric_readings` descriptions mention `labTestKey`, `lab`, the collapse and the Trend exclusion. |
 | `packages/contract/src/agent-skill-reference.ts` | Modify | `listAgentLabTests: "list-lab-tests"` in `AGENT_SKILL_COMMAND_NAMES` and `listAgentLabTests: "agent_list_lab_tests"` in `AGENT_MCP_TOOL_NAMES`. |
 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | The `list-lab-tests` command. |
 | `agent-skills/perennia/scripts/prn-code.mjs` | Modify | The `listAgentLabTests` method. |
-| `agent-skills/perennia/SKILL.md` | Modify | A "Logging lab results" section (prose, not a command): call `agent_list_lab_tests` (CLI `list-lab-tests`); write by `labTestKey` with `lab.collected` and a matching `timeAnchor`; use only listed unit spellings; send limits as `< 1`; to correct a value, write the same collection as `final`; Agents cannot overwrite or archive a stored result. |
+| `agent-skills/perennia/SKILL.md` | Modify | A "Logging lab results" section (prose, not a command), and `list-lab-tests` in the common reads: call `agent_list_lab_tests` (CLI `list-lab-tests`); write with `agent_batch_write_metrics` (CLI `log-metrics`) by `labTestKey`, never `metricId` and never a Lab Metric in `metrics[]`, with `lab.collected` and a matching `timeAnchor`; use only listed unit spellings and never convert; send limits as `< 1`; to correct a value, write the same collection as `final`; Agents cannot overwrite, archive or backdate a stored result, and an unknown key or unit rejects the batch; never include the patient's name, date of birth, address or accession number. |
 | `agent-skills/perennia/references/api-operations.md` | Regenerate | `pnpm run generate:agent-skill-reference` in `packages/contract`. |
 | `packages/contract/openapi.json` | Regenerate | `pnpm run generate` in `packages/contract` (also regenerates the two clients and the skill reference). The contract diff in [Agent surface](#agent-surface). |
 | `packages/contract/src/agent-client.ts` | Regenerate | Generated client. |

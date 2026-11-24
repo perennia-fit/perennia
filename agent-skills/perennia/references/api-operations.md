@@ -42,6 +42,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-food-history` | GET | `/agent/foods/history` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
+| `list-lab-tests` | GET | `/agent/lab-tests` |
 | `list-meal-history` | GET | `/agent/meals/history` |
 | `list-meal-types` | GET | `/agent/meal-types` |
 | `list-meals` | GET | `/agent/meals` |

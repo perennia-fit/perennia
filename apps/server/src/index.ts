@@ -526,6 +526,15 @@ export {
   type AgentMealTypesResponse
 } from "./agent-meal-types.js";
 export {
+  AGENT_LAB_TESTS_DESCRIPTION,
+  AgentLabTestListSchema,
+  AgentLabTestSchema,
+  agentLabTestsRoute,
+  listAgentLabTests,
+  type AgentLabTest,
+  type AgentLabTestList
+} from "./agent-lab-tests.js";
+export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
   CALORIES_BURNED_METRIC_NAME,

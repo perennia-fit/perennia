@@ -15,6 +15,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   blood tests with their units, accepted spellings, bounds and cited general
   ranges; the app and the server are generated from it. Lab results are not yet
   visible in the app.
+- **Agents can log lab results by Lab Test.** `agent_list_lab_tests` (`GET
+  /agent/lab-tests`) lists the Lab Tests with their keys and units, and
+  `batchWriteAgentMetrics` writes a result by `labTestKey` with its collection
+  date and printed range. Metric reads and the Effect window join a Lab Test's
+  Metrics and show one result per collection. Lab results are still not visible
+  in the app.
 
 ### Changed
 
