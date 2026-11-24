@@ -134,6 +134,7 @@ the TypeScript suites execute. Agreement is enforced by CI, not by discipline.
 | `apps/server` | The sync server and agent surface |
 | `packages/contract` | Emitted OpenAPI contract, generated clients, shared agent validation |
 | `packages/golden-vectors` | Cross-language test vectors |
+| `packages/lab-catalogue` | The Lab Test catalogue, generated into the app and the server |
 | `agent-skills/perennia` | Generated command map and skill for driving the API |
 | `sidecars/`, `examples/` | Edge-run importers, and worked examples |
 | `tools/` | The local CI runner, code generators, git hooks |

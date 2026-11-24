@@ -279,3 +279,31 @@ reading's optional `metricId` is informational and ignored. The file is
 governed by the adjacent `m43-lab-result-collapse.schema.json`; its
 `schemaVersion`, the schema's constant and both runners' constants move
 together.
+
+## Lab Default Range
+
+`m44-lab-default-range.json` (domain `lab-default-range`) pins, in Dart only,
+which general range a Lab Result shows and where the result sits against it:
+`defaultRangeFor`, `parsePrintedRange`, `rangePosition` and `resultPosition`.
+No server reader computes these (Agents get Default Ranges as catalogue data),
+so the server's `agent-validation.golden.test.mjs` lists the domain as owned
+elsewhere. The app runs it in
+`apps/mobile/test/domain/lab_default_range_test.dart` against
+`apps/mobile/lib/domain/labs/lab_default_range.dart`. The behaviour is
+specified in [`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Default Ranges).
+
+Each case names its `function` and gives that function's `input` and
+`expected`. A `defaultRangeFor` case gives its `defaultRanges` entries inline,
+not from the real catalogue, so two matching entries can be expressed, with the
+`printedRange`, `sex` and `age`; `expected` is the chosen entry or null. A
+`parsePrintedRange` case gives the `text` and expects
+`{low, lowInclusive, high, highInclusive}`, a missing side null with its flag
+`true`, or null when the text does not parse. A `rangePosition` case gives a
+`value` (`{number}` or `{limit: {comparator, bound}}`) and a `range` in the
+same shape as a parsed one, and expects `below`, `within`, `above` or
+`unknown`. A `resultPosition` case adds the Lab Test's `kind` and a
+`defaultRange` entry or null, and expects `{position, source}` (`printed` or
+`general`) or null. The file is governed by the adjacent
+`m44-lab-default-range.schema.json`; its `schemaVersion`, the schema's
+constant and the Dart runner's constant move together.
