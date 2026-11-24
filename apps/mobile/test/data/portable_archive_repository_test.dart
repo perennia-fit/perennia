@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/labs/lab_result.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
@@ -1306,6 +1307,201 @@ void main() {
           .getSingle();
       expect(merged.name, 'Renamed on the old device');
       expect(merged.purposeIds, '["purpose-1"]');
+    });
+
+    test('exports Metric rows with their labTestKey (lab-results.md)',
+        () async {
+      await _insertMetricRow(
+        database,
+        id: 'metric-lab',
+        name: 'Ferritin',
+        updatedAt: DateTime.utc(2026, 6, 1),
+        labTestKey: 'ferritin',
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-custom',
+        name: 'Resting HR',
+        updatedAt: DateTime.utc(2026, 6, 1),
+      );
+
+      final rows = _archiveRowsByTable(
+        await repositories.portableArchives.exportPortableArchive(),
+      )[AppDatabase.metricsTable]!;
+
+      final keysById = <Object?, Object?>{
+        for (final row in rows) row['id']: row['labTestKey'],
+      };
+      expect(keysById['metric-lab'], 'ferritin');
+      expect(rows.singleWhere((row) => row['id'] == 'metric-custom'),
+          containsPair('labTestKey', null));
+    });
+
+    test('a newer restored row never changes a stored non-null Lab Test key',
+        () async {
+      // The archive's rows are newer, and carry no key or another key.
+      final newer = DateTime.utc(2030);
+      await _insertMetricRow(
+        database,
+        id: 'metric-null',
+        name: 'Renamed',
+        updatedAt: newer,
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-other',
+        name: 'Renamed',
+        updatedAt: newer,
+        labTestKey: 'hemoglobin',
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-fill',
+        name: 'Renamed',
+        updatedAt: newer,
+        labTestKey: 'ferritin',
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      for (final (id, key) in <(String, String?)>[
+        ('metric-null', 'ferritin'),
+        ('metric-other', 'ferritin'),
+        ('metric-fill', null),
+      ]) {
+        await _insertMetricRow(
+          local,
+          id: id,
+          name: 'Ferritin',
+          updatedAt: DateTime.utc(2000),
+          labTestKey: key,
+        );
+      }
+
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      final merged = <String, MetricRow>{
+        for (final row in await local.select(local.metrics).get()) row.id: row,
+      };
+      expect(merged['metric-null']!.name, 'Renamed');
+      expect(merged['metric-null']!.labTestKey, 'ferritin');
+      expect(merged['metric-other']!.name, 'Renamed');
+      expect(merged['metric-other']!.labTestKey, 'ferritin');
+      // A null stored key takes the restored row's key.
+      expect(merged['metric-fill']!.labTestKey, 'ferritin');
+    });
+
+    test('a schema-67 archive Metric without labTestKey restores', () async {
+      await _insertMetricRow(
+        database,
+        id: 'metric-custom',
+        name: 'Resting HR',
+        updatedAt: DateTime.utc(2030),
+      );
+      final schema67Archive = _asSchema67Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final fresh = AppDatabase.inMemory();
+      addTearDown(fresh.close);
+      await TrainingRepositories(fresh)
+          .portableArchives
+          .importPortableArchive(schema67Archive);
+      final restored = await fresh.select(fresh.metrics).getSingle();
+      expect(restored.id, 'metric-custom');
+      expect(restored.name, 'Resting HR');
+      expect(restored.labTestKey, isNull);
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      await _insertMetricRow(
+        local,
+        id: 'metric-custom',
+        name: 'Ferritin',
+        updatedAt: DateTime.utc(2000),
+        labTestKey: 'ferritin',
+      );
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(schema67Archive);
+      final merged = await local.select(local.metrics).getSingle();
+      expect(merged.name, 'Resting HR');
+      expect(merged.labTestKey, 'ferritin');
+    });
+
+    test(
+        'a restored Lab Metric with another id but the same key reads as one '
+        'series, and an overlapping result collapses to the final '
+        '(lab-results.md, V7)', () async {
+      final today = DateTime(2026, 11, 25);
+      CollectionDraft collection(
+        DateTime collectedDate,
+        String value, {
+        ReportStatus reportStatus = ReportStatus.final_,
+      }) {
+        return CollectionDraft(
+          collectedDate: collectedDate,
+          collectedTime: (hour: 8, minute: 15),
+          reportStatus: reportStatus,
+          rows: <CollectionDraftRow>[
+            CollectionDraftRow(labTestKey: 'testosterone_total', value: value),
+          ],
+        );
+      }
+
+      // The archive's device: the final of 2026-03-04, and 2026-01-10.
+      await repositories.labResults
+          .saveCollection(collection(DateTime(2026, 3, 4), '21'), today: today);
+      await repositories.labResults.saveCollection(
+          collection(DateTime(2026, 1, 10), '18'),
+          today: today);
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      // This device: its own Lab Metric (another random id) holds the interim
+      // of 2026-03-04, and 2026-02-10.
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      final localRepositories = TrainingRepositories(local);
+      await localRepositories.labResults.saveCollection(
+        collection(
+          DateTime(2026, 3, 4),
+          '20',
+          reportStatus: ReportStatus.interim,
+        ),
+        today: today,
+      );
+      await localRepositories.labResults.saveCollection(
+          collection(DateTime(2026, 2, 10), '19'),
+          today: today);
+
+      await localRepositories.portableArchives.importPortableArchive(archive);
+
+      final labMetrics = await (local.select(local.metrics)
+            ..where((row) => row.labTestKey.equals('testosterone_total')))
+          .get();
+      expect(labMetrics.map((row) => row.id).toSet(), hasLength(2));
+      final results = await localRepositories.labResults
+          .watchLabResults('testosterone_total')
+          .first;
+      expect(
+        results.map((r) => (r.lab.collected, r.entered)),
+        <(String, String)>[
+          ('2026-03-04T08:15', '21'),
+          ('2026-02-10T08:15', '19'),
+          ('2026-01-10T08:15', '18'),
+        ],
+      );
+      expect(results.first.lab.reportStatus, ReportStatus.final_);
+      expect(results.first.identityRowCount, 2);
+      expect(
+        results.map((r) => r.metricId).toSet(),
+        labMetrics.map((row) => row.id).toSet(),
+      );
     });
 
     test('a newer row in a current archive carries its own tags', () async {
@@ -3220,6 +3416,7 @@ Future<void> _insertMetricRow(
   required String id,
   required String name,
   required DateTime updatedAt,
+  String? labTestKey,
 }) {
   return database.into(database.metrics).insert(
         MetricsCompanion.insert(
@@ -3233,6 +3430,7 @@ Future<void> _insertMetricRow(
           enabled: const Value<bool>(true),
           pinned: const Value<bool>(false),
           sortOrder: 0,
+          labTestKey: Value<String?>(labTestKey),
           updatedAt: updatedAt,
         ),
       );
@@ -3694,6 +3892,41 @@ List<int> _asSchema65Archive(List<int> bytes) {
         final old = Map<String, Object?>.from(row);
         expect(old.containsKey('purposeIds'), isTrue);
         return old..remove('purposeIds');
+      }).toList(growable: false);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-67 build wrote it: Metrics carry no `labTestKey`
+/// (docs/designs/lab-results.md, Storage).
+List<int> _asSchema67Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source);
+  manifest['schemaVersion'] = 67;
+  final metricsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.metricsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == metricsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('labTestKey'), isTrue);
+        return old..remove('labTestKey');
       }).toList(growable: false);
       archive.addFile(
         ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),

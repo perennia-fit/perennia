@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/labs/lab_result.dart';
 import 'package:perennia/domain/metrics/reading_normalization.dart';
 import 'package:perennia/domain/training/training_day.dart';
 
@@ -648,6 +649,59 @@ void main() {
       );
       expect(deleteLog.beforeImage?['deleted_at'], isNull);
       expect(deleteLog.afterImage?['deleted_at'], isNotNull);
+    });
+
+    test(
+        'createManualReading on a non-lab Metric stores what it stored before '
+        'Lab Results', () async {
+      final metricId = await repositories.metrics.createMetric(
+        const MetricDraft(
+          name: 'Body Weight',
+          unit: 'kilogram',
+          valueShape: MetricValueShape.scalar,
+          group: MetricGroup.bodyComposition,
+          enabled: true,
+          pinned: false,
+          sortOrder: 0,
+        ),
+      );
+      final readingId = await repositories.metrics.createManualReading(
+        ManualMetricReadingDraft.scalar(
+          metricId: metricId,
+          valueEntered: ' 82.50 ',
+          atTime: DateTime.utc(2026, 6, 24, 8),
+          source: 'manual',
+        ),
+      );
+
+      final stored = await (database.select(database.metricReadings)
+            ..where((row) => row.id.equals(readingId)))
+          .getSingle();
+      // The exact bytes a non-lab Reading had before the write path gained
+      // `lab` and the local anchor: no `lab` key, the trimmed entry.
+      expect(
+        stored.valueJson,
+        '{"shape":"scalar","unit":"kilogram","value":82.5,'
+        '"entered":"82.50","enteredUnit":"kilogram"}',
+      );
+      expect(stored.scalarValue, 82.5);
+      expect(stored.scalarEntered, '82.50');
+      expect(stored.atTime?.toUtc(), DateTime.utc(2026, 6, 24, 8));
+
+      // A `lab` object is still rejected on a Metric that is not a Lab Metric.
+      await expectLater(
+        repositories.metrics.createManualReading(
+          ManualMetricReadingDraft.scalar(
+            metricId: metricId,
+            valueEntered: '82.5',
+            atTime: DateTime.utc(2026, 6, 24, 9),
+            source: 'manual',
+            lab: const LabFields(collected: '2026-06-24'),
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(await repositories.metrics.listReadings(metricId), hasLength(1));
     });
   });
 }

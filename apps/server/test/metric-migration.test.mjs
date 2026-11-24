@@ -53,3 +53,22 @@ test("Metric Reading activity-link migration keeps existing readings intact", as
     /(?:DROP TABLE|DELETE FROM|TRUNCATE)\s+"?metric_readings"?/i
   );
 });
+
+test("Lab Results migration adds a nullable lab_test_key and its index, nothing destructive", async () => {
+  const migrationSql = await readFile(
+    new URL("../drizzle/0038_lab_results.sql", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    migrationSql,
+    /ALTER TABLE "metrics" ADD COLUMN "lab_test_key" text;/
+  );
+  assert.doesNotMatch(migrationSql, /"lab_test_key" text NOT NULL/i);
+  assert.match(
+    migrationSql,
+    /CREATE INDEX "metrics_user_lab_test_key_index" ON "metrics" USING btree \("user_id","lab_test_key"\)/
+  );
+  assert.doesNotMatch(migrationSql, /UNIQUE/i);
+  assert.doesNotMatch(migrationSql, /\b(?:DROP|DELETE|UPDATE)\b/i);
+});

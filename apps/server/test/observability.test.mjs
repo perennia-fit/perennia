@@ -355,6 +355,84 @@ test("privacy logger strips the User Profile values of a logged agent write and 
   }
 });
 
+test("privacy logger strips Lab Metrics and Lab Results from a logged sync push (lab-results.md, Privacy)", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  const labMetric = {
+    id: "metric-lab-1",
+    name: "Testosterone",
+    unit: "nmol/L",
+    value_shape: "scalar",
+    metric_group: "custom",
+    lab_test_key: "testosterone_total"
+  };
+  const labResult = {
+    id: "reading-lab-1",
+    metric_id: "metric-lab-1",
+    value_json: {
+      shape: "scalar",
+      unit: "nmol/L",
+      value: 23.4,
+      entered: "23.4",
+      enteredUnit: "nmol/L",
+      lab: {
+        collected: "2026-03-04T08:15",
+        printedRange: "(10.0-30.0)",
+        printedFlag: "H",
+        reportStatus: "final",
+        labName: "Example Pathology"
+      }
+    },
+    scalar_value: 23.4,
+    scalar_entered: "23.4",
+    at_time: "2026-03-03T21:15:00.000Z",
+    external_id: "lab-order-77"
+  };
+  // A sync push body as it arrives, then the same rows logged outside the
+  // `changes` key (as a pulled change or an Activity Log image would be), so
+  // the lab keys themselves are exercised, not only their parent.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/sync/push",
+      entity: "metrics",
+      changes: [
+        { id: labMetric.id, payload: labMetric },
+        { id: labResult.id, payload: labResult }
+      ]
+    },
+    "synthetic Lab Results push"
+  );
+  logger.info({ userId: "user-1", ...labMetric }, "synthetic Lab Metric row");
+  logger.info({ userId: "user-1", ...labResult }, "synthetic Lab Result row");
+  logger.info(
+    { userId: "user-1", lab: labResult.value_json.lab, entered: "23.4" },
+    "synthetic lab object"
+  );
+
+  assert.equal(logEvents.length, 4);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  for (const value of [
+    "23\\.4",
+    "Testosterone",
+    "testosterone_total",
+    "\\(10\\.0-30\\.0\\)",
+    "10\\.0-30\\.0",
+    "Example Pathology",
+    "2026-03-04T08:15",
+    "2026-03-03T21:15",
+    "lab-order-77"
+  ]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 function profileQueryError() {
   const cause = Object.assign(new Error("Key (text)=(Left knee) is invalid"), {
     code: "23514",

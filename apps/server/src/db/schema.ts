@@ -941,6 +941,11 @@ export const metrics = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     pinned: boolean("pinned").notNull().default(false),
     sortOrder: integer("sort_order").notNull(),
+    // Non-null marks a Lab Metric; write-once (docs/designs/lab-results.md,
+    // Storage). No unique index: two devices offline can each create a Lab
+    // Metric for one Lab Test, and a refused push would stall every later
+    // Sync Run.
+    labTestKey: text("lab_test_key"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     receivedAt: timestamp("received_at", { withTimezone: true })
@@ -948,6 +953,10 @@ export const metrics = pgTable(
       .defaultNow()
   },
   (table) => ({
+    userLabTestKeyIndex: index("metrics_user_lab_test_key_index").on(
+      table.userId,
+      table.labTestKey
+    ),
     userUpdatedAtIndex: index("metrics_user_updated_at_index").on(
       table.userId,
       table.updatedAt
