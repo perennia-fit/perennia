@@ -110,6 +110,10 @@ class _LabEntrySheetState extends ConsumerState<LabEntrySheet> {
       initialDate: current ?? todayDate,
       firstDate: DateTime(1900),
       lastDate: lastDate,
+      // A picker is its own route, often on the root navigator, so the
+      // sheet's guard cannot close it: it needs its own (docs/designs/
+      // lab-results.md, "The lock"). A lock completes it with null.
+      builder: (context, child) => ProtocolsLockSheetGuard(child: child!),
     );
     if (picked == null || !mounted) {
       return;
@@ -124,6 +128,7 @@ class _LabEntrySheetState extends ConsumerState<LabEntrySheet> {
       initialTime: current == null
           ? const TimeOfDay(hour: 8, minute: 0)
           : TimeOfDay(hour: current.hour, minute: current.minute),
+      builder: (context, child) => ProtocolsLockSheetGuard(child: child!),
     );
     if (picked == null || !mounted) {
       return;
