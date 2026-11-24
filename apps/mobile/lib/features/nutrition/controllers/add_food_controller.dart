@@ -182,14 +182,14 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     _searchDebounceTimer?.cancel();
     _aisle = null;
     _query = '';
+    // Not a no-op: a closeAisle that supersedes openAisle's first load would
+    // otherwise leave pre-Aisle live items for a bundle reload to merge.
     _liveItems = const <FoodPickerItem>[];
     state = AsyncData<AddFoodPickerState>(
       _currentState().copyWith(
         clearAisle: true,
         query: '',
         results: const <FoodPickerItem>[],
-        onlineResults: const <FoodPickerItem>[],
-        onlineStatus: OnlinePickerStatus.idle,
       ),
     );
     await _refresh(generation: ++_searchGeneration);
@@ -401,21 +401,9 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     final aisle = _aisle;
     final filter = _filter;
     final query = _query;
-    final repository = ref.read(addFoodRepositoryProvider);
     final List<FoodPickerItem> results;
     try {
-      results = aisle == null
-          ? await repository.search(
-              filter: filter,
-              query: query,
-              yourFoods: _yourFoods,
-            )
-          : await repository.browseAisle(
-              aisle,
-              query: query,
-              limit: _aisleLimit(query),
-              yourFoods: _yourFoods,
-            );
+      results = await _readDevice(filter: filter, query: query, aisle: aisle);
     } on Object {
       return;
     }
@@ -466,26 +454,16 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     state = next;
   }
 
-  /// With an [aisle], the device search is that Aisle's: its most scanned
-  /// products for a blank query, else matches within it.
   Future<AddFoodPickerState> _load({
     required AddFoodPickerFilter filter,
     required String query,
     required FoodAisle? aisle,
   }) async {
-    final repository = ref.read(addFoodRepositoryProvider);
-    final results = aisle == null
-        ? await repository.search(
-            filter: filter,
-            query: query,
-            yourFoods: _yourFoods,
-          )
-        : await repository.browseAisle(
-            aisle,
-            query: query,
-            limit: _aisleLimit(query),
-            yourFoods: _yourFoods,
-          );
+    final results = await _readDevice(
+      filter: filter,
+      query: query,
+      aisle: aisle,
+    );
     return AddFoodPickerState(
       query: query,
       filter: filter,
@@ -496,10 +474,29 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     );
   }
 
-  /// [aisleBrowseLimit] rows for a blank query, [searchResultLimit] for a
-  /// typed one.
-  static int _aisleLimit(String query) {
-    return isBlankFoodQuery(query) ? aisleBrowseLimit : searchResultLimit;
+  /// The device's matches for [query] in [filter]. With an [aisle], the
+  /// search is that Aisle's instead: its most scanned products for a blank
+  /// query, else matches within it, at most [aisleBrowseLimit] rows for a
+  /// blank query and [searchResultLimit] for a typed one.
+  Future<List<FoodPickerItem>> _readDevice({
+    required AddFoodPickerFilter filter,
+    required String query,
+    required FoodAisle? aisle,
+  }) {
+    final repository = ref.read(addFoodRepositoryProvider);
+    if (aisle == null) {
+      return repository.search(
+        filter: filter,
+        query: query,
+        yourFoods: _yourFoods,
+      );
+    }
+    return repository.browseAisle(
+      aisle,
+      query: query,
+      limit: isBlankFoodQuery(query) ? aisleBrowseLimit : searchResultLimit,
+      yourFoods: _yourFoods,
+    );
   }
 
   BundleStatus _bundleStatus() {
