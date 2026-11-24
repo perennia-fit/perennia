@@ -133,7 +133,9 @@ class _AddFoodPickerState extends ConsumerState<AddFoodPicker> {
     // the system back and the Meal screen's app-bar back both pop through
     // Navigator.maybePop, which this blocks while canPop is false. The next
     // back, with no Aisle open, leaves the Meal screen as before
-    // (docs/designs/food-aisles.md § The picker, CUJ 3).
+    // (docs/designs/food-aisles.md § The picker, CUJ 3). On iOS, canPop:
+    // false also turns off the edge-swipe back gesture while an Aisle is open
+    // (docs/designs/food-aisles.md § The picker).
     return PopScope(
       canPop: aisle == null,
       onPopInvokedWithResult: (didPop, _) {
