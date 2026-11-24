@@ -15,6 +15,7 @@ import 'package:perennia/domain/training/training_progress.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
+import 'package:perennia/features/labs/widgets/lab_results_screen.dart';
 import 'package:perennia/features/progress/controllers/progress_controller.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/progress/widgets/body_card.dart';
@@ -224,6 +225,9 @@ void main() {
           theme: AppTheme.light(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          routes: <String, WidgetBuilder>{
+            LabResultsScreen.routeName: (_) => const LabResultsScreen(),
+          },
           home: const Scaffold(body: ProgressOverview()),
         ),
       ),
@@ -704,7 +708,8 @@ void main() {
       find.descendant(of: top, matching: find.text('5 km run · 5:04 /km')),
       findsOneWidget,
     );
-    expect(find.descendant(of: top, matching: find.text('Sat')), findsOneWidget);
+    expect(
+        find.descendant(of: top, matching: find.text('Sat')), findsOneWidget);
     expect(
       find.descendant(
         of: top,
@@ -939,6 +944,94 @@ void main() {
     );
     expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
     expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
+    await _unmount(tester);
+  });
+
+  /// Saves one collection of Haemoglobin and Creatinine, two Lab Tests.
+  Future<void> saveTwoLabTests() async {
+    await repositories.labResults.saveCollection(
+      CollectionDraft(
+        collectedDate: DateTime(2026, 10, 20),
+        rows: const <CollectionDraftRow>[
+          CollectionDraftRow(labTestKey: 'haemoglobin', value: '150'),
+          CollectionDraftRow(labTestKey: 'creatinine', value: '80'),
+        ],
+      ),
+      today: _at(6, 18),
+    );
+  }
+
+  String? labResultsSubtitle(WidgetTester tester) {
+    final tile = tester.widget<ListTile>(
+      find.descendant(
+        of: find.byKey(ProgressOverview.labResultsTileKey),
+        matching: find.byType(ListTile),
+      ),
+    );
+    return (tile.subtitle as Text?)?.data;
+  }
+
+  testWidgets(
+      'the Lab results row follows Health metrics and counts Lab Tests with '
+      'results', (tester) async {
+    await pumpOverview(tester, _at(6, 18));
+
+    final healthMetrics = find.byKey(ProgressOverview.healthMetricsTileKey);
+    final labResults = find.byKey(ProgressOverview.labResultsTileKey);
+    expect(labResults, findsOneWidget);
+    expect(
+      tester.getTopLeft(labResults).dy,
+      greaterThan(tester.getTopLeft(healthMetrics).dy),
+    );
+    expect(
+      find.descendant(of: labResults, matching: find.text('Lab results')),
+      findsOneWidget,
+    );
+    expect(labResultsSubtitle(tester), 'No results yet');
+    expect(
+      find.descendant(
+        of: labResults,
+        matching: find.byIcon(Icons.science_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    await _write(tester, saveTwoLabTests);
+
+    expect(labResultsSubtitle(tester), '2 lab tests');
+    await _unmount(tester);
+  });
+
+  testWidgets(
+      'CUJ 6 (Lab Results): locked, the Lab results row shows a lock and no '
+      'Lab Test names or counts, and opens the lock screen', (tester) async {
+    await tester.runAsync(() async {
+      lockStore
+        ..enabled = true
+        ..pinHash = await const ProtocolsPinHasher(iterations: 10).hash('1234');
+      await saveTwoLabTests();
+    });
+
+    await pumpOverview(tester, _at(6, 18));
+
+    final labResults = find.byKey(ProgressOverview.labResultsTileKey);
+    expect(labResults, findsOneWidget);
+    expect(
+      find.descendant(
+          of: labResults, matching: find.byIcon(Icons.lock_outline)),
+      findsOneWidget,
+    );
+    expect(labResultsSubtitle(tester), isNull);
+    expect(find.textContaining('lab test'), findsNothing);
+    expect(find.textContaining('No results yet'), findsNothing);
+    expect(find.textContaining('Haemoglobin'), findsNothing);
+    expect(find.textContaining('Creatinine'), findsNothing);
+    expect(find.textContaining('150'), findsNothing);
+
+    await tester.tap(labResults);
+    await _settle(tester);
+    expect(find.byKey(ProtocolsLockGate.lockScreenKey), findsOneWidget);
+    expect(find.textContaining('Haemoglobin'), findsNothing);
     await _unmount(tester);
   });
 

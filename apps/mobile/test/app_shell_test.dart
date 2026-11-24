@@ -78,7 +78,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -116,7 +119,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
         openFoodFactsRepository: openFoodFacts,
@@ -142,7 +148,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -161,6 +170,8 @@ void main() {
     expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
     await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
     expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.labResultsTileKey);
+    expect(find.byKey(ProgressOverview.labResultsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available when the Training Day fails', (
@@ -169,7 +180,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _ErrorHomeRepository(),
       ),
@@ -188,6 +202,8 @@ void main() {
     expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
     await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
     expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.labResultsTileKey);
+    expect(find.byKey(ProgressOverview.labResultsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available while the Training Day loads', (
@@ -196,7 +212,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _LoadingHomeRepository(),
       ),
@@ -406,7 +425,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _ScrollableHomeRepository(),
       ),
@@ -439,7 +461,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         authRepository: InMemoryAuthRepository(),
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
@@ -471,7 +496,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -497,7 +525,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -567,7 +598,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
         settingsRepository: settingsRepository,
@@ -722,7 +756,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         authRepository: authRepository,
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
@@ -1222,7 +1259,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _DateEchoHomeRepository(),
       ),
@@ -1243,7 +1283,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: StubHomeRepository(),
       ),
@@ -1265,7 +1308,10 @@ void main() {
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
-        extraOverrides: [_idleSyncStatusOverride(), _homeNutritionDayOverride()],
+        extraOverrides: [
+          _idleSyncStatusOverride(),
+          _homeNutritionDayOverride()
+        ],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: _FailingStartHomeRepository(),
       ),

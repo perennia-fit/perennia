@@ -7354,6 +7354,12 @@ abstract class AppLocalizations {
   /// **'{value} · {date}'**
   String labResultsLatest(String value, String date);
 
+  /// Subtitle of the Lab results row on Progress while the Protocols lock is open: how many Lab Tests have results.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No results yet} =1{1 lab test} other{{count} lab tests}}'**
+  String labResultsProgressCount(int count);
+
   /// A lab result as entered, comparator included, followed by its unit as entered.
   ///
   /// In en, this message translates to:

@@ -99,7 +99,9 @@ class _LabResultsScaffold extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: AppDimens.dense / 2),
           child: TextButton(
             key: LabResultsScreen.profileLinkKey,
+            // Signal Cyan text is below AA on the light ground.
             style: TextButton.styleFrom(
+              foregroundColor: colors.textPrimary,
               minimumSize: const Size(
                 AppDimens.touchTarget,
                 AppDimens.touchTarget,

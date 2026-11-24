@@ -4644,6 +4644,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String labResultsProgressCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lab tests',
+      one: '1 lab test',
+      zero: 'No results yet',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String labResultValue(String entered, String unit) {
     return '$entered $unit';
   }
