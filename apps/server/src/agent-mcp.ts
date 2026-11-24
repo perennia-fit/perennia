@@ -261,6 +261,10 @@ import {
   type AgentMealTypesReadStore
 } from "./agent-meal-types.js";
 import {
+  AgentLabTestListSchema,
+  listAgentLabTests
+} from "./agent-lab-tests.js";
+import {
   AgentMealListQuerySchema,
   AgentMealListResponseSchema,
   AgentNutritionReadUnavailableResponseSchema,
@@ -398,6 +402,9 @@ export const AgentMcpMealHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
 
 export const AgentMcpMealTypesInputSchema =
   AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
+
+export const AgentMcpLabTestsInputSchema =
+  AgentMcpAuthFieldsSchema.openapi("AgentMcpLabTestsInput");
 
 export const AgentMcpFoodListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentFoodListQuerySchema.optional()
@@ -1843,6 +1850,31 @@ export function createAgentMcpServer({
           })
         )
       );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_lab_tests",
+    {
+      title: "List Agent Lab Tests",
+      description:
+        "Lists the Lab Test catalogue: each Lab Test's key, name, panel, unit and accepted unit spellings, hard and plausible bounds, printed range kind and Default Ranges. Call it before writing lab results with agent_batch_write_metrics by labTestKey, and use only a listed unit or unit alias. Lab Test keys are not enumerated anywhere else.",
+      inputSchema: AgentMcpLabTestsInputSchema,
+      outputSchema: AgentLabTestListSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+
+      return successResult(AgentLabTestListSchema.parse(listAgentLabTests()));
     }
   );
 

@@ -12732,6 +12732,180 @@
           "sortOrder"
         ]
       },
+      "AgentLabTestList": {
+        "type": "object",
+        "properties": {
+          "labTests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLabTest"
+            }
+          }
+        },
+        "required": [
+          "labTests"
+        ]
+      },
+      "AgentLabTest": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Lab Test key, as batchWriteAgentMetrics' reading labTestKey carries it."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "panel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other names this Lab Test is printed under on lab reports, lower-cased."
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The canonical unit; a reading in this unit is accepted."
+          },
+          "unitAliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other accepted spellings of the same unit. No other unit is accepted, and no conversion is made."
+          },
+          "hardBounds": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "description": "Inclusive bounds; a value or limit outside them is rejected (lab_value_out_of_bounds)."
+          },
+          "plausibleBounds": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "description": "Inclusive bounds; a value or limit outside them is accepted with the lab_value_implausible warning. Null when none is set."
+          },
+          "printedRangeKind": {
+            "type": "string",
+            "enum": [
+              "reference",
+              "riskTarget"
+            ],
+            "description": "Whether a lab's printed range for this Lab Test is a reference interval or a risk target."
+          },
+          "defaultRanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sex": {
+                  "type": "string",
+                  "enum": [
+                    "female",
+                    "male",
+                    "any"
+                  ]
+                },
+                "ageMin": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ageMax": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "low": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "high": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "url",
+                    "version"
+                  ]
+                }
+              },
+              "required": [
+                "sex",
+                "ageMin",
+                "ageMax",
+                "low",
+                "high",
+                "source"
+              ]
+            },
+            "description": "Published ranges the app shows when a result has no printed range. Ages are inclusive whole years; a null side is unbounded."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "panel",
+          "variants",
+          "unit",
+          "unitAliases",
+          "hardBounds",
+          "plausibleBounds",
+          "printedRangeKind",
+          "defaultRanges"
+        ]
+      },
       "AgentNutritionGoalListResponse": {
         "type": "object",
         "properties": {
@@ -25587,6 +25761,97 @@
                       "$ref": "#/components/schemas/AgentNutritionReadUnavailableResponse"
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/lab-tests": {
+      "get": {
+        "operationId": "listAgentLabTests",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the Lab Test catalogue Agents write lab results against.",
+        "description": "Returns the Lab Test catalogue, in display order: each Lab Test's key, name, panel, printed-name variants, unit and accepted unit spellings, hard and plausible bounds, printed range kind and Default Ranges. Write lab results with batchWriteAgentMetrics by labTestKey, using only the listed unit or one of its unitAliases. Lab Test keys are not enumerated anywhere else in the contract, so call this before writing lab results.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Lab Test catalogue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLabTestList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
                 }
               }
             }

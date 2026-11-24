@@ -145,6 +145,11 @@ const COMMANDS = {
     path: "/agent/meal-types",
     operationId: "listAgentMealTypes"
   },
+  "list-lab-tests": {
+    method: "GET",
+    path: "/agent/lab-tests",
+    operationId: "listAgentLabTests"
+  },
   "list-focuses": {
     method: "GET",
     path: "/agent/focuses",

@@ -712,6 +712,40 @@ export type AgentHistorySetsResponse = {
   "totalMatched": number;
 };
 
+export type AgentLabTest = {
+  "key": string;
+  "name": string;
+  "panel": string;
+  "variants": Array<string>;
+  "unit": string;
+  "unitAliases": Array<string>;
+  "hardBounds": {
+  "min": number;
+  "max": number;
+};
+  "plausibleBounds": {
+  "min": number;
+  "max": number;
+} | null;
+  "printedRangeKind": "reference" | "riskTarget";
+  "defaultRanges": Array<{
+  "sex": "female" | "male" | "any";
+  "ageMin": number | null;
+  "ageMax": number | null;
+  "low": number | null;
+  "high": number | null;
+  "source": {
+  "title": string;
+  "url": string;
+  "version": string;
+};
+}>;
+};
+
+export type AgentLabTestList = {
+  "labTests": Array<AgentLabTest>;
+};
+
 export type AgentMealBatchWriteEntry = {
   "id": string;
   "position": number;
@@ -2724,6 +2758,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
+  "listAgentLabTests",
   "listAgentMealHistory",
   "listAgentMealTypes",
   "listAgentMeals",
@@ -3141,6 +3176,15 @@ export class PerenniaAgentClient {
       path: "/agent/history/sets",
       expectedStatus: 200,
       query: { "exerciseId": input.exerciseId, "category": input.category, "from": input.from, "to": input.to, "minLoadKilograms": input.minLoadKilograms, "minReps": input.minReps, "minDurationSeconds": input.minDurationSeconds, "minDistanceKilometers": input.minDistanceKilometers, "limit": input.limit, "cursor": input.cursor },
+      signal: options.signal
+    });
+  }
+
+  async listAgentLabTests(options: AgentClientRequestOptions = {}): Promise<AgentLabTestList> {
+    return this.request<AgentLabTestList>({
+      method: "GET",
+      path: "/agent/lab-tests",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

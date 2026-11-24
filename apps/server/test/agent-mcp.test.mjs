@@ -29,6 +29,7 @@ import {
   OpenFoodFactsBundleUnavailableError,
   setOpenFoodFactsBundleLoaderForTesting
 } from "../src/open-food-facts-bundle.ts";
+import { LAB_TEST_CATALOGUE } from "../src/data/lab-test-catalogue.generated.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -297,6 +298,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_list_food_history",
         "agent_list_foods",
         "agent_list_history_sets",
+        "agent_list_lab_tests",
         "agent_list_meal_history",
         "agent_list_meal_types",
         "agent_list_meals",
@@ -549,6 +551,44 @@ test("agent MCP list-meal-types returns the same body as REST from the same stor
     assertToolSucceeded(mcpResponse);
     assert.deepEqual(mcpResponse.structuredContent, restBody);
     assert.deepEqual(calls, [{ userId: "user-1" }, { userId: "user-1" }]);
+  } finally {
+    await close();
+  }
+});
+
+test("agent MCP list-lab-tests returns the Lab Test catalogue, the same body as REST", async () => {
+  const restApp = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: createAgentKeyStore("user-1")
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      logger: { info() {}, error() {} }
+    })
+  );
+
+  try {
+    const { tools } = await client.listTools();
+    const tool = tools.find((candidate) => candidate.name === "agent_list_lab_tests");
+    assert.ok(tool, "agent_list_lab_tests should be registered");
+    // Auth fields only: the read takes no filters.
+    assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}), ["apiKey"]);
+    assert.deepEqual(tool.outputSchema.required, ["labTests"]);
+
+    const restResponse = await getAgent(restApp, "/agent/lab-tests");
+    assert.equal(restResponse.status, 200);
+    const restBody = await restResponse.json();
+
+    const mcpResponse = await callTool(client, "agent_list_lab_tests", {
+      apiKey: "prn_agent_secret"
+    });
+    assertToolSucceeded(mcpResponse);
+    assert.deepEqual(mcpResponse.structuredContent, restBody);
+    assert.deepEqual(
+      mcpResponse.structuredContent.labTests.map((labTest) => labTest.key),
+      LAB_TEST_CATALOGUE.map((entry) => entry.key)
+    );
   } finally {
     await close();
   }
