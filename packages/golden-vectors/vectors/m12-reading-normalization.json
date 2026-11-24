@@ -116,6 +116,81 @@
         "windowEndedAt": "2026-06-25T12:10:00.000Z",
         "warnings": ["window_bounds_reordered"]
       }
+    },
+    {
+      "name": "scalar-exponent-entered-accepted",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "1e3", "unit": "kilogram"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "kilogram",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"kilogram\",\"value\":1000,\"entered\":\"1e3\",\"enteredUnit\":\"kilogram\"}",
+        "scalarValue": 1000,
+        "atTime": "2026-06-25T07:30:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "scalar-non-numeric-entered-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "abc", "unit": "kilogram"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Metric Reading value must be finite"}
+    },
+    {
+      "name": "scalar-trailing-percent-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "percent"},
+        "value": {"shape": "scalar", "entered": "64 %", "unit": "percent"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Metric Reading value must be finite"}
+    },
+    {
+      "name": "scalar-trailing-multiplier-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "x10^9/L"},
+        "value": {"shape": "scalar", "entered": "1.7 x10^9", "unit": "x10^9/L"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Metric Reading value must be finite"}
+    },
+    {
+      "name": "scalar-empty-entered-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "", "unit": "kilogram"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Metric Reading value must be finite"}
+    },
+    {
+      "name": "scalar-unknown-unit-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "70", "unit": "stone"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Cannot convert Metric Reading unit"}
+    },
+    {
+      "name": "structured-value-on-scalar-metric-rejected",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "millimeterMercury"},
+        "value": {
+          "shape": "structured",
+          "fields": {"systolic": {"entered": "121", "unit": "millimeterMercury"}}
+        },
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00Z"}
+      },
+      "expected": {"rejected": true, "error": "Reading value shape must match Metric value shape"}
     }
   ]
 }

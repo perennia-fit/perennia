@@ -141,6 +141,18 @@ function normalizeValue({
   }
 }
 
+/**
+ * The whole-string number grammar for an entered Metric value. It mirrors the
+ * app's Dart `double.tryParse` on finite values: `1.`, `.5`, `+5`, `1e3` and
+ * `1E+3` are accepted; trailing text (`"64 %"`, `"1.7 x10^9"`), hex, `_`,
+ * `NaN` and `Infinity` are rejected. It is the unambiguous form of the Lab
+ * Results spec's `^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$`, written without
+ * overlapping quantifiers so a long digit run fails in linear time (`entered`
+ * has no maximum length on the Agent surface). Parity with Dart is pinned by
+ * the m12 golden vectors.
+ */
+const DECIMAL_LITERAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
 function normalizeNumericValue({
   entered,
   enteredUnit,
@@ -151,7 +163,10 @@ function normalizeNumericValue({
   targetUnit: string;
 }) {
   const trimmed = entered.trim();
-  const parsed = Number.parseFloat(trimmed);
+  if (!DECIMAL_LITERAL.test(trimmed)) {
+    throw new Error("Metric Reading value must be finite.");
+  }
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) {
     throw new Error("Metric Reading value must be finite.");
   }
