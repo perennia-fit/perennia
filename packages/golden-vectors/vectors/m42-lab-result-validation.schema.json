@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m42-lab-result-validation.schema.json",
+  "title": "M42 Lab Result validation golden vector",
+  "description": "Language-neutral parity cases for the Lab Result reading rules of the shared two-tier validator, validateLabResult (docs/designs/lab-results.md, Validation). Each case gives one reading as a writer is about to save it (labTestKey, entered, enteredUnit, the raw lab object and the raw time anchor) and the local date today, and expects the verdict and the ordered error and warning rule ids. The vectors use the real Lab Test catalogue. Issues follow the Validation table's row order: lab_collected_missing, lab_collected_invalid, lab_collected_future, lab_time_anchor_mismatch, lab_unit_not_accepted, lab_value_invalid, lab_value_out_of_bounds, lab_value_implausible, lab_text_too_long (printedRange, printedFlag, labName), lab_report_status_invalid, lab_fasting_invalid. The future and time-anchor checks are skipped when collected is missing or invalid; a collection is in the future when its date is later than today plus one day. The time anchor must be exactly localDateTime (collected with :00 seconds, or T12:00:00 for a date) and a whole timezoneOffsetMinutes from -720 to 840, with no other non-null key. Units match the Lab Test's unit or an alias after removing whitespace, case kept. entered is trimmed and must be a number, or an ASCII comparator, exactly one space and a number. The bounds checks run only when entered parses, a limit's bound being checked as the value, bounds inclusive; lab_value_implausible is skipped when lab_value_out_of_bounds fired. Text lengths are UTF-16 code units after trimming and a blank text field is valid. reportStatus may be absent or null; fasting may be true, absent or null. Every labTestKey is in the catalogue: an unknown key is a Request rule, not in this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m42-lab-result-validation"},
+    "domain": {"const": "lab-result-validation"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m42-lab-result-validation.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "ruleList": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^lab_[a-z_]+$"}
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "today", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["labTestKey", "entered", "enteredUnit", "timeAnchor"],
+          "properties": {
+            "labTestKey": {"type": "string", "minLength": 1},
+            "entered": {"type": "string"},
+            "enteredUnit": {"type": "string"},
+            "lab": {"type": ["object", "null"]},
+            "timeAnchor": {"type": "object"}
+          }
+        },
+        "today": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accepted", "errorRules", "warningRules"],
+          "properties": {
+            "accepted": {"type": "boolean"},
+            "errorRules": {"$ref": "#/$defs/ruleList"},
+            "warningRules": {"$ref": "#/$defs/ruleList"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -235,6 +235,29 @@ governed by the adjacent `m41-user-profile-validation.schema.json`; its
 `schemaVersion`, the schema's constant and both runners' constants move
 together.
 
+## Lab Result validation
+
+`m42-lab-result-validation.json` (domain `lab-result-validation`) pins the Lab
+Result reading rules of the shared two-tier validator in both languages:
+`validateLabResult`. The app runs it in
+`apps/mobile/test/domain/lab_result_validation_test.dart` against
+`apps/mobile/lib/domain/labs/lab_result_validation.dart`; the server runs it in
+`apps/server/test/agent-validation.golden.test.mjs` against
+`apps/server/src/agent-validation.ts`. The behaviour is specified in
+[`docs/designs/lab-results.md`](../../../docs/designs/lab-results.md)
+(Validation).
+
+Each case gives one reading in `input` (`labTestKey`, `entered`, `enteredUnit`,
+the raw `lab` object and the raw `timeAnchor`) and the local date `today`, so no
+result depends on the clock, and in `expected` the ordered error and warning
+rule ids and `accepted`. The vectors use the real Lab Test catalogue, so a pull
+request that widens a bound updates the affected cases in the same commit.
+Issues follow the Validation table's row order, and the schema's description
+states which checks skip which. Text length is counted in UTF-16 code units
+after trimming. The file is governed by the adjacent
+`m42-lab-result-validation.schema.json`; its `schemaVersion`, the schema's
+constant and both runners' constants move together.
+
 ## Lab Result collapse
 
 `m43-lab-result-collapse.json` (domain `lab-result-collapse`) pins

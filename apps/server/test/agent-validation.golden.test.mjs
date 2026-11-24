@@ -22,6 +22,7 @@ import {
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup,
+  validateLabResult,
   validateUserProfileSection
 } from "../src/index.ts";
 
@@ -46,6 +47,10 @@ const VALIDATORS_BY_DOMAIN = new Map([
       validateUserProfileSection(input.section, input.values, {
         referenceYear: input.referenceYear
       })
+  ],
+  [
+    "lab-result-validation",
+    (vectorCase) => validateLabResult(vectorCase.input, { today: vectorCase.today })
   ]
 ]);
 
@@ -136,6 +141,12 @@ test("server validation matches the shared golden vectors", async () => {
         `${filename} limits`
       );
     }
+    if (vector.domain === "lab-result-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+    }
     if (vector.domain === "settings-validation") {
       assert.deepEqual(
         vector.limits,
@@ -192,6 +203,56 @@ test("User Profile messages carry the same values as the Dart module", () => {
     validateUserProfileSection("general_notes", { text: "n".repeat(2001) }, options).errors[0]
       .message,
     "Keep this under 2000 characters."
+  );
+});
+
+test("Lab Result messages carry the same text as the Dart module", () => {
+  const reading = {
+    labTestKey: "sodium",
+    entered: "140",
+    enteredUnit: "mmol/L",
+    lab: { collected: "2026-03-04T08:15" },
+    timeAnchor: { localDateTime: "2026-03-04T08:15:00", timezoneOffsetMinutes: 600 }
+  };
+  const options = { today: "2026-03-05" };
+  assert.deepEqual(
+    validateLabResult({ ...reading, entered: "1000.1" }, options).errors.map(
+      ({ rule, field, message }) => ({ rule, field, message })
+    ),
+    [
+      {
+        rule: "lab_value_out_of_bounds",
+        field: "entered",
+        message: "Value must be between 0 and 1000 mmol/L."
+      }
+    ]
+  );
+  assert.equal(
+    validateLabResult({ ...reading, enteredUnit: "mg/dL" }, options).errors[0].message,
+    "Unit not accepted. Use mmol/L, mmol/l."
+  );
+  assert.equal(
+    validateLabResult(
+      { ...reading, labTestKey: "wcc", entered: "6.2", enteredUnit: "cells" },
+      options
+    ).errors[0].message,
+    "Unit not accepted. Use x10^9/L, x10^9/l, 10^9/L, 10^9/l."
+  );
+  assert.equal(
+    validateLabResult(
+      { ...reading, labTestKey: "haematocrit", entered: "1.5", enteredUnit: "L/L" },
+      options
+    ).errors[0].message,
+    "Value must be between 0 and 1 L/L."
+  );
+  assert.equal(
+    validateLabResult({ ...reading, lab: { ...reading.lab, labName: "n".repeat(81) } }, options)
+      .errors[0].message,
+    "lab.labName is too long."
+  );
+  assert.throws(
+    () => validateLabResult({ ...reading, labTestKey: "not_a_lab_test" }, options),
+    /Unknown Lab Test/
   );
 });
 

@@ -27,6 +27,16 @@ void main() {
         isTrue,
         reason: 'm12 has at least one accepted case',
       );
+      expect(
+        cases.any(
+          (caseObject) =>
+              (((caseObject! as Map<String, Object?>)['input']!
+                      as Map<String, Object?>)['metric']!
+                  as Map<String, Object?>)['labTestKey'] is String,
+        ),
+        isTrue,
+        reason: 'm12 has at least one Lab Metric case',
+      );
       for (final caseObject in cases) {
         final caseData = caseObject! as Map<String, Object?>;
         final name = caseData['name']! as String;

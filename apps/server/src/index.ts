@@ -1144,7 +1144,11 @@ export {
   type DoseUnit,
   type UserProfileSectionName,
   type UserProfileValidationIssue,
-  type UserProfileValidationResult
+  type UserProfileValidationResult,
+  validateLabResult,
+  type LabResultValidationInput,
+  type LabResultValidationIssue,
+  type LabResultValidationResult
 } from "./agent-validation.js";
 export { localDateAtOffset } from "./timezone.js";
 export {
