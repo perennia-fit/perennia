@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
+import '../../../domain/nutrition/food_aisle.dart';
 import '../../../domain/nutrition/open_food_facts.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../repositories/add_food_repository.dart';
@@ -28,6 +29,7 @@ final class AddFoodPickerState {
     this.onlineStatus = OnlinePickerStatus.idle,
     this.onlineLookupsEnabled = true,
     this.bundleStatus = BundleStatus.unknown,
+    this.aisle,
   })  : results = List<FoodPickerItem>.unmodifiable(results),
         onlineResults = List<FoodPickerItem>.unmodifiable(onlineResults);
 
@@ -49,6 +51,9 @@ final class AddFoodPickerState {
   final bool onlineLookupsEnabled;
   final BundleStatus bundleStatus;
 
+  /// The open Aisle, or `null`. Only the controller's `_load` sets it.
+  final FoodAisle? aisle;
+
   AddFoodPickerState copyWith({
     String? query,
     AddFoodPickerFilter? filter,
@@ -60,6 +65,7 @@ final class AddFoodPickerState {
     OnlinePickerStatus? onlineStatus,
     bool? onlineLookupsEnabled,
     BundleStatus? bundleStatus,
+    bool clearAisle = false,
   }) {
     return AddFoodPickerState(
       query: query ?? this.query,
@@ -71,6 +77,7 @@ final class AddFoodPickerState {
       onlineStatus: onlineStatus ?? this.onlineStatus,
       onlineLookupsEnabled: onlineLookupsEnabled ?? this.onlineLookupsEnabled,
       bundleStatus: bundleStatus ?? this.bundleStatus,
+      aisle: clearAisle ? null : aisle,
     );
   }
 }
@@ -96,6 +103,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
 
   String _query = '';
   AddFoodPickerFilter _filter = AddFoodPickerFilter.all;
+
+  /// The open Aisle, or `null`. An Aisle is a view over the earlier filter:
+  /// while one is open, [_filter] keeps the filter selected before it, so
+  /// closing the Aisle needs nothing restored (docs/designs/food-aisles.md
+  /// § The picker).
+  FoodAisle? _aisle;
 
   /// Read once per opening; every search in it filters this in memory.
   YourFoods _yourFoods = YourFoods.empty;
@@ -148,7 +161,38 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     ).wait;
     _onlineLookupsEnabled = onlineLookupsEnabled;
     _yourFoods = yourFoods;
-    return _load(filter: _filter, query: _query);
+    return _load(filter: _filter, query: _query, aisle: _aisle);
+  }
+
+  /// Opens [aisle] with an empty query. Reached only with no Aisle open.
+  Future<void> openAisle(FoodAisle aisle) async {
+    _searchDebounceTimer?.cancel();
+    _aisle = aisle;
+    _query = '';
+    await _refresh(generation: ++_searchGeneration);
+  }
+
+  /// Closes the open Aisle and shows the earlier filter's blank view, which
+  /// [_filter] still names. The state leaves the Aisle at once, before the
+  /// device search runs, so the picker's back handling sees it closed.
+  Future<void> closeAisle() async {
+    if (_aisle == null) {
+      return;
+    }
+    _searchDebounceTimer?.cancel();
+    _aisle = null;
+    _query = '';
+    _liveItems = const <FoodPickerItem>[];
+    state = AsyncData<AddFoodPickerState>(
+      _currentState().copyWith(
+        clearAisle: true,
+        query: '',
+        results: const <FoodPickerItem>[],
+        onlineResults: const <FoodPickerItem>[],
+        onlineStatus: OnlinePickerStatus.idle,
+      ),
+    );
+    await _refresh(generation: ++_searchGeneration);
   }
 
   Future<void> setQuery(String query) async {
@@ -176,6 +220,11 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     }
     _searchDebounceTimer?.cancel();
     await _refresh(generation: ++_searchGeneration, keepShown: true);
+    // Within an Aisle a submit searches the device only: no barcode lookup
+    // and no live search.
+    if (_aisle != null) {
+      return null;
+    }
     if (_filter != AddFoodPickerFilter.all &&
         _filter != AddFoodPickerFilter.openFoodFacts) {
       return null;
@@ -268,10 +317,13 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     return changed != null && (stored == null || changed.isAfter(stored));
   }
 
+  /// Closes any open Aisle, so selecting the current filter with an Aisle
+  /// open still leaves the Aisle.
   Future<void> selectFilter(AddFoodPickerFilter filter) async {
-    if (filter == _filter) {
+    if (filter == _filter && _aisle == null) {
       return;
     }
+    _aisle = null;
     _filter = filter;
     _searchDebounceTimer?.cancel();
     await _refresh(generation: ++_searchGeneration);
@@ -346,17 +398,36 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     // query, filter, submit or disposal moves the generation on, and the
     // reload's results are then dropped.
     final generation = _searchGeneration;
+    final aisle = _aisle;
+    final filter = _filter;
+    final query = _query;
+    final repository = ref.read(addFoodRepositoryProvider);
     final List<FoodPickerItem> results;
     try {
-      results = await ref.read(addFoodRepositoryProvider).search(
-            filter: _filter,
-            query: _query,
-            yourFoods: _yourFoods,
-          );
+      results = aisle == null
+          ? await repository.search(
+              filter: filter,
+              query: query,
+              yourFoods: _yourFoods,
+            )
+          : await repository.browseAisle(
+              aisle,
+              query: query,
+              limit: _aisleLimit(query),
+              yourFoods: _yourFoods,
+            );
     } on Object {
       return;
     }
-    if (generation != _searchGeneration) {
+    if (generation != _searchGeneration ||
+        aisle != _aisle ||
+        filter != _filter ||
+        query != _query) {
+      return;
+    }
+    if (aisle != null) {
+      // An Aisle has no live search to merge.
+      _updateCurrent((current) => current.copyWith(results: results));
       return;
     }
     // The device may now hold products the live search returned: merge the
@@ -380,11 +451,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   }) async {
     final filter = _filter;
     final query = _query;
+    final aisle = _aisle;
     if (!keepShown || !state.hasValue) {
       state = const AsyncLoading<AddFoodPickerState>();
     }
     final next = await AsyncValue.guard(
-      () => _load(filter: filter, query: query),
+      () => _load(filter: filter, query: query, aisle: aisle),
     );
     if (generation != _searchGeneration) {
       return;
@@ -394,22 +466,40 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     state = next;
   }
 
+  /// With an [aisle], the device search is that Aisle's: its most scanned
+  /// products for a blank query, else matches within it.
   Future<AddFoodPickerState> _load({
     required AddFoodPickerFilter filter,
     required String query,
+    required FoodAisle? aisle,
   }) async {
-    final results = await ref.read(addFoodRepositoryProvider).search(
-          filter: filter,
-          query: query,
-          yourFoods: _yourFoods,
-        );
+    final repository = ref.read(addFoodRepositoryProvider);
+    final results = aisle == null
+        ? await repository.search(
+            filter: filter,
+            query: query,
+            yourFoods: _yourFoods,
+          )
+        : await repository.browseAisle(
+            aisle,
+            query: query,
+            limit: _aisleLimit(query),
+            yourFoods: _yourFoods,
+          );
     return AddFoodPickerState(
       query: query,
       filter: filter,
       results: results,
       onlineLookupsEnabled: _onlineLookupsEnabled,
       bundleStatus: _bundleStatus(),
+      aisle: aisle,
     );
+  }
+
+  /// [aisleBrowseLimit] rows for a blank query, [searchResultLimit] for a
+  /// typed one.
+  static int _aisleLimit(String query) {
+    return isBlankFoodQuery(query) ? aisleBrowseLimit : searchResultLimit;
   }
 
   BundleStatus _bundleStatus() {

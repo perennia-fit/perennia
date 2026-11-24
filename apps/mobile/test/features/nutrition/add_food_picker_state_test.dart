@@ -11,6 +11,7 @@ import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/controllers/add_food_controller.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
@@ -288,8 +289,7 @@ void main() {
           ),
         ],
       );
-      final container =
-          _container(repository, bundleStatus: bundle.stream);
+      final container = _container(repository, bundleStatus: bundle.stream);
       container.listen(addFoodPickerControllerProvider, (_, __) {});
       bundle.add(BundleStatus.installing);
       await container.read(addFoodPickerControllerProvider.future);
@@ -330,8 +330,7 @@ void main() {
       expect(state.results.map((item) => item.name), ['Wafers (new)', 'Cola']);
       expect(state.onlineResults, isEmpty);
       final keys = [
-        for (final item in [...state.results, ...state.onlineResults])
-          item.key,
+        for (final item in [...state.results, ...state.onlineResults]) item.key,
       ];
       expect(keys.toSet(), hasLength(keys.length));
     });
@@ -359,6 +358,200 @@ void main() {
       expect(reopened.filter, AddFoodPickerFilter.all);
       expect(reopened.query, '');
       expect(repository.loadCalls, 2);
+    });
+  });
+
+  group('AddFoodPickerController with an Aisle', () {
+    test('openAisle loads the Aisle with an empty query', () async {
+      final repository = _FakeAddFoodRepository(
+        aisleItems: [_offFood('3017620422003', name: 'Crisps')],
+      );
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+
+      await container
+          .read(addFoodPickerControllerProvider.notifier)
+          .openAisle(FoodAisle.snacks);
+
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, FoodAisle.snacks);
+      expect(state.query, '');
+      expect(state.results.map((item) => item.name), ['Crisps']);
+      expect(repository.aisleBrowses, [
+        (aisle: FoodAisle.snacks, query: '', limit: aisleBrowseLimit),
+      ]);
+    });
+
+    test('closeAisle restores the earlier filter blank view', () async {
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+      final notifier = container.read(addFoodPickerControllerProvider.notifier);
+      await notifier.selectFilter(AddFoodPickerFilter.openFoodFacts);
+      await notifier.openAisle(FoodAisle.snacks);
+      await notifier.setQuery('crisps');
+      repository.searches.clear();
+
+      final closing = notifier.closeAisle();
+      // The state leaves the Aisle at once, before the device search ends.
+      final immediate = container.read(addFoodPickerControllerProvider).value!;
+      expect(immediate.aisle, isNull);
+      expect(immediate.query, '');
+      expect(immediate.results, isEmpty);
+      await closing;
+      // A debounced query from inside the Aisle never lands afterwards.
+      await Future<void>.delayed(
+        AddFoodPickerController.searchDebounceDuration * 2,
+      );
+
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, isNull);
+      expect(state.query, '');
+      expect(state.filter, AddFoodPickerFilter.openFoodFacts);
+      expect(repository.searches, hasLength(1));
+      expect(
+          repository.searches.single.filter, AddFoodPickerFilter.openFoodFacts);
+      expect(repository.searches.single.query, '');
+      expect(repository.aisleBrowses, hasLength(1));
+    });
+
+    test('closeAisle with no Aisle open does nothing', () async {
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+      final searches = repository.searches.length;
+
+      await container
+          .read(addFoodPickerControllerProvider.notifier)
+          .closeAisle();
+
+      expect(repository.searches, hasLength(searches));
+      expect(repository.aisleBrowses, isEmpty);
+    });
+
+    test('a typed query in an Aisle searches within it', () async {
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+      final notifier = container.read(addFoodPickerControllerProvider.notifier);
+      await notifier.openAisle(FoodAisle.dairyEggs);
+      repository.searches.clear();
+
+      await notifier.setQuery('greek');
+      await Future<void>.delayed(
+        AddFoodPickerController.searchDebounceDuration * 2,
+      );
+
+      expect(repository.aisleBrowses.last, (
+        aisle: FoodAisle.dairyEggs,
+        query: 'greek',
+        limit: searchResultLimit,
+      ));
+      expect(repository.searches, isEmpty);
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, FoodAisle.dairyEggs);
+      expect(state.query, 'greek');
+    });
+
+    test('submitting in an Aisle makes no live request and returns null',
+        () async {
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+      final notifier = container.read(addFoodPickerControllerProvider.notifier);
+      await notifier.openAisle(FoodAisle.snacks);
+
+      expect(await notifier.submitQuery('salt'), isNull);
+      expect(await notifier.submitQuery('3017620422003'), isNull);
+
+      expect(repository.onlineQueries, isEmpty);
+      expect(repository.barcodes, isEmpty);
+      expect(
+        repository.aisleBrowses.map((browse) => browse.query),
+        ['', 'salt', '3017620422003'],
+      );
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, FoodAisle.snacks);
+      expect(state.onlineStatus, OnlinePickerStatus.idle);
+    });
+
+    test('selectFilter clears the Aisle, also for the current filter',
+        () async {
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+      final notifier = container.read(addFoodPickerControllerProvider.notifier);
+
+      await notifier.openAisle(FoodAisle.snacks);
+      await notifier.selectFilter(AddFoodPickerFilter.usda);
+      var state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, isNull);
+      expect(state.filter, AddFoodPickerFilter.usda);
+
+      await notifier.openAisle(FoodAisle.drinks);
+      repository.searches.clear();
+      await notifier.selectFilter(AddFoodPickerFilter.usda);
+      state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, isNull);
+      expect(state.filter, AddFoodPickerFilter.usda);
+      expect(repository.searches, hasLength(1));
+    });
+
+    test('the bundle becoming ready reloads an open Aisle', () async {
+      final bundle = StreamController<BundleStatus>();
+      addTearDown(bundle.close);
+      final repository = _FakeAddFoodRepository();
+      final container = _container(repository, bundleStatus: bundle.stream);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      bundle.add(BundleStatus.installing);
+      await container.read(addFoodPickerControllerProvider.future);
+      await container
+          .read(addFoodPickerControllerProvider.notifier)
+          .openAisle(FoodAisle.snacks);
+      expect(
+        container.read(addFoodPickerControllerProvider).value!.results,
+        isEmpty,
+      );
+
+      repository.aisleItems = [_offFood('3017620422003', name: 'Crisps')];
+      repository.searches.clear();
+      bundle.add(BundleStatus.ready);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(repository.aisleBrowses, hasLength(2));
+      expect(repository.aisleBrowses.last, (
+        aisle: FoodAisle.snacks,
+        query: '',
+        limit: aisleBrowseLimit,
+      ));
+      expect(repository.searches, isEmpty);
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.aisle, FoodAisle.snacks);
+      expect(state.bundleStatus, BundleStatus.ready);
+      expect(state.results.map((item) => item.name), ['Crisps']);
+    });
+
+    test('a failed browseAisle shows the error state', () async {
+      final repository = _FakeAddFoodRepository(failBrowse: true);
+      final container = _container(repository);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      await container.read(addFoodPickerControllerProvider.future);
+
+      await container
+          .read(addFoodPickerControllerProvider.notifier)
+          .openAisle(FoodAisle.snacks);
+
+      expect(
+        container.read(addFoodPickerControllerProvider),
+        isA<AsyncError<AddFoodPickerState>>(),
+      );
     });
   });
 }
@@ -391,6 +584,8 @@ typedef _Search = ({
   YourFoods yourFoods,
 });
 
+typedef _AisleBrowse = ({FoodAisle aisle, String query, int limit});
+
 /// Serves Your foods on a blank query and [catalogue] on a typed one,
 /// recording every call.
 class _FakeAddFoodRepository implements AddFoodRepository {
@@ -399,17 +594,26 @@ class _FakeAddFoodRepository implements AddFoodRepository {
     this.failLoad = false,
     this.catalogue = const <FoodPickerItem>[],
     this.live = const <FoodPickerItem>[],
+    this.aisleItems = const <FoodPickerItem>[],
+    this.failBrowse = false,
   });
 
   final YourFoods yourFoods;
   final bool failLoad;
+
   /// What a typed device search returns; a test may change it, as a
   /// finished bundle install does.
   List<FoodPickerItem> catalogue;
   final List<FoodPickerItem> live;
 
+  /// What `browseAisle` returns; a test may change it, as a finished bundle
+  /// install does.
+  List<FoodPickerItem> aisleItems;
+  final bool failBrowse;
+
   var loadCalls = 0;
   final searches = <_Search>[];
+  final aisleBrowses = <_AisleBrowse>[];
   final onlineQueries = <String>[];
   final barcodes = <String>[];
 
@@ -430,6 +634,20 @@ class _FakeAddFoodRepository implements AddFoodRepository {
   }) async {
     searches.add((filter: filter, query: query, yourFoods: yourFoods));
     return query.trim().isEmpty ? yourFoods.items : catalogue;
+  }
+
+  @override
+  Future<List<FoodPickerItem>> browseAisle(
+    FoodAisle aisle, {
+    String query = '',
+    required int limit,
+    required YourFoods yourFoods,
+  }) async {
+    aisleBrowses.add((aisle: aisle, query: query, limit: limit));
+    if (failBrowse) {
+      throw StateError('The bundle is unavailable.');
+    }
+    return aisleItems;
   }
 
   @override
@@ -477,6 +695,15 @@ FoodPickerItem _food(
     isLiquid: false,
     sourceModifiedAt: changedAt,
     isLiveResult: live,
+  );
+}
+
+FoodPickerItem _offFood(String id, {required String name}) {
+  return _food(
+    id,
+    origin: FoodPickerOrigin.openFoodFacts,
+    foodSource: FoodSource.openFoodFacts,
+    name: name,
   );
 }
 

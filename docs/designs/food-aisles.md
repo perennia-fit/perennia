@@ -2224,11 +2224,14 @@ them out again.
 *   `test/features/nutrition/add_food_repository_fakes.dart`: a new mixin,
     `NoAisleBrowsing`, whose `browseAisle` returns an empty list. Every fake
     `AddFoodRepository` mixes it in: in `nutrition_day_view_test.dart`,
-    `_EmptyAddFoodRepository`, `_SingleFoodRepository` and
-    `_BarcodeFoodRepository`; in `add_food_picker_test.dart`,
-    `_StubAddFoodRepository`, `_TrackingAddFoodRepository`,
-    `_DeferredAddFoodRepository`, `_EmptyAddFoodRepository`,
-    `_OfflineOpenFoodFactsRepository` and `_OnlineAddFoodRepository`.
+    `_NoFoodsRepository`; in `log_portion_screen_test.dart`,
+    `_YourFoodsRepository`; in `meal_screen_test.dart`,
+    `_YourFoodsRepository` and `_BarcodeFoodRepository`; in
+    `add_food_picker_test.dart`, `_StubAddFoodRepository`,
+    `_TrackingAddFoodRepository`, `_DeferredAddFoodRepository`,
+    `_EmptyAddFoodRepository`, `_OfflineOpenFoodFactsRepository` and
+    `_OnlineAddFoodRepository`. The fake in `add_food_picker_state_test.dart`
+    implements `browseAisle` itself and records each call.
 *   `test/features/nutrition/add_food_repository_test.dart`: `browseAisle`
     with a blank query (order and the 100 limit); with a typed query; Last
     Portions on Aisle rows.

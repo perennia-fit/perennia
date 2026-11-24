@@ -916,7 +916,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.onlineQueries, <String>['hazel']);
-    expect(_onlineLine(tester), "You're offline. Showing foods on this device.");
+    expect(
+        _onlineLine(tester), "You're offline. Showing foods on this device.");
     expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
     expect(find.textContaining('needs network'), findsNothing);
   });
@@ -956,8 +957,7 @@ void main() {
     expect(repository.onlineQueries, <String>['hazel', 'cocoa']);
   });
 
-  testWidgets(
-      'live results join the device matches without duplicate barcodes',
+  testWidgets('live results join the device matches without duplicate barcodes',
       (tester) async {
     final newerStored = _offItem(
       '3017620422003',
@@ -1027,10 +1027,15 @@ void main() {
       if (line == null) {
         expect(finder, findsNothing, reason: status.name);
       } else {
-        expect(tester.widget<Text>(find.descendant(
-          of: finder,
-          matching: find.byType(Text),
-        )).data, line, reason: status.name);
+        expect(
+            tester
+                .widget<Text>(find.descendant(
+                  of: finder,
+                  matching: find.byType(Text),
+                ))
+                .data,
+            line,
+            reason: status.name);
       }
       await tester.pumpWidget(const SizedBox.shrink());
     }
@@ -1044,10 +1049,16 @@ void main() {
         OnlineSearchStatus.ok,
         'Online lookups are off. Turn them on in Settings > Food data.',
       ),
-      (true, OnlineSearchStatus.offline,
-          "You're offline. Showing foods on this device."),
-      (true, OnlineSearchStatus.unavailable,
-          'Open Food Facts is unavailable. Try again in a minute.'),
+      (
+        true,
+        OnlineSearchStatus.offline,
+        "You're offline. Showing foods on this device."
+      ),
+      (
+        true,
+        OnlineSearchStatus.unavailable,
+        'Open Food Facts is unavailable. Try again in a minute.'
+      ),
       (true, OnlineSearchStatus.noResults, 'No matches on Open Food Facts.'),
       (true, OnlineSearchStatus.ok, null),
     ]) {
@@ -1088,8 +1099,8 @@ void main() {
 
   testWidgets('the device matches stay visible while a live search runs',
       (tester) async {
-    final pending = Completer<
-        ({OnlineSearchStatus status, List<FoodPickerItem> items})>();
+    final pending =
+        Completer<({OnlineSearchStatus status, List<FoodPickerItem> items})>();
     final repository = _OnlineAddFoodRepository(pendingOnline: pending);
     await _pumpOpenFoodFactsFilter(tester, repository: repository);
 
@@ -1535,7 +1546,9 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
   }
 }
 
-class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _StubAddFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   _StubAddFoodRepository({List<FoodPickerItem>? recent})
       : recent = recent ?? _recent;
 
@@ -1559,7 +1572,9 @@ class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   }
 }
 
-class _TrackingAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _TrackingAddFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   final calls = <_SearchCall>[];
 
   @override
@@ -1581,7 +1596,9 @@ class _TrackingAddFoodRepository with NoOnlineLookups implements AddFoodReposito
   }
 }
 
-class _DeferredAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _DeferredAddFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   final calls = <_SearchCall>[];
   final _pending = <_SearchCall, Completer<List<FoodPickerItem>>>{};
 
@@ -1650,7 +1667,9 @@ class _SearchCall {
   String toString() => 'search(${filter.name}, $query)';
 }
 
-class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _EmptyAddFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _EmptyAddFoodRepository();
 
   @override
@@ -1664,7 +1683,7 @@ class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository 
 }
 
 class _OfflineOpenFoodFactsRepository
-    with NoOnlineLookups
+    with NoOnlineLookups, NoAisleBrowsing
     implements AddFoodRepository {
   const _OfflineOpenFoodFactsRepository();
 
@@ -1688,7 +1707,9 @@ class _OfflineOpenFoodFactsRepository
 
 /// The Open Food Facts filter with a scripted live search and barcode lookup,
 /// recording every online call.
-class _OnlineAddFoodRepository implements AddFoodRepository {
+class _OnlineAddFoodRepository
+    with NoAisleBrowsing
+    implements AddFoodRepository {
   _OnlineAddFoodRepository({
     List<FoodPickerItem>? local,
     this.enabled = true,

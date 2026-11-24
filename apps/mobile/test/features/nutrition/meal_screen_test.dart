@@ -1226,7 +1226,9 @@ void main() {
 const _openKey = Key('test.openMealScreen');
 
 /// Your foods holding [items], found by any query.
-class _YourFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+class _YourFoodsRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _YourFoodsRepository(this.items);
 
   final List<FoodPickerItem> items;
@@ -1415,7 +1417,9 @@ FoodPickerItem _openFoodFactsBar() {
 }
 
 /// Finds [food] by barcode only.
-class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _BarcodeFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _BarcodeFoodRepository(this.food);
 
   final FoodPickerItem food;

@@ -777,7 +777,9 @@ Future<List<ActivityLogEntry>> _batch(
 }
 
 /// Your foods with one food the user logged before, at [lastPortion].
-class _YourFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+class _YourFoodsRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _YourFoodsRepository(this.food);
 
   final FoodPickerItem food;

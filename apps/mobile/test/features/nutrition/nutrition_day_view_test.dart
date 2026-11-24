@@ -209,7 +209,8 @@ void main() {
       ProviderScope(
         overrides: [
           nutritionDayControllerProvider.overrideWith(
-            () => _FakeNutritionDayController(_nutritionDayWithOpenFoodFactsEntry()),
+            () => _FakeNutritionDayController(
+                _nutritionDayWithOpenFoodFactsEntry()),
           ),
           mealTypeListProvider.overrideWith(
             (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
@@ -1329,7 +1330,9 @@ class _FixedNutritionDay extends SelectedNutritionDayController {
   NutritionDayDate build() => day;
 }
 
-class _NoFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+class _NoFoodsRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _NoFoodsRepository();
 
   @override
