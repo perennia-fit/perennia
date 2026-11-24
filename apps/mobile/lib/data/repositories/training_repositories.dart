@@ -12,6 +12,11 @@ import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/common/local_clock.dart';
 import '../../domain/effect/effect.dart';
+import '../../domain/labs/lab_result.dart';
+import '../../domain/labs/lab_result_collapse.dart';
+import '../../domain/labs/lab_result_validation.dart';
+import '../../domain/labs/lab_test.dart';
+import '../../domain/labs/lab_test_catalogue.generated.dart';
 import '../../domain/metrics/reading_normalization.dart';
 import '../../domain/nutrition/meal_type_proposal.dart';
 import '../../domain/nutrition/meal_validation.dart';
@@ -117,6 +122,7 @@ export '../../domain/training/set_validation.dart'
 
 part 'csv_export_repository.dart';
 part 'focus_repository.dart';
+part 'lab_results_repository.dart';
 part 'purpose_repository.dart';
 part 'portable_archive_repository.dart';
 part 'plan_sync_repository.dart';
@@ -217,6 +223,7 @@ class TrainingRepositories {
   late final RestTimerRepository restTimers;
   late final MeasurementRepository measurements;
   late final MetricRepository metrics;
+  late final LabResultsRepository labResults = LabResultsRepository._(this);
   late final CsvExportRepository csvExports;
   late final PortableArchiveRepository portableArchives;
 
@@ -13992,37 +13999,49 @@ class MetricRepository {
 
     return _database.transaction(() async {
       final metric = await _requireActiveMetric(draft.metricId);
-      final normalized = _normalizeManualReadingDraft(draft, metric: metric);
-      final id = _repositories._ids.create(context.timestamp);
-      await _database.into(_database.metricReadings).insert(
-            MetricReadingsCompanion.insert(
-              id: id,
-              metricId: metric.id,
-              valueJson: normalized.valueJson,
-              scalarValue: Value<double?>(normalized.scalarValue),
-              scalarEntered: Value<String?>(normalized.scalarEntered),
-              atTime: Value<DateTime?>(normalized.atTime),
-              windowStartedAt: Value<DateTime?>(
-                normalized.windowStartedAt,
-              ),
-              windowEndedAt: Value<DateTime?>(normalized.windowEndedAt),
-              provenance: MetricReadingProvenance.manual.name,
-              source: normalized.source,
-              externalId: Value<String?>(normalized.externalId),
-              comment: Value<String?>(normalized.comment),
-              updatedAt: context.timestamp,
-            ),
-          );
-      final after = await _requireReadingRow(id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.metricReadingsTable,
-        entityId: id,
-        beforeImage: null,
-        afterImage: _metricReadingImage(after),
-      );
-      return id;
+      return _insertMetricReading(metric, draft, context);
     });
+  }
+
+  /// Normalises [draft] against [metric], inserts one manual Reading and
+  /// appends its Activity Log entry under [context]. The caller owns the
+  /// transaction and has checked that [metric] is live, so several Readings
+  /// (a Lab Results collection) can share one Batch.
+  Future<String> _insertMetricReading(
+    MetricRow metric,
+    ManualMetricReadingDraft draft,
+    WriteContext context,
+  ) async {
+    final normalized = _normalizeManualReadingDraft(draft, metric: metric);
+    final id = _repositories._ids.create(context.timestamp);
+    await _database.into(_database.metricReadings).insert(
+          MetricReadingsCompanion.insert(
+            id: id,
+            metricId: metric.id,
+            valueJson: normalized.valueJson,
+            scalarValue: Value<double?>(normalized.scalarValue),
+            scalarEntered: Value<String?>(normalized.scalarEntered),
+            atTime: Value<DateTime?>(normalized.atTime),
+            windowStartedAt: Value<DateTime?>(
+              normalized.windowStartedAt,
+            ),
+            windowEndedAt: Value<DateTime?>(normalized.windowEndedAt),
+            provenance: MetricReadingProvenance.manual.name,
+            source: normalized.source,
+            externalId: Value<String?>(normalized.externalId),
+            comment: Value<String?>(normalized.comment),
+            updatedAt: context.timestamp,
+          ),
+        );
+    final after = await _requireReadingRow(id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.metricReadingsTable,
+      entityId: id,
+      beforeImage: null,
+      afterImage: _metricReadingImage(after),
+    );
+    return id;
   }
 
   Future<void> updateReading(
@@ -14158,23 +14177,34 @@ class MetricRepository {
 
     return _database.transaction(() async {
       final before = await _requireActiveReadingRow(id);
-      await (_database.update(_database.metricReadings)
-            ..where((row) => row.id.equals(id)))
-          .write(
-        MetricReadingsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
-      );
-      final after = await _requireReadingRow(id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.metricReadingsTable,
-        entityId: id,
-        beforeImage: _metricReadingImage(before),
-        afterImage: _metricReadingImage(after),
-      );
+      await _archiveReadingRow(before, context);
     });
+  }
+
+  /// Archives the live Reading [before] with a tombstone and appends its
+  /// Activity Log entry under [context]. The caller owns the transaction, so
+  /// several Readings (every row of one Lab Result) can share one Batch and
+  /// one undo.
+  Future<void> _archiveReadingRow(
+    MetricReadingRow before,
+    WriteContext context,
+  ) async {
+    await (_database.update(_database.metricReadings)
+          ..where((row) => row.id.equals(before.id)))
+        .write(
+      MetricReadingsCompanion(
+        updatedAt: Value<DateTime>(context.timestamp),
+        deletedAt: Value<DateTime?>(context.timestamp),
+      ),
+    );
+    final after = await _requireReadingRow(before.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.metricReadingsTable,
+      entityId: before.id,
+      beforeImage: _metricReadingImage(before),
+      afterImage: _metricReadingImage(after),
+    );
   }
 
   Future<String> _createMetric(
@@ -14633,6 +14663,9 @@ class MetricRepository {
       windowEndedAt: draft.windowEndedAt,
       comment: draft.comment,
       metric: metric,
+      lab: draft.lab,
+      localDateTime: draft.localDateTime,
+      timezoneOffsetMinutes: draft.timezoneOffsetMinutes,
       shapeErrorMessage:
           'Manual scalar Reading requires a scalar Metric: ${metric.id}.',
     );
@@ -14700,38 +14733,65 @@ class MetricRepository {
     required String? comment,
     required MetricRow metric,
     required String shapeErrorMessage,
+    LabFields? lab,
+    String? localDateTime,
+    int? timezoneOffsetMinutes,
   }) {
     final metricShape = MetricValueShape.values.byName(metric.valueShape);
     if (metricShape != MetricValueShape.scalar) {
       throw StateError(shapeErrorMessage);
     }
+    final labTestKey = metric.labTestKey;
 
     // The shared module is golden-vectored against the server, so a Reading
     // stored here is byte-identical to one an agent writes. Its warnings
     // (window preferred over an instant, reordered bounds) have no UI channel
     // on this path; the normalized anchor already reflects them.
+    //
+    // A Lab Metric (non-null labTestKey) also sends the draft's `lab` and its
+    // entered unit, the Lab Test's canonical unit (docs/designs/lab-results.md,
+    // "Collection-based manual entry"). Every other Metric sends exactly what
+    // it sent before Lab Results, so its rows stay byte-identical.
     final normalized = normalizeMetricReading(<String, Object?>{
       'metric': <String, Object?>{
         'valueShape': metric.valueShape,
         'unit': metric.unit,
+        if (labTestKey != null) 'labTestKey': labTestKey,
       },
       'value': <String, Object?>{
         'shape': metric.valueShape,
         'entered': valueEntered,
+        if (labTestKey != null)
+          'unit': labTestByKey(labTestKey)?.unit ?? metric.unit,
+        if (lab != null) 'lab': encodeLab(lab),
       },
-      'timeAnchor': <String, Object?>{
-        if (atTime != null) 'atTime': atTime.toUtc().toIso8601String(),
-        if (windowStartedAt != null)
-          'windowStartedAt': windowStartedAt.toUtc().toIso8601String(),
-        if (windowEndedAt != null)
-          'windowEndedAt': windowEndedAt.toUtc().toIso8601String(),
-      },
+      // A local anchor (a Lab Result's collection time) replaces `atTime`;
+      // the normaliser derives the stored instant from it.
+      'timeAnchor': localDateTime != null
+          ? <String, Object?>{
+              'localDateTime': localDateTime,
+              'timezoneOffsetMinutes': timezoneOffsetMinutes,
+            }
+          : <String, Object?>{
+              if (atTime != null) 'atTime': atTime.toUtc().toIso8601String(),
+              if (windowStartedAt != null)
+                'windowStartedAt': windowStartedAt.toUtc().toIso8601String(),
+              if (windowEndedAt != null)
+                'windowEndedAt': windowEndedAt.toUtc().toIso8601String(),
+            },
     });
 
+    final valueJson = normalized['valueJson']! as String;
     return _NormalizedMetricReadingValues(
-      valueJson: normalized['valueJson']! as String,
-      scalarValue: (normalized['scalarValue']! as num).toDouble(),
-      scalarEntered: valueEntered.trim(),
+      valueJson: valueJson,
+      // Null for a Limit Result (`< 1`), whose bound lives only in `lab.limit`.
+      scalarValue: (normalized['scalarValue'] as num?)?.toDouble(),
+      // A Lab Result's scalarEntered is the normalised canonical `entered`
+      // (`<= 1` for a typed `≤ 1`), so the two columns never disagree.
+      scalarEntered: labTestKey != null
+          ? (jsonDecode(valueJson) as Map<String, Object?>)['entered']!
+              as String
+          : valueEntered.trim(),
       atTime: _parseOptionalUtc(normalized['atTime']),
       windowStartedAt: _parseOptionalUtc(normalized['windowStartedAt']),
       windowEndedAt: _parseOptionalUtc(normalized['windowEndedAt']),
@@ -16193,6 +16253,9 @@ class ManualMetricReadingDraft {
     this.windowEndedAt,
     this.externalId,
     this.comment,
+    this.lab,
+    this.localDateTime,
+    this.timezoneOffsetMinutes,
   }) : valueShape = MetricValueShape.scalar;
 
   final String metricId;
@@ -16204,6 +16267,17 @@ class ManualMetricReadingDraft {
   final String source;
   final String? externalId;
   final String? comment;
+
+  /// The `lab` object of a Lab Result, for a Lab Metric only; the normaliser
+  /// rejects it on any other Metric (docs/designs/lab-results.md, Storage).
+  final LabFields? lab;
+
+  /// A local time anchor (`YYYY-MM-DDTHH:mm:ss`, no offset). When set, it and
+  /// [timezoneOffsetMinutes] replace [atTime] and the window.
+  final String? localDateTime;
+
+  /// The offset, in minutes east of UTC, that [localDateTime] is read in.
+  final int? timezoneOffsetMinutes;
 }
 
 class MetricReadingUpdateDraft {
@@ -16401,7 +16475,10 @@ class _NormalizedMetricReadingValues {
   });
 
   final String valueJson;
-  final double scalarValue;
+
+  /// Null for a Lab Metric's Limit Result (docs/designs/lab-results.md,
+  /// Storage).
+  final double? scalarValue;
   final String scalarEntered;
   final DateTime? atTime;
   final DateTime? windowStartedAt;
