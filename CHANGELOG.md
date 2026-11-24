@@ -9,6 +9,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Fixed
+
+- **The server rejects Metric values with trailing text, as the app does.** An
+  Agent Metric Reading whose `entered` is, for example, `64 %` or `1.7 x10^9` is
+  now rejected with `metric_reading_normalization_failed`, instead of being
+  saved as `64` or `1.7`.
+
 ## [0.4.0] - 2026-11-24
 
 A minor release: browsing foods by Aisle in the app and for agents, Finish
