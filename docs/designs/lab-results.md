@@ -810,8 +810,8 @@ sheet is lost, never half a collection.
     `string | null`; an optional, untyped `labTestKey` on `AgentMetricBatchWriteMetric`,
     described as not accepted; descriptions noting the key read, the collapse, the controls
     above and the Trend exclusion. No field is removed or narrowed: making `metricId` optional
-    widens the request, and the `labTestKey` on a `metrics[]` row was stripped before. `agent-skills/perennia/SKILL.md` gains a "Logging lab results"
-    section.
+    widens the request, and the `labTestKey` on a `metrics[]` row was stripped before.
+    `agent-skills/perennia/SKILL.md` gains a "Logging lab results" section.
 
 ### Privacy
 
@@ -1391,7 +1391,7 @@ Covers V9, and V10 for Agent requests.
 | `packages/contract/src/agent-skill-reference.ts` | Modify | `listAgentLabTests: "list-lab-tests"` in `AGENT_SKILL_COMMAND_NAMES` and `listAgentLabTests: "agent_list_lab_tests"` in `AGENT_MCP_TOOL_NAMES`. |
 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | The `list-lab-tests` command. |
 | `agent-skills/perennia/scripts/prn-code.mjs` | Modify | The `listAgentLabTests` method. |
-| `agent-skills/perennia/SKILL.md` | Modify | A "Logging lab results" section (prose, not a command): call `agent_list_lab_tests` (CLI `list-lab-tests`); write by `labTestKey` with `lab.collected` and a matching `timeAnchor`; use only listed unit spellings; send limits as `< 1`; to correct a value, write the same collection as `final`; Agents cannot overwrite or archive a stored result. |
+| `agent-skills/perennia/SKILL.md` | Modify | A "Logging lab results" section (prose, not a command), and `list-lab-tests` in the common reads: call `agent_list_lab_tests` (CLI `list-lab-tests`); write with `agent_batch_write_metrics` (CLI `log-metrics`) by `labTestKey`, never `metricId` and never a Lab Metric in `metrics[]`, with `lab.collected` and a matching `timeAnchor`; use only listed unit spellings and never convert; send limits as `< 1`; to correct a value, write the same collection as `final`; Agents cannot overwrite, archive or backdate a stored result, and an unknown key or unit rejects the batch; never include the patient's name, date of birth, address or accession number. |
 | `agent-skills/perennia/references/api-operations.md` | Regenerate | `pnpm run generate:agent-skill-reference` in `packages/contract`. |
 | `packages/contract/openapi.json` | Regenerate | `pnpm run generate` in `packages/contract` (also regenerates the two clients and the skill reference). The contract diff in [Agent surface](#agent-surface). |
 | `packages/contract/src/agent-client.ts` | Regenerate | Generated client. |

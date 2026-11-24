@@ -116,6 +116,7 @@ node scripts/prn-agent.mjs list-foods --query search=banana --query limit=10
 node scripts/prn-agent.mjs list-food-history --query limit=10
 node scripts/prn-agent.mjs list-meal-history --query limit=10
 node scripts/prn-agent.mjs list-meal-types
+node scripts/prn-agent.mjs list-lab-tests
 node scripts/prn-agent.mjs search-platform-foods --query search=chicken
 node scripts/prn-agent.mjs search-platform-foods --query source=openFoodFacts --query search=0894700010137
 node scripts/prn-agent.mjs search-platform-foods --query aisle=snacks
@@ -207,6 +208,28 @@ and `localDate` are never sent without `startedAt`. Sending `startedAt` sets
 `timePrecision` to `instant`; send `timePrecision: "date"` with local midnight
 when only the date is known. See `references/api-operations.md` for the error
 rules and `warnings`.
+
+Logging lab results: from a blood test report, first read the Lab Tests with
+`list-lab-tests` (MCP `agent_list_lab_tests`) for each Lab Test's `key`, `unit`
+and `unitAliases`. Write the results with `log-metrics` (MCP
+`agent_batch_write_metrics`), one reading per result, keyed by `labTestKey` and
+never by `metricId`. Do not create Lab Metrics in `metrics[]`: the server finds
+or creates the user's Lab Metric for the key. Each reading's `value` is
+`shape: "scalar"` with `entered` and `unit` as printed, plus a `lab` object:
+`collected` as printed (`YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` when the report
+gives a time), and optionally `printedRange`, `printedFlag`, `reportStatus`
+(`final` or `interim`), `fasting: true` and `labName`. Its `timeAnchor` is a
+`localDateTime` equal to `collected` expanded (`T12:00:00` for a date, `:00`
+seconds for a time) plus `timezoneOffsetMinutes`. Use only a listed `unit` or
+unit alias, spelled as listed, and never convert a value to another unit. Send
+a limit as entered, with an ASCII comparator and one space (`< 1`). To correct
+a value, write the same collection again with `reportStatus: "final"`; reads
+show one result per collection. Agents cannot overwrite, archive or backdate a
+stored result: an existing reading `id` is `lab_result_exists`, `deletedAt` is
+`lab_archive_not_allowed`, and the server sets `updatedAt`, `provenance`,
+`source` and `lab.limit` itself. An unknown key or unit rejects the whole
+batch. Never include the patient's name, date of birth, address or accession
+number in any field.
 
 When completing a planned Set (one a Template, a quick log, or an earlier write
 left incomplete) with `log-workout`, read the Workout first and send that Set back
