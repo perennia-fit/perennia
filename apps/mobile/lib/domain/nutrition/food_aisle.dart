@@ -31,12 +31,7 @@ enum FoodAisle {
 
 /// The Aisle with this id, or `null` for an unknown id.
 FoodAisle? foodAisleById(String id) {
-  for (final aisle in FoodAisle.values) {
-    if (aisle.name == id) {
-      return aisle;
-    }
-  }
-  return null;
+  return FoodAisle.values.asNameMap()[id];
 }
 
 /// How many of an Aisle's most scanned products the picker lists, and so which

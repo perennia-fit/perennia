@@ -383,6 +383,8 @@ with the second opinion (see
 *   **Then** the Aisle closes, the search field is cleared, and the picker
     shows the filter that was selected before the Aisle opened, with its
     blank-query view. The Meal screen stays open; a second back leaves it.
+    On iOS the edge swipe is disabled while an Aisle is open, so the header's
+    back button or the Meal screen's back button closes it.
 
 ### CUJ 4: A product has no Aisle
 
@@ -1157,7 +1159,7 @@ Aisle open, and "Search <label>" with one open.
 *   **Where it shows.** It follows the existing content in two blank-query
     views:
     *   the **All** filter: after the Your foods rows, or after the new-user
-        line and Scan button;
+        line;
     *   the **Open Food Facts** filter: after its "Search Open Food Facts by
         product name, brand or barcode." line.
 *   **When it shows.** Only when `bundleStatus` is `ready`. It is never shown
@@ -1197,9 +1199,13 @@ Aisle open, and "Search <label>" with one open.
     `closeAisle` and the Meal screen, which embeds the picker, stays open.
     This covers the system back gesture and the Meal screen's app-bar back
     button, which both pop through `Navigator.maybePop`. With no Aisle open,
-    a back leaves the Meal screen as it does today. While an Aisle's first
-    load runs, the state has no value yet, so `aisle` reads as `null` and the
-    chips show for that moment, as on any refresh with no data.
+    a back leaves the Meal screen as it does today. On iOS, `canPop: false`
+    also turns off the edge-swipe back gesture while an Aisle is open, so the
+    header's back button or the Meal screen's back button closes it. While an
+    Aisle's first load runs, the loading state carries the value from before
+    the Aisle opened, so `aisle` reads as `null` and the chips show for that
+    moment; later refreshes inside the Aisle keep it set, so the header and
+    `canPop: false` stay.
 
 **Keys**, as static members of `AddFoodPicker`:
 
@@ -2315,5 +2321,7 @@ them out again.
 *   **On a device (pull request 2):** a debug build with a fresh install of
     the version 2 bundle. The Browse section lists all 14 Aisles. Opening Snacks and
     searching "salt" shows only products in the Snacks Aisle. Back returns to
-    Browse with the Meal screen open. This is checked on Android and iOS at text
+    Browse with the Meal screen open. On iOS, the header's back button and the
+    Meal screen's app-bar back button each close the Aisle, and the edge swipe
+    does nothing while one is open. This is checked on Android and iOS at text
     scale 1.0 and 2.0, in the light and dark themes.

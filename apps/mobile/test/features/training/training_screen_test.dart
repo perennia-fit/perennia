@@ -928,9 +928,9 @@ void main() {
         '5',
       );
       await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
-      await _settleRepositoryWork(tester);
-      // Auto-advance lands on the grouped exercise.
-      await _waitForFinder(tester, find.text('Barbell Row'));
+      // Auto-advance lands on the grouped exercise once the Log set's writes
+      // finish in real time.
+      await _waitForFinderAfterRepositoryWork(tester, find.text('Barbell Row'));
 
       // The strip is still on screen and it is the SAME State object: the
       // ticker was never torn down.
@@ -6217,6 +6217,29 @@ Future<void> _pumpFrames(WidgetTester tester) async {
 
 Future<void> _waitForFinder(WidgetTester tester, Finder finder) async {
   for (var attempt = 0; attempt < 50; attempt += 1) {
+    await tester.pump(const Duration(milliseconds: 20));
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+  }
+
+  fail('Timed out waiting for $finder.');
+}
+
+/// Waits for [finder] while repository writes run in real time.
+///
+/// [_waitForFinder] only advances the fake clock, so it never lets a Drift
+/// write that is still in flight finish. A single [_settleRepositoryWork]
+/// gives that write 10 ms of real time, which a busy machine can overrun.
+/// This alternates the two until [finder] matches.
+Future<void> _waitForFinderAfterRepositoryWork(
+  WidgetTester tester,
+  Finder finder,
+) async {
+  for (var attempt = 0; attempt < 100; attempt += 1) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
     await tester.pump(const Duration(milliseconds: 20));
     if (finder.evaluate().isNotEmpty) {
       return;
