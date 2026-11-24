@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/nutrition.dart';
 
 import 'open_food_facts_fixtures.dart';
@@ -38,11 +39,17 @@ void main() {
     requests = <http.Request>[];
     repository = DriftOpenFoodFactsRepository.forTesting(
       database: database,
-      asset: FixtureBundleAsset(bundleBytes([
-        offProduct('0818290014313', 'Greek Yogurt Plain', brand: 'Chobani'),
-        offProduct('5000159484695', 'Twix', brand: 'Mars'),
-        offProduct('818290014313', 'Yogurt look-alike'),
-      ])),
+      asset: FixtureBundleAsset(bundleBytes(
+        [
+          offProduct('0818290014313', 'Greek Yogurt Plain', brand: 'Chobani'),
+          offProduct('5000159484695', 'Twix', brand: 'Mars'),
+          offProduct('818290014313', 'Yogurt look-alike'),
+        ],
+        aisles: {
+          '0818290014313': FoodAisle.dairyEggs,
+          '5000159484695': FoodAisle.sweetsDesserts,
+        },
+      )),
       client: OpenFoodFactsClient(
         baseUrl: Uri.parse('https://off.test/'),
         httpClient: MockClient((request) async {
@@ -81,6 +88,58 @@ void main() {
     expect(results.single.id, '0818290014313');
     expect(results.single.sourceModifiedAt, isNotNull);
     expect(requests, isEmpty);
+  });
+
+  test('device search in an Aisle keeps only its name matches', () async {
+    final all = await repository.searchLocal('yog');
+    final dairy =
+        await repository.searchLocal('yog', aisle: FoodAisle.dairyEggs);
+    final snacks = await repository.searchLocal('yog', aisle: FoodAisle.snacks);
+
+    expect(
+      [for (final record in all) record.id],
+      unorderedEquals(['0818290014313', '818290014313']),
+    );
+    expect([for (final record in dairy) record.id], ['0818290014313']);
+    expect(snacks, isEmpty);
+    expect(requests, isEmpty);
+  });
+
+  test('device search in an Aisle keeps a barcode match from another Aisle',
+      () async {
+    final results = await repository.searchLocal(
+      '5000159484695',
+      aisle: FoodAisle.dairyEggs,
+    );
+
+    expect([for (final record in results) record.id], ['5000159484695']);
+  });
+
+  test("productsInAisle lists an Aisle's products", () async {
+    final dairy =
+        await repository.productsInAisle(FoodAisle.dairyEggs, limit: 100);
+
+    expect([for (final record in dairy) record.id], ['0818290014313']);
+    expect(dairy.single.foodSource, FoodSource.openFoodFacts);
+    expect(
+      await repository.productsInAisle(FoodAisle.babyFood, limit: 100),
+      isEmpty,
+    );
+    expect(
+      await repository.productsInAisle(FoodAisle.dairyEggs, limit: 0),
+      isEmpty,
+    );
+  });
+
+  test('keepOpenedProduct on a bundled row leaves its Aisle', () async {
+    final bundled = (await repository.searchLocal('greek yog')).single;
+
+    await repository.keepOpenedProduct(bundled);
+
+    final row =
+        (await database.productsByCodes(<String>['0818290014313'])).single;
+    expect(row.origin, originOnline);
+    expect(row.aisle, 'dairyEggs');
   });
 
   test('a live search returns products and stores nothing', () async {
@@ -130,6 +189,7 @@ void main() {
     final row =
         (await database.productsByCodes(<String>['9300633603427'])).single;
     expect(row.origin, originOnline);
+    expect(row.aisle, isNull, reason: 'a live hit is given no Aisle');
 
     // The next scan finds it on the device and sends nothing.
     final again = await repository.lookupBarcode(
@@ -209,5 +269,9 @@ void main() {
 
     expect(await broken.watchBundleStatus().first, BundleStatus.failed);
     expect(await broken.searchLocal('twix'), isEmpty);
+    expect(
+      await broken.productsInAisle(FoodAisle.snacks, limit: 100),
+      isEmpty,
+    );
   });
 }

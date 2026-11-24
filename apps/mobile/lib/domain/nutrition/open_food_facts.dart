@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'food_aisle.dart';
 import 'nutrition.dart';
 
 /// The one Open Food Facts product mapping. The app's live path and the bundle
@@ -293,15 +294,29 @@ Map<NutrientId, String> nutrientTextFromJson(Map<String, Object?> json) {
   };
 }
 
-// The bundle format. See docs/designs/open-food-facts.md, "The bundle file".
+// The bundle format. See docs/designs/open-food-facts.md, "The bundle file",
+// and docs/designs/food-aisles.md, "The bundle file, format version 2".
 
 const bundleFormat = 'perennia-open-food-facts-bundle';
-const bundleFormatVersion = 1;
+const bundleFormatVersion = 2;
+
+/// A decoded product line: the product, and its Aisle (`null` when it has
+/// none). The Aisle is Perennia's label, not Open Food Facts data, so it is
+/// kept beside the product rather than inside it.
+typedef BundleProductLine = ({
+  MappedOpenFoodFactsProduct product,
+  FoodAisle? aisle,
+});
 
 /// One product line, without its newline. Every key is always present, in the
-/// order written here, with no extra whitespace. A bundled product
-/// always has a scan count (the builder keeps only scanned products).
-String encodeBundleProductLine(MappedOpenFoodFactsProduct product) {
+/// order written here, with no extra whitespace; `aisle` is the last key and
+/// is `null` when the product has no Aisle, so the key order never varies. A
+/// bundled product always has a scan count (the builder keeps only scanned
+/// products).
+String encodeBundleProductLine(
+  MappedOpenFoodFactsProduct product, {
+  FoodAisle? aisle,
+}) {
   final scans = product.scans;
   if (scans == null) {
     throw ArgumentError.value(product.code, 'product', 'has no scan count');
@@ -317,10 +332,13 @@ String encodeBundleProductLine(MappedOpenFoodFactsProduct product) {
     'nutrients': nutrientTextToJson(product.nutrientText),
     'modifiedAt': product.modifiedAt.millisecondsSinceEpoch ~/ 1000,
     'scans': scans,
+    'aisle': aisle?.name,
   });
 }
 
-MappedOpenFoodFactsProduct decodeBundleProductLine(String line) {
+/// Decodes one product line. Throws [FormatException] for a line with no
+/// `aisle` key, or an `aisle` that is neither `null` nor a [FoodAisle] id.
+BundleProductLine decodeBundleProductLine(String line) {
   final json = jsonDecode(line);
   if (json is! Map<String, Object?>) {
     throw const FormatException('A bundle product line is not an object.');
@@ -329,7 +347,20 @@ MappedOpenFoodFactsProduct decodeBundleProductLine(String line) {
   if (nutrients is! Map<String, Object?>) {
     throw const FormatException('A bundle product line has no nutrients.');
   }
-  return MappedOpenFoodFactsProduct(
+  if (!json.containsKey('aisle')) {
+    throw const FormatException('A bundle product line has no aisle.');
+  }
+  final aisleId = json['aisle'];
+  FoodAisle? aisle;
+  if (aisleId != null) {
+    aisle = aisleId is String ? foodAisleById(aisleId) : null;
+    if (aisle == null) {
+      throw FormatException(
+        'A bundle product line has an unknown aisle: ${jsonEncode(aisleId)}.',
+      );
+    }
+  }
+  final product = MappedOpenFoodFactsProduct(
     code: json['code']! as String,
     name: json['name']! as String,
     brand: json['brand'] as String?,
@@ -344,6 +375,7 @@ MappedOpenFoodFactsProduct decodeBundleProductLine(String line) {
     ),
     scans: json['scans']! as int,
   );
+  return (product: product, aisle: aisle);
 }
 
 /// The bundle's first line.

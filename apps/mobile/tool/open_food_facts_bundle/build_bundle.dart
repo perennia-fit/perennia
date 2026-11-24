@@ -1,6 +1,6 @@
-// Builds the offline Open Food Facts bundle from Open Food Facts' JSONL dump.
+// Builds the offline Open Food Facts bundle.
 //
-// Run from apps/mobile:
+// Run from apps/mobile, from Open Food Facts' JSONL dump:
 //
 //   dart run tool/open_food_facts_bundle/build_bundle.dart \
 //     --input <path to openfoodfacts-products.jsonl.gz> \
@@ -10,6 +10,26 @@
 // (about 13 GB compressed, replaced daily); --dataset-version is its
 // Last-Modified date. The output is
 // assets/seeds/open_food_facts_bundle.ndjson.gz, followed by a report.
+//
+// Or from an existing bundle, keeping its products and dataset version, with
+// each product's Open Food Facts tags from the CSV export (tab separated
+// despite its name), joined by code:
+//
+//   dart run tool/open_food_facts_bundle/build_bundle.dart \
+//     --from-bundle assets/seeds/open_food_facts_bundle.ndjson.gz \
+//     --tags-export <path to en.openfoodfacts.org.products.csv.gz>
+//
+// The bundle is read in full first, so it can be the file this run replaces.
+//
+// Adding Aisles is these runs: this tool with --aisle-input-only, which writes
+// build/open_food_facts_aisle_input.ndjson and no bundle; label_aisles.dart
+// label; and this tool again, which refuses to write a bundle while any
+// product's label is missing or stale. --aisle-labels and --aisle-overrides
+// name the two data files when they are not at their committed paths. See docs/designs/food-aisles.md,
+// "The builder".
+//
+// Exit status: 0 done, 1 data missing or stale or the bundle over budget,
+// 64 usage, 65 a file that does not parse or decompress, 66 a missing input.
 //
 // This file is also the "method" the bundle's ODbL notice names: the bundle is
 // a derived database, and anyone with the same day's dump can rebuild it.
@@ -21,8 +41,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
+
+import 'aisle_pipeline.dart';
 
 /// Country tag in `countries_tags` → the code written in the header.
 const launchCountries = <String, String>{
@@ -55,31 +78,187 @@ const _attributionText =
     'that builds it are in the Perennia repository: '
     'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz, '
     'apps/mobile/assets/seeds/open_food_facts_bundle.LICENSE.md and '
-    'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart.';
+    'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart. Each '
+    "product's Aisle is decided from "
+    'apps/mobile/tool/open_food_facts_bundle/aisle_labels.ndjson, made with '
+    'label_aisles.dart, and aisle_overrides.csv, in the same directory.';
+
+const _usage = '''
+Usage:
+  dart run tool/open_food_facts_bundle/build_bundle.dart --input <openfoodfacts-products.jsonl.gz> --dataset-version <YYYY-MM-DD> [options]
+  dart run tool/open_food_facts_bundle/build_bundle.dart --from-bundle <bundle .ndjson.gz> --tags-export <en.openfoodfacts.org.products.csv.gz> [options]
+
+Options:
+  --aisle-labels <path>      default $aisleLabelsPath
+  --aisle-overrides <path>   default $aisleOverridesPath
+  --aisle-input-only         write $aisleInputPath and no bundle''';
 
 Future<void> main(List<String> args) async {
   final options = _parseArguments(args);
   if (options == null) {
-    stderr.writeln(
-      'Usage: dart run tool/open_food_facts_bundle/build_bundle.dart '
-      '--input <openfoodfacts-products.jsonl.gz> '
-      '--dataset-version <YYYY-MM-DD>',
-    );
+    stderr.writeln(_usage);
     exit(64);
   }
-  final input = File(options.input);
-  if (!input.existsSync()) {
-    stderr.writeln('Input not found: ${options.input}');
-    exit(66);
+  for (final path in [
+    options.input,
+    options.fromBundle,
+    options.tagsExport,
+  ].nonNulls) {
+    if (!File(path).existsSync()) {
+      stderr.writeln('Input not found: $path');
+      exit(66);
+    }
+  }
+  // Read before the products, so a broken data file costs seconds, not 30
+  // minutes.
+  final AisleLabels labels;
+  final List<AisleOverrideRow> overrides;
+  try {
+    labels = _readDataFile(
+      options.aisleLabels,
+      parse: parseAisleLabels,
+      ifMissing: const AisleLabels(header: null, byCode: {}),
+    );
+    overrides = _readDataFile(
+      options.aisleOverrides,
+      parse: parseAisleOverrides,
+      ifMissing: const [],
+    );
+  } on FormatException catch (error) {
+    stderr.writeln(error.message);
+    exit(65);
   }
 
   final stopwatch = Stopwatch()..start();
   final report = _Report();
+  final List<_Candidate> products;
+  final String datasetVersion;
+  final fromBundle = options.fromBundle;
+  final tagsExport = options.tagsExport;
+  if (fromBundle != null && tagsExport != null) {
+    final read = await _readFromBundle(fromBundle, tagsExport, report);
+    products = read.products;
+    datasetVersion = read.datasetVersion;
+  } else {
+    products = await _readDump(options.input!, report, stopwatch);
+    datasetVersion = options.datasetVersion!;
+  }
+
+  // The labeller's input, whichever kind of run this is: it is what a run that
+  // stops here tells the maintainer to label.
+  final aisleInput = [
+    for (final candidate in products) candidate.aisleInputLine,
+  ]..sort((a, b) => a.code.compareTo(b.code));
+  File(aisleInputPath)
+    ..createSync(recursive: true)
+    ..writeAsStringSync(
+      aisleInput.map((line) => '${encodeAisleInputLine(line)}\n').join(),
+    );
+  final needLabels = aisleInput
+      .where(
+        (line) => !isCurrentLabel(
+          labels.byCode[line.code],
+          labels.header,
+          line.inputHash,
+        ),
+      )
+      .length;
+  if (options.aisleInputOnly || needLabels > 0) {
+    report.printAisleInput(
+      productCount: aisleInput.length,
+      needLabels: needLabels,
+    );
+    if (options.aisleInputOnly) {
+      return;
+    }
+    stdout.writeln(
+      '$needLabels products need labels: run label_aisles.dart label, then '
+      'build again.',
+    );
+    exit(1);
+  }
+
+  // Every label is current from here on.
+  final aisleBundle = resolveAisleBundle(
+    input: aisleInput,
+    labels: labels.byCode,
+    overrides: overrides,
+  );
+
+  // Step 5: header, product lines, gzip. Each line carries the product's
+  // resolved Aisle (format version 2).
+  final aisleByCode = {
+    for (final product in aisleBundle) product.code: product.aisle,
+  };
+  final productBytes = BytesBuilder(copy: false);
+  for (final candidate in products) {
+    final line = encodeBundleProductLine(
+      candidate.product,
+      aisle: aisleByCode[candidate.product.code],
+    );
+    productBytes.add(utf8.encode('$line\n'));
+  }
+  final productLines = productBytes.takeBytes();
+  final hash = await Sha256().hash(productLines);
+
+  final header = BundleHeader(
+    format: bundleFormat,
+    formatVersion: bundleFormatVersion,
+    datasetVersion: datasetVersion,
+    contentHash: _hex(hash.bytes),
+    sourceName: 'Open Food Facts',
+    sourceUrl: openFoodFactsBaseUrl,
+    licenseName: 'Open Database License (ODbL) 1.0',
+    licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
+    contentsLicenseUrl: 'https://opendatacommons.org/licenses/dbcl/1-0/',
+    attributionText: _attributionText,
+    countries: launchCountries.values.toList(),
+    perCountryLimit: perCountryLimit,
+    productCount: products.length,
+  );
+  final uncompressed = BytesBuilder(copy: false)
+    ..add(utf8.encode('${header.toJsonLine()}\n'))
+    ..add(productLines);
+  final compressed = GZipCodec(level: 9).encode(uncompressed.takeBytes());
+  File(outputPath)
+    ..createSync(recursive: true)
+    ..writeAsBytesSync(compressed);
+
+  // Step 6: the report.
+  stopwatch.stop();
+  report.print(
+    products: products,
+    aisles: _AisleFigures.of(
+      products: products,
+      bundle: aisleBundle,
+      labels: labels.byCode,
+      overrides: overrides,
+    ),
+    uncompressedProductBytes: productLines.length,
+    compressedBytes: compressed.length,
+    header: header,
+    elapsed: stopwatch.elapsed,
+  );
+
+  if (compressed.length > sizeBudgetBytes) {
+    stderr.writeln(
+      'The bundle is ${compressed.length} bytes, over the '
+      '$sizeBudgetBytes-byte budget.',
+    );
+    exitCode = 1;
+  }
+}
+
+/// Steps 1 to 4 from the dump: every kept product, merged and sorted by code.
+Future<List<_Candidate>> _readDump(
+  String path,
+  _Report report,
+  Stopwatch stopwatch,
+) async {
   // Step 2: every kept product, by code, after duplicates are resolved.
   final kept = <String, _Candidate>{};
-
   try {
-    final lines = input
+    final lines = File(path)
         .openRead()
         .transform(gzip.decoder)
         .transform(const Utf8Decoder(allowMalformed: true))
@@ -104,10 +283,10 @@ Future<void> main(List<String> args) async {
       }
     }
   } on FileSystemException catch (error) {
-    stderr.writeln('Could not read ${options.input}: ${error.message}');
+    stderr.writeln('Could not read $path: ${error.message}');
     exit(66);
   } on FormatException catch (error) {
-    stderr.writeln('Could not decompress ${options.input}: ${error.message}');
+    stderr.writeln('Could not decompress $path: ${error.message}');
     exit(65);
   }
 
@@ -120,7 +299,7 @@ Future<void> main(List<String> args) async {
       byCountry[tag]!.add(candidate);
     }
   }
-  final eligibleByCountry = <String, int>{
+  report.eligibleByCountry = {
     for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
   };
   for (final list in byCountry.values) {
@@ -129,67 +308,168 @@ Future<void> main(List<String> args) async {
       list.removeRange(perCountryLimit, list.length);
     }
   }
+  report.keptByCountry = {
+    for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
+  };
 
   // Step 4: merge, remove duplicate codes, sort by code (string order).
-  final merged = <String, _Candidate>{
+  return <String, _Candidate>{
     for (final list in byCountry.values)
       for (final candidate in list) candidate.product.code: candidate,
   }.values.toList()
     ..sort((a, b) => a.product.code.compareTo(b.product.code));
+}
 
-  // Step 5: header, product lines, gzip.
-  final productBytes = BytesBuilder(copy: false);
-  for (final candidate in merged) {
-    productBytes.add(
-      utf8.encode('${encodeBundleProductLine(candidate.product)}\n'),
+/// The products of an existing bundle file, with tags and countries from the
+/// tags export, in place of steps 1 to 4. A dump is 13 GB and Open Food Facts
+/// keeps no older ones, so this is how Aisles are added without refreshing the
+/// products. The bundle is read in full before anything is written, so
+/// [bundlePath] can be the file this run replaces. The products, their order,
+/// every field but `aisle`, and the dataset version are the file's.
+Future<({List<_Candidate> products, String datasetVersion})> _readFromBundle(
+  String bundlePath,
+  String exportPath,
+  _Report report,
+) async {
+  final List<String> lines;
+  try {
+    lines = const LineSplitter().convert(
+      utf8.decode(gzip.decode(File(bundlePath).readAsBytesSync())),
+    );
+  } on FileSystemException catch (error) {
+    stderr.writeln('Could not read $bundlePath: ${error.message}');
+    exit(66);
+  } on FormatException catch (error) {
+    stderr.writeln('Could not decompress $bundlePath: ${error.message}');
+    exit(65);
+  }
+  final BundleHeader header;
+  final products = <MappedOpenFoodFactsProduct>[];
+  try {
+    if (lines.isEmpty) {
+      throw const FormatException('line 1: there is no header');
+    }
+    header = _decodeBundleLine(lines.first, 1, BundleHeader.fromJsonLine);
+    if (header.format != bundleFormat ||
+        !_readableBundleVersions.contains(header.formatVersion)) {
+      throw FormatException(
+        'line 1: not a $bundleFormat file of format version '
+        '${_readableBundleVersions.join(' or ')}',
+      );
+    }
+    for (var i = 1; i < lines.length; i++) {
+      products.add(_decodeBundleLine(lines[i], i + 1, _decodeProductLine));
+    }
+  } on FormatException catch (error) {
+    stderr.writeln('$bundlePath: ${error.message}');
+    exit(65);
+  }
+  report.fromBundle = (
+    path: bundlePath,
+    datasetVersion: header.datasetVersion,
+    products: products.length,
+  );
+
+  final wanted = {for (final product in products) product.code};
+  final tagsByCode =
+      <String, ({List<String> categories, List<String> countries})>{};
+  try {
+    AisleTagsColumns? columns;
+    final rows = File(exportPath)
+        .openRead()
+        .transform(gzip.decoder)
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter());
+    await for (final line in rows) {
+      if (columns == null) {
+        columns = parseAisleTagsHeader(line);
+        continue;
+      }
+      report.exportRowsRead++;
+      if (report.exportRowsRead % 1000000 == 0) {
+        stderr.writeln('  ${report.exportRowsRead} export rows read');
+      }
+      final row = parseAisleTagsRow(line, columns);
+      if (row == null) {
+        report.exportRowsSkipped++;
+        continue;
+      }
+      // A later row with the same code wins.
+      if (wanted.contains(row.code)) {
+        tagsByCode[row.code] = (
+          categories: row.categories,
+          countries: row.countries,
+        );
+      }
+    }
+    if (columns == null) {
+      throw const FormatException('line 1: there is no header row');
+    }
+  } on FileSystemException catch (error) {
+    stderr.writeln('Could not read $exportPath: ${error.message}');
+    exit(66);
+  } on FormatException catch (error) {
+    stderr.writeln('$exportPath: ${error.message}');
+    exit(65);
+  }
+
+  final candidates = <_Candidate>[];
+  for (final product in products) {
+    final tags = tagsByCode[product.code];
+    if (tags != null) {
+      report.productsInExport++;
+      if (tags.categories.isNotEmpty) {
+        report.productsWithTags++;
+      }
+    }
+    candidates.add(
+      _Candidate(
+        product: product,
+        countryTags: {...?tags?.countries},
+        structure: null,
+        lineNumber: 0,
+        // A product not in the export has no tags and is labelled from its
+        // name and brand.
+        categories: tags?.categories ?? const [],
+      ),
     );
   }
-  final productLines = productBytes.takeBytes();
-  final hash = await Sha256().hash(productLines);
+  return (products: candidates, datasetVersion: header.datasetVersion);
+}
 
-  final header = BundleHeader(
-    format: bundleFormat,
-    formatVersion: bundleFormatVersion,
-    datasetVersion: options.datasetVersion,
-    contentHash: _hex(hash.bytes),
-    sourceName: 'Open Food Facts',
-    sourceUrl: openFoodFactsBaseUrl,
-    licenseName: 'Open Database License (ODbL) 1.0',
-    licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
-    contentsLicenseUrl: 'https://opendatacommons.org/licenses/dbcl/1-0/',
-    attributionText: _attributionText,
-    countries: launchCountries.values.toList(),
-    perCountryLimit: perCountryLimit,
-    productCount: merged.length,
-  );
-  final uncompressed = BytesBuilder(copy: false)
-    ..add(utf8.encode('${header.toJsonLine()}\n'))
-    ..add(productLines);
-  final compressed = GZipCodec(level: 9).encode(uncompressed.takeBytes());
-  File(outputPath)
-    ..createSync(recursive: true)
-    ..writeAsBytesSync(compressed);
+/// The bundle format versions `--from-bundle` reads: 1, whose lines have no
+/// `aisle`, and 2.
+const _readableBundleVersions = {1, 2};
 
-  // Step 6: the report.
-  stopwatch.stop();
-  report.print(
-    eligibleByCountry: eligibleByCountry,
-    keptByCountry: {
-      for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
-    },
-    merged: merged,
-    uncompressedProductBytes: productLines.length,
-    compressedBytes: compressed.length,
-    header: header,
-    elapsed: stopwatch.elapsed,
-  );
+/// A bundle product line. A line with no `aisle` key (format version 1) gets
+/// `"aisle":null` before the decoder reads it, the one place a missing key is
+/// accepted; any `aisle` already on a line is ignored, because this run
+/// decides it again.
+MappedOpenFoodFactsProduct _decodeProductLine(String line) {
+  final json = jsonDecode(line);
+  if (json is! Map<String, Object?>) {
+    throw const FormatException('not a JSON object');
+  }
+  final withAisle = json.containsKey('aisle')
+      ? json
+      : <String, Object?>{...json, 'aisle': null};
+  return decodeBundleProductLine(jsonEncode(withAisle)).product;
+}
 
-  if (compressed.length > sizeBudgetBytes) {
-    stderr.writeln(
-      'The bundle is ${compressed.length} bytes, over the '
-      '$sizeBudgetBytes-byte budget.',
-    );
-    exit(1);
+/// [decode] for one line of the bundle, as a [FormatException] naming the
+/// line when the line does not decode. The decoders cast, so a wrong or
+/// missing value arrives as a [TypeError].
+T _decodeBundleLine<T>(
+  String line,
+  int lineNumber,
+  T Function(String line) decode,
+) {
+  try {
+    return decode(line);
+  } on FormatException catch (error) {
+    throw FormatException('line $lineNumber: ${error.message}');
+  } on TypeError catch (error) {
+    throw FormatException('line $lineNumber: $error');
   }
 }
 
@@ -247,6 +527,7 @@ void _consider(
     countryTags: tags,
     structure: openFoodFactsNutrientStructure(decoded),
     lineNumber: lineNumber,
+    categories: _englishCategories(decoded['categories_hierarchy']),
   );
   final existing = kept[product.code];
   if (existing != null) {
@@ -256,6 +537,16 @@ void _consider(
     }
   }
   kept[product.code] = candidate;
+}
+
+/// The `en:` entries of `categories_hierarchy`, in order, prefix kept. Anything
+/// but a list records no tags.
+List<String> _englishCategories(Object? hierarchy) {
+  return <String>[
+    if (hierarchy is List)
+      for (final tag in hierarchy)
+        if (tag is String && tag.startsWith('en:')) tag,
+  ];
 }
 
 /// A duplicate code keeps the later change date, then more scans, then the
@@ -286,15 +577,148 @@ class _Candidate {
     required this.countryTags,
     required this.structure,
     required this.lineNumber,
+    required this.categories,
   });
 
   final MappedOpenFoodFactsProduct product;
+
+  /// From a dump, the launch countries the product is kept for; from a bundle,
+  /// every `en:` entry of the tags export's `countries_tags`.
   final Set<String> countryTags;
-  final OpenFoodFactsNutrientStructure structure;
+
+  /// `null` for a product read from a bundle, which does not record it.
+  final OpenFoodFactsNutrientStructure? structure;
   final int lineNumber;
+
+  /// The product's Open Food Facts tags, `en:` kept.
+  final List<String> categories;
+
+  AisleInputLine get aisleInputLine => AisleInputLine(
+        code: product.code,
+        name: product.name,
+        brand: product.brand,
+        categories: categories,
+        scans: product.scans!,
+        inputHash: aisleInputHash(
+          aisleModelState(
+            name: product.name,
+            brand: product.brand,
+            categories: categories,
+          ),
+        ),
+      );
+}
+
+/// The Aisle lines of the report of a run that writes a bundle, worked out
+/// from the data that decided each product's Aisle.
+final class _AisleFigures {
+  _AisleFigures._();
+
+  final perAisle = <FoodAisle?, int>{};
+  int overrideAisle = 0;
+  int overrideNone = 0;
+  int byLabel = 0;
+  int byLabelBelowThreshold = 0;
+  int byOther = 0;
+  int productCount = 0;
+  int unsureRows = 0;
+
+  /// For each Aisle, its [aisleBrowseLimit] most scanned products' countries.
+  final topCountries = <FoodAisle, List<Set<String>>>{};
+
+  /// [labels] are current; every product has a label.
+  factory _AisleFigures.of({
+    required List<_Candidate> products,
+    required List<AisleBundleProduct> bundle,
+    required Map<String, AisleLabel> labels,
+    required List<AisleOverrideRow> overrides,
+  }) {
+    final figures = _AisleFigures._();
+    final overrideByCode = {for (final row in overrides) row.code: row};
+    final countriesByCode = {
+      for (final candidate in products)
+        candidate.product.code: candidate.countryTags,
+    };
+    final byAisle = <FoodAisle, List<AisleBundleProduct>>{};
+    for (final product in bundle) {
+      figures.productCount++;
+      final aisle = product.aisle;
+      figures.perAisle[aisle] = (figures.perAisle[aisle] ?? 0) + 1;
+      if (aisle != null) {
+        (byAisle[aisle] ??= []).add(product);
+      }
+
+      final label = labels[product.code]!;
+      final override = overrideByCode[product.code];
+      if (override?.answer == AisleOverrideAnswer.aisle) {
+        figures.overrideAisle++;
+      } else if (override?.answer == AisleOverrideAnswer.none) {
+        figures.overrideNone++;
+      } else if (aisle != null) {
+        figures.byLabel++;
+        // How many products rest on a label Clef was unsure of: informative
+        // only, since confidence decides nothing.
+        if (label.confidence < 0.6) {
+          figures.byLabelBelowThreshold++;
+        }
+      } else {
+        figures.byOther++;
+      }
+    }
+    figures.unsureRows = overrides
+        .where((row) => row.answer == AisleOverrideAnswer.unsure)
+        .length;
+    for (final MapEntry(key: aisle, value: list) in byAisle.entries) {
+      list.sort((a, b) {
+        final byScans = b.scans.compareTo(a.scans);
+        return byScans != 0 ? byScans : a.code.compareTo(b.code);
+      });
+      figures.topCountries[aisle] = [
+        for (final product in list.take(aisleBrowseLimit))
+          countriesByCode[product.code] ?? const {},
+      ];
+    }
+    return figures;
+  }
+
+  void write(StringBuffer out) {
+    final withAisle = productCount - (perAisle[null] ?? 0);
+    final share = productCount == 0 ? 0.0 : withAisle / productCount;
+    out.writeln('  products per Aisle:');
+    for (final aisle in FoodAisle.values) {
+      out.writeln('    ${aisle.name.padRight(21)} ${perAisle[aisle] ?? 0}');
+    }
+    out
+      ..writeln('    ${'no Aisle'.padRight(21)} ${perAisle[null] ?? 0}')
+      ..writeln('  products per deciding step:')
+      ..writeln('    ${'override, an Aisle'.padRight(21)} $overrideAisle')
+      ..writeln('    ${'override, none'.padRight(21)} $overrideNone')
+      ..writeln('    ${'label'.padRight(21)} $byLabel '
+          '($byLabelBelowThreshold at confidence below 0.6)')
+      ..writeln('    ${'label of other'.padRight(21)} $byOther')
+      ..writeln(
+        '  products with an Aisle:  $withAisle of $productCount '
+        '(${_percent(share)}; floor ${_percent(aisleCoverageFloor)}'
+        '${share < aisleCoverageFloor ? ', BELOW THE FLOOR' : ''})',
+      )
+      ..writeln('  override rows marked unsure:     $unsureRows')
+      ..writeln(
+        '  launch countries in each Aisle\'s $aisleBrowseLimit most scanned '
+        'products:',
+      );
+    for (final aisle in FoodAisle.values) {
+      final top = topCountries[aisle] ?? const [];
+      final counts = launchCountries.entries.map((country) {
+        final carrying = top.where((tags) => tags.contains(country.key));
+        return '${country.value} ${carrying.length}';
+      });
+      out.writeln('    ${aisle.name.padRight(21)} ${counts.join('  ')}');
+    }
+  }
 }
 
 class _Report {
+  // From a dump.
   int linesRead = 0;
   int malformedLines = 0;
   int notInLaunchCountry = 0;
@@ -303,28 +727,98 @@ class _Report {
   int missingCoreNutrients = 0;
   int zeroScans = 0;
   int duplicateCodes = 0;
+  Map<String, int> eligibleByCountry = const {};
+  Map<String, int> keptByCountry = const {};
 
   /// Lines whose mapping threw, with the line number and the error.
   final List<String> failedLines = [];
 
+  // From a bundle and the tags export. `fromBundle` is null for a dump.
+  ({String path, String datasetVersion, int products})? fromBundle;
+  int exportRowsRead = 0;
+  int exportRowsSkipped = 0;
+  int productsInExport = 0;
+  int productsWithTags = 0;
+
   void print({
-    required Map<String, int> eligibleByCountry,
-    required Map<String, int> keptByCountry,
-    required List<_Candidate> merged,
+    required List<_Candidate> products,
+    required _AisleFigures aisles,
     required int uncompressedProductBytes,
     required int compressedBytes,
     required BundleHeader header,
     required Duration elapsed,
   }) {
-    final byStructure = <OpenFoodFactsNutrientStructure, int>{};
-    for (final candidate in merged) {
-      byStructure[candidate.structure] =
-          (byStructure[candidate.structure] ?? 0) + 1;
-    }
     final out = StringBuffer()
       ..writeln('Open Food Facts bundle report')
       ..writeln('  dataset version:         ${header.datasetVersion}')
-      ..writeln('  content hash:            ${header.contentHash}')
+      ..writeln('  content hash:            ${header.contentHash}');
+    _writeInputSection(out);
+    out.writeln('  merged products:         ${products.length}');
+    if (fromBundle == null) {
+      final byStructure = <OpenFoodFactsNutrientStructure, int>{};
+      for (final candidate in products) {
+        final structure = candidate.structure!;
+        byStructure[structure] = (byStructure[structure] ?? 0) + 1;
+      }
+      out.writeln('  nutrients read from:');
+      for (final structure in OpenFoodFactsNutrientStructure.values) {
+        out.writeln(
+          '    ${structure.name.padRight(21)} ${byStructure[structure] ?? 0}',
+        );
+      }
+    }
+    out.writeln('  labels missing or stale: 0');
+    aisles.write(out);
+    out
+      ..writeln(
+        '  product lines:           $uncompressedProductBytes bytes '
+        'uncompressed',
+      )
+      ..writeln(
+        '  compressed bundle:       $compressedBytes bytes '
+        '(${(compressedBytes / 1024 / 1024).toStringAsFixed(2)} MB, '
+        'budget ${sizeBudgetBytes ~/ 1024 ~/ 1024} MB)',
+      )
+      ..writeln('  run time:                ${_duration(elapsed)}')
+      ..writeln('  wrote:                   $outputPath');
+    stdout.write(out);
+  }
+
+  /// The report of a run that stops after the aisle input: it has no header,
+  /// hash or size lines, because no bundle was built.
+  void printAisleInput({
+    required int productCount,
+    required int needLabels,
+  }) {
+    final out = StringBuffer()..writeln('Open Food Facts aisle input report');
+    _writeInputSection(out);
+    out
+      ..writeln('  aisle input:             $aisleInputPath')
+      ..writeln('  aisle input products:    $productCount')
+      ..writeln('  labels missing or stale: $needLabels');
+    stdout.write(out);
+  }
+
+  /// What was read: the dump's figures, or the bundle's and the export's.
+  void _writeInputSection(StringBuffer out) {
+    final bundle = fromBundle;
+    if (bundle != null) {
+      out
+        ..writeln('  bundle read:             ${bundle.path}')
+        ..writeln('  bundle dataset version:  ${bundle.datasetVersion}')
+        ..writeln('  bundle products read:    ${bundle.products}')
+        ..writeln('  export rows read:        $exportRowsRead')
+        ..writeln(
+            '  export rows skipped:     $exportRowsSkipped (too few cells)')
+        ..writeln('  products in the export:  $productsInExport')
+        ..writeln(
+          '  products not in it:      ${bundle.products - productsInExport} '
+          '(labelled from name and brand)',
+        )
+        ..writeln('  products with tags:      $productsWithTags');
+      return;
+    }
+    out
       ..writeln('  dump lines read:         $linesRead')
       ..writeln('  malformed lines:         $malformedLines')
       ..writeln('  failed lines:            ${failedLines.length}')
@@ -346,40 +840,50 @@ class _Report {
         '${keptByCountry[tag]}',
       );
     }
-    out
-      ..writeln('  merged products:         ${merged.length}')
-      ..writeln('  nutrients read from:');
-    for (final structure in OpenFoodFactsNutrientStructure.values) {
-      out.writeln(
-        '    ${structure.name.padRight(21)} ${byStructure[structure] ?? 0}',
-      );
-    }
-    out
-      ..writeln(
-        '  product lines:           $uncompressedProductBytes bytes '
-        'uncompressed',
-      )
-      ..writeln(
-        '  compressed bundle:       $compressedBytes bytes '
-        '(${(compressedBytes / 1024 / 1024).toStringAsFixed(2)} MB, '
-        'budget ${sizeBudgetBytes ~/ 1024 ~/ 1024} MB)',
-      )
-      ..writeln('  run time:                ${_duration(elapsed)}')
-      ..writeln('  wrote:                   $outputPath');
-    stdout.write(out);
   }
 }
 
-({String input, String datasetVersion})? _parseArguments(List<String> args) {
+typedef _Options = ({
+  String? input,
+  String? datasetVersion,
+  String? fromBundle,
+  String? tagsExport,
+  String aisleLabels,
+  String aisleOverrides,
+  bool aisleInputOnly,
+});
+
+/// The options, or `null` (exit 64) for an unknown option, a missing value,
+/// a value given to the `--aisle-input-only` flag, both inputs at once, or
+/// half of either.
+_Options? _parseArguments(List<String> args) {
+  const flag = '--aisle-input-only';
+  const valued = {
+    '--input',
+    '--dataset-version',
+    '--from-bundle',
+    '--tags-export',
+    '--aisle-labels',
+    '--aisle-overrides',
+  };
   final values = <String, String>{};
+  var aisleInputOnly = false;
   for (var i = 0; i < args.length; i++) {
     final [name, ...inline] = args[i].split('=');
+    if (name == flag) {
+      if (inline.isNotEmpty) {
+        stderr.writeln('$flag takes no value.');
+        return null;
+      }
+      aisleInputOnly = true;
+      continue;
+    }
     final value = inline.isNotEmpty
         ? inline.join('=')
         : (i + 1 < args.length && !args[i + 1].startsWith('--')
             ? args[++i]
             : null);
-    if (name != '--input' && name != '--dataset-version') {
+    if (!valued.contains(name)) {
       stderr.writeln('Unknown argument: $name');
       return null;
     }
@@ -391,15 +895,60 @@ class _Report {
   }
   final input = values['--input'];
   final datasetVersion = values['--dataset-version'];
-  if (input == null || datasetVersion == null) {
-    stderr.writeln('Both --input and --dataset-version are required.');
+  final fromBundle = values['--from-bundle'];
+  final tagsExport = values['--tags-export'];
+  final dumpPair = input != null || datasetVersion != null;
+  final bundlePair = fromBundle != null || tagsExport != null;
+  if (dumpPair && bundlePair) {
+    stderr.writeln(
+      '--from-bundle and --tags-export replace --input and --dataset-version; '
+      'give one pair.',
+    );
     return null;
   }
-  if (!_isDate(datasetVersion)) {
-    stderr.writeln('--dataset-version must be a YYYY-MM-DD date.');
-    return null;
+  if (bundlePair) {
+    if (fromBundle == null || tagsExport == null) {
+      stderr.writeln('Both --from-bundle and --tags-export are required.');
+      return null;
+    }
+  } else {
+    if (input == null || datasetVersion == null) {
+      stderr.writeln('Both --input and --dataset-version are required.');
+      return null;
+    }
+    if (!_isDate(datasetVersion)) {
+      stderr.writeln('--dataset-version must be a YYYY-MM-DD date.');
+      return null;
+    }
   }
-  return (input: input, datasetVersion: datasetVersion);
+  return (
+    input: input,
+    datasetVersion: datasetVersion,
+    fromBundle: fromBundle,
+    tagsExport: tagsExport,
+    aisleLabels: values['--aisle-labels'] ?? aisleLabelsPath,
+    aisleOverrides: values['--aisle-overrides'] ?? aisleOverridesPath,
+    aisleInputOnly: aisleInputOnly,
+  );
+}
+
+/// [ifMissing] when the file does not exist. A file that does not parse, or
+/// is not UTF-8, throws a [FormatException] that names the path and keeps the
+/// parser's message.
+T _readDataFile<T>(
+  String path, {
+  required T Function(String text) parse,
+  required T ifMissing,
+}) {
+  final file = File(path);
+  if (!file.existsSync()) {
+    return ifMissing;
+  }
+  try {
+    return parse(utf8.decode(file.readAsBytesSync()));
+  } on FormatException catch (error) {
+    throw FormatException('$path: ${error.message}');
+  }
 }
 
 /// A dataset version is a `YYYY-MM-DD` date, the same form as a nutrition day.
@@ -414,6 +963,8 @@ bool _isDate(String value) {
 
 String _hex(List<int> bytes) =>
     bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+
+String _percent(double share) => '${(share * 100).toStringAsFixed(1)}%';
 
 String _duration(Duration value) {
   final minutes = value.inMinutes;

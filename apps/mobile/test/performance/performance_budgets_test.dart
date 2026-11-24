@@ -13,6 +13,7 @@ import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/metrics/metric_trend.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
@@ -68,6 +69,59 @@ void main() {
         stopwatch.elapsed,
         lessThan(openFoodFactsLocalSearchBudget),
         reason: 'A two-word prefix search must return within the typing '
+            'budget.',
+      );
+    });
+
+    test(
+        'Open Food Facts Aisle reads over 41k products stay under their '
+        'budgets', () async {
+      final database = FoodReferenceDatabase.memory();
+      addTearDown(database.close);
+      await database.replaceBundle(
+        _syntheticOpenFoodFactsLines(openFoodFactsLocalSearchRowCount),
+        bundleHeader(
+          contentHash: 'synthetic',
+          productCount: openFoodFactsLocalSearchRowCount,
+        ),
+      );
+
+      // The fastest of three reads each: the query's own cost, not a stall
+      // from another test file running on the host at the same time.
+      Duration? browse;
+      Duration? search;
+      for (var run = 0; run < 3; run += 1) {
+        final browseWatch = Stopwatch()..start();
+        final listed = await database.productsInAisle('snacks', 100);
+        browseWatch.stop();
+        expect(listed, hasLength(100));
+        expect(listed.every((row) => row.aisle == 'snacks'), isTrue);
+        if (browse == null || browseWatch.elapsed < browse) {
+          browse = browseWatch.elapsed;
+        }
+
+        final searchWatch = Stopwatch()..start();
+        final found = await database.searchProducts(
+          buildFoodSearchMatch('greek yo')!,
+          50,
+          aisle: 'dairyEggs',
+        );
+        searchWatch.stop();
+        expect(found, hasLength(50));
+        expect(found.every((row) => row.aisle == 'dairyEggs'), isTrue);
+        if (search == null || searchWatch.elapsed < search) {
+          search = searchWatch.elapsed;
+        }
+      }
+      expect(
+        browse,
+        lessThan(openFoodFactsAisleBrowseBudget),
+        reason: 'Opening an Aisle reads its first 100 index entries.',
+      );
+      expect(
+        search,
+        lessThan(openFoodFactsLocalSearchBudget),
+        reason: 'A search inside an Aisle must return within the typing '
             'budget.',
       );
     });
@@ -748,7 +802,9 @@ FoodPickerItem _yourFoodsItem(int index) {
 }
 
 /// Product lines with realistic names and brands; one in ten is a Greek
-/// yoghurt, so a common prefix query has many matches to rank.
+/// yoghurt, so a common prefix query has many matches to rank. Row `i` has no
+/// Aisle when `i % 10 == 9`, and `FoodAisle.values[i % 14]` otherwise, so each
+/// Aisle has about 2,600 rows (docs/designs/food-aisles.md, "Performance").
 List<String> _syntheticOpenFoodFactsLines(int count) {
   const adjectives = <String>[
     'Greek',
@@ -800,6 +856,8 @@ List<String> _syntheticOpenFoodFactsLines(int count) {
           brand: brands[(i ~/ 7) % brands.length],
           scans: i % 500,
         ),
+        aisle:
+            i % 10 == 9 ? null : FoodAisle.values[i % FoodAisle.values.length],
       ),
   ];
 }

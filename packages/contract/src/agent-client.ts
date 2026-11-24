@@ -1554,7 +1554,10 @@ export type AgentPlatformFood = {
   "brand": string | null;
   "sourceModifiedAt": string | null;
   "productUrl": string | null;
+  "aisle": AgentPlatformFoodAisle | unknown | null;
 };
+
+export type AgentPlatformFoodAisle = "dairyEggs" | "breadBakery" | "breakfastCereals" | "meatSeafood" | "fruitVeg" | "pantry" | "saucesSpreads" | "snacks" | "sweetsDesserts" | "drinks" | "alcohol" | "readyMeals" | "proteinSupplements" | "babyFood";
 
 export type AgentPlatformFoodAttribution = {
   "source": AgentPlatformFoodSource;
@@ -2680,6 +2683,7 @@ export type RevokeAgentApiKeyInput = {
 export type SearchAgentPlatformFoodsInput = {
   "search"?: string;
   "source"?: AgentPlatformFoodSource & unknown;
+  "aisle"?: AgentPlatformFoodAisle & unknown;
   "limit"?: number;
 };
 
@@ -3351,7 +3355,7 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/foods/platform-search",
       expectedStatus: 200,
-      query: { "search": input.search, "source": input.source, "limit": input.limit },
+      query: { "search": input.search, "source": input.source, "aisle": input.aisle, "limit": input.limit },
       signal: options.signal
     });
   }

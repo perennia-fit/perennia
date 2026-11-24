@@ -15,6 +15,10 @@ const recordedColdStartHomeInteractiveBaselineHarness =
 const openFoodFactsLocalSearchRowCount = 41000;
 const openFoodFactsLocalSearchBudget = Duration(milliseconds: 100);
 
+/// Opening an Aisle in the add-food picker lists its 100 most scanned
+/// products from the same 41,000 (docs/designs/food-aisles.md, "Performance").
+const openFoodFactsAisleBrowseBudget = Duration(milliseconds: 30);
+
 /// The Consistency view's worst case (Phase 4 of
 /// docs/designs/protocol-schedules-and-reminders.md): `planDays` plus
 /// `dayStatuses` over its longest range, for one Compound in 3 Protocols

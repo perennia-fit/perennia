@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 
@@ -539,9 +540,12 @@ void main() {
       final decoded = decodeBundleProductLine(line);
 
       expect(line, contains('"packageSize":1e+30'));
-      expect(decoded.packageSize, 1e30);
-      expect(decoded.servingSize, 9007199254740992);
-      expect(encodeBundleProductLine(decoded), line);
+      expect(decoded.product.packageSize, 1e30);
+      expect(decoded.product.servingSize, 9007199254740992);
+      expect(
+        encodeBundleProductLine(decoded.product, aisle: decoded.aisle),
+        line,
+      );
     });
   });
 
@@ -614,7 +618,18 @@ void main() {
         '"brand":"Chobani","isLiquid":false,"servingLabel":"serving",'
         '"servingSize":170,"packageSize":907.18474,'
         '"nutrients":{"energy":"53","fat":"0","saturated_fat":"0"},'
-        '"modifiedAt":1745020800,"scans":412}',
+        '"modifiedAt":1745020800,"scans":412,"aisle":null}',
+      );
+    });
+
+    test('writes the Aisle as the last key', () {
+      expect(
+        encodeBundleProductLine(product, aisle: FoodAisle.dairyEggs),
+        '{"code":"0818290014313","name":"Greek Yogurt Plain Nonfat",'
+        '"brand":"Chobani","isLiquid":false,"servingLabel":"serving",'
+        '"servingSize":170,"packageSize":907.18474,'
+        '"nutrients":{"energy":"53","fat":"0","saturated_fat":"0"},'
+        '"modifiedAt":1745020800,"scans":412,"aisle":"dairyEggs"}',
       );
     });
 
@@ -638,7 +653,7 @@ void main() {
         line,
         '{"code":"12345678","name":"Water","brand":null,"isLiquid":true,'
         '"servingLabel":null,"servingSize":null,"packageSize":null,'
-        '"nutrients":{},"modifiedAt":0,"scans":1}',
+        '"nutrients":{},"modifiedAt":0,"scans":1,"aisle":null}',
       );
     });
 
@@ -647,7 +662,48 @@ void main() {
 
       // The exact line in the test above pins every field, so an identical
       // re-encoding means every field survived the decode.
-      expect(encodeBundleProductLine(decodeBundleProductLine(line)), line);
+      final decoded = decodeBundleProductLine(line);
+      expect(decoded.aisle, isNull);
+      expect(
+        encodeBundleProductLine(decoded.product, aisle: decoded.aisle),
+        line,
+      );
+    });
+
+    test('decodes what it encodes with an Aisle', () {
+      final line = encodeBundleProductLine(product, aisle: FoodAisle.snacks);
+      final decoded = decodeBundleProductLine(line);
+
+      expect(decoded.aisle, FoodAisle.snacks);
+      expect(
+        encodeBundleProductLine(decoded.product, aisle: decoded.aisle),
+        line,
+      );
+    });
+
+    test('rejects a line with no aisle key', () {
+      final json = jsonDecode(encodeBundleProductLine(product))
+          as Map<String, Object?>
+        ..remove('aisle');
+
+      expect(
+        () => decodeBundleProductLine(jsonEncode(json)),
+        throwsFormatException,
+      );
+    });
+
+    test('rejects an unknown aisle id', () {
+      for (final aisle in <Object>['frozen', '', 3, 'DairyEggs']) {
+        final json = jsonDecode(encodeBundleProductLine(product))
+            as Map<String, Object?>;
+        json['aisle'] = aisle;
+
+        expect(
+          () => decodeBundleProductLine(jsonEncode(json)),
+          throwsFormatException,
+          reason: '$aisle',
+        );
+      }
     });
 
     test('round-trips the header', () {

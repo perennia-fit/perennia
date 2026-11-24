@@ -172,21 +172,10 @@ void _writeCsvRow(StringBuffer buffer, Iterable<String?> values) {
     if (!isFirst) {
       buffer.write(',');
     }
-    buffer.write(_escapeCsvField(value));
+    buffer.write(escapeCsvField(value));
     isFirst = false;
   }
   buffer.write('\r\n');
-}
-
-String _escapeCsvField(String? value) {
-  final field = value ?? '';
-  if (!field.contains(',') &&
-      !field.contains('"') &&
-      !field.contains('\r') &&
-      !field.contains('\n')) {
-    return field;
-  }
-  return '"${field.replaceAll('"', '""')}"';
 }
 
 String _formatCsvDateTime(DateTime value) {

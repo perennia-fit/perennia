@@ -215,6 +215,43 @@ test("Perennia code-mode portable client reaches method parity with every agent-
   );
 });
 
+test("Perennia code-mode portable client passes aisle to search-platform-foods", async () => {
+  const root = path.resolve(process.cwd(), "..", "..");
+  const codeScriptPath = path.join(
+    root,
+    "agent-skills",
+    "perennia",
+    "scripts",
+    "prn-code.mjs"
+  );
+  const codeMode = await import(pathToFileURL(codeScriptPath).href);
+
+  const requests = [];
+  const client = new codeMode.PortableOwlAgentClient({
+    baseUrl: "https://perennia.example.test",
+    bearerToken: "prn_agent_secret",
+    fetch: async (url, init) => {
+      requests.push({ url, init });
+      return {
+        status: 200,
+        async text() {
+          return JSON.stringify({ foods: [], limit: 20, attribution: {} });
+        }
+      };
+    }
+  });
+
+  await client.searchAgentPlatformFoods({ aisle: "snacks", search: "crisps", limit: 20 });
+
+  assert.equal(requests.length, 1);
+  const requestUrl = new URL(requests[0].url);
+  assert.equal(requestUrl.pathname, "/agent/foods/platform-search");
+  assert.equal(requestUrl.searchParams.get("aisle"), "snacks");
+  assert.equal(requestUrl.searchParams.get("search"), "crisps");
+  assert.equal(requestUrl.searchParams.get("limit"), "20");
+  assert.equal(requestUrl.searchParams.has("source"), false);
+});
+
 test("Perennia code-mode helper prefers generated client and reduces metric readings", async () => {
   const root = path.resolve(process.cwd(), "..", "..");
   const codeScriptPath = path.join(

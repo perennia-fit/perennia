@@ -32,7 +32,28 @@ Open Food Facts estimated from the ingredient list), change date and scan
 count; and writes them as JSON lines. Products with implausible values per
 100 g or ml are left out.
 
-This derived database is offered under the same ODbL 1.0 terms.
+## Aisles
+
+Each product line also carries an `aisle`: Perennia's supermarket-style group
+for the product (such as Snacks or Dairy & eggs), or `null` when it has none.
+The Aisles are decided by `build_bundle.dart` from two files in
+`apps/mobile/tool/open_food_facts_bundle/`, which are part of this derived
+database:
+
+- `aisle_labels.ndjson`: one label per product, made by the labeller
+  `apps/mobile/tool/open_food_facts_bundle/label_aisles.dart` (its `label`
+  command), which asks Clef, a decision model run locally with Ollama, to pick
+  an Aisle from the product's name, brand and Open Food Facts category tags.
+  The file's first line names the model and its digest. A product gets the
+  label's Aisle, at any confidence, unless the model answered that no Aisle
+  fits.
+- `aisle_overrides.csv`: Aisles a person gave particular products by hand,
+  which replace the label's.
+
+The model's answers are not checked by a person, and an Aisle may be wrong.
+
+This derived database, these two files included, is offered under the same
+ODbL 1.0 terms.
 
 ## Disclaimer
 

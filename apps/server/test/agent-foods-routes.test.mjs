@@ -217,6 +217,40 @@ test("GET /agent/foods/platform-search?source=openFoodFacts searches the bundle 
   assert.equal(unknownSource.status, 400);
 });
 
+test("GET /agent/foods/platform-search?aisle=snacks lists the Aisle from Open Food Facts, and is 422 with source=usda", async () => {
+  const app = createAgentFoodsApp({});
+
+  const listed = await getAgent(
+    app,
+    "/agent/foods/platform-search?aisle=snacks&limit=20"
+  );
+  assert.equal(listed.status, 200);
+  const body = await listed.json();
+  assert.equal(body.foods.length, 20);
+  assert.ok(body.foods.every((food) => food.foodSource === "openFoodFacts"));
+  assert.ok(body.foods.every((food) => food.aisle === "snacks"));
+  assert.equal(body.attribution.source, "openFoodFacts");
+  assert.match(body.attribution.disclaimer, /Not for medical use/);
+
+  const usda = await getAgent(
+    app,
+    "/agent/foods/platform-search?aisle=snacks&source=usda"
+  );
+  assert.equal(usda.status, 422);
+  assert.deepEqual(await usda.json(), {
+    code: "agent_platform_search_invalid_request",
+    message:
+      "USDA foods have no Aisle; omit source or use source=openFoodFacts with aisle."
+  });
+
+  // An unknown Aisle id fails the query schema, as an unknown source does.
+  const unknownAisle = await getAgent(
+    app,
+    "/agent/foods/platform-search?aisle=frozen"
+  );
+  assert.equal(unknownAisle.status, 400);
+});
+
 test("GET /agent/foods/platform-search?source=openFoodFacts is 503 when the bundle cannot be read, and USDA still works", async () => {
   const errors = [];
   const app = createAgentFoodsApp({
