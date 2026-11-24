@@ -4735,6 +4735,45 @@ void main() {
       expect(untouched.updatedAt, canceled.updatedAt);
     });
 
+    test(
+        'cancelRunningForWorkout cancels a running rest and returns its id, '
+        'and leaves an ended one', () async {
+      expect(
+        await repositories.restTimers.cancelRunningForWorkout(workoutId),
+        isNull,
+      );
+
+      final runningId = await repositories.restTimers.start(
+        RestTimerDraft(workoutId: workoutId, duration: ninety),
+        now: startedAt,
+      );
+      expect(
+        await repositories.restTimers.cancelRunningForWorkout(workoutId),
+        runningId,
+      );
+      expect(
+        (await repositories.restTimers.getById(runningId))!.status,
+        RestTimerStatus.canceled,
+      );
+
+      final expiredId = await repositories.restTimers.start(
+        RestTimerDraft(workoutId: workoutId, duration: ninety),
+        now: startedAt,
+      );
+      await repositories.restTimers.markAlertFired(
+        expiredId,
+        now: startedAt.add(ninety),
+      );
+      expect(
+        await repositories.restTimers.cancelRunningForWorkout(workoutId),
+        isNull,
+      );
+      expect(
+        (await repositories.restTimers.getById(expiredId))!.status,
+        RestTimerStatus.expired,
+      );
+    });
+
     test('watchActiveForWorkout orders tied positions by id', () async {
       // Ids that sort against insertion order.
       const earliestId = '00000000-0000-7000-8000-000000000000';

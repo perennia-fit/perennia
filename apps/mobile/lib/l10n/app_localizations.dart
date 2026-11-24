@@ -226,6 +226,18 @@ abstract class AppLocalizations {
   /// **'Manage account and sync'**
   String get homeManageAccountAndSync;
 
+  /// Account & app sheet subtitle when the server rejected this device's session. Local data is kept; tapping opens the sign-in form.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in expired. Sign in again to sync.'**
+  String get homeSignInExpired;
+
+  /// Tooltip and screen-reader label for the Account & app button while it shows the sign-in-expired dot.
+  ///
+  /// In en, this message translates to:
+  /// **'Account & app: sign-in expired'**
+  String get homeAccountAndAppSignInExpiredTooltip;
+
   /// No description provided for @homeLogAction.
   ///
   /// In en, this message translates to:

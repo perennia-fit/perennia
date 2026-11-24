@@ -21,6 +21,7 @@ import '../../up_next/widgets/up_next_strip.dart';
 import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../../settings/widgets/settings_screen.dart';
+import '../../sync/controllers/sync_status_controller.dart';
 import '../../nutrition/controllers/meal_screen_controller.dart'
     show isFutureNutritionDay, mealScreenClockProvider;
 import '../../nutrition/widgets/meal_screen.dart';
@@ -47,6 +48,8 @@ class HomeScreen extends ConsumerWidget {
   static const libraryDestinationKey = Key('home.destination.library');
   static const accountAndAppButtonKey = Key('home.accountAndApp');
   static const accountAndAppSignInKey = Key('home.accountAndApp.signIn');
+  static const accountSignInExpiredBadgeKey =
+      Key('home.accountAndApp.signInExpiredBadge');
   static const accountAndAppProfileKey = Key('home.accountAndApp.profile');
   static const accountAndAppSettingsKey = Key('home.accountAndApp.settings');
   static const logButtonKey = Key('home.log');
@@ -139,9 +142,7 @@ class HomeScreen extends ConsumerWidget {
           return;
         }
         await Navigator.of(navigationContext).push(
-          MaterialPageRoute<void>(
-            builder: (_) => WorkoutScreen(workoutId: workoutId),
-          ),
+          buildWorkoutScreenRoute(workoutId),
         );
       } on Object {
         if (!navigationContext.mounted) {
@@ -215,9 +216,7 @@ class HomeScreen extends ConsumerWidget {
           return;
         }
         await navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => WorkoutScreen(workoutId: workoutId),
-          ),
+          buildWorkoutScreenRoute(workoutId),
         );
       } on Object {
         if (navigationContext.mounted) {
@@ -754,17 +753,28 @@ class _LibrarySectionHeader extends StatelessWidget {
   }
 }
 
-class _AccountAndAppButton extends StatelessWidget {
+class _AccountAndAppButton extends ConsumerWidget {
   const _AccountAndAppButton();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    // A quiet dot, never a dialog: sync failures stay silent (AGENTS.md), but
+    // an expired sign-in only heals when the user acts, so the root says so
+    // where the way back already lives. The tooltip carries it in words.
+    final sessionExpired = ref.watch(sessionExpiredProvider);
     return IconButton(
       key: HomeScreen.accountAndAppButtonKey,
-      tooltip: l10n.homeAccountAndAppTitle,
+      tooltip: sessionExpired
+          ? l10n.homeAccountAndAppSignInExpiredTooltip
+          : l10n.homeAccountAndAppTitle,
       onPressed: () => _showAccountAndAppSheet(context),
-      icon: const Icon(Icons.account_circle_outlined),
+      icon: Badge(
+        key: sessionExpired ? HomeScreen.accountSignInExpiredBadgeKey : null,
+        isLabelVisible: sessionExpired,
+        backgroundColor: Theme.of(context).colorScheme.error,
+        child: const Icon(Icons.account_circle_outlined),
+      ),
     );
   }
 }
@@ -781,8 +791,13 @@ Future<void> _showAccountAndAppSheet(BuildContext context) {
         navigator.pushNamed(SignInScreen.routeName);
       }
 
+      void signInAgain() {
+        Navigator.of(sheetContext).pop();
+        navigator.push(SignInScreen.signInAgainRoute());
+      }
+
       return [
-        _AccountStatusTile(onTap: openAccount),
+        _AccountStatusTile(onTap: openAccount, onSignInAgain: signInAgain),
         ListTile(
           key: HomeScreen.accountAndAppProfileKey,
           leading: const Icon(Icons.person_outline),
@@ -809,17 +824,35 @@ Future<void> _showAccountAndAppSheet(BuildContext context) {
 }
 
 class _AccountStatusTile extends ConsumerWidget {
-  const _AccountStatusTile({required this.onTap});
+  const _AccountStatusTile({required this.onTap, required this.onSignInAgain});
 
   final VoidCallback onTap;
+  final VoidCallback onSignInAgain;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final authState = ref.watch(authControllerProvider);
+    final sessionExpired = ref.watch(sessionExpiredProvider);
+    // skipError: a failed Sign in again attempt leaves the expired session in
+    // place behind the error, and this tile should still describe it.
     return authState.when(
+      skipError: true,
       data: (state) {
         final session = state.session;
+        if (session != null && sessionExpired) {
+          return ListTile(
+            key: HomeScreen.accountAndAppSignInKey,
+            leading: Icon(
+              Icons.person_off_outlined,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            title: Text(session.userEmail),
+            subtitle: Text(l10n.homeSignInExpired),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onSignInAgain,
+          );
+        }
         return ListTile(
           key: HomeScreen.accountAndAppSignInKey,
           leading: Icon(
@@ -999,9 +1032,7 @@ class _WorkoutSummaryTile extends ConsumerWidget {
         key: HomeScreen.openWorkoutButtonKey(workout.id),
         onTap: () {
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => WorkoutScreen(workoutId: workout.id),
-            ),
+            buildWorkoutScreenRoute(workout.id),
           );
         },
         child: ConstrainedBox(

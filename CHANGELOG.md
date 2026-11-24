@@ -21,6 +21,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - Each bundled Open Food Facts product now carries an Aisle, a consumer-facing
   group such as Dairy & eggs or Snacks (bundle format 2). The device rebuilds its
   food reference cache once after updating.
+- **Finish Workout from the Training Screen.** Once no exercise has a planned
+  set left, Finish Workout takes the Next button's place, so you no longer go
+  back to the Workout screen to finish. Logging the plan's last set no longer
+  starts a rest, and stops one still running. Finishing a Workout stops its
+  rest timer, so no rest notification arrives after the Workout ends.
 
 ### Changed
 
@@ -33,15 +38,37 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   which kinds of training you do, with what each covers, before asking your level.
 - Training setup offers Gym, Home and Bodyweight only presets and groups the
   equipment. Onboarding starts from Gym, so Done saves a typical gym list.
+- Server dependencies move to Better Auth 1.7 and pg-boss 12.38. Self-hosters:
+  whichever of the API server and the worker starts first migrates the job-queue
+  schema from 36 to 46: new columns, a new `instance` table, a new `job_now()`
+  function, and indexes built in the background, with no table rewritten. pg-boss
+  does not stop an older process from running against the newer schema, so
+  upgrade both together. The auth contract gains Better Auth's optional sign-out,
+  social sign-in and callback fields, and `/api/auth/link-social` now ignores
+  `idToken.scopes`; send `scopes` at the top level of the body instead.
 
 ### Fixed
 
+- Deleting a Workout cancels its running rest timer's notifications, as
+  finishing one now does. Before, the rest's notification still fired after
+  the Workout was gone.
 - **Sync no longer stops a week after sign-in.** The server renews a device's
   session when it syncs, as it already did for the website, so a device that
   syncs at least once a week stays signed in. Before, every device's session
   expired 7 days after sign-in however often it synced, and sync stopped with
   "Sign in required" until the user signed in again. Devices already showing
   that need one more sign-in.
+- **An expired sign-in no longer looks signed in.** When the server stops
+  accepting this phone's session, the Account screen says the sign-in expired
+  instead of "Signed in as", the Account & app button shows a small dot, and
+  both the Account and Sync screens offer **Sign in again**. Signing in again
+  keeps everything on the phone, including changes that have not synced yet,
+  and the next sync sends them.
+- **A sync pulls everything waiting on the server.** When a page of changes
+  carried the parent rows its changes refer to, the app took it for the last
+  page and stopped, so part of a batch waited for a later sync. An agent's
+  plan could arrive as Workout Templates without the Routine, Prescriptions or
+  Groups that belong to them.
 
 ## [0.3.0] - 2026-11-07
 

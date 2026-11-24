@@ -18,8 +18,11 @@ import '../../../theme/theme.dart';
 import '../../analytics/repositories/exercise_analytics_repository.dart';
 import '../../analytics/widgets/exercise_overview_screen.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
+import '../../home/widgets/finish_workout_flow.dart';
+import '../../home/widgets/workout_screen.dart' show workoutScreenRouteName;
 import '../../settings/repositories/settings_repository.dart';
 import '../services/rest_cues.dart';
+import '../services/timer_notification_router.dart' show timerExerciseRouteName;
 import '../services/timer_background_scheduler.dart';
 import 'plan_progress_labels.dart';
 import 'replace_exercise.dart';
@@ -60,6 +63,10 @@ class TrainingScreen extends ConsumerStatefulWidget {
   static const addSetButtonKey = Key('training.addSet');
   static const addRoundButtonKey = Key('training.addRound');
   static const nextExerciseButtonKey = Key('training.nextExercise');
+
+  /// Finish Workout, in the Next button's place once no exercise has a
+  /// Planned Set left.
+  static const finishWorkoutButtonKey = Key('training.finishWorkout');
   static const restAfterValueKey = Key('training.restAfter.value');
   static const restAfterDecrementKey = Key('training.restAfter.decrement');
   static const restAfterIncrementKey = Key('training.restAfter.increment');
@@ -204,6 +211,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// while this is false, so a stepped but unsaved value survives them.
   bool _formDirty = false;
   bool _logInFlight = false;
+
+  /// The Log set that runs (while [_logInFlight]), which Finish Workout
+  /// waits for (see [_finishWorkout]).
+  Future<void>? _logSetRunning;
+
+  /// Set while Finish Workout runs, so a double tap finishes once and opens
+  /// one Finish summary, and a Log set tap meanwhile is ignored (see
+  /// [_logSet]).
+  bool _finishInFlight = false;
 
   /// The Workout Exercise the form was last loaded for; a different one is
   /// a new visit (picked and selected rows clear).
@@ -886,11 +902,21 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             loggedAPlannedSet: currentSet != null,
             autoSelectNextSet: settings.autoSelectNextSet,
           );
-    final nextExerciseId = selectedSet == null
-        ? _nextExerciseIdFor(workoutExerciseId, group)
+    // Next and Finish Workout share the slot, and both wait until this
+    // exercise and every member of its group have no Planned Set.
+    final groupDone =
+        selectedSet == null && !_groupHasPlannedSet(workoutExerciseId, group);
+    final nextExerciseId = groupDone
+        ? nextExerciseWithPlan(
+            exercises: _progressExercises(),
+            fromWorkoutExerciseId: workoutExerciseId,
+          )
         : null;
     final nextExerciseName =
         nextExerciseId == null ? null : _exerciseNameFor(nextExerciseId);
+    final offersFinishWorkout = groupDone &&
+        nextExerciseId == null &&
+        _readyToFinish(state, exerciseSets: exerciseSets);
 
     final Widget actions;
     if (selectedSet != null) {
@@ -925,6 +951,16 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
               ),
               onPressed: () => _selectWorkoutExercise(nextExerciseId),
               child: Text(l10n.trainingNextExercise(nextExerciseName)),
+            ),
+          ] else if (offersFinishWorkout) ...[
+            const SizedBox(height: AppDimens.dense),
+            OutlinedButton(
+              key: TrainingScreen.finishWorkoutButtonKey,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppDimens.touchTarget),
+              ),
+              onPressed: () => unawaited(_finishWorkout(state)),
+              child: Text(l10n.workoutFinish),
             ),
           ],
         ],
@@ -1147,20 +1183,122 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     );
   }
 
-  /// The Next button's target: only when this exercise (and every member
-  /// of its group) has no Planned Set.
-  String? _nextExerciseIdFor(
+  /// Whether this exercise, or any member of its [group], still has a
+  /// Planned Set: then neither Next nor Finish Workout is offered.
+  bool _groupHasPlannedSet(
     String workoutExerciseId,
     ExerciseGroupRecord? group,
   ) {
     final memberIds = group?.workoutExerciseIds ?? <String>[workoutExerciseId];
-    if (memberIds.any((id) => _countsFor(id).planned > 0)) {
-      return null;
+    return memberIds.any((id) => _countsFor(id).planned > 0);
+  }
+
+  /// Finish Workout takes the Next button's place when no exercise has a
+  /// Planned Set left (the caller checks that) and this is true: the
+  /// Workout is open and this exercise has a Performed Set (a freshly
+  /// opened, empty one offers no Finish).
+  ///
+  /// It waits for the Workout's exercises to load: until then
+  /// [nextExerciseWithPlan] cannot find the open exercise and returns null,
+  /// which would offer Finish for one frame on a Workout with a plan.
+  bool _readyToFinish(
+    _TrainingExerciseState state, {
+    required List<LoggedSetRecord> exerciseSets,
+  }) {
+    return state.workout.endedAt == null &&
+        _workoutExercisesById.containsKey(state.workoutExercise.id) &&
+        exerciseSets.any((set) => set.isCompleted);
+  }
+
+  /// Finish Workout from the Training Screen: the Workout screen's flow
+  /// ([runFinishWorkoutFlow]), then back to the screen that opened the
+  /// Workout, as finishing on the Workout screen lands there.
+  ///
+  /// The Training Screen is usually pushed above the Workout screen, but a
+  /// rest notification's tap pushes it above whatever was on top. So it pops
+  /// itself, then any Training Screen of this Workout and this Workout's
+  /// Workout screen directly below, and stops at the first other route (or
+  /// the first route of all): it never pops past the screen the lifter came
+  /// from.
+  ///
+  /// Finish and Log set never overlap. A Finish tap while Log set runs
+  /// waits for it, then finishes: Log set starts its rest after several
+  /// awaits, so a Finish landing in between would end the Workout first and
+  /// leave that rest, and its "Get ready" notification, running on it.
+  /// Finishing after it stops that rest as it stops any other. Freestyle
+  /// Sets make the overlap easy to hit: Finish Workout already shows while
+  /// the lifter logs them. A Log set tap while Finish runs is ignored (see
+  /// [_logSet]).
+  Future<void> _finishWorkout(_TrainingExerciseState state) async {
+    if (_finishInFlight) {
+      return;
     }
-    return nextExerciseWithPlan(
-      exercises: _progressExercises(),
-      fromWorkoutExerciseId: workoutExerciseId,
-    );
+    _finishInFlight = true;
+    final workoutId = state.workoutExercise.workoutId;
+    final ownRouteNames = <String>{
+      workoutScreenRouteName(workoutId),
+      timerExerciseRouteName(widget.workoutExerciseId),
+      for (final workoutExerciseId in _workoutExercisesById.keys)
+        timerExerciseRouteName(workoutExerciseId),
+    };
+    try {
+      final logSetRunning = _logSetRunning;
+      if (logSetRunning != null) {
+        try {
+          await logSetRunning;
+        } on Object {
+          // Log set reports its own failure; the Workout still finishes.
+        }
+        if (!mounted) {
+          return;
+        }
+      }
+      // `state.workout` is read once, when the exercise opens. The Workout
+      // can end while this screen is up (auto-finish on resume, an agent,
+      // another device through sync), and finishing it again would move its
+      // finish time and open a second Finish summary. So read it fresh: if
+      // it has ended, take the new Workout into the state, which hides
+      // Finish Workout, and stop there.
+      final workout = await ref
+          .read(trainingRepositoriesProvider)
+          .workoutSessions
+          .getById(workoutId);
+      if (!mounted) {
+        return;
+      }
+      if (workout == null || workout.endedAt != null) {
+        if (workout != null && identical(_state, state)) {
+          setState(() {
+            _state = _TrainingExerciseState(
+              workoutExercise: state.workoutExercise,
+              exercise: state.exercise,
+              priorSet: state.priorSet,
+              workout: workout,
+              rememberedRest: state.rememberedRest,
+            );
+          });
+        }
+        return;
+      }
+      await runFinishWorkoutFlow(
+        context,
+        ref,
+        workoutId: workoutId,
+        leave: (navigator) {
+          if (!navigator.canPop()) {
+            return;
+          }
+          navigator
+            ..pop()
+            ..popUntil(
+              (route) =>
+                  route.isFirst || !ownRouteNames.contains(route.settings.name),
+            );
+        },
+      );
+    } finally {
+      _finishInFlight = false;
+    }
   }
 
   List<ProgressExercise> _progressExercises() {
@@ -1230,8 +1368,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// until the write returns: the Sets stream re-emits as soon as the write
   /// commits, so a second tap while the rest starts would otherwise log
   /// this member's next Set instead of being absorbed.
+  ///
+  /// A tap while Finish Workout runs is ignored: the lifter asked to finish
+  /// first, and a Set written during Finish's awaits would land in the
+  /// Workout being finished, after its Template divergence was read.
   Future<void> _logSet(_TrainingExerciseState state) async {
     if (_logInFlight ||
+        _finishInFlight ||
         _selectedSetId != null ||
         state.workoutExercise.id != _activeWorkoutExerciseId) {
       return;
@@ -1244,10 +1387,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
 
     _logInFlight = true;
+    final running = _logSetInFlight(state, settings, values);
+    _logSetRunning = running;
     try {
-      await _logSetInFlight(state, settings, values);
+      await running;
     } finally {
       _logInFlight = false;
+      _logSetRunning = null;
     }
   }
 
@@ -1354,6 +1500,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       state,
       shownAfterLogId: nextWorkoutExerciseId ?? state.workoutExercise.id,
       setId: result.setId,
+      loggedAPlannedSet: currentSet != null,
       rest: rest,
       soundEnabled: settings.restTimerSoundsEnabled,
     );
@@ -1385,7 +1532,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }
 
   /// Starts the rest after a logged Set, unless the rest that runs is zero
-  /// (Off, or a plan's zero) or the Workout has ended. The timer is written
+  /// (Off, or a plan's zero), the Workout has ended, or the Set was the
+  /// plan's last (see [_finishedThePlan], which also stops a rest still
+  /// running). The timer is written
   /// under its own batch, never the Log set's: the strip writes the timer
   /// row again later (the end, Stop), which would make the Log set's batch
   /// impossible to undo.
@@ -1396,10 +1545,44 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     _TrainingExerciseState state, {
     required String shownAfterLogId,
     required String setId,
+    required bool loggedAPlannedSet,
     required Duration rest,
     required bool soundEnabled,
   }) async {
-    if (rest <= Duration.zero || state.workout.endedAt != null) {
+    // A freestyle Set with the rest Off neither starts a rest nor can finish
+    // the plan, so it needs no read of the Workout's Sets.
+    if (state.workout.endedAt != null ||
+        (!loggedAPlannedSet && rest <= Duration.zero)) {
+      return null;
+    }
+    // `state.workout` is the Workout as the exercise opened. It may have
+    // ended since (auto-finish on resume, an agent, another device, this
+    // screen's own Finish when the summary closed over another route), and
+    // nothing else stops a rest from starting on an ended Workout.
+    final workout = await repositories.workoutSessions.getById(
+      state.workoutExercise.workoutId,
+    );
+    if (workout == null || workout.endedAt != null) {
+      return null;
+    }
+    // Read after the write, since the Sets stream may not have re-emitted
+    // yet. Read once: the plan check and the notification texts both use it.
+    final workoutSets = await repositories.sets.listActiveForWorkout(
+      state.workoutExercise.workoutId,
+    );
+    final sets = <LoggedSetRecord>[
+      for (final set in workoutSets)
+        if (!_removingSetIds.contains(set.id)) set,
+    ];
+    if (loggedAPlannedSet && _finishedThePlan(sets)) {
+      await _stopRunningRest(
+        repositories,
+        scheduler,
+        state.workoutExercise.workoutId,
+      );
+      return null;
+    }
+    if (rest <= Duration.zero) {
       return null;
     }
     final loggedSet = await repositories.sets.getById(setId);
@@ -1426,15 +1609,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final timer = await repositories.restTimers.getById(timerId);
     if (timer != null) {
       final setsByExerciseId = <String, List<LoggedSetRecord>>{};
-      final sets = await repositories.sets.listActiveForWorkout(
-        state.workoutExercise.workoutId,
-      );
       for (final set in sets) {
-        if (!_removingSetIds.contains(set.id)) {
-          setsByExerciseId
-              .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
-              .add(set);
-        }
+        setsByExerciseId
+            .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
+            .add(set);
       }
       final texts = _restNotificationTexts(
         l10n,
@@ -1470,6 +1648,41 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
     _notifyRestTimerChanged();
     return timerId;
+  }
+
+  /// Whether the Set just logged was the plan's last: the caller logged a
+  /// Planned Set (there was a Current Set), and after the write no Workout
+  /// Exercise has a Planned Set left in [sets] (the Workout's Sets, without
+  /// those being swiped away). Then no rest starts: nothing comes next, so
+  /// a countdown and its notifications ("Get ready: ...") would only call
+  /// the lifter back to a Workout that is done, and the screen offers Finish
+  /// Workout instead. For the same reason a rest still running from an
+  /// earlier Set (the lifter logged this one before it ended) is stopped,
+  /// as logging a Set mid-plan replaces it; its "Get ready" would name a Set
+  /// already done. Undo of the Log set does not bring that rest back.
+  ///
+  /// Only a Planned Set counts. A Set logged with no Current Set (a
+  /// freestyle Workout, which never has a plan, or a Set added after the
+  /// plan ran out) still starts its rest as before: there, nothing says the
+  /// lifter is done.
+  bool _finishedThePlan(List<LoggedSetRecord> sets) {
+    return !sets.any(isPlannedSet);
+  }
+
+  /// Stops the Workout's running rest, if one runs, and cancels its
+  /// background schedule.
+  Future<void> _stopRunningRest(
+    TrainingRepositories repositories,
+    TimerBackgroundScheduler scheduler,
+    String workoutId,
+  ) async {
+    final stoppedId =
+        await repositories.restTimers.cancelRunningForWorkout(workoutId);
+    if (stoppedId == null) {
+      return;
+    }
+    await scheduler.cancel(stoppedId);
+    _notifyRestTimerChanged();
   }
 
   /// Undo of Log set: reverses the Set and its carry-forward, then cancels
