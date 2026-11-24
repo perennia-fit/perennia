@@ -732,9 +732,9 @@ code,name,brand,categories,aisle
     diff. A maintainer copies `name`, `brand` and `categories` from the
     product's line in `build/open_food_facts_aisle_input.ndjson`. No tool writes
     this file.
-*   **The first rows.** The first run commits five rows, from the check in
+*   **The first rows.** The first run commits four rows, from the check in
     [Alternative T](#alternative-t-a-second-model-for-the-products-clef-is-unsure-of):
-    the products in that sample where the maintainer's answer differed from
+    products in that sample where the maintainer's answer differed from
     Clef's.
 
 **Licence.** The two files are derived from Open Food Facts data (product
@@ -1551,8 +1551,11 @@ The bundle had an Aisle for 94.3% of products.
     Those products, about one in seven, carry more wrong Aisles than the rest.
     A wrong Aisle is still found by search, an override fixes one product, and
     a later spec lets users report mistakes.
-*   **The maintainer's five other answers** became the first override rows
-    (see [The committed data](#the-committed-data)).
+*   **The maintainer's other answers.** Four of the five that differ from
+    Clef became the first override rows (see
+    [The committed data](#the-committed-data)). The fifth, a cereal bar named
+    after its maple flavour, was left out: the definitions put cereal bars in
+    Snacks, which is Clef's answer.
 
 ## Non-Functional Requirements
 
@@ -1727,7 +1730,7 @@ them out again.
     1.  Download the tags export. Run the builder with `--from-bundle
         assets/seeds/open_food_facts_bundle.ndjson.gz --tags-export <path>
         --aisle-input-only`, then a full `label` run.
-    2.  Write the five override rows from
+    2.  Write the four override rows from
         [Alternative T](#alternative-t-a-second-model-for-the-products-clef-is-unsure-of).
     3.  The builder, with the same `--from-bundle` and `--tags-export`, which now
         writes a bundle and prints the report. If the coverage floor is missed,
@@ -1913,7 +1916,7 @@ them out again.
 *   **Scope:** committed data, made by the pipeline in step 4.
 *   **Changes:** the labels file from a full `label` run over the aisle input
     built from the committed bundle and the tags export; the overrides file
-    with the five rows from
+    with the four rows from
     [Alternative T](#alternative-t-a-second-model-for-the-products-clef-is-unsure-of),
     written by hand. This pull
     request is not a data refresh: the bundle's products and dataset version
