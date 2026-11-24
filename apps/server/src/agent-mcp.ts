@@ -2022,7 +2022,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metrics",
       description:
-        "List bounded Metric definitions through the same REST contract used by code-mode clients.",
+        "List bounded Metric definitions through the same REST contract used by code-mode clients. A Lab Metric's canonicalKey is its Lab Test key, and a Lab Test key as query.metricKey matches only Lab Metrics with that key. The list may hold two Metrics for one Lab Test (created on two offline devices); readings join them by key.",
       inputSchema: AgentMcpMetricListInputSchema,
       outputSchema: AgentMetricListResponseSchema
     },
@@ -2062,7 +2062,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metric Readings",
       description:
-        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history.",
+        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
       inputSchema: AgentMcpMetricReadingsInputSchema,
       outputSchema: AgentMetricReadingsResponseSchema
     },
@@ -2883,7 +2883,7 @@ export function createAgentMcpServer({
     {
       title: "Read Agent Effect Window",
       description:
-        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. A Lab Metric (its metricId, or a Lab Test key as metricKey) reads the collapsed results of every Metric with that key. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
       inputSchema: AgentMcpEffectWindowInputSchema,
       outputSchema: AgentEffectWindowResponseSchema
     },

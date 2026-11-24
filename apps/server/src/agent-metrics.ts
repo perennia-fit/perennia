@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, max } from "drizzle-orm";
 
 import {
   agentBatchRequestFingerprint,
@@ -609,7 +609,7 @@ export const agentMetricListRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "List the caller's Metrics.",
   description:
-    "Returns a bounded Metric catalogue page for code-mode agents. Metrics describe how Metric Readings should be normalized; derived analytics are still computed on read.",
+    "Returns a bounded Metric catalogue page for code-mode agents. Metrics describe how Metric Readings should be normalized; derived analytics are still computed on read. A Lab Metric's canonicalKey is its Lab Test key, and a Lab Test key as metricKey matches only Lab Metrics with that key. The list may hold two Metrics for one Lab Test (created on two offline devices); readings join them by key.",
   security: [{ bearerAuth: [] }],
   request: {
     query: AgentMetricListQuerySchema
@@ -653,7 +653,7 @@ export const agentMetricReadingsRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "List a bounded page of Metric Readings.",
   description:
-    "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope.",
+    "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
   security: [{ bearerAuth: [] }],
   request: {
     query: AgentMetricReadingsQuerySchema
@@ -911,6 +911,10 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
     },
     async listMetricReadings({ userId, query }) {
       const fields = resolveMetricReadingFieldSelection(query.fields);
+      const labTarget = await resolveLabReadingTarget(db, userId, query);
+      if (labTarget !== null) {
+        return listLabMetricReadings(db, { userId, query, fields, labTarget });
+      }
       const metricKeyIds =
         query.metricKey === undefined
           ? null
@@ -961,7 +965,9 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
       const page = filtered.slice(start, start + query.limit);
 
       const trendByReadingId =
-        query.includeTrend === "true" ? readingTrendsForPage(rows, page) : null;
+        query.includeTrend === "true"
+          ? readingTrendsForPage(rows, page, await userLabMetricIds(db, userId))
+          : null;
 
       return AgentMetricReadingsResponseSchema.parse({
         readings: page.map((row) => {
@@ -2338,11 +2344,27 @@ function metricIdentityMatchesCatalogSchema(
   );
 }
 
+/**
+ * Whether [row] answers the `metricKey` filter. Lab Metrics match by key
+ * only (docs/designs/lab-results.md, "Finding the Lab Metric for a Lab
+ * Test", Matching by key): a row with a `labTestKey` matches exactly that
+ * key, and a catalogue Lab Test key matches only rows with that
+ * `labTestKey`, never a custom Metric whose name or stable id happens to
+ * match and never a PRN schema (the catalogue generator keeps Lab Test keys
+ * and PRN keys apart). Without the first rule a Lab Metric found by its name
+ * would be read uncollapsed.
+ */
 function metricMatchesMetricKey(
   row: MetricRow,
   userId: string,
   metricKey: string
 ) {
+  if (row.labTestKey !== null) {
+    return row.labTestKey === metricKey;
+  }
+  if (labTestByKey(metricKey) !== null) {
+    return false;
+  }
   const schemaForKey = owlMetricSchemaForImportKey(metricKey);
   const metadata = metricCatalogMetadataForRow(row);
   if (schemaForKey !== null) {
@@ -2403,6 +2425,185 @@ async function resolveMetricIdsForMetricKey(
       .filter((row) => metricMatchesMetricKey(row, userId, metricKey))
       .map((row) => row.id)
   );
+}
+
+/** The ids of every Metric of the user with a `labTestKey`, archived included. */
+async function userLabMetricIds(db: ServerDatabase, userId: string) {
+  const rows = await db
+    .select({ id: schema.metrics.id })
+    .from(schema.metrics)
+    .where(
+      and(eq(schema.metrics.userId, userId), isNotNull(schema.metrics.labTestKey))
+    );
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * What a readings request reads when it filters by a Lab Metric: `lab` with
+ * the Lab Test key, `empty` when `metricId` and `metricKey` name different
+ * keys (no reading can answer both), or null for any other read.
+ *
+ * `metricId` is a lab filter when it names a Metric with a `labTestKey`.
+ * `metricKey` is one when it is a catalogue Lab Test key, or the key of one
+ * of the user's Lab Metrics that this build's catalogue does not know
+ * (written by a later build), which [metricMatchesMetricKey] matches by key
+ * the same way.
+ */
+type LabReadingTarget = { kind: "lab"; labTestKey: string } | { kind: "empty" };
+
+async function resolveLabReadingTarget(
+  db: ServerDatabase,
+  userId: string,
+  query: AgentMetricReadingsQuery
+): Promise<LabReadingTarget | null> {
+  let idKey: string | null = null;
+  if (query.metricId !== undefined) {
+    const [row] = await db
+      .select({ labTestKey: schema.metrics.labTestKey })
+      .from(schema.metrics)
+      .where(
+        and(eq(schema.metrics.userId, userId), eq(schema.metrics.id, query.metricId))
+      )
+      .limit(1);
+    idKey = row?.labTestKey ?? null;
+  }
+  let keyKey: string | null = null;
+  if (query.metricKey !== undefined) {
+    if (labTestByKey(query.metricKey) !== null) {
+      keyKey = query.metricKey;
+    } else {
+      const [row] = await db
+        .select({ id: schema.metrics.id })
+        .from(schema.metrics)
+        .where(
+          and(
+            eq(schema.metrics.userId, userId),
+            eq(schema.metrics.labTestKey, query.metricKey)
+          )
+        )
+        .limit(1);
+      keyKey = row === undefined ? null : query.metricKey;
+    }
+  }
+  if (idKey === null && keyKey === null) {
+    return null;
+  }
+  if (query.metricId !== undefined && query.metricKey !== undefined && idKey !== keyKey) {
+    return { kind: "empty" };
+  }
+  return { kind: "lab", labTestKey: (idKey ?? keyKey)! };
+}
+
+/**
+ * A readings page for one Lab Test (docs/designs/lab-results.md, "Agent
+ * surface" and "Result identity and the collapse").
+ *
+ * Reads the readings of every Metric with the key ([labMetricIds], archived
+ * Lab Metrics included), archived readings included whatever
+ * `includeArchived` says, and collapses the whole key series first: the
+ * collapse drops archived rows, and a final outside the date filter must
+ * still hide its interim inside it. Then the `provenance`, `source` and
+ * date filters, the endpoint's order and the cursor apply, so the cursor
+ * pages over the collapsed list and `totalMatched` counts it. Each reading
+ * keeps its own `metricId`; no reading carries `trendValue`.
+ */
+async function listLabMetricReadings(
+  db: ServerDatabase,
+  {
+    userId,
+    query,
+    fields,
+    labTarget
+  }: {
+    userId: string;
+    query: AgentMetricReadingsQuery;
+    fields: (typeof AGENT_METRIC_READING_FIELDS)[number][];
+    labTarget: LabReadingTarget;
+  }
+) {
+  let rows: MetricReadingRow[] = [];
+  if (labTarget.kind === "lab") {
+    const ids = await labMetricIds(db, { userId, labTestKey: labTarget.labTestKey });
+    rows =
+      ids.length === 0
+        ? []
+        : await db
+            .select()
+            .from(schema.metricReadings)
+            .where(
+              and(
+                eq(schema.metricReadings.userId, userId),
+                inArray(schema.metricReadings.metricId, ids)
+              )
+            );
+  }
+  const labTestKey = labTarget.kind === "lab" ? labTarget.labTestKey : "";
+  const collapsed = collapseLabResults(
+    rows.map((row) => ({
+      id: row.id,
+      labTestKey,
+      lab: row.valueJson?.lab ?? null,
+      atTime: readingAnchor(row).toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      deletedAt: row.deletedAt?.toISOString() ?? null,
+      row
+    }))
+  ).map((ref) => ref.row);
+
+  const from = parseOptionalDate(query.from);
+  const to = parseOptionalDate(query.to);
+  const filtered = collapsed
+    .filter((row) => {
+      if (query.provenance !== undefined && row.provenance !== query.provenance) {
+        return false;
+      }
+      if (query.source !== undefined && row.source !== query.source) {
+        return false;
+      }
+      const anchor = readingAnchor(row);
+      if (from !== null && anchor < from) {
+        return false;
+      }
+      if (to !== null && anchor > to) {
+        return false;
+      }
+      return true;
+    })
+    .sort(compareReadingListOrder);
+  const start = cursorOffset(filtered, query.cursor);
+  const page = filtered.slice(start, start + query.limit);
+
+  return AgentMetricReadingsResponseSchema.parse({
+    readings: page.map((row) =>
+      projectMetricReadingRow(serializeMetricReadingRow(row, []), fields)
+    ),
+    fields,
+    limit: query.limit,
+    nextCursor:
+      start + page.length >= filtered.length ? null : page[page.length - 1]?.id ?? null,
+    totalMatched: filtered.length
+  });
+}
+
+/**
+ * The readings list's order, as its SQL sorts it: `atTime`, then
+ * `windowStartedAt` (nulls last, as Postgres sorts ascending), then
+ * `updatedAt`, then id by code-unit order.
+ */
+function compareReadingListOrder(left: MetricReadingRow, right: MetricReadingRow) {
+  return (
+    compareNullableDates(left.atTime, right.atTime) ||
+    compareNullableDates(left.windowStartedAt, right.windowStartedAt) ||
+    left.updatedAt.getTime() - right.updatedAt.getTime() ||
+    (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+  );
+}
+
+function compareNullableDates(left: Date | null, right: Date | null) {
+  if (left === null || right === null) {
+    return left === right ? 0 : left === null ? 1 : -1;
+  }
+  return left.getTime() - right.getTime();
 }
 
 function serializeMetricRow(row: MetricRow) {
@@ -2704,10 +2905,16 @@ function cursorOffset<T extends { id: string }>(
  */
 function readingTrendsForPage(
   rows: readonly MetricReadingRow[],
-  page: readonly MetricReadingRow[]
+  page: readonly MetricReadingRow[],
+  labMetricIdSet: ReadonlySet<string>
 ) {
+  // No Trend for a Lab Metric (docs/designs/lab-results.md, "The display",
+  // No Trend): its readings are Lab Results, not a daily series, and an
+  // uncollapsed read would smooth an interim and its final together.
   const pageMetricIds = new Set(
-    page.filter((row) => row.deletedAt === null).map((row) => row.metricId)
+    page
+      .filter((row) => row.deletedAt === null && !labMetricIdSet.has(row.metricId))
+      .map((row) => row.metricId)
   );
   const inputsByMetricId = new Map<string, TrendInput[]>();
   for (const row of rows) {

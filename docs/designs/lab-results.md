@@ -558,7 +558,12 @@ archive state, and the next save reuses a live Lab Metric for the key or creates
     Metric, not two.
 *   **Matching by key.** When a key is a catalogue Lab Test key, it matches only Metrics whose
     `lab_test_key` equals it, never a hand-made custom Metric whose name happens to match. This
-    applies to `listAgentMetrics`, `listAgentMetricReadings` and `readAgentEffectWindow`.
+    applies to `listAgentMetrics`, `listAgentMetricReadings` and `readAgentEffectWindow`. The
+    other way round, an Agent's `metricKey` matches a Lab Metric only by its `labTestKey`, never by
+    its name, so a Lab Metric is never read uncollapsed; a key this build's catalogue does not know
+    (a Lab Metric written by a later build) reads collapsed like a catalogue key. In
+    `listAgentMetricReadings`, a `metricId` and a `metricKey` that name different keys return an
+    empty page.
 *   **No fold.** Two Lab Metrics for one Lab Test can still arise (two devices offline, or a
     Metric created through an older server). They are not merged: readers join their readings by
     key. The cost is a Lab Test appearing twice in the Effect and target-outcome pickers; see

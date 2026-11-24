@@ -1105,6 +1105,248 @@ test(
   }
 );
 
+// Lab Results read by key (docs/designs/lab-results.md, "Agent surface",
+// "Result identity and the collapse" and "The display", No Trend).
+
+test(
+  "lab readings join two Lab Metrics by key, collapse, page over the collapsed list and drop archived rows",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const fixture = await seedTwoLabMetrics(database, { userId, app });
+      const { ids, metricA, metricB } = fixture;
+
+      for (const query of [
+        "metricKey=testosterone_total",
+        `metricId=${encodeURIComponent(metricA)}`,
+        `metricId=${encodeURIComponent(metricB)}`,
+        `metricId=${encodeURIComponent(metricB)}&metricKey=testosterone_total`
+      ]) {
+        const response = await getAgent(
+          app,
+          `/agent/metrics/readings?${query}&includeArchived=true&includeTrend=true`
+        );
+        assert.equal(response.status, 200, query);
+        const body = await response.json();
+        // The interim is hidden by its final on the other Lab Metric, and
+        // the archived row never comes back, whatever includeArchived says.
+        assert.deepEqual(
+          body.readings.map((reading) => [reading.id, reading.metricId]),
+          [
+            [ids.final, metricB],
+            [ids.april, metricB]
+          ],
+          query
+        );
+        assert.equal(body.totalMatched, 2, query);
+        assert.equal(body.nextCursor, null, query);
+        for (const reading of body.readings) {
+          assert.equal("trendValue" in reading, false, query);
+        }
+        assert.equal(body.readings[0].valueJson.lab.reportStatus, "final");
+      }
+
+      // limit=1 walks the collapsed list through the cursor.
+      const firstPage = await (
+        await getAgent(app, "/agent/metrics/readings?metricKey=testosterone_total&limit=1")
+      ).json();
+      assert.deepEqual(
+        firstPage.readings.map((reading) => reading.id),
+        [ids.final]
+      );
+      assert.equal(firstPage.totalMatched, 2);
+      assert.equal(firstPage.nextCursor, ids.final);
+      const secondPage = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?metricKey=testosterone_total&limit=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`
+        )
+      ).json();
+      assert.deepEqual(
+        secondPage.readings.map((reading) => reading.id),
+        [ids.april]
+      );
+      assert.equal(secondPage.totalMatched, 2);
+      assert.equal(secondPage.nextCursor, null);
+
+      // The date filter applies after the collapse: the final is outside it,
+      // and its interim inside it stays hidden.
+      const windowed = await (
+        await getAgent(
+          app,
+          "/agent/metrics/readings?metricKey=testosterone_total&from=2026-03-01T00:00:00.000Z&to=2026-03-31T00:00:00.000Z"
+        )
+      ).json();
+      assert.deepEqual(windowed.readings, []);
+      assert.equal(windowed.totalMatched, 0);
+
+      // metricId and metricKey naming different keys answer nothing.
+      const conflicting = await (
+        await getAgent(
+          app,
+          `/agent/metrics/readings?metricId=${encodeURIComponent(metricA)}&metricKey=shbg`
+        )
+      ).json();
+      assert.deepEqual(conflicting.readings, []);
+      assert.equal(conflicting.totalMatched, 0);
+    });
+  }
+);
+
+test(
+  "includeTrend adds no trendValue to lab readings while a body-weight reading still gets one",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const { ids } = await seedTwoLabMetrics(database, { userId, app });
+      const bodyWeightId = `bw-${randomUUID()}`;
+      const weightReadingId = `bw-reading-${randomUUID()}`;
+      await insertBodyWeightMetric(database, { id: bodyWeightId, userId });
+      await insertReading(database, {
+        id: weightReadingId,
+        userId,
+        metricId: bodyWeightId,
+        scalarValue: 80,
+        atTime: new Date("2026-03-05T00:00:00.000Z")
+      });
+
+      const response = await getAgent(app, "/agent/metrics/readings?includeTrend=true");
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      const byId = new Map(body.readings.map((reading) => [reading.id, reading]));
+      assertTrend(byId.get(weightReadingId), 80);
+      // An unfiltered read is not collapsed, but no lab reading has a Trend.
+      for (const id of [ids.interim, ids.final, ids.april]) {
+        assert.ok(byId.has(id), id);
+        assert.equal("trendValue" in byId.get(id), false, id);
+      }
+    });
+  }
+);
+
+test(
+  "a catalogue metricKey finds Lab Metrics only, never a custom Metric with the Lab Test's name",
+  { skip: databaseSkip },
+  async () => {
+    await withLabUser(async ({ database, userId, app }) => {
+      const { ids, metricA, metricB } = await seedTwoLabMetrics(database, { userId, app });
+      const customIds = [];
+      for (const name of ["Testosterone", "Testosterone Total"]) {
+        const customId = `custom-${randomUUID()}`;
+        customIds.push(customId);
+        await insertLabMetricRow(database, { id: customId, userId, name, labTestKey: null, deletedAt: null });
+        await insertReading(database, {
+          id: `custom-reading-${randomUUID()}`,
+          userId,
+          metricId: customId,
+          scalarValue: 999,
+          valueJson: { value: 999, unit: "nmol/L" },
+          atTime: new Date("2026-03-04T00:00:00.000Z")
+        });
+      }
+
+      const readings = await (
+        await getAgent(app, "/agent/metrics/readings?metricKey=testosterone_total")
+      ).json();
+      assert.deepEqual(
+        readings.readings.map((reading) => reading.id),
+        [ids.final, ids.april]
+      );
+
+      const metrics = await (
+        await getAgent(app, "/agent/metrics?metricKey=testosterone_total")
+      ).json();
+      assert.deepEqual(
+        metrics.metrics.map((metric) => metric.id).sort(),
+        [metricA, metricB].sort()
+      );
+      for (const metric of metrics.metrics) {
+        assert.equal(metric.canonicalKey, "testosterone_total");
+      }
+
+      // A custom Metric's own name still finds it, and not the Lab Metrics.
+      const byName = await (await getAgent(app, "/agent/metrics?metricKey=Testosterone")).json();
+      assert.deepEqual(
+        byName.metrics.map((metric) => metric.id),
+        [customIds[0]]
+      );
+    });
+  }
+);
+
+/**
+ * Two Lab Metrics for Testosterone: [metricA] created by an Agent write of an
+ * interim result, and [metricB] inserted directly, as an offline device's
+ * push would, holding the final of the same collection, a later result and an
+ * archived one.
+ */
+async function seedTwoLabMetrics(database, { userId, app }) {
+  const ids = {
+    interim: randomUUID(),
+    final: `final-${randomUUID()}`,
+    april: `april-${randomUUID()}`,
+    archived: `archived-${randomUUID()}`
+  };
+  const metricA = stableScopedId("metric", userId, "lab:testosterone_total");
+  const metricB = `device-lab-metric-${randomUUID()}`;
+  const response = await postAgentMetrics(
+    app,
+    labBatch(`lab-read-${randomUUID()}`, [
+      labReading({ id: ids.interim, lab: { reportStatus: "interim" } })
+    ])
+  );
+  assert.equal(response.status, 200);
+  await insertLabMetricRow(database, {
+    id: metricB,
+    userId,
+    name: "Testosterone",
+    labTestKey: "testosterone_total",
+    deletedAt: null
+  });
+  const labValue = (value, collected, reportStatus = "final") => ({
+    value,
+    unit: "nmol/L",
+    lab: {
+      collected,
+      limit: null,
+      printedRange: null,
+      printedFlag: null,
+      reportStatus,
+      fasting: null,
+      labName: null
+    }
+  });
+  // The same collection as the interim, anchored outside March (entered
+  // later at another offset, say), so a March date filter holds only the
+  // interim, which the final still hides.
+  await insertReading(database, {
+    id: ids.final,
+    userId,
+    metricId: metricB,
+    scalarValue: 21,
+    valueJson: labValue(21, "2026-03-04T08:15"),
+    atTime: new Date("2026-04-02T00:00:00.000Z")
+  });
+  await insertReading(database, {
+    id: ids.april,
+    userId,
+    metricId: metricB,
+    scalarValue: 18,
+    valueJson: labValue(18, "2026-04-10"),
+    atTime: new Date("2026-04-10T02:00:00.000Z")
+  });
+  await insertReading(database, {
+    id: ids.archived,
+    userId,
+    metricId: metricA,
+    scalarValue: 19,
+    valueJson: labValue(19, "2026-05-01"),
+    atTime: new Date("2026-05-01T02:00:00.000Z"),
+    deletedAt: new Date("2026-06-05T00:00:00.000Z")
+  });
+  return { ids, metricA, metricB };
+}
+
 async function withLabUser(run) {
   await applyMigrations(databaseUrl);
   const database = createDatabaseClient(databaseUrl);
@@ -1239,10 +1481,10 @@ async function insertReading(
     valueJson = { value: scalarValue, unit: "kilogram" },
     atTime,
     windowStartedAt = null,
-    deletedAt = null
+    deletedAt = null,
+    updatedAt = new Date("2026-06-05T00:00:00.000Z")
   }
 ) {
-  const updatedAt = new Date("2026-06-05T00:00:00.000Z");
   await database.db.insert(schema.metricReadings).values({
     id,
     userId,

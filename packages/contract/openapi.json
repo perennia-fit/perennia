@@ -21516,7 +21516,7 @@
           "Agent Reads"
         ],
         "summary": "List the caller's Metrics.",
-        "description": "Returns a bounded Metric catalogue page for code-mode agents. Metrics describe how Metric Readings should be normalized; derived analytics are still computed on read.",
+        "description": "Returns a bounded Metric catalogue page for code-mode agents. Metrics describe how Metric Readings should be normalized; derived analytics are still computed on read. A Lab Metric's canonicalKey is its Lab Test key, and a Lab Test key as metricKey matches only Lab Metrics with that key. The list may hold two Metrics for one Lab Test (created on two offline devices); readings join them by key.",
         "security": [
           {
             "bearerAuth": []
@@ -21712,7 +21712,7 @@
           "Agent Reads"
         ],
         "summary": "List a bounded page of Metric Readings.",
-        "description": "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope.",
+        "description": "Returns normalized Metric Readings for code-mode agents with server-side bounds and filters. Raw Monitoring Series blobs are intentionally out of scope. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId; the cursor and totalMatched count the collapsed list. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
         "security": [
           {
             "bearerAuth": []
@@ -22996,7 +22996,7 @@
           "Agent Reads"
         ],
         "summary": "Read a descriptive Effect window for a Compound/Protocol × Metric.",
-        "description": "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "description": "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. A Lab Metric (its metricId, or a Lab Test key as metricKey) reads the results of every Metric with that key, collapsed to one per collection (a final beating an interim) before windowing; a Limit Result such as \"< 1\" is not a sample. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
         "security": [
           {
             "bearerAuth": []
@@ -23040,10 +23040,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "The outcome Metric by name/key. Provide exactly one of metricId or metricKey."
+              "description": "The outcome Metric by name/key, or a Lab Test key for its Lab Metrics (never matched by name). Provide exactly one of metricId or metricKey."
             },
             "required": false,
-            "description": "The outcome Metric by name/key. Provide exactly one of metricId or metricKey.",
+            "description": "The outcome Metric by name/key, or a Lab Test key for its Lab Metrics (never matched by name). Provide exactly one of metricId or metricKey.",
             "name": "metricKey",
             "in": "query"
           },
