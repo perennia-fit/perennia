@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
+import '../../../domain/nutrition/food_aisle.dart';
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../theme/theme.dart';
 import '../controllers/add_food_controller.dart';
@@ -30,13 +31,14 @@ const _visibleFoodPickerFilters = <AddFoodPickerFilter>[
 const _noMatchLine = 'No foods match.';
 
 /// The add-food picker, embedded in the Meal screen
-/// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md).
+/// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md;
+/// docs/designs/food-aisles.md § The picker).
 ///
 /// The picker never writes on its own: the caller owns every write, through
 /// [onFoodSelected] and [onQuickEntry], so the Meal screen's in-flight guard
 /// and its switch to the saved Meal cover them. Its results area is an
 /// [Expanded], so the caller must give it a bounded height.
-class AddFoodPicker extends ConsumerWidget {
+class AddFoodPicker extends ConsumerStatefulWidget {
   const AddFoodPicker({
     super.key,
     this.onFoodSelected,
@@ -69,6 +71,19 @@ class AddFoodPicker extends ConsumerWidget {
   static const barcodeQuickAddButtonKey =
       Key('nutrition.addFood.barcodeQuickAdd');
   static const lookupUsdaButtonKey = Key('nutrition.addFood.lookupUsda');
+
+  /// The "Browse" label over the Aisle rows.
+  static const browseLabelKey = Key('nutrition.addFood.browseLabel');
+
+  /// The Aisle view's header: its back button and its title.
+  static const aisleBackKey = Key('nutrition.addFood.aisleBack');
+  static const aisleTitleKey = Key('nutrition.addFood.aisleTitle');
+
+  /// The line after a blank-query Aisle list cut at [aisleBrowseLimit].
+  static const aisleMoreLineKey = Key('nutrition.addFood.aisleMoreLine');
+
+  /// The line for a typed query with no match in the open Aisle.
+  static const aisleNoMatchKey = Key('nutrition.addFood.aisleNoMatch');
   static const searchDebounceDuration =
       AddFoodPickerController.searchDebounceDuration;
 
@@ -87,119 +102,174 @@ class AddFoodPicker extends ConsumerWidget {
     return Key('nutrition.addFood.result-${item.foodSource.name}-${item.id}');
   }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(addFoodPickerControllerProvider);
+  static Key aisleRowKey(FoodAisle aisle) {
+    return Key('nutrition.addFood.aisle-${aisle.name}');
+  }
 
-    return Padding(
-      padding: const EdgeInsets.all(AppDimens.base),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Embedded under the Meal screen's header, so no title of its own.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton.outlined(
-                key: scanBarcodeButtonKey,
-                tooltip: 'Scan barcode',
-                onPressed: () {
-                  unawaited(_scanBarcode(context, ref));
-                },
-                icon: const Icon(Icons.qr_code_scanner),
+  @override
+  ConsumerState<AddFoodPicker> createState() => _AddFoodPickerState();
+}
+
+class _AddFoodPickerState extends ConsumerState<AddFoodPicker> {
+  /// The search field's text. Opening or closing an Aisle clears it, so the
+  /// field never shows a query the controller has dropped.
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  AddFoodPickerController get _controller =>
+      ref.read(addFoodPickerControllerProvider.notifier);
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(addFoodPickerControllerProvider);
+    final aisle = state.value?.aisle;
+
+    // With an Aisle open, a back closes the Aisle and the Meal screen stays:
+    // the system back and the Meal screen's app-bar back both pop through
+    // Navigator.maybePop, which this blocks while canPop is false. The next
+    // back, with no Aisle open, leaves the Meal screen as before
+    // (docs/designs/food-aisles.md § The picker, CUJ 3).
+    return PopScope(
+      canPop: aisle == null,
+      onPopInvokedWithResult: (didPop, _) {
+        final open = ref.read(addFoodPickerControllerProvider).value?.aisle;
+        if (!didPop && open != null) {
+          unawaited(_closeAisle());
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimens.base),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Embedded under the Meal screen's header, so no title of its own.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton.outlined(
+                  key: AddFoodPicker.scanBarcodeButtonKey,
+                  tooltip: 'Scan barcode',
+                  onPressed: () {
+                    unawaited(_scanBarcode());
+                  },
+                  icon: const Icon(Icons.qr_code_scanner),
+                ),
+                const SizedBox(width: AppDimens.dense),
+                FilledButton.icon(
+                  key: AddFoodPicker.quickAddButtonKey,
+                  onPressed: () {
+                    unawaited(_quickAdd());
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('Quick add'),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppDimens.base),
+            TextField(
+              key: AddFoodPicker.searchFieldKey,
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText:
+                    aisle == null ? 'Search foods' : 'Search ${aisle.label}',
+                prefixIcon: const Icon(Icons.search),
               ),
-              const SizedBox(width: AppDimens.dense),
-              FilledButton.icon(
-                key: quickAddButtonKey,
-                onPressed: () {
-                  unawaited(_quickAdd(context));
+              textInputAction: TextInputAction.search,
+              onChanged: (value) {
+                unawaited(_controller.setQuery(value));
+              },
+              onSubmitted: (value) {
+                unawaited(_submit(value));
+              },
+            ),
+            const SizedBox(height: AppDimens.base),
+            if (aisle != null)
+              _AisleHeader(
+                aisle: aisle,
+                onBack: () {
+                  unawaited(_closeAisle());
                 },
-                icon: const Icon(Icons.add),
-                label: const Text('Quick add'),
+              )
+            else
+              state.when(
+                data: (value) => _FoodSourceChips(selected: value.filter),
+                loading: () => const _FoodSourceChips(
+                  selected: AddFoodPickerFilter.all,
+                ),
+                error: (_, __) => const _FoodSourceChips(
+                  selected: AddFoodPickerFilter.all,
+                ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppDimens.base),
-          TextField(
-            key: searchFieldKey,
-            decoration: const InputDecoration(
-              hintText: 'Search foods',
-              prefixIcon: Icon(Icons.search),
-            ),
-            textInputAction: TextInputAction.search,
-            onChanged: (value) {
-              unawaited(
-                ref
-                    .read(addFoodPickerControllerProvider.notifier)
-                    .setQuery(value),
-              );
-            },
-            onSubmitted: (value) {
-              unawaited(_submit(context, ref, value));
-            },
-          ),
-          const SizedBox(height: AppDimens.base),
-          state.when(
-            data: (value) => _FoodSourceChips(selected: value.filter),
-            loading: () => const _FoodSourceChips(
-              selected: AddFoodPickerFilter.all,
-            ),
-            error: (_, __) => const _FoodSourceChips(
-              selected: AddFoodPickerFilter.all,
-            ),
-          ),
-          const SizedBox(height: AppDimens.base),
-          state.when(
-            data: (value) => _LookupBoundaryBanner(
-              state: value,
-              onQuickAdd: () {
-                unawaited(_quickAdd(context));
-              },
-              onUseUsda: () {
-                unawaited(
-                  ref
-                      .read(addFoodPickerControllerProvider.notifier)
-                      .selectFilter(AddFoodPickerFilter.usda),
-                );
-              },
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
-          state.maybeWhen(
-            data: (value) =>
-                value.barcodeLookupStatus == BarcodeLookupStatus.idle
-                    ? const SizedBox.shrink()
-                    : const SizedBox(height: AppDimens.base),
-            orElse: () => const SizedBox.shrink(),
-          ),
-          Expanded(
-            child: state.when(
-              data: (value) => _FoodResults(
+            const SizedBox(height: AppDimens.base),
+            state.when(
+              data: (value) => _LookupBoundaryBanner(
                 state: value,
-                onOpen:
-                    onFoodSelected == null ? null : (item) => _open(ref, item),
-                onSearchOnline: () {
-                  unawaited(_submit(context, ref, value.query));
+                onQuickAdd: () {
+                  unawaited(_quickAdd());
+                },
+                onUseUsda: () {
+                  unawaited(_controller.selectFilter(AddFoodPickerFilter.usda));
                 },
               ),
-              loading: () => const SizedBox.expand(),
-              error: (_, __) => Center(
-                child: Text(
-                  'Food picker unavailable',
-                  style: context.textStyles.body.copyWith(
-                    color: context.colors.textSecondary,
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+            state.maybeWhen(
+              data: (value) =>
+                  value.barcodeLookupStatus == BarcodeLookupStatus.idle
+                      ? const SizedBox.shrink()
+                      : const SizedBox(height: AppDimens.base),
+              orElse: () => const SizedBox.shrink(),
+            ),
+            Expanded(
+              child: state.when(
+                data: (value) => _FoodResults(
+                  state: value,
+                  onOpen: widget.onFoodSelected == null ? null : _open,
+                  onSearchOnline: () {
+                    unawaited(_submit(value.query));
+                  },
+                  onOpenAisle: (aisle) {
+                    unawaited(_openAisle(aisle));
+                  },
+                ),
+                loading: () => const SizedBox.expand(),
+                error: (_, __) => Center(
+                  child: Text(
+                    'Food picker unavailable',
+                    style: context.textStyles.body.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _quickAdd(BuildContext context) async {
+  /// Every Aisle opening goes through here: the field is cleared first, so
+  /// it matches the empty query the controller opens the Aisle with.
+  Future<void> _openAisle(FoodAisle aisle) {
+    _searchController.clear();
+    return _controller.openAisle(aisle);
+  }
+
+  /// Every Aisle closing (the header's back button, a back the PopScope
+  /// blocks, a scanned barcode) goes through here, clearing the field first.
+  Future<void> _closeAisle() {
+    _searchController.clear();
+    return _controller.closeAisle();
+  }
+
+  Future<void> _quickAdd() async {
     final draft = await showDialog<QuickFoodEntryDraft>(
       context: context,
       builder: (context) => const QuickEntryDialog(),
@@ -207,53 +277,87 @@ class AddFoodPicker extends ConsumerWidget {
     if (draft == null) {
       return;
     }
-    await onQuickEntry(draft);
+    await widget.onQuickEntry(draft);
   }
 
-  Future<void> _scanBarcode(BuildContext context, WidgetRef ref) async {
+  Future<void> _scanBarcode() async {
     final barcode = await ref.read(barcodeScannerProvider).scan(context);
-    if (!context.mounted || barcode == null || barcode.trim().isEmpty) {
+    if (!mounted || barcode == null || barcode.trim().isEmpty) {
       return;
     }
-    await _openFound(
-      context,
-      ref,
-      ref.read(addFoodPickerControllerProvider.notifier).lookupBarcode(barcode),
-    );
+    // A barcode names one product wherever it is, and inside an Aisle the
+    // controller makes no barcode lookup or live request. So the Aisle
+    // closes first, and the lookup then runs as it does with no Aisle open,
+    // a live request included (docs/designs/food-aisles.md § The picker).
+    if (ref.read(addFoodPickerControllerProvider).value?.aisle != null) {
+      await _closeAisle();
+      if (!mounted) {
+        return;
+      }
+    }
+    await _openFound(_controller.lookupBarcode(barcode));
   }
 
   /// The keyboard's search action and the online search row. A typed barcode
   /// that is found opens the log-portion screen through the scan's path.
-  Future<void> _submit(BuildContext context, WidgetRef ref, String query) {
-    return _openFound(
-      context,
-      ref,
-      ref.read(addFoodPickerControllerProvider.notifier).submitQuery(query),
-    );
+  Future<void> _submit(String query) {
+    return _openFound(_controller.submitQuery(query));
   }
 
   /// Opens the item a scan or a submit found, if the picker is still shown.
-  Future<void> _openFound(
-    BuildContext context,
-    WidgetRef ref,
-    Future<FoodPickerItem?> lookup,
-  ) async {
+  Future<void> _openFound(Future<FoodPickerItem?> lookup) async {
     final food = await lookup;
-    if (!context.mounted || food == null) {
+    if (!mounted || food == null) {
       return;
     }
-    _open(ref, food);
+    _open(food);
   }
 
   /// Every opened item goes through the controller first, which stores a live
   /// copy in the background.
-  void _open(WidgetRef ref, FoodPickerItem item) {
-    final onSelected = onFoodSelected;
+  void _open(FoodPickerItem item) {
+    final onSelected = widget.onFoodSelected;
     if (onSelected == null) {
       return;
     }
-    ref.read(addFoodPickerControllerProvider.notifier).openItem(item);
+    _controller.openItem(item);
     onSelected(item);
+  }
+}
+
+/// Replaces the filter chips while an Aisle is open: a back button that
+/// closes the Aisle, then the Aisle's label as the view's title.
+class _AisleHeader extends StatelessWidget {
+  const _AisleHeader({required this.aisle, required this.onBack});
+
+  final FoodAisle aisle;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          key: AddFoodPicker.aisleBackKey,
+          tooltip: 'Back',
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        const SizedBox(width: AppDimens.dense),
+        // Expanded, so a long label wraps at large text instead of
+        // overflowing.
+        Expanded(
+          child: Semantics(
+            header: true,
+            child: Text(
+              aisle.label,
+              key: AddFoodPicker.aisleTitleKey,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -289,23 +393,43 @@ class _FoodSourceChips extends ConsumerWidget {
 }
 
 /// The list under the chips, per filter and query
-/// (docs/designs/unified-food-search.md § The picker, top to bottom).
+/// (docs/designs/unified-food-search.md § The picker, top to bottom), or the
+/// open Aisle's list (docs/designs/food-aisles.md § The picker).
 class _FoodResults extends StatelessWidget {
   const _FoodResults({
     required this.state,
     required this.onOpen,
     required this.onSearchOnline,
+    required this.onOpenAisle,
   });
 
   final AddFoodPickerState state;
   final ValueChanged<FoodPickerItem>? onOpen;
   final VoidCallback onSearchOnline;
+  final ValueChanged<FoodAisle> onOpenAisle;
 
   @override
   Widget build(BuildContext context) {
     final blank = isBlankFoodQuery(state.query);
+    final aisle = state.aisle;
     final entries = <_Entry>[
       ...switch (state.filter) {
+        // An Aisle's rows only: the bundle line and the online slot are for
+        // the filters, and live results carry no Aisle.
+        _ when aisle != null => [
+            ..._rows(state.results),
+            if (blank && state.results.length == aisleBrowseLimit)
+              (_) => const _StatusLine(
+                    key: AddFoodPicker.aisleMoreLineKey,
+                    text: 'Showing the $aisleBrowseLimit most scanned. '
+                        'Search to find more.',
+                  )
+            else if (!blank && state.results.isEmpty)
+              (_) => _StatusLine(
+                    key: AddFoodPicker.aisleNoMatchKey,
+                    text: 'No foods match in ${aisle.label}.',
+                  ),
+          ],
         AddFoodPickerFilter.all when blank => [
             if (state.results.isEmpty)
               (_) => const _StatusLine(
@@ -328,6 +452,7 @@ class _FoodResults extends StatelessWidget {
                   ),
               ..._rows(state.results),
             ],
+            ..._browse(),
           ],
         AddFoodPickerFilter.all => [
             ..._rowsOrNoMatch(),
@@ -350,7 +475,9 @@ class _FoodResults extends StatelessWidget {
                     key: AddFoodPicker.emptyQueryLineKey,
                     text: 'Search Open Food Facts by product name, brand or '
                         'barcode.',
-                  )
+                  ),
+            if (blank)
+              ..._browse()
             else ...[
               ..._rows(state.results),
               ..._online(),
@@ -384,6 +511,38 @@ class _FoodResults extends StatelessWidget {
       for (final item in items) ...[
         (_) => _FoodResultRow(item: item, onOpen: onOpen),
         (context) => Divider(height: 1, color: context.colors.divider),
+      ],
+    ];
+  }
+
+  /// The Browse section: a label, then one row per Aisle in order. Only on
+  /// a blank query (the callers' cases), and only once the bundle, which
+  /// holds the Aisles, is ready.
+  List<_Entry> _browse() {
+    if (state.bundleStatus != BundleStatus.ready) {
+      return const <_Entry>[];
+    }
+    return [
+      (context) => Semantics(
+            header: true,
+            child: Padding(
+              key: AddFoodPicker.browseLabelKey,
+              padding: const EdgeInsets.only(
+                top: AppDimens.base,
+                bottom: AppDimens.dense,
+              ),
+              child: Text(
+                'Browse',
+                style: context.textStyles.label.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+      for (final (index, aisle) in FoodAisle.values.indexed) ...[
+        if (index > 0)
+          (context) => Divider(height: 1, color: context.colors.divider),
+        (_) => _AisleRow(aisle: aisle, onOpen: onOpenAisle),
       ],
     ];
   }
@@ -438,6 +597,37 @@ class _FoodResults extends StatelessWidget {
               ],
             ),
     ];
+  }
+}
+
+/// One Aisle in the Browse section. No colour or icon per Aisle: category
+/// colours belong to exercise Categories, and the label names the Aisle.
+class _AisleRow extends StatelessWidget {
+  const _AisleRow({required this.aisle, required this.onOpen});
+
+  final FoodAisle aisle;
+  final ValueChanged<FoodAisle> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    void onTap() => onOpen(aisle);
+    return Semantics(
+      button: true,
+      label: '${aisle.label}, aisle',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: ListTile(
+        key: AddFoodPicker.aisleRowKey(aisle),
+        minTileHeight: AppDimens.touchTarget,
+        contentPadding: EdgeInsets.zero,
+        title: Text(aisle.label, style: context.textStyles.body),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: context.colors.textSecondary,
+        ),
+        onTap: onTap,
+      ),
+    );
   }
 }
 

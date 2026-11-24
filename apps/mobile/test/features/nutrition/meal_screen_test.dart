@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/controllers/meal_screen_controller.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 import 'package:perennia/features/nutrition/widgets/add_food_picker.dart';
@@ -1193,6 +1194,68 @@ void main() {
       await _unmount(tester);
     });
 
+    testWidgets(
+        'the system back closes an open Aisle and the Meal screen stays; '
+        'a second back leaves it (food-aisles.md CUJ 3)', (tester) async {
+      await open(
+        tester,
+        const MealScreen.newMeal(day: today),
+        addFoodRepository: _AisleFoodRepository(_openFoodFactsBar()),
+      );
+      final row = find.byKey(AddFoodPicker.aisleRowKey(FoodAisle.dairyEggs));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsOneWidget);
+      expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MealScreen), findsOneWidget);
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsNothing);
+      expect(find.byKey(AddFoodPicker.browseLabelKey), findsOneWidget);
+      expect(
+        await database.select(database.meals).get(),
+        isEmpty,
+        reason: 'opening and closing an Aisle writes nothing',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MealScreen), findsNothing);
+      expect(find.byKey(_openKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        "the app bar's back button closes an open Aisle and the Meal screen "
+        'stays (food-aisles.md CUJ 3)', (tester) async {
+      await open(
+        tester,
+        const MealScreen.newMeal(day: today),
+        addFoodRepository: _AisleFoodRepository(_openFoodFactsBar()),
+      );
+      final row = find.byKey(AddFoodPicker.aisleRowKey(FoodAisle.dairyEggs));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MealScreen), findsOneWidget);
+      expect(find.byKey(AddFoodPicker.aisleTitleKey), findsNothing);
+      expect(find.byKey(AddFoodPicker.browseLabelKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
     testWidgets('a Quick Entry lands in the Meal on screen', (tester) async {
       final mealId = await seedMeal(DateTime(2026, 6, 26, 15), 'Snack');
       final otherId = await seedMeal(DateTime(2026, 6, 26, 10), 'Snack');
@@ -1226,7 +1289,9 @@ void main() {
 const _openKey = Key('test.openMealScreen');
 
 /// Your foods holding [items], found by any query.
-class _YourFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+class _YourFoodsRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _YourFoodsRepository(this.items);
 
   final List<FoodPickerItem> items;
@@ -1415,7 +1480,9 @@ FoodPickerItem _openFoodFactsBar() {
 }
 
 /// Finds [food] by barcode only.
-class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
+class _BarcodeFoodRepository
+    with NoOnlineLookups, NoAisleBrowsing
+    implements AddFoodRepository {
   const _BarcodeFoodRepository(this.food);
 
   final FoodPickerItem food;
@@ -1440,6 +1507,32 @@ class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
     return raw == '3017620422003'
         ? (status: BarcodeLookupOutcome.found, item: food)
         : (status: BarcodeLookupOutcome.notFound, item: null);
+  }
+}
+
+/// No Your foods or device matches; every Aisle lists [food].
+class _AisleFoodRepository with NoOnlineLookups implements AddFoodRepository {
+  const _AisleFoodRepository(this.food);
+
+  final FoodPickerItem food;
+
+  @override
+  Future<List<FoodPickerItem>> search({
+    required AddFoodPickerFilter filter,
+    required String query,
+    required YourFoods yourFoods,
+  }) async {
+    return const <FoodPickerItem>[];
+  }
+
+  @override
+  Future<List<FoodPickerItem>> browseAisle(
+    FoodAisle aisle, {
+    String query = '',
+    required int limit,
+    required YourFoods yourFoods,
+  }) async {
+    return <FoodPickerItem>[food];
   }
 }
 

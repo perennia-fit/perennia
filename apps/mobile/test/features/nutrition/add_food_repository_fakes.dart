@@ -1,3 +1,4 @@
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 
 /// The online methods for `AddFoodRepository` fakes that do not exercise
@@ -25,4 +26,18 @@ mixin NoOnlineLookups implements AddFoodRepository {
 
   @override
   Future<void> keepOpenedProduct(FoodPickerItem item) async {}
+}
+
+/// `browseAisle` for `AddFoodRepository` fakes that do not exercise Aisles:
+/// every Aisle is empty.
+mixin NoAisleBrowsing implements AddFoodRepository {
+  @override
+  Future<List<FoodPickerItem>> browseAisle(
+    FoodAisle aisle, {
+    String query = '',
+    required int limit,
+    required YourFoods yourFoods,
+  }) async {
+    return const <FoodPickerItem>[];
+  }
 }

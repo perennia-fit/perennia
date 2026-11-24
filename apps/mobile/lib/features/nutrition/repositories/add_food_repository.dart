@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/nutrition/food_aisle.dart';
 import '../../../domain/nutrition/open_food_facts.dart';
 import '../../settings/repositories/settings_repository.dart';
 
@@ -173,6 +174,19 @@ abstract interface class AddFoodRepository {
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
+    required YourFoods yourFoods,
+  });
+
+  /// A blank [query] lists the Aisle's products, most scanned first, up to
+  /// [limit]; a typed one searches within it, up to [limit].
+  ///
+  /// Never sends anything. A failure propagates, so the picker shows its
+  /// error state as it does for a failed [search]
+  /// (docs/designs/food-aisles.md § The picker).
+  Future<List<FoodPickerItem>> browseAisle(
+    FoodAisle aisle, {
+    String query = '',
+    required int limit,
     required YourFoods yourFoods,
   });
 
@@ -459,6 +473,19 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
               yourFoods,
             ),
     };
+  }
+
+  @override
+  Future<List<FoodPickerItem>> browseAisle(
+    FoodAisle aisle, {
+    String query = '',
+    required int limit,
+    required YourFoods yourFoods,
+  }) async {
+    final records = isBlankFoodQuery(query)
+        ? await _openFoodFacts.productsInAisle(aisle, limit: limit)
+        : await _openFoodFacts.searchLocal(query, limit: limit, aisle: aisle);
+    return _openFoodFactsItems(records, yourFoods);
   }
 
   /// A typed All search: Your foods matches (Y), then barcode matches (B),

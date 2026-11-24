@@ -815,6 +815,147 @@ void main() {
       expect(online.status, OnlineSearchStatus.disabled);
       expect(barcode.status, BarcodeLookupOutcome.disabled);
     });
+
+    group('browseAisle', () {
+      test('a blank query lists the Aisle in its order, up to the limit',
+          () async {
+        final openFoodFacts = _RecordingOpenFoodFactsRepository(
+          aisleProducts: [
+            _offRecord('5000112637922', 'Crisps'),
+            _offRecord('3017620422003', 'Pretzels'),
+            _offRecord('8000500310427', 'Wafers'),
+          ],
+        );
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: openFoodFacts,
+        );
+
+        final items = await repository.browseAisle(
+          FoodAisle.snacks,
+          limit: aisleBrowseLimit,
+          yourFoods: YourFoods.empty,
+        );
+
+        expect(openFoodFacts.aisleReads, [
+          (aisle: FoodAisle.snacks, limit: aisleBrowseLimit),
+        ]);
+        expect(openFoodFacts.localSearches, isEmpty);
+        expect(items.map((item) => item.name), [
+          'Crisps',
+          'Pretzels',
+          'Wafers',
+        ]);
+      });
+
+      test('a punctuation-only query counts as blank', () async {
+        final openFoodFacts = _RecordingOpenFoodFactsRepository();
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: openFoodFacts,
+        );
+
+        await repository.browseAisle(
+          FoodAisle.drinks,
+          query: ' -.,! ',
+          limit: aisleBrowseLimit,
+          yourFoods: YourFoods.empty,
+        );
+
+        expect(openFoodFacts.aisleReads, [
+          (aisle: FoodAisle.drinks, limit: aisleBrowseLimit),
+        ]);
+        expect(openFoodFacts.localSearches, isEmpty);
+      });
+
+      test('a typed query searches within the Aisle', () async {
+        final openFoodFacts = _RecordingOpenFoodFactsRepository(
+          local: [_offRecord('5000112637922', 'Greek yogurt')],
+        );
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: openFoodFacts,
+        );
+
+        final items = await repository.browseAisle(
+          FoodAisle.dairyEggs,
+          query: 'greek',
+          limit: searchResultLimit,
+          yourFoods: YourFoods.empty,
+        );
+
+        expect(openFoodFacts.localSearches, [
+          (
+            query: 'greek',
+            limit: searchResultLimit,
+            aisle: FoodAisle.dairyEggs
+          ),
+        ]);
+        expect(openFoodFacts.aisleReads, isEmpty);
+        expect(items.map((item) => item.name), ['Greek yogurt']);
+      });
+
+      test('rows come from Open Food Facts and carry Last Portions', () async {
+        final openFoodFacts = _RecordingOpenFoodFactsRepository(
+          stored: [_offRecord('9300633603427', 'Weet-Bix')],
+          aisleProducts: [
+            _offRecord('9300633603427', 'Weet-Bix'),
+            _offRecord('9300633000011', 'Corn flakes'),
+          ],
+        );
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: openFoodFacts,
+        );
+        await _logSnapshot(
+          repositories,
+          mealId: await _meal(repositories, DateTime.utc(2026, 6, 25, 7)),
+          foodId: '9300633603427',
+          name: 'Weet-Bix',
+          foodSource: FoodSource.openFoodFacts,
+          portion: _grams(45),
+        );
+        final yourFoods = await repository.loadYourFoods(now: now);
+
+        final items = await repository.browseAisle(
+          FoodAisle.breakfastCereals,
+          limit: aisleBrowseLimit,
+          yourFoods: yourFoods,
+        );
+
+        expect(
+          items.map((item) => item.origin),
+          everyElement(FoodPickerOrigin.openFoodFacts),
+        );
+        expect(
+          items.map((item) => item.foodSource),
+          everyElement(FoodSource.openFoodFacts),
+        );
+        expect(items.map((item) => item.isLiveResult), everyElement(isFalse));
+        expect(items.first.lastPortion?.entered, '45');
+        expect(items.last.lastPortion, isNull);
+      });
+
+      test('a failure in the device list propagates', () async {
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: _RecordingOpenFoodFactsRepository(failLocal: true),
+        );
+
+        for (final query in ['', 'crisps']) {
+          await expectLater(
+            repository.browseAisle(
+              FoodAisle.snacks,
+              query: query,
+              limit: aisleBrowseLimit,
+              yourFoods: YourFoods.empty,
+            ),
+            throwsStateError,
+            reason: '"$query"',
+          );
+        }
+      });
+    });
   });
 }
 
@@ -847,6 +988,7 @@ class _RecordingOpenFoodFactsRepository extends StubOpenFoodFactsRepository {
     this.local = const <PlatformFoodRecord>[],
     this.stored = const <PlatformFoodRecord>[],
     this.failLocal = false,
+    this.aisleProducts = const <PlatformFoodRecord>[],
   });
 
   /// What `searchLocal` returns, whatever the query.
@@ -855,7 +997,12 @@ class _RecordingOpenFoodFactsRepository extends StubOpenFoodFactsRepository {
   /// The device's products, by code, for `localProductsByCodes`.
   final List<PlatformFoodRecord> stored;
   final bool failLocal;
+
+  /// What `productsInAisle` returns, in this order, whatever the Aisle.
+  final List<PlatformFoodRecord> aisleProducts;
   final localQueries = <String>[];
+  final localSearches = <({String query, int limit, FoodAisle? aisle})>[];
+  final aisleReads = <({FoodAisle aisle, int limit})>[];
   final allowOnline = <bool>[];
 
   @override
@@ -865,10 +1012,23 @@ class _RecordingOpenFoodFactsRepository extends StubOpenFoodFactsRepository {
     FoodAisle? aisle,
   }) async {
     localQueries.add(query);
+    localSearches.add((query: query, limit: limit, aisle: aisle));
     if (failLocal) {
       throw StateError('The device food list is unavailable.');
     }
     return local.take(limit).toList();
+  }
+
+  @override
+  Future<List<PlatformFoodRecord>> productsInAisle(
+    FoodAisle aisle, {
+    required int limit,
+  }) async {
+    aisleReads.add((aisle: aisle, limit: limit));
+    if (failLocal) {
+      throw StateError('The device food list is unavailable.');
+    }
+    return aisleProducts.take(limit).toList();
   }
 
   @override

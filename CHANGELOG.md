@@ -11,6 +11,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- **Browse foods by Aisle.** When the offline food list is ready, the add-food
+  picker lists 14 Aisles, such as Dairy & eggs and Snacks, before you type. An
+  Aisle shows its 100 most scanned products, and typing searches only within it,
+  on the device. Back closes the Aisle and keeps the Meal screen open.
 - **Agents can browse Open Food Facts foods by Aisle.** `searchAgentPlatformFoods`
   (`GET /agent/foods/platform-search`) and its MCP tool
   `agent_search_platform_foods` take an optional `aisle`, such as `snacks`, and
