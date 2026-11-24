@@ -13671,9 +13671,15 @@ class MetricRepository {
     );
   }
 
+  /// The Health Metrics explorer's Metrics. Lab Metrics are left out
+  /// (docs/designs/lab-results.md, The display, "Excluded elsewhere"), which
+  /// keeps them away from its name-based grouping, daily summing and Trend.
+  /// Only this query filters them: other callers of [_activeMetricQuery],
+  /// such as the Effect outcome picker, still list Lab Metrics.
   Stream<List<MetricSummary>> watchMetricSummaries() {
     return _watchMetricSummaryRows<MetricSummary>(
-      metricQuery: _activeMetricQuery,
+      metricQuery: () =>
+          _activeMetricQuery()..where((row) => row.labTestKey.isNull()),
       buildSummaries: _metricSummariesFromRows,
       sameSummaries: _sameMetricSummaries,
     );
@@ -13934,10 +13940,16 @@ class MetricRepository {
 
       switch (entityTable) {
         case AppDatabase.metricsTable:
+          // The stored key is read first: `lab_test_key` is write-once.
+          final storedLabTestKey = await _storedMetricLabTestKey(
+            _database,
+            id,
+          );
           await _database.into(_database.metrics).insertOnConflictUpdate(
                 _metricSyncCompanionFromImage(
                   image,
                   syncDeviceId: deviceId,
+                  storedLabTestKey: storedLabTestKey,
                 ),
               );
         case AppDatabase.metricReadingsTable:
@@ -14183,6 +14195,7 @@ class MetricRepository {
             enabled: Value<bool>(normalized.enabled),
             pinned: Value<bool>(normalized.pinned),
             sortOrder: normalized.sortOrder!,
+            labTestKey: Value<String?>(normalized.labTestKey),
             updatedAt: context.timestamp,
           ),
         );
@@ -14600,6 +14613,7 @@ class MetricRepository {
       enabled: draft.enabled,
       pinned: draft.pinned,
       sortOrder: draft.sortOrder,
+      labTestKey: draft.labTestKey,
     );
   }
 
@@ -15511,9 +15525,7 @@ class ActivityLogRepository {
         (_database.update(_database.measurementEntries)
               ..where((row) => row.id.equals(entityId)))
             .write(_measurementEntryCompanionFromImage(image)),
-      AppDatabase.metricsTable => (_database.update(_database.metrics)
-            ..where((row) => row.id.equals(entityId)))
-          .write(_metricCompanionFromImage(image)),
+      AppDatabase.metricsTable => _writeMetricImage(entityId, image),
       AppDatabase.metricReadingsTable =>
         (_database.update(_database.metricReadings)
               ..where((row) => row.id.equals(entityId)))
@@ -15547,6 +15559,24 @@ class ActivityLogRepository {
           .write(_userSettingsCompanionFromImage(image)),
       _ => throw StateError('Unsupported activity entity table: $entityTable.'),
     };
+  }
+
+  /// Writes a Metric image for an undo or redo. The stored key is read first
+  /// because `lab_test_key` is write-once (docs/designs/lab-results.md,
+  /// Storage): undoing a later edit never clears or moves it.
+  Future<void> _writeMetricImage(
+    String entityId,
+    Map<String, Object?> image,
+  ) async {
+    final storedLabTestKey = await _storedMetricLabTestKey(
+      _database,
+      entityId,
+    );
+    await (_database.update(_database.metrics)
+          ..where((row) => row.id.equals(entityId)))
+        .write(
+      _metricCompanionFromImage(image, storedLabTestKey: storedLabTestKey),
+    );
   }
 }
 
@@ -16109,6 +16139,7 @@ class MetricDraft {
     this.goalType,
     this.goalTargetValue,
     this.sortOrder,
+    this.labTestKey,
   });
 
   final String name;
@@ -16121,6 +16152,10 @@ class MetricDraft {
   final bool pinned;
   final int? sortOrder;
 
+  /// Set only when creating a Lab Metric (docs/designs/lab-results.md,
+  /// Storage); written once at creation and never changed afterwards.
+  final String? labTestKey;
+
   MetricDraft copyWith({
     String? name,
     String? unit,
@@ -16131,6 +16166,7 @@ class MetricDraft {
     bool? enabled,
     bool? pinned,
     int? sortOrder,
+    String? labTestKey,
   }) {
     return MetricDraft(
       name: name ?? this.name,
@@ -16142,6 +16178,7 @@ class MetricDraft {
       enabled: enabled ?? this.enabled,
       pinned: pinned ?? this.pinned,
       sortOrder: sortOrder ?? this.sortOrder,
+      labTestKey: labTestKey ?? this.labTestKey,
     );
   }
 }
@@ -16224,6 +16261,7 @@ class MetricRecord {
     required this.updatedAt,
     this.goalType,
     this.goalTargetValue,
+    this.labTestKey,
     this.deletedAt,
   });
 
@@ -16237,6 +16275,10 @@ class MetricRecord {
   final bool enabled;
   final bool pinned;
   final int sortOrder;
+
+  /// The Lab Test this Metric holds results for, or null for every Metric
+  /// that is not a Lab Metric (docs/designs/lab-results.md, Storage).
+  final String? labTestKey;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 }
@@ -17016,6 +17058,7 @@ MetricRecord _metricRecordFromRow(MetricRow row) {
     enabled: row.enabled,
     pinned: row.pinned,
     sortOrder: row.sortOrder,
+    labTestKey: row.labTestKey,
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
@@ -17100,6 +17143,7 @@ Map<String, Object?> _metricImage(MetricRow row) {
     'enabled': row.enabled,
     'pinned': row.pinned,
     'sort_order': row.sortOrder,
+    'lab_test_key': row.labTestKey,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -17782,7 +17826,12 @@ const _templateLinkWorkoutSnapshotFields = <String>{
 ///
 /// A Compound's `purpose_ids` arrived with schema 66
 /// (docs/designs/compound-purposes.md, D2), and its column default is `[]`.
+///
+/// A Metric's `lab_test_key` arrived with schema 68
+/// (docs/designs/lab-results.md, Storage). Every Metric written before then
+/// is a custom or body Metric, so an image without the key means null.
 const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
+  AppDatabase.metricsTable: <String, Object?>{'lab_test_key': null},
   AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
   AppDatabase.compoundsTable: <String, Object?>{
     'is_favorite': false,
@@ -18857,8 +18906,34 @@ MeasurementEntriesCompanion _measurementEntryCompanionFromImage(
   );
 }
 
-MetricsCompanion _metricCompanionFromImage(Map<String, Object?> image) {
+/// The stored Metric's `lab_test_key`, or null when it has none or there is
+/// no row with [id].
+Future<String?> _storedMetricLabTestKey(AppDatabase database, String id) async {
+  final query = database.selectOnly(database.metrics)
+    ..addColumns([database.metrics.labTestKey])
+    ..where(database.metrics.id.equals(id));
+  final row = await query.getSingleOrNull();
+  return row?.read(database.metrics.labTestKey);
+}
+
+/// The Metric columns an image writes, for a pull and for an Activity Log
+/// undo or redo.
+///
+/// `lab_test_key` is write-once (docs/designs/lab-results.md, Storage): the
+/// column is written only when [storedLabTestKey] (the key the stored row
+/// holds, null when there is no row) is null and the image carries a non-null
+/// string key. An image that omits the key, sends null or sends another key
+/// leaves the column absent, so a stray null never turns a Lab Metric back
+/// into a custom Metric and a key never moves to another Lab Test.
+MetricsCompanion _metricCompanionFromImage(
+  Map<String, Object?> image, {
+  String? storedLabTestKey,
+}) {
+  final imageLabTestKey = image['lab_test_key'];
   return MetricsCompanion(
+    labTestKey: storedLabTestKey == null && imageLabTestKey is String
+        ? Value<String?>(imageLabTestKey)
+        : const Value<String?>.absent(),
     name: Value<String>(_activityRequiredString(image, 'name')),
     unit: Value<String>(_activityRequiredString(image, 'unit')),
     valueShape: Value<String>(_activityRequiredString(image, 'value_shape')),
@@ -18877,8 +18952,12 @@ MetricsCompanion _metricCompanionFromImage(Map<String, Object?> image) {
 MetricsCompanion _metricSyncCompanionFromImage(
   Map<String, Object?> image, {
   required String syncDeviceId,
+  String? storedLabTestKey,
 }) {
-  return _metricCompanionFromImage(image).copyWith(
+  return _metricCompanionFromImage(
+    image,
+    storedLabTestKey: storedLabTestKey,
+  ).copyWith(
     id: Value<String>(_activityRequiredString(image, 'id')),
     syncDeviceId: Value<String?>(syncDeviceId),
     syncPreviouslySynced: const Value<bool>(true),

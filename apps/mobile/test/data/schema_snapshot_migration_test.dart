@@ -279,6 +279,89 @@ void main() {
     expect(syncState.pullCursor, isNull);
   });
 
+  test(
+      'v67 to v68 adds a null Lab Test key to every Metric, keeps every row '
+      'and keeps the pull cursor', () async {
+    final schema = await verifier.schemaAt(67);
+    addTearDown(schema.close);
+    const updatedAt = 1_767_254_400;
+    for (final (sql, parameters) in <(String, List<Object?>)>[
+      (
+        'INSERT INTO metrics '
+            '(id, name, unit, value_shape, metric_group, sort_order, '
+            'updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        ['metric-1', 'Resting HR', 'bpm', 'scalar', 'custom', 0, updatedAt],
+      ),
+      (
+        'INSERT INTO metrics '
+            '(id, name, unit, value_shape, metric_group, sort_order, '
+            'updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'metric-2',
+          'Archived',
+          'kg',
+          'scalar',
+          'bodyComposition',
+          1,
+          updatedAt,
+          updatedAt,
+        ],
+      ),
+      (
+        'INSERT INTO metric_readings '
+            '(id, metric_id, value_json, scalar_value, scalar_entered, '
+            'at_time, provenance, source, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'reading-1',
+          'metric-1',
+          '{"shape":"scalar","unit":"bpm","value":52.0,"entered":"52",'
+              '"enteredUnit":"bpm"}',
+          52.0,
+          '52',
+          updatedAt,
+          'manual',
+          'manual',
+          updatedAt,
+        ],
+      ),
+      (
+        'INSERT INTO sync_states (id, pull_cursor, updated_at) '
+            'VALUES (?, ?, ?)',
+        ['sync-state', 'cursor-1', updatedAt],
+      ),
+    ]) {
+      schema.rawDatabase.execute(sql, parameters);
+    }
+
+    final database = AppDatabase(schema.newConnection());
+    addTearDown(database.close);
+    await verifier.migrateAndValidate(database, currentVersion);
+
+    final metrics = await (database.select(database.metrics)
+          ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+        .get();
+    expect(metrics.map((row) => row.id), ['metric-1', 'metric-2']);
+    expect(metrics.map((row) => row.name), ['Resting HR', 'Archived']);
+    expect(metrics.map((row) => row.labTestKey), [null, null]);
+    expect(metrics.last.deletedAt, isNotNull);
+    final reading = await database.select(database.metricReadings).getSingle();
+    expect(reading.id, 'reading-1');
+    expect(reading.metricId, 'metric-1');
+    expect(reading.scalarValue, 52.0);
+    final indexes = await database
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'metrics_lab_test_key_index'",
+        )
+        .get();
+    expect(indexes, hasLength(1));
+    // Lab Metrics first exist in this release, so no earlier pull skipped a
+    // key and the cursor stays.
+    final syncState = await database.select(database.syncStates).getSingle();
+    expect(syncState.pullCursor, 'cursor-1');
+  });
+
   test('rows written at the first release survive to the current version',
       () async {
     final schema = await verifier.schemaAt(_firstReleasedSchemaVersion);

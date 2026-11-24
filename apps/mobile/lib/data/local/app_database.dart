@@ -680,6 +680,7 @@ class MeasurementEntries extends Table {
 
 @DataClassName('MetricRow')
 @TableIndex(name: 'metrics_sort_order_index', columns: {#sortOrder})
+@TableIndex(name: 'metrics_lab_test_key_index', columns: {#labTestKey})
 class Metrics extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
@@ -691,6 +692,11 @@ class Metrics extends Table {
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
   BoolColumn get pinned => boolean().withDefault(const Constant(false))();
   IntColumn get sortOrder => integer()();
+
+  /// The Lab Test this Metric holds results for; null for every other
+  /// Metric. Write-once: once non-null it never changes, whatever a pull,
+  /// an undo or a restore carries (docs/designs/lab-results.md, Storage).
+  TextColumn get labTestKey => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1416,7 +1422,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 67;
+  int get schemaVersion => 68;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2194,6 +2200,28 @@ class AppDatabase extends _$AppDatabase {
             if (await _tableExists(syncStates.actualTableName)) {
               await customStatement(
                 'UPDATE sync_states SET pull_cursor = NULL',
+              );
+            }
+          }
+          if (from < 68) {
+            // A Lab Metric's Lab Test key (docs/designs/lab-results.md,
+            // Storage). Nullable, so existing Metrics read as custom Metrics
+            // and nothing is backfilled. Only if missing, because an upgrade
+            // that creates metrics above already has the column. The index is
+            // created on its own: addColumn() does not install @TableIndex
+            // declarations. No pull cursor is reset: Lab Metrics first exist
+            // in the release that adds this column, so no earlier pull
+            // skipped a key.
+            if (await _tableExists(metrics.actualTableName)) {
+              if (!await _columnExists(
+                metrics.actualTableName,
+                metrics.labTestKey.name,
+              )) {
+                await migrator.addColumn(metrics, metrics.labTestKey);
+              }
+              await customStatement(
+                'CREATE INDEX IF NOT EXISTS metrics_lab_test_key_index '
+                'ON metrics (lab_test_key)',
               );
             }
           }

@@ -10,6 +10,7 @@ import 'schema_v64.dart' as v64;
 import 'schema_v65.dart' as v65;
 import 'schema_v66.dart' as v66;
 import 'schema_v67.dart' as v67;
+import 'schema_v68.dart' as v68;
 
 class GeneratedHelper implements SchemaInstantiationHelper {
   @override
@@ -27,10 +28,12 @@ class GeneratedHelper implements SchemaInstantiationHelper {
         return v66.DatabaseAtV66(db);
       case 67:
         return v67.DatabaseAtV67(db);
+      case 68:
+        return v68.DatabaseAtV68(db);
       default:
         throw MissingSchemaException(version, versions);
     }
   }
 
-  static const versions = const [62, 63, 64, 65, 66, 67];
+  static const versions = const [62, 63, 64, 65, 66, 67, 68];
 }

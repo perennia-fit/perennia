@@ -1308,6 +1308,130 @@ void main() {
       expect(merged.purposeIds, '["purpose-1"]');
     });
 
+    test('exports Metric rows with their labTestKey (lab-results.md)',
+        () async {
+      await _insertMetricRow(
+        database,
+        id: 'metric-lab',
+        name: 'Ferritin',
+        updatedAt: DateTime.utc(2026, 6, 1),
+        labTestKey: 'ferritin',
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-custom',
+        name: 'Resting HR',
+        updatedAt: DateTime.utc(2026, 6, 1),
+      );
+
+      final rows = _archiveRowsByTable(
+        await repositories.portableArchives.exportPortableArchive(),
+      )[AppDatabase.metricsTable]!;
+
+      final keysById = <Object?, Object?>{
+        for (final row in rows) row['id']: row['labTestKey'],
+      };
+      expect(keysById['metric-lab'], 'ferritin');
+      expect(rows.singleWhere((row) => row['id'] == 'metric-custom'),
+          containsPair('labTestKey', null));
+    });
+
+    test('a newer restored row never changes a stored non-null Lab Test key',
+        () async {
+      // The archive's rows are newer, and carry no key or another key.
+      final newer = DateTime.utc(2030);
+      await _insertMetricRow(
+        database,
+        id: 'metric-null',
+        name: 'Renamed',
+        updatedAt: newer,
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-other',
+        name: 'Renamed',
+        updatedAt: newer,
+        labTestKey: 'hemoglobin',
+      );
+      await _insertMetricRow(
+        database,
+        id: 'metric-fill',
+        name: 'Renamed',
+        updatedAt: newer,
+        labTestKey: 'ferritin',
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      for (final (id, key) in <(String, String?)>[
+        ('metric-null', 'ferritin'),
+        ('metric-other', 'ferritin'),
+        ('metric-fill', null),
+      ]) {
+        await _insertMetricRow(
+          local,
+          id: id,
+          name: 'Ferritin',
+          updatedAt: DateTime.utc(2000),
+          labTestKey: key,
+        );
+      }
+
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      final merged = <String, MetricRow>{
+        for (final row in await local.select(local.metrics).get()) row.id: row,
+      };
+      expect(merged['metric-null']!.name, 'Renamed');
+      expect(merged['metric-null']!.labTestKey, 'ferritin');
+      expect(merged['metric-other']!.name, 'Renamed');
+      expect(merged['metric-other']!.labTestKey, 'ferritin');
+      // A null stored key takes the restored row's key.
+      expect(merged['metric-fill']!.labTestKey, 'ferritin');
+    });
+
+    test('a schema-67 archive Metric without labTestKey restores', () async {
+      await _insertMetricRow(
+        database,
+        id: 'metric-custom',
+        name: 'Resting HR',
+        updatedAt: DateTime.utc(2030),
+      );
+      final schema67Archive = _asSchema67Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final fresh = AppDatabase.inMemory();
+      addTearDown(fresh.close);
+      await TrainingRepositories(fresh)
+          .portableArchives
+          .importPortableArchive(schema67Archive);
+      final restored = await fresh.select(fresh.metrics).getSingle();
+      expect(restored.id, 'metric-custom');
+      expect(restored.name, 'Resting HR');
+      expect(restored.labTestKey, isNull);
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      await _insertMetricRow(
+        local,
+        id: 'metric-custom',
+        name: 'Ferritin',
+        updatedAt: DateTime.utc(2000),
+        labTestKey: 'ferritin',
+      );
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(schema67Archive);
+      final merged = await local.select(local.metrics).getSingle();
+      expect(merged.name, 'Resting HR');
+      expect(merged.labTestKey, 'ferritin');
+    });
+
     test('a newer row in a current archive carries its own tags', () async {
       final compound = await repositories.protocols.createCompound(
         const CompoundDraft(
@@ -3220,6 +3344,7 @@ Future<void> _insertMetricRow(
   required String id,
   required String name,
   required DateTime updatedAt,
+  String? labTestKey,
 }) {
   return database.into(database.metrics).insert(
         MetricsCompanion.insert(
@@ -3233,6 +3358,7 @@ Future<void> _insertMetricRow(
           enabled: const Value<bool>(true),
           pinned: const Value<bool>(false),
           sortOrder: 0,
+          labTestKey: Value<String?>(labTestKey),
           updatedAt: updatedAt,
         ),
       );
@@ -3694,6 +3820,41 @@ List<int> _asSchema65Archive(List<int> bytes) {
         final old = Map<String, Object?>.from(row);
         expect(old.containsKey('purposeIds'), isTrue);
         return old..remove('purposeIds');
+      }).toList(growable: false);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-67 build wrote it: Metrics carry no `labTestKey`
+/// (docs/designs/lab-results.md, Storage).
+List<int> _asSchema67Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source);
+  manifest['schemaVersion'] = 67;
+  final metricsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.metricsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == metricsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('labTestKey'), isTrue);
+        return old..remove('labTestKey');
       }).toList(growable: false);
       archive.addFile(
         ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
