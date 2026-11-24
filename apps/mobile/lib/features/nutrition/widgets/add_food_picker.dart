@@ -906,19 +906,19 @@ class _FoodResultRow extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: AppDimens.dense / 2),
                   child: Text(brand, style: secondary),
                 ),
-              Wrap(
-                spacing: AppDimens.dense,
-                runSpacing: AppDimens.dense / 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FoodSourceBadge(
-                    source: item.foodSource,
-                    showLicense: item.foodSource == FoodSource.openFoodFacts,
-                  ),
-                  Text(energy, style: secondary),
-                  if (lastPortion != null)
-                    Text('Last: $lastPortion', style: secondary),
-                ],
+              // The Food Source is plain text in the row's detail line, not a
+              // badge, and carries no licence name: a bordered "Open Food
+              // Facts - ODbL" chip on every row outweighed the food itself.
+              // The ODbL attribution (source, licence and links) is the
+              // footer that follows any list holding an Open Food Facts row,
+              // and the full notice is on the log-portion screen.
+              Text(
+                [
+                  item.foodSourceLabel,
+                  energy,
+                  if (lastPortion != null) 'Last: $lastPortion',
+                ].join(' · '),
+                style: secondary,
               ),
             ],
           ),
@@ -935,8 +935,8 @@ class _FoodResultRow extends StatelessWidget {
   }
 }
 
-/// Decorative: names why the row is listed; the source is always named by
-/// the text badge.
+/// Decorative: names why the row is listed; the source is always named in
+/// the row's detail line.
 IconData _sourceIcon(FoodPickerItem item) {
   return switch (item.origin) {
     FoodPickerOrigin.history => Icons.history,

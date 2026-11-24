@@ -1132,7 +1132,8 @@ void main() {
         lessThan(tester.getTopLeft(chickenRow).dy),
       );
       expect(
-        find.descendant(of: oatMilkRow, matching: find.text('Last: 250 ml')),
+        find.descendant(
+            of: oatMilkRow, matching: find.textContaining('· Last: 250 ml')),
         findsOneWidget,
       );
 

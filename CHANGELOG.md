@@ -9,6 +9,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Changed
+
+- The food picker's rows name their source as plain text next to the calories,
+  instead of a bordered "Open Food Facts - ODbL" badge on every row. The Open
+  Food Facts licence notice still follows the list and stays on the food's
+  log screen.
+
 ## [0.4.0] - 2026-11-24
 
 A minor release: browsing foods by Aisle in the app and for agents, Finish

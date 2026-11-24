@@ -171,9 +171,12 @@ same barcode with different numbers.
     *   Nothing is retried automatically.
     *   Barcode lookups use the current product API (v3.6).
 7.  **Every Open Food Facts food explains its source.**
-    *   In the picker and on the log-portion screen, an Open Food Facts food
-        carries the source badge with "ODbL" (`FoodSourceBadge` with
-        `showLicense: true`) and the attribution notice.
+    *   On the log-portion screen, an Open Food Facts food carries the source
+        badge with "ODbL" (`FoodSourceBadge` with `showLicense: true`) and the
+        attribution notice. In the picker, a row names "Open Food Facts" in
+        plain text, and the compact attribution notice, with the licence and
+        its links, follows any list holding an Open Food Facts row (amended
+        2026-11-24; see [Unified Food Search](unified-food-search.md#the-picker-top-to-bottom)).
     *   On the log-portion screen, the notice also shows a link to the
         product's Open Food Facts page, the disclaimer, and the change date when
         it is known. Your foods rows ([Unified Food Search](unified-food-search.md)) get the link and the

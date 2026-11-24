@@ -8,6 +8,10 @@
     pick) and is embedded in the Meal screen, which the Nutrition Day's
     `Log meal` button and Meal cards open, instead of a sheet opened from a
     Meal card's `Add food` button.
+*   **Amended 2026-11-24:** a picker row names its Food Source as plain text in
+    its detail line instead of a bordered badge, and without the licence name.
+    The attribution footer and the log-portion screen carry the licence (see
+    [The picker, top to bottom](#the-picker-top-to-bottom)).
 
 --------------------------------------------------------------------------------
 
@@ -105,9 +109,9 @@ but it does not need to replace the content.
 3.  **Current Foods, not old snapshots.** A Your foods row shows the Food as it
     is now: an edited User Food or Recipe shows its new name and values, and an
     Open Food Facts product shows its current device copy.
-4.  **Source on every row.** Each row shows its Food Source badge. Open Food
-    Facts rows keep the ODbL marker, and one attribution notice follows the list
-    whenever an Open Food Facts row is in it.
+4.  **Source on every row.** Each row names its Food Source in plain text in
+    its detail line, and one attribution notice follows the list whenever an
+    Open Food Facts row is in it.
 5.  **No network use while typing.** Nothing is sent as the user types. A live
     Open Food Facts request is sent only when the user taps the online row or
     uses the keyboard's search action, and only while the "Look up foods
@@ -151,7 +155,7 @@ None. Decisions made while drafting and in review are recorded in
     product is on the device.
 *   **When** they tap **Add Food** on Breakfast.
 *   **Then** the first row under "Your foods" is "Oat milk", with "Oatly", the
-    Open Food Facts badge, its kcal per 100 ml and "Last: 250 ml". They tap it.
+    detail line "Open Food Facts · 46 kcal per 100 · Last: 250 ml". They tap it.
     The log-portion screen opens with 250 ml, and they tap **Save**: two taps
     after the picker opens.
 
@@ -164,8 +168,8 @@ None. Decisions made while drafting and in review are recorded in
     "Recent" heading and no licence block.
 *   **When** they type "chobani gr" and pause.
 *   **Then** within 100 ms after the pause the list shows the bundle's matching
-    products. Each row shows its brand, the "Open Food Facts · ODbL" badge and
-    kcal per 100. Below them is the row `Search Open Food Facts online for
+    products. Each row shows its brand, then the detail line "Open Food Facts ·
+    <kcal> kcal per 100". Below them is the row `Search Open Food Facts online for
     "chobani gr"`, then the compact attribution notice.
 
 ### CUJ 3: A generic food and a logged food share a name
@@ -577,27 +581,32 @@ attribution footer replaces the top notice.
 **Rows.** Each row keeps today's `_FoodResultRow` layout: the leading origin
 icon, the name, the brand when known, and a `Wrap` of `FoodSourceBadge` (with
 `showLicense` for Open Food Facts) and the kcal-per-100 label. A row with a
-Last Portion adds a third item to the `Wrap`, "Last: <portion>", in the same
-style as the kcal label. `<portion>` is the existing Food Entry amount text,
+Last Portion adds a third part to the row's detail line, "Last: <portion>".
+The detail line is one `Text` in the secondary label style that joins, with
+" · ", the source label, the kcal label and the Last Portion when there is
+one: for example "Open Food Facts · 46 kcal per 100 · Last: 250 ml". `<portion>` is the existing Food Entry amount text,
 `'${portion.entered} ${portionUnitLabel(portion.unit)}'`, which
 `nutrition_day_view.dart` builds in `_formatFoodEntryAmount`. That expression
 moves to a public `formatPortionAmount(Portion)` in
 `apps/mobile/lib/features/nutrition/widgets/portion_text.dart`, and both the
-day view and the picker call it. Because it is a `Wrap`, the badge, the kcal
-and the Last Portion wrap onto further lines at large text scales instead of
-being cut off.
+day view and the picker call it. Because it is one wrapping `Text`, the line
+breaks onto further lines at large text scales instead of being cut off.
 
 **The attribution footer.** One rule: when the list built for the current
 filter and query (device rows and live rows together) contains at least one row
 whose `foodSource` is Open Food Facts, `OpenFoodFactsAttributionNotice(compact:
 true)` follows the last list item. Otherwise there is no footer. Its text and
 links are unchanged, and it scrolls with the list. A blank All query whose
-Your foods include an Open Food Facts Food therefore shows the footer too. Each
-Open Food Facts row also keeps its "ODbL" badge, and the log-portion screen
-keeps the full notice, the product link and the disclaimer. These three places
-together carry the attribution
+Your foods include an Open Food Facts Food therefore shows the footer too. The
+log-portion screen keeps the "Open Food Facts - ODbL" badge, the full notice,
+the product link and the disclaimer. These two places, with the About screen,
+carry the attribution
 [Open Food Facts Integration § The licence, in short](open-food-facts.md#the-licence-in-short)
-requires: the source's name, the licence and a link.
+requires: the source's name, the licence and a link. Rows name the source but
+not the licence: an earlier version put a bordered "Open Food Facts - ODbL"
+badge on every row, and in a list of Open Food Facts products (an Aisle, for
+example) it outweighed the food itself while telling most users nothing. The
+footer already names the licence for the whole list (amended 2026-11-24).
 
 ### Submitting the query
 
@@ -762,7 +771,7 @@ still pick Recent first.
 ### Alternative B: Sections per source in the All list
 
 Use labelled groups ("Your foods", "USDA", "Open Food Facts") while typing.
-This was rejected for the typed list because the badge already names the
+This was rejected for the typed list because each row already names its
 source, and labels add three non-tappable rows on a small screen. It is kept
 for the blank query, where "Your foods" is the only group and explains why
 those rows are there.
@@ -858,17 +867,18 @@ The query reads every active Food Entry once, so an index on
 *   Every new tappable row and button is at least 48 dp tall
     (`AppDimens.touchTarget`).
 *   Rows keep their whole content at a text scale of 2.0; the test checks that
-    the badge, kcal and Last Portion texts are all found and none overflows.
+    the row's detail line (source, kcal and Last Portion) is found and nothing
+    overflows.
 *   The "Your foods" label is a semantics header.
-*   Colour is never the only signal: the source is a text badge, and the origin
-    icon is decorative.
+*   Colour is never the only signal: the source is named in text, and the
+    origin icon is decorative.
 *   **The row's semantics label.** Each row is wrapped in
     `Semantics(button: true, label: <label>, excludeSemantics: true)`, so a
     screen reader reads the label once and not the child texts again. The
     label joins the parts that exist with ", ":
     `<name>, <brand>, <source label>, <kcal text>, Last <portion>`. The source
-    label is the badge's text without the licence marker (for example "Open
-    Food Facts"). The kcal text is the row's kcal label as displayed, which
+    label is the source as the detail line shows it (for example "Open Food
+    Facts"). The kcal text is the row's kcal label as displayed, which
     is "<kcal> kcal per 100" for every unit. A row with no brand or no Last
     Portion leaves that part out. Example: "Oat milk, Oatly, Open Food Facts,
     46 kcal per 100, Last 250 ml".
@@ -1225,7 +1235,8 @@ both languages.
 *   The bundle `installing` line follows the rows of a typed All search.
 *   The online row label reads `Search Open Food Facts online for "<query>"`.
 *   Accessibility: every new tappable is at least 48 dp tall. At a text scale
-    of 2.0 a row with a brand, a badge, kcal and Last Portion has no overflow.
+    of 2.0 a row with a brand and a detail line with source, kcal and Last
+    Portion has no overflow.
     The "Your foods" label is a header in semantics. A row's semantics label
     matches the template, and its child texts are not separate semantics
     nodes.
