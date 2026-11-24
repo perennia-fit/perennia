@@ -1,7 +1,7 @@
 # Lab Results
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Draft
+*   **Status:** Current
 *   **Date:** 2026-11-24
 
 Read with: [AGENTS.md](../../AGENTS.md) (invariants and conventions),
@@ -1419,7 +1419,8 @@ Overview keeps saying phase 2 is designed later.
 | `apps/mobile/lib/features/labs/controllers/lab_results_controller.dart` | Create | The Lab Results screen's state from `labTestsProvider`, plus the Progress row's count. |
 | `apps/mobile/lib/features/labs/controllers/lab_test_detail_controller.dart` | Create | Collapsed results for one Lab Test from `labResultsProvider(key)`, each with its parsed Printed Range, Default Range and position, using `UserProfileRepository.watch()`; "Other" Lab Tests parse ranges as `reference` and get no Default Range. |
 | `apps/mobile/lib/features/labs/controllers/lab_entry_controller.dart` | Create | The `CollectionDraft` state, per-row reading rules through the shared module, `previewCollection` for the warning dialog, Save through `saveCollection`, mapping `LabResultValidationException` back onto rows. |
-| `apps/mobile/lib/features/labs/widgets/lab_results_screen.dart` | Create | `LabResultsScreen` (`routeName` `/labs`) inside `ProtocolsLockGate`: the Disclosure line (reusing `ProfileDisclosureLine`, whose copy is the same), profile line, recognised-count link, **Add results**, panels, "Other", empty state. |
+| `apps/mobile/lib/data/repositories/lab_results_repository.dart` | Modify | The pre-save check is exposed as `checkCollection(CollectionDraft, {required DateTime today})`, which `saveCollection` and the entry controller share, so the sheet shows the rejects and warnings the save runs; no behaviour change. |
+| `apps/mobile/lib/features/labs/widgets/lab_results_screen.dart` | Create | `LabResultsScreen` (`routeName` `/labs`) inside `ProtocolsLockGate`: the Disclosure line (reusing `ProfileDisclosureLine`, whose copy is the same), profile line, recognised-count link, **Add results**, panels, "Other", empty state. The profile line's **Open Profile** link uses a theme color that meets WCAG AA in both themes. |
 | `apps/mobile/lib/features/labs/widgets/lab_test_detail_screen.dart` | Create | `LabTestDetailScreen` (`routeName` `/labs/test`, the Lab Test key as the route argument) inside `ProtocolsLockGate`: the dated list, and archive with its row-count confirmation under `ProtocolsLockSheetGuard`. |
 | `apps/mobile/lib/features/labs/widgets/lab_result_row.dart` | Create | One row, as in [The display](#the-display). |
 | `apps/mobile/lib/features/labs/widgets/lab_entry_sheet.dart` | Create | The entry sheet and its warning dialog (every soft warning in one list), each under `ProtocolsLockSheetGuard`; the Disclosure line at the top. |
@@ -1430,6 +1431,8 @@ Overview keeps saying phase 2 is designed later.
 | `apps/mobile/test/features/labs/lab_results_screen_test.dart` | Create | Panels in catalogue order, latest result, "Other" opens and archives, empty state, lock. |
 | `apps/mobile/test/features/labs/lab_test_detail_screen_test.dart` | Create | Comparator always shown; date-only shows no time; Printed Range beats Default Range; position sentences; `riskTarget` shows "Target" and no position; the Creatinine Default Range appears only once sex and birth year are set; archive confirmation states the row count. |
 | `apps/mobile/test/features/labs/lab_entry_sheet_test.dart` | Create | Hard reject on its row; every soft warning listed in one confirmation, including `lab_result_replaces`; unit is a fixed label; the comparator builds `entered` as `"<= 1"`; picker search matches a variant; the same Lab Test twice is rejected; one Batch saved; nothing saved if the app is killed before Save; the sheet closes and its rows are discarded when the app locks. |
+| `apps/mobile/test/features/labs/lab_test_helpers.dart` | Create | Shared set-up for the lab screen tests: a real in-memory database, real repositories, and the Protocols lock with a fake store. |
+| `apps/mobile/test/data/lab_results_repository_test.dart` | Modify | `checkCollection` returns `lab_value_implausible` as a warning and `lab_result_repeated` as an error on their rows, and reads nothing. |
 | `apps/mobile/test/features/labs/lab_accessibility_test.dart` | Create | 48 dp targets, semantics labels for the flag, position and Interim, 200% text scale, contrast in both themes. |
 | `apps/mobile/test/features/progress/progress_overview_test.dart` | Modify | The Lab results row and its count subtitle, and no Lab Test names, counts or values while locked. |
 | `apps/mobile/test/app_shell_test.dart` | Modify | Progress tile assertions include the new row. |

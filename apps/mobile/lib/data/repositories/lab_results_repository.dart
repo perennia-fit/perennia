@@ -88,41 +88,30 @@ class LabResultsRepository {
     });
   }
 
-  /// Validates and saves one collection, returning the Activity Log Batch id.
+  /// The pre-save check of [draft], by row index: hard `errors` and soft
+  /// `warnings`. Synchronous; it reads no database.
   ///
   /// Every row gets the reading rules ([validateLabResult]) and the app's
-  /// request rules: `lab_test_unknown` (field `labTestKey`) for a row with no
-  /// Lab Test or one this build's catalogue lacks, which reuses the Agent
-  /// surface's code for the same condition; and `lab_result_repeated` (field
-  /// `labTestKey`) on every row after the first that names the same Lab Test.
-  /// On any hard error this throws [LabResultValidationException] before a
-  /// transaction opens, so nothing is written. Soft warnings never block here;
-  /// the sheet shows them from [previewCollection] and [validateLabResult].
+  /// request rules that need no stored data: `lab_test_unknown` (field
+  /// `labTestKey`) for a row with no Lab Test or one this build's catalogue
+  /// lacks, which reuses the Agent surface's code for the same condition; and
+  /// `lab_result_repeated` (field `labTestKey`) on every row after the first
+  /// that names the same Lab Test. A row with no known Lab Test gets no
+  /// reading rules, which need a catalogue entry.
   ///
-  /// Then one [WriteContext] and one transaction write everything, so the
-  /// Batch holds every Lab Metric created and every Lab Result: for each row,
-  /// the live Metric with its key (lowest `sortOrder`, then lowest id) is
-  /// reused, or one is created (named and united from the catalogue, `custom`,
-  /// `scalar`, enabled, not pinned, at the next sort position). A Metric
-  /// created earlier in the same save is reused. Each Reading is manual with
-  /// source `labEntry`, anchored at `collected` as a local time with the
-  /// device's offset at that local time.
-  ///
-  /// Throws [ArgumentError] when [CollectionDraft.rows] is empty.
-  Future<String> saveCollection(
-    CollectionDraft draft, {
-    required DateTime today,
-  }) async {
-    if (draft.rows.isEmpty) {
-      throw ArgumentError.value(
-        draft.rows.length,
-        'rows',
-        'A collection needs at least one result.',
-      );
-    }
+  /// It exists so the entry sheet can show each row's errors and the
+  /// `lab_value_implausible` warnings before Save from the very code
+  /// [saveCollection] runs, so what the sheet shows and what the save
+  /// rejects cannot drift apart. `lab_result_replaces` needs stored results
+  /// and comes from [previewCollection].
+  ({
+    Map<int, List<LabValidationIssue>> errors,
+    Map<int, List<LabValidationIssue>> warnings,
+  }) checkCollection(CollectionDraft draft, {required DateTime today}) {
     final collected = draft.collected;
     final anchor = _collectedAnchor(collected);
-    final issuesByRow = <int, List<LabValidationIssue>>{};
+    final errorsByRow = <int, List<LabValidationIssue>>{};
+    final warningsByRow = <int, List<LabValidationIssue>>{};
     final seenKeys = <String>{};
     for (var index = 0; index < draft.rows.length; index++) {
       final row = draft.rows[index];
@@ -149,14 +138,52 @@ class LabResultsRepository {
           today: today,
         );
         errors.addAll(result.errors);
+        if (result.warnings.isNotEmpty) {
+          warningsByRow[index] =
+              List<LabValidationIssue>.unmodifiable(result.warnings);
+        }
       }
       if (errors.isNotEmpty) {
-        issuesByRow[index] = List<LabValidationIssue>.unmodifiable(errors);
+        errorsByRow[index] = List<LabValidationIssue>.unmodifiable(errors);
       }
     }
-    if (issuesByRow.isNotEmpty) {
-      throw LabResultValidationException(issuesByRow);
+    return (errors: errorsByRow, warnings: warningsByRow);
+  }
+
+  /// Validates and saves one collection, returning the Activity Log Batch id.
+  ///
+  /// The rows are judged by [checkCollection]. On any hard error this throws
+  /// [LabResultValidationException] before a transaction opens, so nothing is
+  /// written. Soft warnings never block here; the sheet shows them from
+  /// [checkCollection] and [previewCollection].
+  ///
+  /// Then one [WriteContext] and one transaction write everything, so the
+  /// Batch holds every Lab Metric created and every Lab Result: for each row,
+  /// the live Metric with its key (lowest `sortOrder`, then lowest id) is
+  /// reused, or one is created (named and united from the catalogue, `custom`,
+  /// `scalar`, enabled, not pinned, at the next sort position). A Metric
+  /// created earlier in the same save is reused. Each Reading is manual with
+  /// source `labEntry`, anchored at `collected` as a local time with the
+  /// device's offset at that local time.
+  ///
+  /// Throws [ArgumentError] when [CollectionDraft.rows] is empty.
+  Future<String> saveCollection(
+    CollectionDraft draft, {
+    required DateTime today,
+  }) async {
+    if (draft.rows.isEmpty) {
+      throw ArgumentError.value(
+        draft.rows.length,
+        'rows',
+        'A collection needs at least one result.',
+      );
     }
+    final check = checkCollection(draft, today: today);
+    if (check.errors.isNotEmpty) {
+      throw LabResultValidationException(check.errors);
+    }
+    final collected = draft.collected;
+    final anchor = _collectedAnchor(collected);
 
     final context = _repositories._writeContexts.create(actor: 'app');
     return _database.transaction(() async {

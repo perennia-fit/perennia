@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/labs/lab_result.dart';
+import 'package:perennia/domain/labs/lab_result_validation.dart';
 import 'package:perennia/domain/labs/lab_test_catalogue.generated.dart';
 import 'package:perennia/features/labs/controllers/lab_results_providers.dart';
 
@@ -456,6 +457,35 @@ void main() {
       );
       final latest = (await labs.watchLabResults('shbg').first).first;
       expect(latest.lab.fasting, isNull);
+    });
+  });
+
+  group('checkCollection', () {
+    test(
+        'returns lab_value_implausible as a warning and lab_result_repeated '
+        'as an error, and reads nothing', () async {
+      final check = labs.checkCollection(
+        _draft(
+          rows: const <CollectionDraftRow>[
+            CollectionDraftRow(labTestKey: 'sodium', value: '800'),
+            CollectionDraftRow(labTestKey: 'shbg', value: '40'),
+            CollectionDraftRow(labTestKey: 'shbg', value: '41'),
+          ],
+        ),
+        today: today,
+      );
+
+      String rules(List<LabValidationIssue> issues) =>
+          issues.map((issue) => '${issue.rule}@${issue.field}').join(',');
+      expect(
+        check.warnings.map((index, issues) => MapEntry(index, rules(issues))),
+        <int, String>{0: 'lab_value_implausible@entered'},
+      );
+      expect(
+        check.errors.map((index, issues) => MapEntry(index, rules(issues))),
+        <int, String>{2: 'lab_result_repeated@labTestKey'},
+      );
+      expect(await allReadings(), isEmpty);
     });
   });
 

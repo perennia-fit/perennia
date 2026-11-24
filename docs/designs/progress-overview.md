@@ -10,8 +10,9 @@
 
 Perennia's root navigation is **Today | Progress | Library**. The Progress
 root currently shows only two links: **Body** (the Body Tracker) and **Health
-metrics** (the Metrics explorer). Most of the app's progress views already
-exist, but they sit elsewhere:
+metrics** (the Metrics explorer); [lab-results.md](lab-results.md) later adds a
+third, **Lab results**, after Health metrics. Most of the app's progress views
+already exist, but they sit elsewhere:
 
 *   per-exercise graphs and records live in Exercise Overview, reached only
     from an exercise;
@@ -107,7 +108,8 @@ Each answer currently takes several screens:
 1.  Progress Overview replaces the Progress root's two links with summary
     cards, in this order: This week, Trained days, Time by Focus, Key
     exercises, New bests, Body, Protocols, then the existing links to Body
-    Tracker and Health metrics.
+    Tracker and Health metrics (and **Lab results**, added by
+    [lab-results.md](lab-results.md)).
 2.  One period control (4 weeks, 12 weeks, 1 year) sets every card except
     This week.
 3.  **This week card:** a Training Day Status for each day of the current
@@ -1027,7 +1029,10 @@ below it once, when its data arrives.
 7.  **Protocols.** As D7.
 8.  **More.** The two existing `SettingsNavTile`s for Body Tracker and Health
     metrics, unchanged, with new keys `ProgressOverview.bodyTrackerTileKey`
-    and `ProgressOverview.healthMetricsTileKey`.
+    and `ProgressOverview.healthMetricsTileKey`. [lab-results.md](lab-results.md)
+    adds a third link, **Lab results**, after Health metrics, with key
+    `ProgressOverview.labResultsTileKey`; while the Protocols lock is locked it
+    shows only a lock icon.
 
 **Charts.**
 *   The sparklines in Key exercises and Body use a new `ProgressSparkline`

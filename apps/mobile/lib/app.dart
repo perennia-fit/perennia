@@ -13,6 +13,8 @@ import 'features/focus/repositories/focus_feature_repository.dart';
 import 'features/home/repositories/home_repository.dart';
 import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
+import 'features/labs/widgets/lab_results_screen.dart';
+import 'features/labs/widgets/lab_test_detail_screen.dart';
 import 'features/metrics/widgets/metrics_screen.dart';
 import 'features/nutrition/widgets/nutrition_day_view.dart';
 import 'features/onboarding/widgets/onboarding_launcher.dart';
@@ -315,6 +317,16 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
               ),
             );
           }
+          if (settings.name == LabTestDetailScreen.routeName) {
+            final labTestKey = settings.arguments;
+            if (labTestKey is! String) {
+              return null;
+            }
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => LabTestDetailScreen(labTestKey: labTestKey),
+            );
+          }
           if (settings.name == RoutinePlanEditorScreen.routeName) {
             final routineId = settings.arguments;
             if (routineId is! String) {
@@ -333,6 +345,7 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
           ActivityFeedScreen.routeName: (_) => const ActivityFeedScreen(),
           BodyTrackerScreen.routeName: (_) => const BodyTrackerScreen(),
           MetricsScreen.routeName: (_) => const MetricsScreen(),
+          LabResultsScreen.routeName: (_) => const LabResultsScreen(),
           NutritionDayView.routeName: (_) => const NutritionDayView(),
           SignInScreen.routeName: (_) => const SignInScreen(),
           RoutinePlanListScreen.routeName: (_) => const RoutinePlanListScreen(),
