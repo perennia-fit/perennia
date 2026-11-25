@@ -397,10 +397,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+    // Rows name the source in plain text; the licence lives in the footer.
     expect(
       find.byKey(
         NutritionAttributionKeys.foodSourceBadge(FoodSource.openFoodFacts),
       ),
+      findsNothing,
+    );
+    expect(
+      find.textContaining(RegExp(r'^Open Food Facts · ')),
       findsOneWidget,
     );
     expect(find.textContaining('ODbL'), findsAtLeastNWidgets(1));
@@ -461,7 +466,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Oatly'), findsOneWidget);
-    expect(find.text('Last: 250 ml'), findsOneWidget);
+    expect(find.textContaining('· Last: 250 ml'), findsOneWidget);
     expect(find.byKey(AddFoodPicker.emptyStateKey), findsNothing);
     _expectBelow(
       tester,
@@ -544,9 +549,10 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Oatly'), findsOneWidget);
-    expect(find.text('Open Food Facts - ODbL'), findsOneWidget);
-    expect(find.text('46 kcal per 100'), findsOneWidget);
-    expect(find.text('Last: 250 ml'), findsOneWidget);
+    expect(
+      find.text('Open Food Facts · 46 kcal per 100 · Last: 250 ml'),
+      findsOneWidget,
+    );
     final row = find.byKey(AddFoodPicker.resultKey(_oatMilk()));
     expect(
       tester.getSize(row).height,
