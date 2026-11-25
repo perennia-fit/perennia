@@ -149,6 +149,31 @@ void main() {
   ProviderContainer container(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(find.byKey(openKey)));
 
+  testWidgets('the collection date shows its year', (tester) async {
+    await pumpHost(tester);
+    await openSheet(tester);
+    await chooseToday(tester);
+
+    // A report from an earlier year must not read as this year's.
+    expect(find.text('Wed, Nov 25, 2026'), findsOneWidget);
+    await harness.unmount(tester);
+  });
+
+  testWidgets('choosing a Lab Test does not hand focus back to a text field',
+      (tester) async {
+    await pumpHost(tester);
+    await openSheet(tester);
+    await enter(tester, LabEntrySheet.labNameFieldKey, 'A lab');
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await chooseLabTest(tester, 0, 'shbg', 'shbg');
+
+    // The picker's route would restore the lab name's focus, and with it
+    // the keyboard, over the row the user is filling.
+    expect(tester.testTextInput.isVisible, isFalse);
+    await harness.unmount(tester);
+  });
+
   testWidgets('a hard reject shows on its row and writes nothing',
       (tester) async {
     await pumpHost(tester);

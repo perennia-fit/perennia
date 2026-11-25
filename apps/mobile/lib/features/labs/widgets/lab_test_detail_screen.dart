@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/labs/lab_test_catalogue.generated.dart';
 import '../../../l10n/l10n.dart';
+import '../../activity/undo_conflict_message.dart';
 import '../../../theme/theme.dart';
 import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../controllers/lab_results_providers.dart';
@@ -25,6 +28,7 @@ class LabTestDetailScreen extends StatelessWidget {
 
   static const archiveConfirmKey = Key('labs.detail.archiveConfirm');
   static const emptyKey = Key('labs.detail.empty');
+  static const archivedSnackBarKey = Key('labs.detail.archivedSnackBar');
 
   static Key resultRowKey(String readingId) =>
       Key('labs.detail.result.$readingId');
@@ -37,6 +41,7 @@ class LabTestDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ProtocolsLockGate(
+      subject: ProtocolsLockSubject.labResults,
       child: _LabTestDetailScaffold(labTestKey: labTestKey),
     );
   }
@@ -118,7 +123,9 @@ class _LabTestDetailScaffold extends ConsumerWidget {
 
   /// Confirms, stating how many saved copies go with it, then archives every
   /// live row of the result's identity in one Batch
-  /// ([LabResultsRepository.archiveResult]).
+  /// ([LabResultsRepository.archiveResult]) and offers Undo of that Batch for
+  /// 4 s, as other archive and remove actions in the app do. The bar names no
+  /// Lab Test or value, so it is safe to show over the lock screen.
   Future<void> _archive(
     BuildContext context,
     WidgetRef ref,
@@ -149,8 +156,32 @@ class _LabTestDetailScaffold extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(labResultsRepositoryProvider).archiveResult(
-          record.readingId,
-        );
+    final activityLog = ref.read(trainingRepositoriesProvider).activityLog;
+    final batchId = await ref
+        .read(labResultsRepositoryProvider)
+        .archiveResult(record.readingId);
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..removeCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          key: LabTestDetailScreen.archivedSnackBarKey,
+          content: Text(l10n.labResultArchived),
+          duration: const Duration(seconds: 4),
+          // An action would otherwise keep the bar up until dismissed.
+          persist: false,
+          action: SnackBarAction(
+            label: l10n.labResultArchiveUndo,
+            onPressed: () => unawaited(() async {
+              final result = await activityLog.undoBatch(batchId);
+              if (!result.hasConflicts) return;
+              messenger.showSnackBar(
+                SnackBar(content: Text(undoConflictMessage(l10n, result))),
+              );
+            }()),
+          ),
+        ),
+      );
   }
 }

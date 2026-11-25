@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../domain/labs/lab_result.dart';
 import '../../../domain/labs/lab_result_validation.dart';
@@ -262,7 +263,11 @@ class _LabEntrySheetState extends ConsumerState<LabEntrySheet> {
                   key: LabEntrySheet.dateFieldKey,
                   text: date == null
                       ? l10n.labEntryDatePrompt
-                      : localizations.formatMediumDate(date),
+                      // With the year: a report from an earlier year must not
+                      // read as this year's ("Fri, Nov 15, 2024").
+                      : DateFormat.yMMMEd(
+                          Localizations.localeOf(context).toLanguageTag(),
+                        ).format(date),
                   isPrompt: date == null,
                   icon: Icons.calendar_today_outlined,
                   hasError: dateErrors.isNotEmpty,
@@ -442,6 +447,10 @@ class _ResultRowCardState extends ConsumerState<_ResultRowCard> {
       ref.read(labEntryControllerProvider.notifier);
 
   Future<void> _chooseLabTest() async {
+    // Drop focus first: a route restores the focus it found when it closes,
+    // so a text field focused before the picker would take it back and open
+    // the keyboard over the sheet.
+    FocusManager.instance.primaryFocus?.unfocus();
     final key = await showLabTestPicker(context);
     if (key == null || !mounted) {
       return;

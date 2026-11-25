@@ -19,10 +19,21 @@ import '../services/biometric_authenticator.dart';
 ///
 /// When no lock is configured (`disabled`), this renders [child] directly —
 /// the surface behaves exactly as it did before this slice.
+/// What a [ProtocolsLockGate] guards, which names its lock screen. Lab
+/// Results share the Protocols lock (docs/designs/lab-results.md, "The
+/// lock"), but a user who tapped Lab results should see that name, not
+/// "Protocols", above the unlock form.
+enum ProtocolsLockSubject { protocols, labResults }
+
 class ProtocolsLockGate extends ConsumerWidget {
-  const ProtocolsLockGate({super.key, required this.child});
+  const ProtocolsLockGate({
+    super.key,
+    required this.child,
+    this.subject = ProtocolsLockSubject.protocols,
+  });
 
   final Widget child;
+  final ProtocolsLockSubject subject;
 
   static const lockScreenKey = Key('protocols.lock.screen');
 
@@ -37,12 +48,16 @@ class ProtocolsLockGate extends ConsumerWidget {
       return Scaffold(backgroundColor: context.colors.background);
     }
     if (lockState.isUnavailable) {
-      return const _ProtocolsLockUnavailableScreen(
+      return _ProtocolsLockUnavailableScreen(
         key: ProtocolsLockGate.lockScreenKey,
+        subject: subject,
       );
     }
     if (lockState.isLocked) {
-      return const _ProtocolsLockScreen(key: ProtocolsLockGate.lockScreenKey);
+      return _ProtocolsLockScreen(
+        key: ProtocolsLockGate.lockScreenKey,
+        subject: subject,
+      );
     }
     return child;
   }
@@ -99,8 +114,16 @@ class ProtocolsLockSheetGuard extends ConsumerWidget {
   }
 }
 
+String _lockAppBarTitle(BuildContext context, ProtocolsLockSubject subject) =>
+    switch (subject) {
+      ProtocolsLockSubject.protocols => context.l10n.protocolsDomainTitle,
+      ProtocolsLockSubject.labResults => context.l10n.labResultsTitle,
+    };
+
 class _ProtocolsLockUnavailableScreen extends StatelessWidget {
-  const _ProtocolsLockUnavailableScreen({super.key});
+  const _ProtocolsLockUnavailableScreen({super.key, required this.subject});
+
+  final ProtocolsLockSubject subject;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +132,7 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: Text(context.l10n.protocolsDomainTitle),
+        title: Text(_lockAppBarTitle(context, subject)),
       ),
       body: SafeArea(
         child: Center(
@@ -147,7 +170,9 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
 }
 
 class _ProtocolsLockScreen extends StatelessWidget {
-  const _ProtocolsLockScreen({super.key});
+  const _ProtocolsLockScreen({super.key, required this.subject});
+
+  final ProtocolsLockSubject subject;
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +181,7 @@ class _ProtocolsLockScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: Text(context.l10n.protocolsDomainTitle),
+        title: Text(_lockAppBarTitle(context, subject)),
       ),
       // A locked surface renders NO Dose/Compound content whatsoever — only
       // this neutral unlock prompt (hide-at-a-glance: a lent phone, a
@@ -172,12 +197,23 @@ class _ProtocolsLockScreen extends StatelessWidget {
                 Icon(Icons.lock_outline, size: 48, color: colors.textSecondary),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  context.l10n.protocolsLockedTitle,
+                  switch (subject) {
+                    ProtocolsLockSubject.protocols =>
+                      context.l10n.protocolsLockedTitle,
+                    ProtocolsLockSubject.labResults =>
+                      context.l10n.labResultsLockedTitle,
+                  },
+                  textAlign: TextAlign.center,
                   style:
                       context.textStyles.h2.copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(height: AppDimens.base),
-                const ProtocolsUnlockForm(),
+                switch (subject) {
+                  ProtocolsLockSubject.protocols => const ProtocolsUnlockForm(),
+                  ProtocolsLockSubject.labResults => ProtocolsUnlockForm(
+                      message: context.l10n.labResultsLockedMessage,
+                    ),
+                },
               ],
             ),
           ),

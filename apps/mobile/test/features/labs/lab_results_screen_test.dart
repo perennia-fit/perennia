@@ -240,6 +240,13 @@ void main() {
     expect(find.text('Full blood count'), findsNothing);
     expect(find.textContaining('150'), findsNothing);
     expect(find.byKey(LabResultsScreen.addResultsButtonKey), findsNothing);
+    // The lock screen names what the user opened, not "Protocols".
+    expect(find.text('Lab results'), findsOneWidget);
+    expect(find.text('Lab results are locked'), findsOneWidget);
+    expect(
+      find.text('Lab results use the Protocols lock. Unlock to view them.'),
+      findsOneWidget,
+    );
     await harness.unmount(tester);
   });
 }
