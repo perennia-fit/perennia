@@ -642,6 +642,15 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentLabTests(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/lab-tests",
+      expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
   async listAgentMetricReadings(input = {}, options = {}) {
     return this.request({
       method: "GET",

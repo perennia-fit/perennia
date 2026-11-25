@@ -13,6 +13,14 @@ import {
   isWholeNumber
 } from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
+import { labTestByKey, type LabTestEntry } from "./data/lab-test-catalogue.generated.js";
+import {
+  collectedLocalDateTime,
+  formatEntered,
+  isValidCollected,
+  parseEntered,
+  resolveLabUnit
+} from "./lab-results.js";
 import type {
   DimensionId,
   ExerciseLoadMode,
@@ -3095,4 +3103,239 @@ function cadenceWindowForbiddenIssue(): AgentSetValidationIssue {
     message: "Only a rotating Cadence may have a window.",
     limit: "null"
   });
+}
+
+// ---------------------------------------------------------------------------
+// Lab Result reading rules (docs/designs/lab-results.md, Validation). The app
+// twin is apps/mobile/lib/domain/labs/lab_result_validation.dart; the m42
+// golden vectors pin both, rule for rule and in the same order.
+// ---------------------------------------------------------------------------
+
+/** The longest text fields, in UTF-16 code units after trimming. */
+export const LAB_TEXT_MAX_LENGTHS = {
+  printedRange: 120,
+  printedFlag: 8,
+  labName: 80
+} as const;
+
+/** The time anchor's offset range, inclusive. */
+export const LAB_TIMEZONE_OFFSET_MINUTES = { min: -720, max: 840 } as const;
+
+/** One reading as a writer is about to save it, before normalisation. */
+export type LabResultValidationInput = {
+  labTestKey: string;
+  entered: string;
+  enteredUnit: string;
+  /** The `lab` object as sent, or null. */
+  lab?: Record<string, unknown> | null;
+  /** The Metric Reading time anchor as sent. */
+  timeAnchor: Record<string, unknown>;
+};
+
+/** `field` is the wire path, for example `lab.collected` or `entered`. */
+export type LabResultValidationIssue = {
+  rule: string;
+  field: string;
+  message: string;
+};
+
+export type LabResultValidationResult = {
+  accepted: boolean;
+  errors: LabResultValidationIssue[];
+  warnings: LabResultValidationIssue[];
+};
+
+/**
+ * Validates one Lab Result reading against the catalogue entry it names.
+ * `today` is a `YYYY-MM-DD` date (the server's UTC date, the device's local
+ * one); a collection is in the future when its date is later than today plus
+ * one day. An unknown `labTestKey` throws: `lab_test_unknown` is a Request
+ * rule, checked by the writer before it calls this.
+ *
+ * Issue order and skipping, shared with the app:
+ *
+ * - issues follow the Validation table's row order: collected_missing,
+ *   collected_invalid, collected_future, time_anchor_mismatch,
+ *   unit_not_accepted, value_invalid, value_out_of_bounds, value_implausible,
+ *   text_too_long (printedRange, printedFlag, labName), report_status_invalid,
+ *   fasting_invalid;
+ * - the future and time-anchor checks are skipped when `collected` is missing
+ *   or invalid;
+ * - the bounds checks run only when `entered` parses, a Limit Result's bound
+ *   being checked as the value, and `lab_value_implausible` is skipped when
+ *   `lab_value_out_of_bounds` fired;
+ * - `entered` is trimmed, then must be a bare number or an ASCII comparator,
+ *   exactly one space and a number (`≤ 1` and `<1` are rejected here even
+ *   though the normaliser accepts them);
+ * - text lengths count UTF-16 code units after trimming, and a blank text
+ *   field is valid (the normaliser writes it as null). A text field that is
+ *   not a string is left to the request schema and not judged here.
+ */
+export function validateLabResult(
+  input: LabResultValidationInput,
+  { today }: { today: string }
+): LabResultValidationResult {
+  const labTest = labTestByKey(input.labTestKey);
+  if (labTest === null) {
+    throw new RangeError("Unknown Lab Test.");
+  }
+  const errors: LabResultValidationIssue[] = [];
+  const warnings: LabResultValidationIssue[] = [];
+  const lab = isLabRecord(input.lab) ? input.lab : null;
+
+  const collected = lab?.collected;
+  if (collected === undefined || collected === null) {
+    errors.push({
+      rule: "lab_collected_missing",
+      field: "lab.collected",
+      message: "Give the collection date."
+    });
+  } else if (typeof collected !== "string" || !isValidCollected(collected)) {
+    errors.push({
+      rule: "lab_collected_invalid",
+      field: "lab.collected",
+      message: "Collection date must be YYYY-MM-DD or YYYY-MM-DDTHH:mm."
+    });
+  } else {
+    if (collected.slice(0, 10) > latestCollectedDate(today)) {
+      errors.push({
+        rule: "lab_collected_future",
+        field: "lab.collected",
+        message: "Collection date can't be more than one day in the future."
+      });
+    }
+    if (!labTimeAnchorMatches(input.timeAnchor, collected)) {
+      errors.push({
+        rule: "lab_time_anchor_mismatch",
+        field: "timeAnchor",
+        message: "timeAnchor.localDateTime must match lab.collected."
+      });
+    }
+  }
+
+  if (typeof input.enteredUnit !== "string" || resolveLabUnit(labTest, input.enteredUnit) === null) {
+    errors.push({
+      rule: "lab_unit_not_accepted",
+      field: "enteredUnit",
+      message: `Unit not accepted. Use ${labUnitList(labTest)}.`
+    });
+  }
+
+  const value =
+    typeof input.entered === "string" ? canonicalEnteredNumber(input.entered.trim()) : null;
+  if (value === null) {
+    errors.push({
+      rule: "lab_value_invalid",
+      field: "entered",
+      message: "Enter a number, optionally after <, <=, > or >=."
+    });
+  } else if (!withinBounds(value, labTest.hardBounds)) {
+    const { min, max } = labTest.hardBounds;
+    errors.push({
+      rule: "lab_value_out_of_bounds",
+      field: "entered",
+      message: `Value must be between ${min} and ${max} ${labTest.unit}.`
+    });
+  } else if (labTest.plausibleBounds !== null && !withinBounds(value, labTest.plausibleBounds)) {
+    warnings.push({
+      rule: "lab_value_implausible",
+      field: "entered",
+      message: "Value is unusual for this Lab Test. Check it before saving."
+    });
+  }
+
+  for (const key of ["printedRange", "printedFlag", "labName"] as const) {
+    const text = lab?.[key];
+    if (typeof text === "string" && text.trim().length > LAB_TEXT_MAX_LENGTHS[key]) {
+      errors.push({
+        rule: "lab_text_too_long",
+        field: `lab.${key}`,
+        message: `lab.${key} is too long.`
+      });
+    }
+  }
+
+  const reportStatus = lab?.reportStatus;
+  if (
+    reportStatus !== undefined &&
+    reportStatus !== null &&
+    reportStatus !== "final" &&
+    reportStatus !== "interim"
+  ) {
+    errors.push({
+      rule: "lab_report_status_invalid",
+      field: "lab.reportStatus",
+      message: "Report status must be final or interim."
+    });
+  }
+  const fasting = lab?.fasting;
+  if (fasting !== undefined && fasting !== null && fasting !== true) {
+    errors.push({
+      rule: "lab_fasting_invalid",
+      field: "lab.fasting",
+      message: "Fasting must be true or empty."
+    });
+  }
+
+  return { accepted: errors.length === 0, errors, warnings };
+}
+
+function isLabRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `YYYY-MM-DD` of the day after `today`: the latest collection date accepted. */
+function latestCollectedDate(today: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (match === null) {
+    throw new RangeError("today must be YYYY-MM-DD.");
+  }
+  const latest = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1)
+  );
+  return latest.toISOString().slice(0, 10);
+}
+
+/**
+ * Whether `timeAnchor` is exactly a `localDateTime` equal to `collected`
+ * expanded (`T12:00:00` for a date, `:00` seconds for a time) plus a whole
+ * `timezoneOffsetMinutes` from -720 to 840, with no other non-null key.
+ */
+function labTimeAnchorMatches(timeAnchor: unknown, collected: string): boolean {
+  if (!isLabRecord(timeAnchor)) return false;
+  for (const [key, value] of Object.entries(timeAnchor)) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      key !== "localDateTime" &&
+      key !== "timezoneOffsetMinutes"
+    ) {
+      return false;
+    }
+  }
+  if (timeAnchor.localDateTime !== collectedLocalDateTime(collected)) return false;
+  const offset = timeAnchor.timezoneOffsetMinutes;
+  return (
+    typeof offset === "number" &&
+    Number.isInteger(offset) &&
+    offset >= LAB_TIMEZONE_OFFSET_MINUTES.min &&
+    offset <= LAB_TIMEZONE_OFFSET_MINUTES.max
+  );
+}
+
+/** The number `trimmed` states, or its bound; null unless it is canonical. */
+function canonicalEnteredNumber(trimmed: string): number | null {
+  const parsed = parseEntered(trimmed);
+  if (parsed === null) return null;
+  if (trimmed !== formatEntered(parsed.comparator, parsed.number)) return null;
+  return Number(parsed.number);
+}
+
+function withinBounds(value: number, bounds: { min: number; max: number }): boolean {
+  return value >= bounds.min && value <= bounds.max;
+}
+
+/** The Lab Test's unit, then its aliases, as the message lists them. */
+function labUnitList(labTest: LabTestEntry): string {
+  return [labTest.unit, ...labTest.unitAliases].join(", ");
 }

@@ -526,6 +526,15 @@ export {
   type AgentMealTypesResponse
 } from "./agent-meal-types.js";
 export {
+  AGENT_LAB_TESTS_DESCRIPTION,
+  AgentLabTestListSchema,
+  AgentLabTestSchema,
+  agentLabTestsRoute,
+  listAgentLabTests,
+  type AgentLabTest,
+  type AgentLabTestList
+} from "./agent-lab-tests.js";
+export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
   CALORIES_BURNED_METRIC_NAME,
@@ -1144,7 +1153,11 @@ export {
   type DoseUnit,
   type UserProfileSectionName,
   type UserProfileValidationIssue,
-  type UserProfileValidationResult
+  type UserProfileValidationResult,
+  validateLabResult,
+  type LabResultValidationInput,
+  type LabResultValidationIssue,
+  type LabResultValidationResult
 } from "./agent-validation.js";
 export { localDateAtOffset } from "./timezone.js";
 export {
@@ -1461,6 +1474,24 @@ export {
   type MetricReadingNormalizationInput,
   type NormalizedMetricReading
 } from "./metric-reading-normalization.js";
+export {
+  LAB_COMPARATORS,
+  collapseLabResults,
+  collectedLocalDateTime,
+  decodeLab,
+  encodeLab,
+  foldUnit,
+  formatEntered,
+  isValidCollected,
+  parseEntered,
+  resolveLabUnit,
+  type KnownReportStatus,
+  type LabComparator,
+  type LabFields,
+  type LabLimit,
+  type LabReadingRef,
+  type ReportStatus
+} from "./lab-results.js";
 export { createOpenApiDocument } from "./openapi.js";
 export {
   DEFAULT_RATE_LIMIT_ENFORCE,

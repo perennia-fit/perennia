@@ -12358,6 +12358,12 @@ class $MetricsTable extends Metrics with TableInfo<$MetricsTable, MetricRow> {
   late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
       'sort_order', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _labTestKeyMeta =
+      const VerificationMeta('labTestKey');
+  @override
+  late final GeneratedColumn<String> labTestKey = GeneratedColumn<String>(
+      'lab_test_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -12398,6 +12404,7 @@ class $MetricsTable extends Metrics with TableInfo<$MetricsTable, MetricRow> {
         enabled,
         pinned,
         sortOrder,
+        labTestKey,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -12470,6 +12477,12 @@ class $MetricsTable extends Metrics with TableInfo<$MetricsTable, MetricRow> {
     } else if (isInserting) {
       context.missing(_sortOrderMeta);
     }
+    if (data.containsKey('lab_test_key')) {
+      context.handle(
+          _labTestKeyMeta,
+          labTestKey.isAcceptableOrUnknown(
+              data['lab_test_key']!, _labTestKeyMeta));
+    }
     if (data.containsKey('sync_device_id')) {
       context.handle(
           _syncDeviceIdMeta,
@@ -12521,6 +12534,8 @@ class $MetricsTable extends Metrics with TableInfo<$MetricsTable, MetricRow> {
           .read(DriftSqlType.bool, data['${effectivePrefix}pinned'])!,
       sortOrder: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      labTestKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}lab_test_key']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -12549,6 +12564,11 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
   final bool enabled;
   final bool pinned;
   final int sortOrder;
+
+  /// The Lab Test this Metric holds results for; null for every other
+  /// Metric. Write-once: once non-null it never changes, whatever a pull,
+  /// an undo or a restore carries (docs/designs/lab-results.md, Storage).
+  final String? labTestKey;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -12564,6 +12584,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       required this.enabled,
       required this.pinned,
       required this.sortOrder,
+      this.labTestKey,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -12585,6 +12606,9 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
     map['enabled'] = Variable<bool>(enabled);
     map['pinned'] = Variable<bool>(pinned);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || labTestKey != null) {
+      map['lab_test_key'] = Variable<String>(labTestKey);
+    }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -12612,6 +12636,9 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       enabled: Value(enabled),
       pinned: Value(pinned),
       sortOrder: Value(sortOrder),
+      labTestKey: labTestKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(labTestKey),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -12637,6 +12664,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       enabled: serializer.fromJson<bool>(json['enabled']),
       pinned: serializer.fromJson<bool>(json['pinned']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      labTestKey: serializer.fromJson<String?>(json['labTestKey']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -12658,6 +12686,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       'enabled': serializer.toJson<bool>(enabled),
       'pinned': serializer.toJson<bool>(pinned),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'labTestKey': serializer.toJson<String?>(labTestKey),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -12676,6 +12705,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
           bool? enabled,
           bool? pinned,
           int? sortOrder,
+          Value<String?> labTestKey = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -12693,6 +12723,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
         enabled: enabled ?? this.enabled,
         pinned: pinned ?? this.pinned,
         sortOrder: sortOrder ?? this.sortOrder,
+        labTestKey: labTestKey.present ? labTestKey.value : this.labTestKey,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -12715,6 +12746,8 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
       pinned: data.pinned.present ? data.pinned.value : this.pinned,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      labTestKey:
+          data.labTestKey.present ? data.labTestKey.value : this.labTestKey,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -12739,6 +12772,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
           ..write('enabled: $enabled, ')
           ..write('pinned: $pinned, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('labTestKey: $labTestKey, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -12759,6 +12793,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
       enabled,
       pinned,
       sortOrder,
+      labTestKey,
       syncDeviceId,
       syncPreviouslySynced,
       updatedAt,
@@ -12777,6 +12812,7 @@ class MetricRow extends DataClass implements Insertable<MetricRow> {
           other.enabled == this.enabled &&
           other.pinned == this.pinned &&
           other.sortOrder == this.sortOrder &&
+          other.labTestKey == this.labTestKey &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -12794,6 +12830,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
   final Value<bool> enabled;
   final Value<bool> pinned;
   final Value<int> sortOrder;
+  final Value<String?> labTestKey;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -12810,6 +12847,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
     this.enabled = const Value.absent(),
     this.pinned = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.labTestKey = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -12827,6 +12865,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
     this.enabled = const Value.absent(),
     this.pinned = const Value.absent(),
     required int sortOrder,
+    this.labTestKey = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -12850,6 +12889,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
     Expression<bool>? enabled,
     Expression<bool>? pinned,
     Expression<int>? sortOrder,
+    Expression<String>? labTestKey,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -12867,6 +12907,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
       if (enabled != null) 'enabled': enabled,
       if (pinned != null) 'pinned': pinned,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (labTestKey != null) 'lab_test_key': labTestKey,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -12887,6 +12928,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
       Value<bool>? enabled,
       Value<bool>? pinned,
       Value<int>? sortOrder,
+      Value<String?>? labTestKey,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -12903,6 +12945,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
       enabled: enabled ?? this.enabled,
       pinned: pinned ?? this.pinned,
       sortOrder: sortOrder ?? this.sortOrder,
+      labTestKey: labTestKey ?? this.labTestKey,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -12944,6 +12987,9 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (labTestKey.present) {
+      map['lab_test_key'] = Variable<String>(labTestKey.value);
+    }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
     }
@@ -12976,6 +13022,7 @@ class MetricsCompanion extends UpdateCompanion<MetricRow> {
           ..write('enabled: $enabled, ')
           ..write('pinned: $pinned, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('labTestKey: $labTestKey, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -25089,6 +25136,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       'CREATE INDEX measurement_entries_measured_at_index ON measurement_entries (measured_at)');
   late final Index metricsSortOrderIndex = Index('metrics_sort_order_index',
       'CREATE INDEX metrics_sort_order_index ON metrics (sort_order)');
+  late final Index metricsLabTestKeyIndex = Index('metrics_lab_test_key_index',
+      'CREATE INDEX metrics_lab_test_key_index ON metrics (lab_test_key)');
   late final Index metricReadingsMetricIdIndex = Index(
       'metric_readings_metric_id_index',
       'CREATE INDEX metric_readings_metric_id_index ON metric_readings (metric_id)');
@@ -25240,6 +25289,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         measurementEntriesMeasurementIdIndex,
         measurementEntriesMeasuredAtIndex,
         metricsSortOrderIndex,
+        metricsLabTestKeyIndex,
         metricReadingsMetricIdIndex,
         metricReadingsAtTimeIndex,
         metricReadingsSourceExternalIdIndex,
@@ -33345,6 +33395,7 @@ typedef $$MetricsTableCreateCompanionBuilder = MetricsCompanion Function({
   Value<bool> enabled,
   Value<bool> pinned,
   required int sortOrder,
+  Value<String?> labTestKey,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -33362,6 +33413,7 @@ typedef $$MetricsTableUpdateCompanionBuilder = MetricsCompanion Function({
   Value<bool> enabled,
   Value<bool> pinned,
   Value<int> sortOrder,
+  Value<String?> labTestKey,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -33445,6 +33497,9 @@ class $$MetricsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get labTestKey => $composableBuilder(
+      column: $table.labTestKey, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -33544,6 +33599,9 @@ class $$MetricsTableOrderingComposer
   ColumnOrderings<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get labTestKey => $composableBuilder(
+      column: $table.labTestKey, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -33597,6 +33655,9 @@ class $$MetricsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get labTestKey => $composableBuilder(
+      column: $table.labTestKey, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -33689,6 +33750,7 @@ class $$MetricsTableTableManager extends RootTableManager<
             Value<bool> enabled = const Value.absent(),
             Value<bool> pinned = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
+            Value<String?> labTestKey = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -33706,6 +33768,7 @@ class $$MetricsTableTableManager extends RootTableManager<
             enabled: enabled,
             pinned: pinned,
             sortOrder: sortOrder,
+            labTestKey: labTestKey,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33723,6 +33786,7 @@ class $$MetricsTableTableManager extends RootTableManager<
             Value<bool> enabled = const Value.absent(),
             Value<bool> pinned = const Value.absent(),
             required int sortOrder,
+            Value<String?> labTestKey = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -33740,6 +33804,7 @@ class $$MetricsTableTableManager extends RootTableManager<
             enabled: enabled,
             pinned: pinned,
             sortOrder: sortOrder,
+            labTestKey: labTestKey,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,

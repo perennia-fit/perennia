@@ -13,15 +13,56 @@ void main() {
       final cases = vector['cases']! as List<Object?>;
 
       expect(cases, isNotEmpty);
+      bool isRejected(Object? caseObject) =>
+          ((caseObject! as Map<String, Object?>)['expected']!
+              as Map<String, Object?>)['rejected'] ==
+          true;
+      expect(
+        cases.any(isRejected),
+        isTrue,
+        reason: 'm12 has at least one rejected case',
+      );
+      expect(
+        cases.any((caseObject) => !isRejected(caseObject)),
+        isTrue,
+        reason: 'm12 has at least one accepted case',
+      );
+      expect(
+        cases.any(
+          (caseObject) =>
+              (((caseObject! as Map<String, Object?>)['input']!
+                      as Map<String, Object?>)['metric']!
+                  as Map<String, Object?>)['labTestKey'] is String,
+        ),
+        isTrue,
+        reason: 'm12 has at least one Lab Metric case',
+      );
       for (final caseObject in cases) {
         final caseData = caseObject! as Map<String, Object?>;
+        final name = caseData['name']! as String;
         final input = caseData['input']! as Map<String, Object?>;
         final expected = caseData['expected']! as Map<String, Object?>;
+
+        if (expected['rejected'] == true) {
+          final prefix = expected['error']! as String;
+          expect(
+            () => normalizeMetricReading(input),
+            throwsA(
+              isA<ArgumentError>().having(
+                (error) => '${error.message}',
+                'message',
+                startsWith(prefix),
+              ),
+            ),
+            reason: name,
+          );
+          continue;
+        }
 
         _expectNormalizedOutput(
           normalizeMetricReading(input),
           expected,
-          reason: caseData['name']! as String,
+          reason: name,
         );
       }
     });

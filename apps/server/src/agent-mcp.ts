@@ -261,6 +261,10 @@ import {
   type AgentMealTypesReadStore
 } from "./agent-meal-types.js";
 import {
+  AgentLabTestListSchema,
+  listAgentLabTests
+} from "./agent-lab-tests.js";
+import {
   AgentMealListQuerySchema,
   AgentMealListResponseSchema,
   AgentNutritionReadUnavailableResponseSchema,
@@ -398,6 +402,9 @@ export const AgentMcpMealHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
 
 export const AgentMcpMealTypesInputSchema =
   AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
+
+export const AgentMcpLabTestsInputSchema =
+  AgentMcpAuthFieldsSchema.openapi("AgentMcpLabTestsInput");
 
 export const AgentMcpFoodListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentFoodListQuerySchema.optional()
@@ -1847,6 +1854,31 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_lab_tests",
+    {
+      title: "List Agent Lab Tests",
+      description:
+        "Lists the Lab Test catalogue: each Lab Test's key, name, panel, unit and accepted unit spellings, hard and plausible bounds, printed range kind and Default Ranges. Call it before writing lab results with agent_batch_write_metrics by labTestKey, and use only a listed unit or unit alias. Lab Test keys are not enumerated anywhere else.",
+      inputSchema: AgentMcpLabTestsInputSchema,
+      outputSchema: AgentLabTestListSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+
+      return successResult(AgentLabTestListSchema.parse(listAgentLabTests()));
+    }
+  );
+
+  server.registerTool(
     "agent_list_foods",
     {
       title: "List Agent Foods",
@@ -1990,7 +2022,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metrics",
       description:
-        "List bounded Metric definitions through the same REST contract used by code-mode clients.",
+        "List bounded Metric definitions through the same REST contract used by code-mode clients. A Lab Metric's canonicalKey is its Lab Test key, and a Lab Test key as query.metricKey matches only Lab Metrics with that key. The list may hold two Metrics for one Lab Test (created on two offline devices); readings join them by key.",
       inputSchema: AgentMcpMetricListInputSchema,
       outputSchema: AgentMetricListResponseSchema
     },
@@ -2030,7 +2062,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metric Readings",
       description:
-        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history.",
+        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history. A Lab Metric filter (its metricId, or a Lab Test key as metricKey) returns the collapsed results of every Metric with that key: one per collection, a final beating an interim, each keeping its own metricId. A read with no Metric filter collapses every Lab Test's rows the same way. Archived lab rows are never returned, even with includeArchived. Lab Metrics get no trendValue.",
       inputSchema: AgentMcpMetricReadingsInputSchema,
       outputSchema: AgentMetricReadingsResponseSchema
     },
@@ -2070,7 +2102,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Metrics",
       description:
-        "Apply Metric definitions and Metric Readings through the same normalization, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key.",
+        "Apply Metric definitions and Metric Readings through the same normalization, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key. Lab results: write each by labTestKey (list keys with agent_list_lab_tests), never by metricId, with value.lab.collected and a matching timeAnchor (localDateTime = collected expanded, a date as T12:00:00 and a time with :00 seconds, plus timezoneOffsetMinutes). Use only a listed unit or unit alias, and send a limit as entered \"< 1\". The server sets updatedAt, provenance, source and lab.limit. A stored Lab Result cannot be overwritten or archived: to correct one, write a new final result for the same collection.",
       inputSchema: AgentMcpMetricBatchWriteInputSchema,
       outputSchema: AgentMetricBatchWriteResponseSchema
     },
@@ -2851,7 +2883,7 @@ export function createAgentMcpServer({
     {
       title: "Read Agent Effect Window",
       description:
-        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. A Lab Metric (its metricId, or a Lab Test key as metricKey) reads the collapsed results of every Metric with that key. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
       inputSchema: AgentMcpEffectWindowInputSchema,
       outputSchema: AgentEffectWindowResponseSchema
     },

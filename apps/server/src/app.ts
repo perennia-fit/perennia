@@ -370,6 +370,11 @@ import {
   type AgentMealTypesReadStore
 } from "./agent-meal-types.js";
 import {
+  agentLabTestsRoute,
+  AgentLabTestListSchema,
+  listAgentLabTests
+} from "./agent-lab-tests.js";
+import {
   agentMealListRoute,
   agentNutritionTotalsRoute,
   agentNutritionTrendsRoute,
@@ -4734,6 +4739,41 @@ export function createApp(options: CreateAppOptions = {}) {
       ),
       200
     );
+  });
+
+  // The Lab Test catalogue is generated data with no per-user rows, so no
+  // read store is needed: only the Agent key store and its rate limit.
+  app.openapi(agentLabTestsRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    return context.json(AgentLabTestListSchema.parse(listAgentLabTests()), 200);
   });
 
   app.openapi(agentNutritionGoalListRoute, async (context) => {

@@ -1258,9 +1258,23 @@ class PortableArchiveRepository {
               ..where((row) => row.id.equals(id));
             return query.getSingleOrNull();
           },
-          upsert: (row) => _database
-              .into(_database.metrics)
-              .insert(row, mode: InsertMode.insertOrReplace),
+          // `labTestKey` is write-once (docs/designs/lab-results.md,
+          // Storage): a stored non-null key survives a restored row that
+          // carries null or another key; a stored null takes the row's key.
+          upsert: (row) async {
+            final storedLabTestKey = await _storedMetricLabTestKey(
+              _database,
+              row.id,
+            );
+            await _database.into(_database.metrics).insert(
+                  storedLabTestKey == null
+                      ? row
+                      : row.copyWith(
+                          labTestKey: Value<String?>(storedLabTestKey),
+                        ),
+                  mode: InsertMode.insertOrReplace,
+                );
+          },
           idOf: (row) => row.id,
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _metricImage,
@@ -2237,8 +2251,7 @@ class _PortableFocusRow {
 class _PortableCompoundRow {
   const _PortableCompoundRow(this.row, {required this.hasPurposeIds});
 
-  _PortableCompoundRow.stored(CompoundRow row)
-      : this(row, hasPurposeIds: true);
+  _PortableCompoundRow.stored(CompoundRow row) : this(row, hasPurposeIds: true);
 
   factory _PortableCompoundRow.fromJson(Map<String, dynamic> json) {
     return _PortableCompoundRow(

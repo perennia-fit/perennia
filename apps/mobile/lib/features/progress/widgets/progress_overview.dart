@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../body_tracker/widgets/body_tracker_screen.dart';
+import '../../labs/controllers/lab_results_controller.dart';
+import '../../labs/widgets/lab_results_screen.dart';
 import '../../metrics/widgets/metrics_screen.dart';
 import '../../settings/widgets/settings_shared.dart';
 import '../controllers/progress_controller.dart';
@@ -18,7 +20,7 @@ import 'trained_days_card.dart';
 /// The Progress root (docs/designs/progress-overview.md, D8): one period
 /// control over a scroll of summary cards, each derived on read from data
 /// the app already records and each opening a detail screen that already
-/// exists, then the links to Body Tracker and Health metrics.
+/// exists, then the links to Body Tracker, Health metrics and Lab results.
 ///
 /// Home builds this only while Progress is selected, so its `autoDispose`
 /// providers compute nothing on Today or Library; the list's
@@ -30,6 +32,7 @@ class ProgressOverview extends ConsumerWidget {
   static const periodControlKey = Key('progress.period');
   static const bodyTrackerTileKey = Key('progress.more.bodyTracker');
   static const healthMetricsTileKey = Key('progress.more.healthMetrics');
+  static const labResultsTileKey = Key('progress.more.labResults');
 
   static Key periodKey(ProgressPeriod period) =>
       Key('progress.period.${period.name}');
@@ -113,6 +116,11 @@ class ProgressOverview extends ConsumerWidget {
               },
             ),
           ),
+          gap,
+          const Card(
+            margin: EdgeInsets.zero,
+            child: _LabResultsTile(),
+          ),
         ],
       ),
     );
@@ -132,6 +140,37 @@ class _ProtocolsSlot extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [const ProtocolsProgressCard(), gap],
+    );
+  }
+}
+
+/// The Lab results row (docs/designs/lab-results.md, "The display", CUJ 6).
+///
+/// While the Protocols lock is closed it shows only the title and a lock
+/// icon: no Lab Test name, count or value. Either way it opens the Lab
+/// Results screen, which wraps itself in `ProtocolsLockGate` and so shows
+/// the lock screen while locked.
+class _LabResultsTile extends ConsumerWidget {
+  const _LabResultsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final row = ref.watch(labResultsProgressRowProvider);
+    return SettingsNavTile(
+      key: ProgressOverview.labResultsTileKey,
+      icon: row is LabResultsProgressRowLocked
+          ? Icons.lock_outline
+          : Icons.science_outlined,
+      title: l10n.labResultsTitle,
+      subtitle: switch (row) {
+        LabResultsProgressRowCount(:final count) =>
+          l10n.labResultsProgressCount(count),
+        LabResultsProgressRowLocked() || null => null,
+      },
+      onTap: () {
+        Navigator.of(context).pushNamed(LabResultsScreen.routeName);
+      },
     );
   }
 }

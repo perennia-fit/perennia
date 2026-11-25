@@ -4436,4 +4436,326 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileEquipmentGroupOther => 'Other';
+
+  @override
+  String get labTestPickerTitle => 'Choose a Lab Test';
+
+  @override
+  String labTestPickerRecognisedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Perennia recognises $count lab tests',
+      one: 'Perennia recognises 1 lab test',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get labTestPickerSearchHint => 'Search lab tests';
+
+  @override
+  String get labTestPickerEmpty => 'No lab tests match your search.';
+
+  @override
+  String get labEntryTitle => 'Add results';
+
+  @override
+  String get labEntryDateLabel => 'Collection date';
+
+  @override
+  String get labEntryDatePrompt => 'Choose a date';
+
+  @override
+  String get labEntryTimeLabel => 'Collection time (optional)';
+
+  @override
+  String get labEntryTimePrompt => 'Add a time';
+
+  @override
+  String get labEntryClearTime => 'Clear time';
+
+  @override
+  String get labEntryLabNameLabel => 'Lab name (optional)';
+
+  @override
+  String get labEntryReportStatusLabel => 'Report status';
+
+  @override
+  String get labEntryReportStatusFinal => 'Final';
+
+  @override
+  String get labEntryReportStatusInterim => 'Interim';
+
+  @override
+  String get labEntryFasting => 'Fasting';
+
+  @override
+  String labEntryRowTitle(int number) {
+    return 'Result $number';
+  }
+
+  @override
+  String get labEntryLabTestLabel => 'Lab Test';
+
+  @override
+  String get labEntryLabTestPrompt => 'Choose a Lab Test';
+
+  @override
+  String get labEntryComparatorLabel => 'Comparator';
+
+  @override
+  String get labEntryComparatorNone => 'None';
+
+  @override
+  String get labEntryComparatorLt => 'Less than';
+
+  @override
+  String get labEntryComparatorLe => 'Less than or equal to';
+
+  @override
+  String get labEntryComparatorGt => 'Greater than';
+
+  @override
+  String get labEntryComparatorGe => 'Greater than or equal to';
+
+  @override
+  String get labEntryValueLabel => 'Value';
+
+  @override
+  String get labEntryUnitLabel => 'Unit';
+
+  @override
+  String get labEntryPrintedRangeLabel => 'Printed range';
+
+  @override
+  String get labEntryPrintedFlagLabel => 'Printed flag';
+
+  @override
+  String get labEntryLabNameField => 'Lab name';
+
+  @override
+  String get labEntryRemoveRow => 'Remove result';
+
+  @override
+  String get labEntryAddRow => 'Add result';
+
+  @override
+  String get labEntrySave => 'Save';
+
+  @override
+  String get labEntryWarningTitle => 'Check before saving';
+
+  @override
+  String labEntryWarningLine(String name, String message) {
+    return '$name: $message';
+  }
+
+  @override
+  String get labEntryWarningCancel => 'Cancel';
+
+  @override
+  String get labEntryWarningSaveAnyway => 'Save anyway';
+
+  @override
+  String get labIssueCollectedMissing => 'Give the collection date.';
+
+  @override
+  String get labIssueCollectedInvalid =>
+      'Collection date must be YYYY-MM-DD or YYYY-MM-DDTHH:mm.';
+
+  @override
+  String get labIssueCollectedFuture =>
+      'Collection date can\'t be more than one day in the future.';
+
+  @override
+  String get labIssueTimeAnchorMismatch =>
+      'timeAnchor.localDateTime must match lab.collected.';
+
+  @override
+  String labIssueUnitNotAccepted(String units) {
+    return 'Unit not accepted. Use $units.';
+  }
+
+  @override
+  String get labIssueValueInvalid =>
+      'Enter a number, optionally after <, <=, > or >=.';
+
+  @override
+  String labIssueValueOutOfBounds(String min, String max, String unit) {
+    return 'Value must be between $min and $max $unit.';
+  }
+
+  @override
+  String get labIssueValueImplausible =>
+      'Value is unusual for this Lab Test. Check it before saving.';
+
+  @override
+  String labIssueTextTooLong(String field) {
+    return '$field is too long.';
+  }
+
+  @override
+  String get labIssueReportStatusInvalid =>
+      'Report status must be final or interim.';
+
+  @override
+  String get labIssueFastingInvalid => 'Fasting must be true or empty.';
+
+  @override
+  String get labIssueTestUnknown => 'Choose a Lab Test.';
+
+  @override
+  String get labIssueResultRepeated =>
+      'This Lab Test is already in this collection.';
+
+  @override
+  String get labIssueResultReplaces =>
+      'This replaces a saved result for the same collection.';
+
+  @override
+  String get labIssueFallback => 'Check this field.';
+
+  @override
+  String get labResultsTitle => 'Lab results';
+
+  @override
+  String get labResultsProfileLine =>
+      'General ranges use your sex and birth year from Profile.';
+
+  @override
+  String get labResultsProfileLink => 'Open Profile';
+
+  @override
+  String get labResultsAddResults => 'Add results';
+
+  @override
+  String get labResultsEmpty => 'No lab results yet.';
+
+  @override
+  String get labResultsUnavailable => 'Lab results couldn\'t be loaded.';
+
+  @override
+  String get labResultsOtherPanel => 'Other';
+
+  @override
+  String labResultsLatest(String value, String date) {
+    return '$value · $date';
+  }
+
+  @override
+  String labResultsProgressCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lab tests',
+      one: '1 lab test',
+      zero: 'No results yet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String labResultValue(String entered, String unit) {
+    return '$entered $unit';
+  }
+
+  @override
+  String labResultLimitSemantics(
+      String comparator, String number, String unit) {
+    return '$comparator $number $unit';
+  }
+
+  @override
+  String get labResultComparatorLtWords => 'less than';
+
+  @override
+  String get labResultComparatorLeWords => 'less than or equal to';
+
+  @override
+  String get labResultComparatorGtWords => 'greater than';
+
+  @override
+  String get labResultComparatorGeWords => 'greater than or equal to';
+
+  @override
+  String labResultLabRange(String range) {
+    return 'Lab range $range';
+  }
+
+  @override
+  String labResultTarget(String range) {
+    return 'Target $range';
+  }
+
+  @override
+  String labResultGeneralRange(
+      String low, String high, String unit, String source) {
+    return 'General range $low–$high $unit · $source';
+  }
+
+  @override
+  String labResultGeneralRangeBelow(String high, String unit, String source) {
+    return 'General range below $high $unit · $source';
+  }
+
+  @override
+  String labResultGeneralRangeAbove(String low, String unit, String source) {
+    return 'General range above $low $unit · $source';
+  }
+
+  @override
+  String get labResultPositionBelowPrinted => 'Below the lab\'s range';
+
+  @override
+  String get labResultPositionWithinPrinted => 'Within the lab\'s range';
+
+  @override
+  String get labResultPositionAbovePrinted => 'Above the lab\'s range';
+
+  @override
+  String get labResultPositionBelowGeneral => 'Below the general range';
+
+  @override
+  String get labResultPositionWithinGeneral => 'Within the general range';
+
+  @override
+  String get labResultPositionAboveGeneral => 'Above the general range';
+
+  @override
+  String labResultFlag(String flag) {
+    return 'Lab flag: $flag';
+  }
+
+  @override
+  String get labResultInterim => 'Interim';
+
+  @override
+  String get labResultInterimSemantics => 'Interim result';
+
+  @override
+  String get labResultFasting => 'Fasting';
+
+  @override
+  String get labResultArchive => 'Archive result';
+
+  @override
+  String labResultArchiveConfirm(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Archive this result? $count saved copies will be archived.',
+      one: 'Archive this result?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get labResultArchiveCancel => 'Cancel';
+
+  @override
+  String get labResultArchiveConfirmAction => 'Archive';
+
+  @override
+  String get labTestDetailEmpty => 'No results for this lab test.';
 }

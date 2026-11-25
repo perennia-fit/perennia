@@ -9,12 +9,48 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Lab results.** Progress → Lab results lists your blood test results by Lab
+  Test, behind the Protocols lock. Enter one collection at a time (date, lab,
+  interim or final, fasting) with many results, including limits such as "< 1",
+  and see each Lab Test over time with the lab's printed range and flag, or a
+  sourced general range from your Profile's sex and birth year where the lab
+  printed none.
+- **A Lab Test catalogue for contributors.** `packages/lab-catalogue` lists 60
+  blood tests with their units, accepted spellings, bounds and cited general
+  ranges; the app and the server are generated from it.
+- **Agents can log lab results by Lab Test.** `agent_list_lab_tests` (`GET
+  /agent/lab-tests`) lists the Lab Tests with their keys and units, and
+  `batchWriteAgentMetrics` writes a result by `labTestKey` with its collection
+  date and printed range. Metric reads and the Effect window join a Lab Test's
+  Metrics and show one result per collection.
+
 ### Changed
 
-- The food picker's rows name their source as plain text next to the calories,
-  instead of a bordered "Open Food Facts - ODbL" badge on every row. The Open
-  Food Facts licence notice still follows the list and stays on the food's
-  log screen.
+- **The food picker names a food's source in plain text.** Each row shows the
+  source next to the calories, instead of a bordered "Open Food Facts - ODbL"
+  badge. The Open Food Facts licence notice still follows the list and stays on
+  the food's log screen.
+- **Metric sync carries an optional `lab_test_key`.** A Lab Metric keeps its Lab
+  Test across devices, restore and the server.
+
+### Fixed
+
+- **The server rejects Metric values with trailing text, as the app does.** An
+  Agent Metric Reading whose `entered` is, for example, `64 %` or `1.7 x10^9` is
+  now rejected with `metric_reading_normalization_failed`, instead of being
+  saved as `64` or `1.7`.
+- **An Agent's unfiltered Metric Reading list collapses lab results.** With no
+  `metricId` or `metricKey`, `listAgentMetricReadings` now returns one result
+  per collection for each Lab Test, a final hiding its interim, and never an
+  archived lab result, even with `includeArchived=true`.
+- **Locking the app closes the lab entry sheet's date and time pickers and
+  its comparator menu.** Before, they could stay on screen above the
+  Protocols lock.
+- **Saving lab results with no date shows every row's errors at once.** The
+  rows are checked on the same Save that asks for the date, instead of on a
+  later one.
 
 ## [0.4.0] - 2026-11-24
 

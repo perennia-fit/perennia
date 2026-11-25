@@ -355,6 +355,194 @@ test("privacy logger strips the User Profile values of a logged agent write and 
   }
 });
 
+test("privacy logger strips Lab Metrics and Lab Results from a logged sync push (lab-results.md, Privacy)", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  const labMetric = {
+    id: "metric-lab-1",
+    name: "Testosterone",
+    unit: "nmol/L",
+    value_shape: "scalar",
+    metric_group: "custom",
+    lab_test_key: "testosterone_total"
+  };
+  const labResult = {
+    id: "reading-lab-1",
+    metric_id: "metric-lab-1",
+    value_json: {
+      shape: "scalar",
+      unit: "nmol/L",
+      value: 23.4,
+      entered: "23.4",
+      enteredUnit: "nmol/L",
+      lab: {
+        collected: "2026-03-04T08:15",
+        printedRange: "(10.0-30.0)",
+        printedFlag: "H",
+        reportStatus: "final",
+        labName: "Example Pathology"
+      }
+    },
+    scalar_value: 23.4,
+    scalar_entered: "23.4",
+    at_time: "2026-03-03T21:15:00.000Z",
+    external_id: "lab-order-77"
+  };
+  // A sync push body as it arrives, then the same rows logged outside the
+  // `changes` key (as a pulled change or an Activity Log image would be), so
+  // the lab keys themselves are exercised, not only their parent.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/sync/push",
+      entity: "metrics",
+      changes: [
+        { id: labMetric.id, payload: labMetric },
+        { id: labResult.id, payload: labResult }
+      ]
+    },
+    "synthetic Lab Results push"
+  );
+  logger.info({ userId: "user-1", ...labMetric }, "synthetic Lab Metric row");
+  logger.info({ userId: "user-1", ...labResult }, "synthetic Lab Result row");
+  logger.info(
+    { userId: "user-1", lab: labResult.value_json.lab, entered: "23.4" },
+    "synthetic lab object"
+  );
+
+  assert.equal(logEvents.length, 4);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  for (const value of [
+    "23\\.4",
+    "Testosterone",
+    "testosterone_total",
+    "\\(10\\.0-30\\.0\\)",
+    "10\\.0-30\\.0",
+    "Example Pathology",
+    "2026-03-04T08:15",
+    "2026-03-03T21:15",
+    "lab-order-77"
+  ]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
+test("privacy logger strips a logged Agent lab batch write, its response and its validation failure (lab-results.md, Privacy)", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  const request = {
+    idempotencyKey: "lab-batch-1",
+    metrics: [],
+    readings: [
+      {
+        id: "reading-lab-2",
+        labTestKey: "testosterone_total",
+        value: {
+          shape: "scalar",
+          entered: "20.4",
+          unit: "nmol/L",
+          lab: {
+            collected: "2026-03-04T08:15",
+            printedRange: "(10.0-30.0)",
+            printedFlag: "H",
+            reportStatus: "final",
+            fasting: true,
+            labName: "Example Pathology"
+          }
+        },
+        timeAnchor: {
+          localDateTime: "2026-03-04T08:15:00",
+          timezoneOffsetMinutes: 600
+        },
+        externalId: "lab-order-88",
+        comment: "Felt tired that week"
+      }
+    ]
+  };
+  const success = {
+    accepted: true,
+    duplicate: false,
+    idempotencyKey: "lab-batch-1",
+    batchId: "lab-batch-1",
+    serverClock: "2026-03-05T00:00:00.000Z",
+    metrics: [
+      {
+        id: "metric-lab-2",
+        name: "Testosterone",
+        valueShape: "scalar",
+        unit: "nmol/L",
+        metricGroup: "custom",
+        applied: true,
+        outcome: "applied"
+      }
+    ],
+    readings: [
+      {
+        id: "reading-lab-2",
+        metricId: "metric-lab-2",
+        valueShape: "scalar",
+        unit: "nmol/L",
+        warnings: ["lab_result_replaces"],
+        applied: true,
+        outcome: "applied"
+      }
+    ]
+  };
+  const failure = {
+    code: "agent_metric_batch_write_failed",
+    message: "Batch contains one or more hard Metric validation failures.",
+    errors: [
+      {
+        field: "readings[0].value.unit",
+        rule: "lab_unit_not_accepted",
+        message: "Unit not accepted. Use nmol/L, nmol/l.",
+        itemIndex: 0,
+        metricId: null,
+        readingId: "reading-lab-2",
+        limit: null
+      }
+    ],
+    warnings: []
+  };
+  // As a request logger would log them: the body spread at the top level,
+  // then each response body under its own key and spread.
+  logger.info(
+    { userId: "user-1", path: "/agent/metrics/batch-write", ...request },
+    "synthetic lab batch write"
+  );
+  logger.info({ userId: "user-1", body: request }, "synthetic lab batch body");
+  logger.info({ userId: "user-1", ...success }, "synthetic lab batch response");
+  logger.info({ userId: "user-1", response: success }, "synthetic lab batch response body");
+  logger.info({ userId: "user-1", ...failure }, "synthetic lab batch failure");
+
+  assert.equal(logEvents.length, 5);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  for (const value of [
+    "20\\.4",
+    "Testosterone",
+    "testosterone_total",
+    "10\\.0-30\\.0",
+    "Example Pathology",
+    "2026-03-04",
+    "lab-order-88",
+    "Felt tired"
+  ]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 function profileQueryError() {
   const cause = Object.assign(new Error("Key (text)=(Left knee) is invalid"), {
     code: "23514",

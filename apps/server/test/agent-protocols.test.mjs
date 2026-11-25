@@ -2546,6 +2546,157 @@ test(
 );
 
 test(
+  "effect-window read for a Lab Metric collapses every Metric's results by key before windowing",
+  { skip },
+  async () => {
+    // docs/designs/lab-results.md, "Result identity and the collapse" and
+    // "Finding the Lab Metric for a Lab Test" (Matching by key).
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-effect-lab-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const liveLabId = randomUUID();
+    const archivedLabId = randomUUID();
+    const customId = randomUUID();
+
+    try {
+      await insertUser(database, userId);
+      const metric = (id, name, labTestKey, sortOrder, deletedAt = null) =>
+        database.db.insert(schema.metrics).values({
+          id,
+          userId,
+          deviceId: "device-1",
+          name,
+          unit: "nmol/L",
+          valueShape: "scalar",
+          metricGroup: "custom",
+          sortOrder,
+          labTestKey,
+          updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+          deletedAt
+        });
+      // Two Lab Metrics for one Lab Test (two offline devices), the one with
+      // the lower sort order archived, and a custom Metric with the name.
+      await metric(liveLabId, "Testosterone", "testosterone_total", 1);
+      await metric(
+        archivedLabId,
+        "Testosterone",
+        "testosterone_total",
+        0,
+        new Date("2026-01-02T00:00:00.000Z")
+      );
+      await metric(customId, "testosterone_total", null, 2);
+
+      const reading = (metricId, day, value, lab, extra = {}) =>
+        database.db.insert(schema.metricReadings).values({
+          id: randomUUID(),
+          userId,
+          deviceId: "device-1",
+          metricId,
+          valueJson: {
+            value,
+            unit: "nmol/L",
+            ...(lab === null
+              ? {}
+              : {
+                  lab: {
+                    collected: lab.collected,
+                    limit: lab.limit ?? null,
+                    printedRange: null,
+                    printedFlag: null,
+                    reportStatus: lab.reportStatus ?? "final",
+                    fasting: null,
+                    labName: null
+                  }
+                })
+          },
+          scalarValue: value,
+          atTime: new Date(Date.UTC(2026, 0, day)),
+          provenance: "manual",
+          source: "manual",
+          updatedAt: new Date(Date.UTC(2026, 0, day)),
+          ...extra
+        });
+      // Before: a final on the archived Lab Metric.
+      await reading(archivedLabId, 2, 10, { collected: "2026-01-02" });
+      // During: an interim whose final, on the other Lab Metric, is anchored
+      // outside the whole window (day 40): the interim is still hidden.
+      await reading(liveLabId, 12, 50, { collected: "2026-01-12", reportStatus: "interim" });
+      await reading(archivedLabId, 40, 15, { collected: "2026-01-12" });
+      // During: a final, a Limit Result (no scalar value) and an archived row.
+      await reading(liveLabId, 14, 20, { collected: "2026-01-14" });
+      await reading(archivedLabId, 16, null, {
+        collected: "2026-01-16",
+        limit: { comparator: "<", bound: 1 }
+      });
+      await reading(liveLabId, 18, 70, { collected: "2026-01-18" }, {
+        deletedAt: new Date("2026-01-19T00:00:00.000Z")
+      });
+      // After: a final.
+      await reading(liveLabId, 25, 30, { collected: "2026-01-25" });
+      // The custom Metric with the Lab Test's name: never part of it.
+      await reading(customId, 13, 999, null);
+
+      await post(app, "/agent/protocols/doses/batch-write", {
+        idempotencyKey: `dose-${randomUUID()}`,
+        doses: [
+          { ...doseFixture(createUuidV7(), "X", isoDay(10)), compoundId },
+          { ...doseFixture(createUuidV7(), "X", isoDay(20)), compoundId }
+        ]
+      });
+
+      const effect = async (metricQuery) =>
+        app.request(
+          `/agent/protocols/effect-window?compoundId=${compoundId}&${metricQuery}&from=${isoDay(1)}&to=${isoDay(31)}`,
+          { headers: authHeaders() }
+        );
+      for (const metricQuery of [
+        "metricKey=testosterone_total",
+        `metricId=${liveLabId}`,
+        `metricId=${archivedLabId}`
+      ]) {
+        const response = await effect(metricQuery);
+        assert.equal(response.status, 200, metricQuery);
+        const body = await response.json();
+        // The live Lab Metric is reported, whichever row was named.
+        assert.deepEqual(
+          body.metric,
+          { id: liveLabId, name: "Testosterone", unit: "nmol/L" },
+          metricQuery
+        );
+        assert.deepEqual(
+          body.segments,
+          {
+            before: { count: 1, min: 10, max: 10, mean: 10 },
+            during: { count: 1, min: 20, max: 20, mean: 20 },
+            after: { count: 1, min: 30, max: 30, mean: 30 }
+          },
+          metricQuery
+        );
+      }
+
+      // The custom Metric is still found by its own id, and reads only its
+      // own readings.
+      const custom = await (await effect(`metricId=${customId}`)).json();
+      assert.equal(custom.metric.id, customId);
+      assert.deepEqual(custom.segments.during, { count: 1, min: 999, max: 999, mean: 999 });
+
+      // A Lab Test key with no Metric is not found, never matched by name,
+      // and a Lab Metric is not found by its name.
+      await metric(randomUUID(), "shbg", null, 3);
+      assert.equal((await effect("metricKey=shbg")).status, 422);
+      assert.equal((await effect("metricKey=Testosterone")).status, 422);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "effect-window read for a Protocol spans its declared course, not its tagged Doses, and the range only scopes the markers",
   { skip },
   async () => {

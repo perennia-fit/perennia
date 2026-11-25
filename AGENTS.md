@@ -98,7 +98,8 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   4 wk / 12 wk / 1 yr period control, each derived on read and opening an existing
   detail screen — This week (Training Day Statuses against the weekly Routines),
   Trained days, Time by Focus, and Protocols behind the lock — then links to Body
-  Tracker's curated manual-entry view and the wider Health Metrics explorer.
+  Tracker's curated manual-entry view, the wider Health Metrics explorer, and Lab
+  results (blood test results per Lab Test, behind the Protocols lock).
 - **Library root** — reusable plans and catalogues grouped by authored domain;
   Routines live under Training, and Protocols and Compounds under Protocols.
 - **Training Screen** — per-exercise set entry, three tabs: **Track | History |
