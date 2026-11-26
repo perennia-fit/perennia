@@ -44,7 +44,10 @@ class LabResultsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ProtocolsLockGate(child: _LabResultsScaffold());
+    return const ProtocolsLockGate(
+      subject: ProtocolsLockSubject.labResults,
+      child: _LabResultsScaffold(),
+    );
   }
 }
 

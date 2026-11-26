@@ -712,14 +712,18 @@ for choosing a Lab Test, and standard form inputs.
     when no time was printed). Each row, in this order:
     *   the value as entered with its comparator, and the unit as entered;
     *   `Lab range {text}`, or `Target {text}` for a `riskTarget` Lab Test, when printed;
-    *   `General range {low}–{high} {unit} · {source title}` when a Default Range applies
-        (`General range below {high} {unit} · {source title}` or
-        `General range above {low} {unit} · {source title}` when one side is missing);
+    *   `General range {low}–{high} {unit}` when a Default Range applies
+        (`General range below {high} {unit}` or `General range above {low} {unit}` when one
+        side is missing), then `Source: {source title}, {version}` on a line of its own. A source
+        title is a full paper title, so the source line is cut to one line with an ellipsis on
+        screen; screen readers read all of it;
     *   the position sentence: "Below the lab's range", "Within the lab's range", "Above the
         lab's range", or the same with "general range"; nothing for `unknown`;
     *   `Lab flag: {flag}` when printed;
     *   "Interim" when interim; "Fasting" when fasting; the lab's name when given;
-    *   an archive action.
+    *   an archive action. After the confirmation, a snack bar "Result archived" offers
+        **Undo** for 4 seconds, which undoes the archive's Batch as Recent activity would. It
+        names no Lab Test or value.
 *   **Excluded elsewhere.** Lab Metrics are left out of the Health Metrics explorer, which keeps
     them away from its name-based grouping, its daily summing and Trend. Body Tracker and the
     Body card already list only `bodyComposition` Metrics, so they need no change. Lab Metrics
@@ -730,7 +734,10 @@ for choosing a Lab Test, and standard form inputs.
     sheet, the Lab Test picker, the warning dialog, the archive confirmation, and the date and
     time pickers opened from the sheet (through each picker's `builder`) use
     `ProtocolsLockSheetGuard`, so they close when the app locks and an unsaved sheet is
-    discarded. The sheet's comparator menu closes with the sheet: the guard keeps locked
+    discarded. The lock screen these two screens show is titled **Lab results**, with "Lab results
+    are locked" and "Lab results use the Protocols lock. Unlock to view them." above the unlock
+    form (`ProtocolsLockGate`'s `subject`), so a user who tapped Lab results is not shown a
+    screen named Protocols. The sheet's comparator menu closes with the sheet: the guard keeps locked
     content mounted but offstage and pops any unguarded route above its own (such as that
     menu) before removing its route. While locked, the Progress row shows a lock icon and no names, counts or values.
     The Effect view and
@@ -742,13 +749,15 @@ for choosing a Lab Test, and standard form inputs.
 
 The **entry sheet** has two parts.
 
-*   **Collection fields**, set once at the top: collection date (required), time (optional), lab
-    name (optional), report status (Final by default, or Interim), and a Fasting switch.
+*   **Collection fields**, set once at the top: collection date (required, shown with its year,
+    since reports from earlier years are common), time (optional), lab name (optional), report
+    status (Final by default, or Interim), and a Fasting switch.
 *   **Result rows**, one per result: Lab Test (DESIGN.md's Picker sheet in single-select mode,
     grouped by panel, with a search field that matches names and variants by case-insensitive
     substring), a comparator chooser (none, `<`, `≤`, `>`, `≥`), value, the unit as a fixed label
     showing the Lab Test's `unit`, Printed Range text and Printed Flag. Rows can be added and
-    removed.
+    removed. Opening the Lab Test picker first drops the keyboard focus, so closing the picker
+    does not hand focus, and the keyboard, back to a text field.
 
 The sheet's state is a `CollectionDraft`:
 
@@ -1345,10 +1354,14 @@ that differs from a listed one only by spaces is not listed, because the generat
 *   *Sex hormones:* `testosterone_total` `nmol/L`, `testosterone_free_calc` `pmol/L`, `shbg`
     `nmol/L`, `oestradiol` `pmol/L`, `lh` `IU/L`, `fsh` `IU/L`, `progesterone` `nmol/L`.
 *   *Pituitary and adrenal:* `prolactin` `mIU/L`, `cortisol` `nmol/L`, `growth_hormone` `ug/L`,
-    `igf_1` `nmol/L`, `dhea_s` `umol/L`.
+    `growth_hormone_miu` `mIU/L` (named "Growth hormone (mIU/L)": labs print growth hormone in
+    either unit, and by the unit rule each form is its own Lab Test, so a result is never stored
+    under the other unit), `igf_1` `nmol/L`, `dhea_s` `umol/L`.
 *   *Lipids* (`printedRangeKind: "riskTarget"`): `cholesterol_total`, `triglycerides`,
     `hdl_cholesterol`, `ldl_cholesterol`, `non_hdl_cholesterol` `mmol/L`;
     `cholesterol_hdl_ratio` `ratio`.
+*   *Glucose:* `glucose` `mmol/L` (fasting or not is the collection's Fasting switch, so it is one
+    Lab Test).
 *   *Inflammation:* `hs_crp` `mg/L`.
 *   *Electrolytes:* `sodium`, `potassium`, `chloride`, `bicarbonate`, `anion_gap` `mmol/L`.
 *   *Kidney:* `urea` `mmol/L`, `creatinine` `umol/L`, `egfr` `mL/min/1.73m²` (aliases
@@ -1357,14 +1370,15 @@ that differs from a listed one only by spaces is not listed, because the generat
     `albumin`, `globulin` `g/L`.
 *   *Bone and minerals:* `calcium`, `calcium_adjusted`, `phosphate`, `magnesium` `mmol/L`.
 *   *Full blood count:* `haemoglobin` `g/L`, `haematocrit` `L/L`, `rcc` `x10^12/L`, `mcv` `fL`,
-    `mch` `pg`, `mchc` `g/L`, `rdw` `%`, `wcc` `x10^9/L`, `platelets` `x10^9/L`, and for each of
+    `mch` `pg`, `mchc` `g/L`, `rdw` `%`, `wcc` `x10^9/L`, `platelets` `x10^9/L`, `mpv` `fL`, and for each of
     neutrophils, lymphocytes, monocytes, eosinophils and basophils a `_percent` (`%`) and a
     `_count` (`x10^9/L`) Lab Test.
 
-That is 60 Lab Tests. `variants` for each: the common report spellings of its name, lower case
-(for example `alk phos` and `alkaline phosphatase` for `alp`; `gamma gt` for `ggt`;
-`total/hdl ratio` for `cholesterol_hdl_ratio`; `corrected calcium` and
-`calcium (adjusted for albumin)` for `calcium_adjusted`).
+That is 63 Lab Tests (60 at first; `growth_hormone_miu`, `glucose` and `mpv` were added after a
+test against a real report found them missing). `variants` for each: the common report spellings
+of its name, lower case (for example `alk phos` and `alkaline phosphatase` for `alp`; `gamma gt`
+for `ggt`; `other anions` for `anion_gap`; `total/hdl ratio` for `cholesterol_hdl_ratio`;
+`corrected calcium` and `calcium (adjusted for albumin)` for `calcium_adjusted`).
 
 **Bounds rule.** `hardBounds` catches impossible values and is set by unit: `min` 0 and `max` 100
 for `%` and `ratio`; 1 for `L/L`; 1000 for `mmol/L`, `g/L`, `fL`, `pg` and `x10^9/L`; 100 for

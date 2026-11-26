@@ -4620,6 +4620,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get labResultsTitle => 'Lab results';
 
   @override
+  String get labResultsLockedTitle => 'Lab results are locked';
+
+  @override
+  String get labResultsLockedMessage =>
+      'Lab results use the Protocols lock. Unlock to view them.';
+
+  @override
   String get labResultsProfileLine =>
       'General ranges use your sex and birth year from Profile.';
 
@@ -4689,19 +4696,23 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String labResultGeneralRange(
-      String low, String high, String unit, String source) {
-    return 'General range $low–$high $unit · $source';
+  String labResultGeneralRange(String low, String high, String unit) {
+    return 'General range $low–$high $unit';
   }
 
   @override
-  String labResultGeneralRangeBelow(String high, String unit, String source) {
-    return 'General range below $high $unit · $source';
+  String labResultGeneralRangeBelow(String high, String unit) {
+    return 'General range below $high $unit';
   }
 
   @override
-  String labResultGeneralRangeAbove(String low, String unit, String source) {
-    return 'General range above $low $unit · $source';
+  String labResultGeneralRangeAbove(String low, String unit) {
+    return 'General range above $low $unit';
+  }
+
+  @override
+  String labResultGeneralRangeSource(String source, String year) {
+    return 'Source: $source, $year';
   }
 
   @override
@@ -4749,6 +4760,12 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get labResultArchived => 'Result archived';
+
+  @override
+  String get labResultArchiveUndo => 'Undo';
 
   @override
   String get labResultArchiveCancel => 'Cancel';

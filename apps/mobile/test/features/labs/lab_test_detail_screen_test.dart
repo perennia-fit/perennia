@@ -50,7 +50,7 @@ void main() {
       );
 
   final creatinineSource =
-      labTestByKey('creatinine')!.defaultRanges.first.source.title;
+      labTestByKey('creatinine')!.defaultRanges.first.source;
 
   testWidgets('a Limit Result always shows its comparator', (tester) async {
     final semantics = tester.ensureSemantics();
@@ -181,7 +181,13 @@ void main() {
     expect(find.text('Within the general range'), findsOneWidget);
     expect(find.text('Above the general range'), findsOneWidget);
     expect(
-      find.text('General range 60–110 umol/L · $creatinineSource'),
+      find.text('General range 60–110 umol/L'),
+      findsNWidgets(3),
+    );
+    expect(
+      find.text(
+        'Source: ${creatinineSource.title}, ${creatinineSource.version}',
+      ),
       findsNWidgets(3),
     );
     expect(find.textContaining("lab's range"), findsNothing);
@@ -234,7 +240,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('General range 60–110 umol/L · $creatinineSource'),
+      find.text('General range 60–110 umol/L'),
       findsOneWidget,
     );
     expect(find.text('Within the general range'), findsOneWidget);
@@ -265,7 +271,7 @@ void main() {
     await pumpDetail(tester, 'creatinine');
 
     expect(
-      find.text('General range 60–110 umol/L · $creatinineSource'),
+      find.text('General range 60–110 umol/L'),
       findsOneWidget,
     );
     expect(find.text('Within the general range'), findsOneWidget);
@@ -356,15 +362,17 @@ void main() {
       const DefaultRange(sex: DefaultRangeSex.male, high: 110, source: source),
     );
     expect(
-      find.text('General range below 110 umol/L · Test source'),
+      find.text('General range below 110 umol/L'),
       findsOneWidget,
     );
+    // The source sits on its own line, cut to one line on screen.
+    expect(find.text('Source: Test source, 1'), findsOneWidget);
 
     await pumpRow(
       const DefaultRange(sex: DefaultRangeSex.male, low: 60, source: source),
     );
     expect(
-      find.text('General range above 60 umol/L · Test source'),
+      find.text('General range above 60 umol/L'),
       findsOneWidget,
     );
     await harness.unmount(tester);
@@ -407,6 +415,38 @@ void main() {
     expect(readings, hasLength(2));
     expect(readings.every((reading) => reading.deletedAt != null), isTrue);
     expect(find.byKey(LabTestDetailScreen.emptyKey), findsOneWidget);
+    await harness.unmount(tester);
+  });
+
+  testWidgets('archiving offers Undo, which brings the result back', (
+    tester,
+  ) async {
+    await harness.save(
+      tester,
+      date: DateTime(2026, 3, 4),
+      rows: const <CollectionDraftRow>[
+        CollectionDraftRow(labTestKey: 'shbg', value: '42'),
+      ],
+    );
+    await pumpDetail(tester, 'shbg');
+
+    await tester.tap(find.byTooltip('Archive result'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(LabTestDetailScreen.archiveConfirmKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(LabTestDetailScreen.emptyKey), findsOneWidget);
+    // The bar names no Lab Test or value.
+    expect(find.byKey(LabTestDetailScreen.archivedSnackBarKey), findsOneWidget);
+    expect(find.text('Result archived'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    final readings = await harness.readings(tester);
+    expect(readings, hasLength(1));
+    expect(readings.single.deletedAt, isNull);
+    expect(find.text('42 nmol/L'), findsOneWidget);
     await harness.unmount(tester);
   });
 }

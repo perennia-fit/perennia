@@ -17,7 +17,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   and see each Lab Test over time with the lab's printed range and flag, or a
   sourced general range from your Profile's sex and birth year where the lab
   printed none.
-- **A Lab Test catalogue for contributors.** `packages/lab-catalogue` lists 60
+- **A Lab Test catalogue for contributors.** `packages/lab-catalogue` lists 63
   blood tests with their units, accepted spellings, bounds and cited general
   ranges; the app and the server are generated from it.
 - **Agents can log lab results by Lab Test.** `agent_list_lab_tests` (`GET
@@ -51,6 +51,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Saving lab results with no date shows every row's errors at once.** The
   rows are checked on the same Save that asks for the date, instead of on a
   later one.
+- **Lab results fixes from a test against a real report.** Glucose, MPV and
+  growth hormone in mIU/L are in the catalogue, and "other anions" finds Anion
+  gap. The collection date shows its year. Archiving a result offers Undo.
+  A general range's source sits on one line of its own. The lock screen opened
+  from Lab results is titled Lab results. Choosing a Lab Test no longer brings
+  the keyboard back.
 
 ## [0.4.0] - 2026-11-24
 

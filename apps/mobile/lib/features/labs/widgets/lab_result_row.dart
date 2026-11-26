@@ -63,8 +63,23 @@ class LabResultRow extends StatelessWidget {
               : l10n.labResultLabRange(printed),
           style: secondary,
         ),
-      if (view.defaultRange case final range?)
+      if (view.defaultRange case final range?) ...[
         Text(_generalRangeText(l10n, range, view), style: secondary),
+        // The source is a full paper title, often several lines long, so it
+        // sits on one line of its own and is cut with an ellipsis; a screen
+        // reader still reads all of it.
+        Semantics(
+          label: _sourceText(l10n, range),
+          container: true,
+          excludeSemantics: true,
+          child: Text(
+            _sourceText(l10n, range),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: styles.label.copyWith(color: colors.textSecondary),
+          ),
+        ),
+      ],
       if (_positionText(l10n, view.position) case final position?)
         Semantics(
           label: position,
@@ -179,16 +194,15 @@ String _comparatorWords(AppLocalizations l10n, LabComparator comparator) =>
       LabComparator.ge => l10n.labResultComparatorGeWords,
     };
 
-/// `General range {low}–{high} {unit} · {source title}`, or the one-sided
-/// form when a side is missing. The unit is the Lab Test's, which is the
-/// unit a Default Range is written in.
+/// `General range {low}–{high} {unit}`, or the one-sided form when a side is
+/// missing. The unit is the Lab Test's, which is the unit a Default Range is
+/// written in. The source is a separate line ([_sourceText]).
 String _generalRangeText(
   AppLocalizations l10n,
   DefaultRange range,
   LabResultView view,
 ) {
   final unit = view.labTest?.unit ?? view.record.enteredUnit;
-  final source = range.source.title;
   final low = range.low;
   final high = range.high;
   if (low != null && high != null) {
@@ -196,22 +210,23 @@ String _generalRangeText(
       formatRangeNumber(low),
       formatRangeNumber(high),
       unit,
-      source,
     );
   }
   if (high != null) {
     return l10n.labResultGeneralRangeBelow(
       formatRangeNumber(high),
       unit,
-      source,
     );
   }
   return l10n.labResultGeneralRangeAbove(
     formatRangeNumber(low!),
     unit,
-    source,
   );
 }
+
+/// `Source: {source title}, {year}`, the line under a general range.
+String _sourceText(AppLocalizations l10n, DefaultRange range) =>
+    l10n.labResultGeneralRangeSource(range.source.title, range.source.version);
 
 /// [value] without a trailing `.0`: `45` rather than `45.0`, `3.5` as is.
 String formatRangeNumber(num value) {

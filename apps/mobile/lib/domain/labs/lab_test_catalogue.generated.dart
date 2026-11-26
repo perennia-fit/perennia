@@ -221,6 +221,22 @@ const List<LabTest> labTestCatalogue = [
     defaultRanges: [],
   ),
   LabTest(
+    key: 'growth_hormone_miu',
+    name: 'Growth hormone (mIU/L)',
+    panel: 'Pituitary and adrenal',
+    variants: [],
+    unit: 'mIU/L',
+    unitAliases: [
+      'mIU/l',
+    ],
+    hardBounds: Bounds(
+      min: 0,
+      max: 100000,
+    ),
+    printedRangeKind: PrintedRangeKind.reference,
+    defaultRanges: [],
+  ),
+  LabTest(
     key: 'igf_1',
     name: 'IGF-1',
     panel: 'Pituitary and adrenal',
@@ -401,6 +417,32 @@ const List<LabTest> labTestCatalogue = [
     defaultRanges: [],
   ),
   LabTest(
+    key: 'glucose',
+    name: 'Glucose',
+    panel: 'Glucose',
+    variants: [
+      'blood glucose',
+      'plasma glucose',
+      'serum glucose',
+      'fasting glucose',
+      'random glucose',
+      'blood sugar',
+      'bsl',
+      'fbg',
+      'fpg',
+    ],
+    unit: 'mmol/L',
+    unitAliases: [
+      'mmol/l',
+    ],
+    hardBounds: Bounds(
+      min: 0,
+      max: 1000,
+    ),
+    printedRangeKind: PrintedRangeKind.reference,
+    defaultRanges: [],
+  ),
+  LabTest(
     key: 'hs_crp',
     name: 'hs-CRP',
     panel: 'Inflammation',
@@ -561,6 +603,7 @@ const List<LabTest> labTestCatalogue = [
     panel: 'Electrolytes',
     variants: [
       'ag',
+      'other anions',
     ],
     unit: 'mmol/L',
     unitAliases: [
@@ -1227,6 +1270,22 @@ const List<LabTest> labTestCatalogue = [
     defaultRanges: [],
   ),
   LabTest(
+    key: 'mpv',
+    name: 'MPV',
+    panel: 'Full blood count',
+    variants: [
+      'mean platelet volume',
+    ],
+    unit: 'fL',
+    unitAliases: [],
+    hardBounds: Bounds(
+      min: 0,
+      max: 1000,
+    ),
+    printedRangeKind: PrintedRangeKind.reference,
+    defaultRanges: [],
+  ),
+  LabTest(
     key: 'neutrophils_percent',
     name: 'Neutrophils %',
     panel: 'Full blood count',
@@ -1494,6 +1553,10 @@ const Map<String, Map<String, String>> labTestFoldedUnits = {
     'µg/L': 'ug/L',
     'µg/l': 'ug/L',
   },
+  'growth_hormone_miu': {
+    'mIU/L': 'mIU/L',
+    'mIU/l': 'mIU/L',
+  },
   'igf_1': {
     'nmol/L': 'nmol/L',
     'nmol/l': 'nmol/L',
@@ -1526,6 +1589,10 @@ const Map<String, Map<String, String>> labTestFoldedUnits = {
   },
   'cholesterol_hdl_ratio': {
     'ratio': 'ratio',
+  },
+  'glucose': {
+    'mmol/L': 'mmol/L',
+    'mmol/l': 'mmol/L',
   },
   'hs_crp': {
     'mg/L': 'mg/L',
@@ -1673,6 +1740,9 @@ const Map<String, Map<String, String>> labTestFoldedUnits = {
     'x10^9/l': 'x10^9/L',
     '10^9/L': 'x10^9/L',
     '10^9/l': 'x10^9/L',
+  },
+  'mpv': {
+    'fL': 'fL',
   },
   'neutrophils_percent': {
     '%': '%',

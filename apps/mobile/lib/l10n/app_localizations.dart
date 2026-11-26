@@ -7312,6 +7312,18 @@ abstract class AppLocalizations {
   /// **'Lab results'**
   String get labResultsTitle;
 
+  /// Heading of the lock screen shown when Lab results are opened while the Protocols lock is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Lab results are locked'**
+  String get labResultsLockedTitle;
+
+  /// Line under the Lab results lock heading, above the unlock buttons.
+  ///
+  /// In en, this message translates to:
+  /// **'Lab results use the Protocols lock. Unlock to view them.'**
+  String get labResultsLockedMessage;
+
   /// Fixed line on the Lab Results screen saying which Profile fields the general ranges use. Not dismissible.
   ///
   /// In en, this message translates to:
@@ -7408,24 +7420,29 @@ abstract class AppLocalizations {
   /// **'Target {range}'**
   String labResultTarget(String range);
 
-  /// The general (default) range for a result with no printed range, and the publication it comes from.
+  /// The general (default) range for a result with no printed range.
   ///
   /// In en, this message translates to:
-  /// **'General range {low}–{high} {unit} · {source}'**
-  String labResultGeneralRange(
-      String low, String high, String unit, String source);
+  /// **'General range {low}–{high} {unit}'**
+  String labResultGeneralRange(String low, String high, String unit);
 
-  /// A general range with only an upper limit, and the publication it comes from.
+  /// A general range with only an upper limit.
   ///
   /// In en, this message translates to:
-  /// **'General range below {high} {unit} · {source}'**
-  String labResultGeneralRangeBelow(String high, String unit, String source);
+  /// **'General range below {high} {unit}'**
+  String labResultGeneralRangeBelow(String high, String unit);
 
-  /// A general range with only a lower limit, and the publication it comes from.
+  /// A general range with only a lower limit.
   ///
   /// In en, this message translates to:
-  /// **'General range above {low} {unit} · {source}'**
-  String labResultGeneralRangeAbove(String low, String unit, String source);
+  /// **'General range above {low} {unit}'**
+  String labResultGeneralRangeAbove(String low, String unit);
+
+  /// Line under a general range naming the publication it comes from and its year. Shown on one line; screen readers read the full title.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}, {year}'**
+  String labResultGeneralRangeSource(String source, String year);
 
   /// Where a result sits against the range the lab printed. Never say normal or abnormal.
   ///
@@ -7498,6 +7515,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{Archive this result?} other{Archive this result? {count} saved copies will be archived.}}'**
   String labResultArchiveConfirm(int count);
+
+  /// Snack bar shown after a lab result is archived. Names no Lab Test or value.
+  ///
+  /// In en, this message translates to:
+  /// **'Result archived'**
+  String get labResultArchived;
+
+  /// Snack bar action that undoes archiving a lab result.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get labResultArchiveUndo;
 
   /// Cancels archiving a lab result.
   ///

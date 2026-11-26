@@ -305,6 +305,27 @@ export const LAB_TEST_CATALOGUE: readonly LabTestEntry[] = [
     }
   },
   {
+    "key": "growth_hormone_miu",
+    "name": "Growth hormone (mIU/L)",
+    "panel": "Pituitary and adrenal",
+    "variants": [],
+    "unit": "mIU/L",
+    "unitAliases": [
+      "mIU/l"
+    ],
+    "hardBounds": {
+      "min": 0,
+      "max": 100000
+    },
+    "plausibleBounds": null,
+    "printedRangeKind": "reference",
+    "defaultRanges": [],
+    "foldedUnits": {
+      "mIU/L": "mIU/L",
+      "mIU/l": "mIU/L"
+    }
+  },
+  {
     "key": "igf_1",
     "name": "IGF-1",
     "panel": "Pituitary and adrenal",
@@ -526,6 +547,37 @@ export const LAB_TEST_CATALOGUE: readonly LabTestEntry[] = [
     }
   },
   {
+    "key": "glucose",
+    "name": "Glucose",
+    "panel": "Glucose",
+    "variants": [
+      "blood glucose",
+      "plasma glucose",
+      "serum glucose",
+      "fasting glucose",
+      "random glucose",
+      "blood sugar",
+      "bsl",
+      "fbg",
+      "fpg"
+    ],
+    "unit": "mmol/L",
+    "unitAliases": [
+      "mmol/l"
+    ],
+    "hardBounds": {
+      "min": 0,
+      "max": 1000
+    },
+    "plausibleBounds": null,
+    "printedRangeKind": "reference",
+    "defaultRanges": [],
+    "foldedUnits": {
+      "mmol/L": "mmol/L",
+      "mmol/l": "mmol/L"
+    }
+  },
+  {
     "key": "hs_crp",
     "name": "hs-CRP",
     "panel": "Inflammation",
@@ -726,7 +778,8 @@ export const LAB_TEST_CATALOGUE: readonly LabTestEntry[] = [
     "name": "Anion gap",
     "panel": "Electrolytes",
     "variants": [
-      "ag"
+      "ag",
+      "other anions"
     ],
     "unit": "mmol/L",
     "unitAliases": [
@@ -1579,6 +1632,26 @@ export const LAB_TEST_CATALOGUE: readonly LabTestEntry[] = [
       "x10^9/l": "x10^9/L",
       "10^9/L": "x10^9/L",
       "10^9/l": "x10^9/L"
+    }
+  },
+  {
+    "key": "mpv",
+    "name": "MPV",
+    "panel": "Full blood count",
+    "variants": [
+      "mean platelet volume"
+    ],
+    "unit": "fL",
+    "unitAliases": [],
+    "hardBounds": {
+      "min": 0,
+      "max": 1000
+    },
+    "plausibleBounds": null,
+    "printedRangeKind": "reference",
+    "defaultRanges": [],
+    "foldedUnits": {
+      "fL": "fL"
     }
   },
   {

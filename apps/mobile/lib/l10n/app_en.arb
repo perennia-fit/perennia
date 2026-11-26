@@ -3552,6 +3552,14 @@
   "@labResultsTitle": {
     "description": "App bar title of the Lab Results screen."
   },
+  "labResultsLockedTitle": "Lab results are locked",
+  "@labResultsLockedTitle": {
+    "description": "Heading of the lock screen shown when Lab results are opened while the Protocols lock is on."
+  },
+  "labResultsLockedMessage": "Lab results use the Protocols lock. Unlock to view them.",
+  "@labResultsLockedMessage": {
+    "description": "Line under the Lab results lock heading, above the unlock buttons."
+  },
   "labResultsProfileLine": "General ranges use your sex and birth year from Profile.",
   "@labResultsProfileLine": {
     "description": "Fixed line on the Lab Results screen saying which Profile fields the general ranges use. Not dismissible."
@@ -3658,9 +3666,9 @@
       }
     }
   },
-  "labResultGeneralRange": "General range {low}–{high} {unit} · {source}",
+  "labResultGeneralRange": "General range {low}–{high} {unit}",
   "@labResultGeneralRange": {
-    "description": "The general (default) range for a result with no printed range, and the publication it comes from.",
+    "description": "The general (default) range for a result with no printed range.",
     "placeholders": {
       "low": {
         "type": "String"
@@ -3670,38 +3678,41 @@
       },
       "unit": {
         "type": "String"
-      },
-      "source": {
-        "type": "String"
       }
     }
   },
-  "labResultGeneralRangeBelow": "General range below {high} {unit} · {source}",
+  "labResultGeneralRangeBelow": "General range below {high} {unit}",
   "@labResultGeneralRangeBelow": {
-    "description": "A general range with only an upper limit, and the publication it comes from.",
+    "description": "A general range with only an upper limit.",
     "placeholders": {
       "high": {
         "type": "String"
       },
       "unit": {
         "type": "String"
-      },
-      "source": {
-        "type": "String"
       }
     }
   },
-  "labResultGeneralRangeAbove": "General range above {low} {unit} · {source}",
+  "labResultGeneralRangeAbove": "General range above {low} {unit}",
   "@labResultGeneralRangeAbove": {
-    "description": "A general range with only a lower limit, and the publication it comes from.",
+    "description": "A general range with only a lower limit.",
     "placeholders": {
       "low": {
         "type": "String"
       },
       "unit": {
         "type": "String"
-      },
+      }
+    }
+  },
+  "labResultGeneralRangeSource": "Source: {source}, {year}",
+  "@labResultGeneralRangeSource": {
+    "description": "Line under a general range naming the publication it comes from and its year. Shown on one line; screen readers read the full title.",
+    "placeholders": {
       "source": {
+        "type": "String"
+      },
+      "year": {
         "type": "String"
       }
     }
@@ -3763,6 +3774,14 @@
         "type": "int"
       }
     }
+  },
+  "labResultArchived": "Result archived",
+  "@labResultArchived": {
+    "description": "Snack bar shown after a lab result is archived. Names no Lab Test or value."
+  },
+  "labResultArchiveUndo": "Undo",
+  "@labResultArchiveUndo": {
+    "description": "Snack bar action that undoes archiving a lab result."
   },
   "labResultArchiveCancel": "Cancel",
   "@labResultArchiveCancel": {
